@@ -2,6 +2,41 @@
 
 ## [1.1.5]
 
+### Fixed — Broadcast never sent anything
+It called `ctx.bot.send_msg`, which does not exist — the method is `send`. Five other
+calls had the same mistake, including affiliate commission notices and wallet top-up
+confirmations, so none of those messages were arriving either.
+
+Broadcast now shows live progress, respects Telegram rate limits, and separates users
+who blocked the bot from real failures — marking them inactive so they stop being
+counted.
+
+### Added — Choose which inbounds a config lands on
+Instead of typing an inbound id, the panel lists them by name with protocol and port.
+Three modes: every enabled inbound, the default one only, or a specific selection. A
+plan can override the global setting when one product belongs on particular servers.
+
+### Fixed
+- A custom subscription domain now takes precedence over the link the panel generates.
+  The panel builds from its own address, which may carry a non-standard port or a hidden
+  path; if you set a clean domain, that is what customers get
+- `ctx.xui` was called as a method where it is a property, so usage figures never loaded
+- Delivery message now names the plan, shows the expiry date and config name, and says
+  plainly when no link could be generated instead of arriving half-empty
+
+### Fixed — The customer received nothing
+A config was created but no link was sent. The subscription URL was only built when a
+base URL happened to be configured; otherwise it came back empty. Version 3 exposes the
+links itself, built from the real inbound settings, so they are now fetched from the
+panel.
+
+### Changed
+- Clients attach to every enabled inbound, so a customer keeps working when one server
+  goes down
+- flow defaults to xtls-rprx-vision, without which REALITY configs do not work
+- The subscription list now shows a usage bar with real traffic from the panel, how much
+  is left, days remaining with the expiry date, and the config name
+
 ### Fixed — Nested response and traffic paths
 Version 3 returns a client wrapped in a `client` key with usage and inbound ids beside
 it, not flattened. Reads are now unwrapped so the rest of the code keeps working with a

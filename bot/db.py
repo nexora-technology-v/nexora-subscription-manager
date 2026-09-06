@@ -271,6 +271,11 @@ def _migrate(con):
         # کدام همکار فروش این کاربر را آورده — تا پورسانت هر خریدش
         # به همان نفر برسد، نه فقط خرید اول
         ("users", "affiliate_id", "INTEGER"),
+        # اینباندهای هر پلن — خالی یعنی از تنظیم سراسری پیروی کن
+        ("plans", "inbound_ids", "TEXT"),
+        # حالت پیش‌فرض: all | default | custom
+        ("tenants", "inbound_mode", "TEXT DEFAULT 'all'"),
+        ("tenants", "inbound_ids", "TEXT"),
     ]
     for table, col, spec in adds:
         try:

@@ -924,6 +924,111 @@ def _bot_conn():
         return None
 
 
+@app.get("/api/admin/bot/inbounds")
+def bot_inbounds(x_admin_password: str = Header(...)):
+    """
+    اینباندهای پنل با نام و مشخصات.
+
+    تا مدیر با نام انتخاب کند نه با شماره — کسی شماره‌ی اینباند
+    را حفظ نیست، ولی نامش را می‌شناسد.
+    """
+    check_auth(x_admin_password)
+    ok, err = _ensure_bot_db()
+    if not ok:
+        return {"ready": False, "error": err, "inbounds": []}
+
+    con = _bot_conn()
+    if not con:
+        return {"ready": False, "error": "دیتابیس ربات در دسترس نیست",
+                "inbounds": []}
+    try:
+        r = con.execute("SELECT panel_url, panel_user, panel_pass, panel_token, "
+                        "default_inbound, inbound_mode, inbound_ids "
+                        "FROM tenants LIMIT 1").fetchone()
+        t = dict(r) if r else {}
+    except Exception as e:
+        return {"ready": False, "error": str(e)[:150], "inbounds": []}
+    finally:
+        con.close()
+
+    if not t.get("panel_url"):
+        return {"ready": False, "error": "اتصال پنل تنظیم نشده", "inbounds": []}
+
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "_nx_xui", _bot_dir() / "xui.py")
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        cl = m.XUI(t["panel_url"], t.get("panel_user"),
+                   t.get("panel_pass"), t.get("panel_token"))
+        raw = cl.inbounds()
+    except Exception as e:
+        return {"ready": False, "error": f"خواندن اینباندها ناموفق: {str(e)[:120]}",
+                "inbounds": []}
+
+    out = []
+    for i in raw:
+        out.append({
+            "id": i.get("id"),
+            "remark": i.get("remark") or f"اینباند {i.get('id')}",
+            "protocol": i.get("protocol") or "",
+            "port": i.get("port"),
+            "enable": bool(i.get("enable", True)),
+        })
+
+    try:
+        selected = json.loads(t.get("inbound_ids") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        selected = []
+
+    return {
+        "ready": True,
+        "inbounds": out,
+        "mode": t.get("inbound_mode") or "all",
+        "selected": selected,
+        "default": t.get("default_inbound"),
+    }
+
+
+@app.put("/api/admin/bot/inbounds")
+def bot_inbounds_set(payload: dict, x_admin_password: str = Header(...)):
+    """
+    تعیین اینباندهایی که کانفیگ روی آن‌ها ساخته شود.
+
+    mode:
+      all     → همه‌ی اینباندهای فعال
+      default → فقط اینباند پیش‌فرض
+      custom  → همان‌هایی که انتخاب شده
+    """
+    check_auth(x_admin_password)
+    mode = (payload or {}).get("mode") or "all"
+    if mode not in ("all", "default", "custom"):
+        raise HTTPException(status_code=400, detail="حالت نامعتبر")
+
+    ids = payload.get("ids") or []
+    clean = []
+    for x in ids:
+        try:
+            clean.append(int(x))
+        except (TypeError, ValueError):
+            continue
+
+    if mode == "custom" and not clean:
+        raise HTTPException(status_code=400,
+                            detail="در حالت انتخابی، حداقل یک اینباند لازم است")
+
+    import sqlite3 as sq
+    con = sq.connect(str(BOT_DB), timeout=10)
+    try:
+        con.execute("UPDATE tenants SET inbound_mode=?, inbound_ids=?",
+                    (mode, json.dumps(clean)))
+        con.commit()
+        return {"ok": True, "mode": mode, "ids": clean}
+    finally:
+        con.close()
+
+
 @app.get("/api/admin/bot/affiliates")
 def bot_affiliates(x_admin_password: str = Header(...)):
     """همکاران فروش با آمار و مانده‌ی هرکدام."""

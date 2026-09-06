@@ -87,7 +87,7 @@ class FakeXUI:
         self.extended = []
 
     def create_subscription(self, inbound_id, email, gb, days, ip_limit=2,
-                            tg_id=None, sub_base_url=None):
+                            tg_id=None, sub_base_url=None, inbound_ids=None):
         self.created.append(email)
         base = sub_base_url or "https://sub.nexora.test/sub"
         return {
@@ -95,6 +95,7 @@ class FakeXUI:
             "uuid": f"uuid-{len(self.created)}",
             "sub_id": email,
             "sub_url": f"{base.rstrip('/')}/{email}",
+            "configs": [],
             "expiry_ms": 1800000000000,
             "gb": gb,
         }

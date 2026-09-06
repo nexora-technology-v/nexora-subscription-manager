@@ -6,6 +6,7 @@ ctx شامل bot، db، tenant و settings است.
 """
 
 import json
+import time
 import logging
 from datetime import datetime
 
@@ -114,11 +115,13 @@ class Ctx:
 # ═══════════════════════════════════════════════════════════
 
 def main_menu(ctx, user):
+    # ترتیب بر اساس کاری که کاربر بیشتر می‌آید انجام دهد:
+    # خرید، بعد دیدن وضعیت، بعد بقیه
     rows = [
         [("🛒 خرید اشتراک", "buy")],
         [("📊 اشتراک‌های من", "mysubs"), ("👛 کیف پول", "wallet")],
-        [("🧾 سفارش‌های من", "myorders")],
         [("🎁 دعوت دوستان", "ref"), ("🪙 سکه‌های من", "coins")],
+        [("🧾 سفارش‌های من", "myorders")],
     ]
     # پنل همکار فقط به کسی نشان داده می‌شود که واقعاً همکار است
     try:
@@ -580,7 +583,7 @@ def approve_order(ctx, order_id, admin_tg_id):
         ctx.db.add_balance(u["id"], order["amount"], "topup",
                            "شارژ کیف پول", order_id)
         fresh = ctx.db.get_user_by_id(u["id"])
-        ctx.bot.send_message(
+        ctx.bot.send(
             u["tg_id"],
             f"✅ <b>کیف پول شارژ شد</b>\n\n"
             f"مبلغ: {core.toman(order['amount'])} تومان\n"
@@ -612,7 +615,7 @@ def approve_order(ctx, order_id, admin_tg_id):
                 f"سفارش #{order_id} — {paid_amount:,} تومان\n"
                 f"پورسانت: {res['commission']:,} تومان ({aff['percent']}٪)")
             if aff.get("tg_id"):
-                ctx.bot.send_message(
+                ctx.bot.send(
                     aff["tg_id"],
                     f"💼 <b>فروش جدید</b>\n\n"
                     f"مبلغ خرید: {paid_amount:,} تومان\n"
@@ -714,10 +717,30 @@ def provision(ctx, order_id):
         seq = len(ctx.db.user_subs(user["id"], active_only=False)) + 1
         email = core.make_email(prefix, user["tg_id"], seq)
 
+        # اینباندهایی که کانفیگ روی آن‌ها ساخته می‌شود.
+        #
+        # اولویت: تنظیم پلن، بعد تنظیم سراسری. حالت all یعنی همه‌ی
+        # اینباندهای فعال، که تصمیمش با خود کلاینت xui است.
+        pl_inbounds = None
+        t = ctx.tenant
+        mode = t.get("inbound_mode") or "all"
+
+        raw = plan.get("inbound_ids")
+        if not raw and mode == "custom":
+            raw = t.get("inbound_ids")
+        elif not raw and mode == "default":
+            raw = json.dumps([inbound]) if inbound else None
+
+        if raw:
+            try:
+                pl_inbounds = json.loads(raw) if isinstance(raw, str) else raw
+            except (json.JSONDecodeError, TypeError):
+                pl_inbounds = [x.strip() for x in str(raw).split(",") if x.strip()]
+
         res = ctx.xui.create_subscription(
             inbound, email, plan["gb"], plan["days"],
             ip_limit=plan["ip_limit"], tg_id=user["tg_id"],
-            sub_base_url=sub_base
+            sub_base_url=sub_base, inbound_ids=pl_inbounds
         )
 
         exp_iso = None
@@ -790,16 +813,40 @@ def deliver(ctx, user, sub):
                      .replace("{expires}", str(d0) if d0 is not None else "—"))
         return ctx.bot.send(user["tg_id"], custom, keyboard=_deliver_kb(ctx, url))
 
+    d = core.days_left(sub.get("expires_at"))
+
     lines = [
         f"✅ <b>اشتراک شما {title}</b>",
         "",
+        f"<b>{esc(str(sub.get('plan_name') or 'اشتراک'))}</b>",
         f"📦 حجم: {core.fmt_gb(sub.get('gb'))}",
     ]
-    d = core.days_left(sub.get("expires_at"))
     if d is not None:
         lines.append(f"⏱ اعتبار: {d} روز")
+        if sub.get("expires_at"):
+            lines.append(f"📅 تا: {str(sub['expires_at'])[:10]}")
+    if sub.get("client_email"):
+        lines.append(f"🏷 نام کانفیگ: <code>{esc(sub['client_email'])}</code>")
+
     if url:
-        lines += ["", "🔗 لینک اشتراک:", f"<code>{esc(url)}</code>"]
+        lines += [
+            "",
+            "🔗 <b>لینک اشتراک</b>",
+            f"<code>{esc(url)}</code>",
+            "",
+            "<i>روی لینک بزنید تا کپی شود. با دکمه‌های زیر مستقیم "
+            "به برنامه‌تان اضافه می‌شود.</i>",
+        ]
+    else:
+        # بدون لینک، کاربر نمی‌داند چه کند — پس صریح می‌گوییم
+        lines += [
+            "",
+            "⚠️ لینک ساخته نشد. لطفاً به پشتیبانی پیام بدهید "
+            "تا دستی برایتان بفرستیم.",
+        ]
+
+    lines += ["", "💡 هر وقت خواستید، از «اشتراک‌های من» مصرف و "
+              "روزهای باقی‌مانده را ببینید."]
 
     ctx.bot.send(user["tg_id"], "\n".join(lines),
                  keyboard=_deliver_kb(ctx, url))
@@ -816,20 +863,86 @@ def show_subs(ctx, user, chat_id, message_id):
                       "هنوز اشتراکی ندارید.\n\nاز منوی خرید می‌توانید اولین اشتراکتان را بگیرید.",
                       kb([[("🛒 خرید اشتراک", "buy")], [("‹ بازگشت", "menu")]]))
 
-    lines = ["<b>اشتراک‌های شما</b>", ""]
+    lines = ["📊 <b>اشتراک‌های شما</b>", ""]
     rows = []
+
+    # مصرف واقعی از پنل — بدون این، کاربر نمی‌داند چقدر مانده و
+    # وقتی حجمش تمام شود فکر می‌کند سرویس خراب است
+    client = None
+    try:
+        client = ctx.xui
+    except Exception:
+        pass
+
     for s in subs:
         d = core.days_left(s.get("expires_at"))
-        status = "🟢" if (d is None or d > 0) else "🔴"
-        lines += [
-            f"{status} <b>{esc(s.get('plan_name') or 'اشتراک')}</b>",
-            f"   حجم: {core.fmt_gb(s.get('gb'))}",
-            f"   اعتبار: {d if d is not None else '—'} روز",
-        ]
+        expired = d is not None and d <= 0
+
+        used_gb = None
+        if client and s.get("client_email"):
+            try:
+                t = client.client_traffic(s["client_email"])
+                if t:
+                    up = int(t.get("up") or 0)
+                    down = int(t.get("down") or 0)
+                    used_gb = round((up + down) / (1024 ** 3), 1)
+            except Exception:
+                pass
+
+        total_gb = s.get("gb") or 0
+        pct = None
+        if total_gb and used_gb is not None:
+            pct = min(100, round(used_gb * 100 / total_gb))
+
+        if expired:
+            status = "🔴"
+        elif pct is not None and pct >= 90:
+            status = "🟠"
+        elif d is not None and d <= 3:
+            status = "🟡"
+        else:
+            status = "🟢"
+
+        lines.append(f"{status} <b>{esc(s.get('plan_name') or 'اشتراک')}</b>")
+
+        # نوار مصرف — سریع‌ترین راه فهمیدن وضعیت
+        if pct is not None:
+            filled = round(pct / 10)
+            bar = "█" * filled + "░" * (10 - filled)
+            lines.append(f"   <code>{bar}</code> {pct}٪")
+            lines.append(f"   مصرف: {used_gb} از "
+                         f"{core.fmt_gb(total_gb)} · "
+                         f"باقی: {max(0, round(total_gb - used_gb, 1))} GB")
+        elif used_gb is not None:
+            lines.append(f"   مصرف: {used_gb} GB از حجم نامحدود")
+        else:
+            lines.append(f"   حجم: {core.fmt_gb(total_gb)}")
+
+        if d is None:
+            lines.append("   اعتبار: بدون محدودیت زمانی")
+        elif expired:
+            lines.append(f"   ⛔ <b>{abs(d)} روز پیش منقضی شده</b>")
+        else:
+            lines.append(f"   اعتبار: <b>{d}</b> روز مانده")
+            if s.get("expires_at"):
+                lines.append(f"   انقضا: {str(s['expires_at'])[:10]}")
+
+        if s.get("client_email"):
+            lines.append(f"   نام کانفیگ: <code>{esc(s['client_email'])}</code>")
+
         if s.get("sub_url"):
-            lines.append(f"   <code>{esc(s['sub_url'])}</code>")
+            lines.append("")
+            lines.append(f"   🔗 <code>{esc(s['sub_url'])}</code>")
+
         lines.append("")
-        rows.append([(f"🔄 تمدید {s.get('plan_name') or ''}".strip(), f"renew:{s['id']}")])
+
+        label = "🔄 تمدید" if not expired else "⚡ تمدید فوری"
+        rows.append([(f"{label} {s.get('plan_name') or ''}".strip(),
+                      f"renew:{s['id']}")])
+
+    lines.append("<i>لینک را کپی کنید و در برنامه‌تان وارد کنید. "
+                 "برای راهنما دکمه‌ی آموزش نصب را بزنید.</i>")
+    rows.append([("📚 آموزش نصب", "help")])
 
     rows.append([("‹ بازگشت", "menu")])
     _reply(ctx, chat_id, message_id, "\n".join(lines), kb(rows))
@@ -1574,15 +1687,65 @@ def admin_input(ctx, user, chat_id, text, state, data):
     if kind == "bc":
         ids = [r["tg_id"] for r in ctx.db.q(
             "SELECT tg_id FROM users WHERE tenant_id=? AND is_blocked=0", (ctx.tid,))]
-        sent = failed = 0
-        for uid in ids:
+
+        if not ids:
+            return _reply(ctx, chat_id, None, "کاربری برای ارسال نیست.",
+                          back_kb("admin"))
+
+        # پیام پیشرفت، چون ارسال به صدها نفر طول می‌کشد و بدون آن
+        # کاربر فکر می‌کند چیزی کار نمی‌کند
+        progress = ctx.bot.send(chat_id, f"📢 در حال ارسال به {len(ids)} کاربر…")
+        pid = (progress or {}).get("message_id") if isinstance(progress, dict) else None
+
+        sent = failed = blocked = 0
+        for i, uid in enumerate(ids, 1):
             try:
-                ctx.bot.send_msg(uid, txt)
+                ctx.bot.send(uid, txt)
                 sent += 1
-            except TelegramError:
+            except TelegramError as e:
+                msg = str(e).lower()
+                if "blocked" in msg or "deactivated" in msg or "chat not found" in msg:
+                    blocked += 1
+                    # کاربری که ربات را بلاک کرده دیگر مشتری نیست
+                    try:
+                        ctx.db.exec(
+                            "UPDATE users SET is_blocked=1 WHERE tenant_id=? AND tg_id=?",
+                            (ctx.tid, uid))
+                    except Exception:
+                        pass
+                else:
+                    failed += 1
+            except Exception:
                 failed += 1
-        return _reply(ctx, chat_id, None,
-                      f"📢 ارسال شد\n\n✅ {sent} موفق\n❌ {failed} ناموفق", back_kb("admin"))
+
+            # تلگرام حدود ۳۰ پیام در ثانیه اجازه می‌دهد
+            if i % 25 == 0:
+                time.sleep(1.2)
+                if pid:
+                    try:
+                        ctx.bot.edit(chat_id, pid,
+                                     f"📢 ارسال… {i} از {len(ids)}")
+                    except Exception:
+                        pass
+
+        report = [
+            "📢 <b>پیام همگانی ارسال شد</b>", "",
+            f"✅ رسید به: <b>{sent}</b>",
+        ]
+        if blocked:
+            report.append(f"🚫 ربات را بلاک کرده‌اند: {blocked}")
+            report.append("<i>این کاربران خودکار غیرفعال شدند.</i>")
+        if failed:
+            report.append(f"❌ ناموفق: {failed}")
+
+        if pid:
+            try:
+                ctx.bot.edit(chat_id, pid, "\n".join(report),
+                             keyboard=back_kb("admin"))
+                return
+            except Exception:
+                pass
+        return _reply(ctx, chat_id, None, "\n".join(report), back_kb("admin"))
 
     if kind == "find":
         like = f"%{txt}%"
@@ -1616,7 +1779,7 @@ def admin_input(ctx, user, chat_id, text, state, data):
             user_msg = f"👛 کیف پول شما {'شارژ' if amt > 0 else 'کسر'} شد: {core.toman(abs(amt))}"
 
         try:
-            ctx.bot.send_msg(u["tg_id"], user_msg)
+            ctx.bot.send(u["tg_id"], user_msg)
         except TelegramError:
             pass
         return _reply(ctx, chat_id, None, f"✅ {note}",
@@ -1626,7 +1789,7 @@ def admin_input(ctx, user, chat_id, text, state, data):
         u = ctx.db.get_user(int(target))
         if u:
             try:
-                ctx.bot.send_msg(u["tg_id"], f"💬 <b>پیام از پشتیبانی</b>\n\n{esc(txt)}")
+                ctx.bot.send(u["tg_id"], f"💬 <b>پیام از پشتیبانی</b>\n\n{esc(txt)}")
                 return _reply(ctx, chat_id, None, "✅ ارسال شد.",
                               kb([[("‹ بازگشت", f"adm:u:{target}")]]))
             except TelegramError:
@@ -1645,7 +1808,7 @@ def admin_input(ctx, user, chat_id, text, state, data):
             u = ctx.db.get_user_by_id(o["user_id"])
             if u:
                 try:
-                    ctx.bot.send_msg(u["tg_id"],
+                    ctx.bot.send(u["tg_id"],
                                      f"💬 <b>درباره سفارش #{o['id']}</b>\n\n{esc(txt)}")
                     return _reply(ctx, chat_id, None, "✅ ارسال شد.",
                                   kb([[("‹ بازگشت", f"adm:o:{target}")]]))

@@ -23,7 +23,8 @@ class XUIError(Exception):
 
 
 class XUI:
-    def __init__(self, base_url, username=None, password=None, token=None, timeout=20):
+    def __init__(self, base_url, username=None, password=None, token=None,
+                 timeout=20, all_inbounds=True, default_flow="xtls-rprx-vision"):
         self.base = (base_url or "").rstrip("/")
         self.username = username
         self.password = password
@@ -36,6 +37,10 @@ class XUI:
         self._routes = None
         self._spec = None
         self._body_style = None
+        # مشتری روی همه‌ی اینباندها کانفیگ بگیرد، تا اگر یکی افتاد
+        # بقیه کار کنند
+        self.all_inbounds = all_inbounds
+        self.default_flow = default_flow
         self._used_shape_attaches = False
         self._api_mode = None
 
@@ -223,7 +228,7 @@ class XUI:
             f"هیچ مسیری برای {label} جواب نداد. امتحان شد:\n" + "\n".join(tried))
 
     def add_client(self, inbound_id, email, gb=0, days=0, ip_limit=0,
-                   client_uuid=None, tg_id=None, sub_id=None, flow="", group=None):
+                   client_uuid=None, tg_id=None, sub_id=None, flow=None, group=None, inbound_ids=None):
         """
         افزودن کلاینت به inbound.
 
@@ -246,8 +251,11 @@ class XUI:
             "subId": sub_id or email,
             "reset": 0,
         }
-        if flow:
-            client["flow"] = flow
+        # flow پیش‌فرض xtls-rprx-vision است — بدون آن، کانفیگ
+        # REALITY کار نمی‌کند
+        eff_flow = flow if flow is not None else self.default_flow
+        if eff_flow:
+            client["flow"] = eff_flow
 
         settings = json.dumps({"clients": [client]})
 
@@ -345,12 +353,14 @@ class XUI:
                     "limitHwid": 0,
                     "enable": True,
                 },
-                "inboundIds": [int(inbound_id)],
+                "inboundIds": self._target_inbounds(inbound_id, inbound_ids),
             }
             if group:
                 official["client"]["groupName"] = group
             if base.get("subId"):
                 official["client"]["subId"] = base["subId"]
+            if eff_flow:
+                official["client"]["flow"] = eff_flow
 
             shapes.insert(0, official)
 
@@ -655,22 +665,91 @@ class XUI:
         raise XUIError("مسیر ریست ترافیک در این نسخه‌ی پنل پیدا نشد")
 
     # ---------- عملیات سطح بالا ----------
+    def _target_inbounds(self, inbound_id, only=None):
+        """
+        اینباندهایی که کلاینت به آن‌ها وصل می‌شود.
+
+        سه حالت:
+          only داده شده  → همان فهرست، هر چه مدیر تعیین کرده
+          all_inbounds   → همه‌ی اینباندهای فعال
+          هیچ‌کدام       → فقط اینباند پیش‌فرض
+
+        دادن چند اینباند یعنی اگر یکی از سرورها افتاد، مشتری
+        همچنان کانفیگ کارآمد دارد.
+        """
+        if only:
+            ids = []
+            for x in only:
+                try:
+                    ids.append(int(x))
+                except (TypeError, ValueError):
+                    continue
+            if ids:
+                return ids
+
+        if not self.all_inbounds:
+            return [int(inbound_id)]
+
+        try:
+            ids = [int(i["id"]) for i in self.inbounds()
+                   if i.get("enable", True)]
+            return ids or [int(inbound_id)]
+        except Exception:
+            return [int(inbound_id)]
+
     def create_subscription(self, inbound_id, email, gb, days, ip_limit=2,
-                            tg_id=None, sub_base_url=None):
+                            tg_id=None, sub_base_url=None, inbound_ids=None):
         """
         ساخت اشتراک کامل و برگرداندن اطلاعات لازم برای ارسال به مشتری.
         """
         sub_id = email  # همان email به‌عنوان subId تا لینک قابل‌پیش‌بینی باشد
         client = self.add_client(inbound_id, email, gb=gb, days=days,
-                                 ip_limit=ip_limit, tg_id=tg_id, sub_id=sub_id)
+                                 ip_limit=ip_limit, tg_id=tg_id, sub_id=sub_id,
+                                 inbound_ids=inbound_ids)
+
         sub_url = None
+        configs = []
+
+        # دامنه‌ی سفارشی مدیر بر لینک پنل اولویت دارد.
+        #
+        # اگر مدیر دامنه‌ی جدا برای اشتراک گذاشته — مثلاً یک دامنه‌ی
+        # تمیز پشت کلادفلر — لینک باید همان باشد، نه آدرس پنل که
+        # ممکن است پورت غیراستاندارد یا مسیر مخفی داشته باشد.
         if sub_base_url:
             sub_url = f"{sub_base_url.rstrip('/')}/{sub_id}"
+
+        # کانفیگ‌های تکی را همیشه از پنل می‌گیریم، چون از پیکربندی
+        # واقعی اینباند ساخته می‌شوند
+        for p in (f"/panel/api/clients/links/{email}",
+                  f"/panel/api/clients/subLinks/{sub_id}"):
+            if self.has_route(p, "GET") is False:
+                continue
+            try:
+                data = self._req("GET", p)
+                if isinstance(data, dict):
+                    # فقط اگر مدیر دامنه نداده باشد
+                    if not sub_base_url:
+                        sub_url = (data.get("subUrl") or data.get("subscriptionUrl")
+                                   or data.get("url") or sub_url)
+                    for key in ("links", "configs", "externalLinks", "items"):
+                        v = data.get(key)
+                        if isinstance(v, list):
+                            configs += [x for x in v if isinstance(x, str)]
+                elif isinstance(data, list):
+                    configs += [x for x in data if isinstance(x, str)]
+                if sub_url or configs:
+                    break
+            except XUIError:
+                continue
+
+
+
         return {
             "email": email,
             "uuid": client["id"],
             "sub_id": sub_id,
             "sub_url": sub_url,
+            "configs": configs,
             "expiry_ms": client["expiryTime"],
             "gb": gb,
         }
