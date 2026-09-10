@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.8.0]
+
+### Changed — The panel actually looks different now
+
+Previous releases fixed contrast ratios and the type scale. Both were measurable and
+both were, from across the room, invisible: the panel still looked like flat black
+rectangles on a flat black page. This one changes what you see.
+
+**The glass was already in the CSS and doing nothing.** `.fx-card` carried
+`backdrop-filter: blur(14px)` and a highlight edge, and `body::before` painted ambient
+gradients. None of it showed, for two reasons:
+
+- the card background was `color-mix(--surface 86%, transparent)` — 86% opaque near-black
+  over near-black, so the blur had nothing to reveal
+- the app's root `<div>` painted a solid `var(--bg)` directly over `body::before`, hiding
+  the light layer completely
+
+Frosted glass needs something lit behind it. There wasn't any.
+
+Now: the ambient layer is four coloured pools plus a soft top glow, strong enough to
+actually read; the root div is transparent so that layer shows through; cards are
+genuinely translucent with an 18px blur, a light top edge, and two-layer shadows for
+depth. The sidebar and top bar are glass too, but deliberately more opaque — navigation
+has to stay readable no matter what is glowing behind it.
+
+Buttons gained an inset highlight and a lift on hover; the active nav item now carries a
+tinted gradient instead of a barely-there background.
+
+### Fixed — Glass exposed a contrast regression
+
+Lighter card backgrounds pushed `--dim` (`#8A98AC`) to **4.01:1** at the brightest point
+of a card, under the 4.5 floor it had cleared comfortably on the old flat surface. Raised
+to `#A3B0C1`, which measures 5.34:1 there. Measured against the actual composited colour
+— ambient pools, top glow and card gradient stacked — rather than the nominal token.
+
 ## [1.7.0]
 
 ### Added — QR code with every config

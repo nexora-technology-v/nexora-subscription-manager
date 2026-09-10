@@ -10258,8 +10258,11 @@ export default function App() {
   const currentNav = ALL_NAV.find((n) => n.key === active);
   const filteredNav = (items) => search ? items.filter((n) => n.label.includes(search)) : items;
 
+  // پس‌زمینه‌ی ریشه عمداً شفاف است: لایه‌ی نورِ body::before باید از
+  // زیر آن دیده شود، وگرنه بلورِ کارت‌ها چیزی برای شکستن ندارد و کل
+  // افکت شیشه‌ای بی‌اثر می‌ماند — دقیقاً همان اتفاقی که افتاده بود.
   return (
-    <div className="min-h-screen w-full flex" style={{ background: "var(--bg)" }} dir="rtl">
+    <div className="min-h-screen w-full flex" style={{ background: "transparent" }} dir="rtl">
       {open && <div className="fx-backdrop fx-fade" onClick={() => setOpen(false)} />}
 
       <aside className={`fx-side ${open ? "open" : ""}`}>
