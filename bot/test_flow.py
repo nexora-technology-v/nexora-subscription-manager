@@ -459,6 +459,32 @@ check("هنگام تایید رسید، «در حال تایپ» نشان داد
       any(a["kind"] == "typing" for a in ACTIONS),
       f"{len(ACTIONS)} بار")
 
+# ═══════════════ دکمه‌ی کپی ═══════════════
+section("دکمه‌ی کپی")
+
+from tg import kb as _kbc   # noqa: E402
+
+_ck = _kbc([[("کپی", "6037997512345678", "copy")],
+            [("لینک", "https://a.ir", "url")],
+            [("منو", "menu")]])
+_flat = [b for r in _ck["inline_keyboard"] for b in r]
+check("دکمه‌ی کپی ساخته می‌شود",
+      any(b.get("copy_text", {}).get("text") == "6037997512345678" for b in _flat))
+check("کپی با callback قاطی نمی‌شود",
+      not any("callback_data" in b and "copy_text" in b for b in _flat))
+check("مقدار خالی دکمه‌ی کپی نمی‌سازد",
+      not [b for r in _kbc([[("کپی", "", "copy")]])["inline_keyboard"] for b in r])
+
+# شماره‌ی کارت باید بدون خط تیره کپی شود، وگرنه اپ بانک رد می‌کند
+SENT.clear()
+H.checkout(H.Ctx(bot, tenant), D.get_user(555), 555, None, plan["id"], 0)
+_last_kb = SENT[-1].get("kb") or {}
+_copies = [b.get("copy_text", {}).get("text")
+           for r in _last_kb.get("inline_keyboard", []) for b in r
+           if "copy_text" in b]
+check("شماره کارت بدون خط تیره کپی می‌شود",
+      any(c and c.isdigit() and len(c) == 16 for c in _copies), str(_copies))
+
 # ═══════════════ دکمه‌ی url نامعتبر ═══════════════
 section("دکمه‌ی url نامعتبر")
 

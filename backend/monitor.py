@@ -604,6 +604,36 @@ def _uptime():
         return 0
 
 
+#: کش کوتاه‌مدت برای بخش‌های گران.
+#
+# هر فراخوانی snapshot چند subprocess اجرا می‌کند: ss برای پورت‌ها،
+# ss دوباره برای اتصال‌ها، systemctl برای هر سرویس، ps برای پردازه‌ها.
+# صفحه‌ی مانیتورینگ هر چند ثانیه تازه می‌شود و بعضی از این‌ها اصلاً
+# در آن بازه عوض نمی‌شوند — فهرست پورت‌های باز ساعت‌ها ثابت است.
+#
+# مقدار TTL بر اساس اینکه هر داده واقعاً چقدر سریع عوض می‌شود:
+_CACHE = {}
+_CACHE_TTL = {
+    "ports": 30.0,        # پورت باز به‌ندرت عوض می‌شود
+    "processes": 10.0,
+    "services": 15.0,
+    "connections": 4.0,   # سریع عوض می‌شود، ولی نه در کمتر از ۴ ثانیه
+}
+
+
+def _cached(name, fn):
+    ttl = _CACHE_TTL.get(name)
+    if not ttl:
+        return fn()
+    now = time.time()
+    hit = _CACHE.get(name)
+    if hit and (now - hit[0]) < ttl:
+        return hit[1]
+    val = fn()
+    _CACHE[name] = (now, val)
+    return val
+
+
 def snapshot(include=None):
     """
     یک عکس کامل.
@@ -619,7 +649,7 @@ def snapshot(include=None):
         if name not in want:
             return
         try:
-            r = fn()
+            r = _cached(name, fn)
             sections[name] = r
             if into_metrics and isinstance(r, list) and r and isinstance(r[0], dict) \
                     and "level" in r[0] and "key" in r[0]:

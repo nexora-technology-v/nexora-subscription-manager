@@ -24,10 +24,33 @@ class TelegramError(Exception):
 
 
 class Bot:
-    def __init__(self, token: str, timeout: int = 25):
+    """
+    کلاینت Bot API تلگرام.
+
+    دو تایم‌اوت جدا دارد و این عمدی است:
+
+      timeout      برای فراخوانی‌های عادی (ارسال پیام، ویرایش، حذف)
+      poll_timeout برای getUpdates که long-polling است و *باید* منتظر بماند
+
+    قبلاً هر دو یکی بودند (۲۵ ثانیه). یعنی یک sendMessage که روی شبکه‌ی
+    کند گیر می‌کرد، تا ۲۵ ثانیه کل حلقه‌ی ربات را نگه می‌داشت و در آن
+    مدت هیچ پیام دیگری پردازش نمی‌شد. با اتصال ایران به تلگرام این
+    اتفاق کم نیست.
+    """
+
+    def __init__(self, token: str, timeout: int = 10, poll_timeout: int = 25):
         self.token = token
         self.timeout = timeout
+        self.poll_timeout = poll_timeout
         self._session = requests.Session()
+        # نگه‌داشتن اتصال باز: هر فراخوانی جدید دست‌دادن TLS دوباره
+        # انجام نمی‌دهد. روی مسیر پرتأخیر، همین بیشترین صرفه‌جویی است.
+        try:
+            ad = requests.adapters.HTTPAdapter(pool_connections=4,
+                                               pool_maxsize=8, max_retries=0)
+            self._session.mount("https://", ad)
+        except Exception:
+            pass
 
     # ---------- هسته ----------
     def call(self, method: str, **params):
@@ -41,12 +64,20 @@ class Bot:
             for k, v in params.items() if v is not None
         }
 
+        # getUpdates باید تا سقف long-poll منتظر بماند؛ بقیه نه.
+        # به تایم‌اوت شبکه چند ثانیه اضافه می‌کنیم تا خودِ درخواست
+        # زودتر از سروری که عمداً نگهش داشته قطع نشود.
+        if method == "getUpdates":
+            net_timeout = int(params.get("timeout") or self.poll_timeout) + 5
+        else:
+            net_timeout = self.timeout
+
         last_err = None
         for attempt in range(3):
             try:
                 r = self._session.post(
                     API.format(token=self.token, method=method),
-                    data=payload, files=files, timeout=self.timeout
+                    data=payload, files=files, timeout=net_timeout
                 )
                 data = r.json()
                 if data.get("ok"):
@@ -82,19 +113,6 @@ class Bot:
             reply_to_message_id=reply_to,
             message_thread_id=topic_id,
         )
-
-    def action(self, chat_id, action="typing"):
-        """
-        نشان‌دادن «در حال تایپ…».
-
-        ساخت کانفیگ چند ثانیه طول می‌کشد و در آن فاصله کاربر فکر
-        می‌کند ربات قطع شده. این کوچک است ولی حس زنده‌بودن می‌دهد.
-        خطایش هم بی‌اهمیت است، پس بی‌صدا رد می‌شود.
-        """
-        try:
-            return self.call("sendChatAction", chat_id=chat_id, action=action)
-        except TelegramError:
-            return None
 
     def edit(self, chat_id, message_id, text, keyboard=None, parse_mode="HTML"):
         try:

@@ -1,5 +1,93 @@
 # Changelog
 
+## [1.9.0]
+
+### Reverted — The glass look
+
+1.8.0 rebuilt the panel around frosted glass because that is what the design database
+recommended for the product type. On the actual panel it read as decorative rather than
+professional, so it is gone. Surfaces are solid again.
+
+What replaced it is the style the database lists for operational consoles —
+**Data-Dense Dashboard** — whose effects are functional rather than ornamental: row
+highlighting that is actually visible (the old one was 1.5% white, invisible in
+practice), sticky table headers so column meaning survives scrolling, and crisper card
+edges.
+
+Removing the glass also removed a real cost. `backdrop-filter: blur(14px)` ran on
+**every card**, forcing the browser to build a separate compositing layer per card, and
+on a near-flat background it produced no visible effect at all. The sticky top bar
+recomputed its blur on every scroll frame. Both are gone.
+
+### Added — Firewall
+
+A workspace of its own, next to Billing and Tunnel. Built on `ufw`.
+
+- every rule with its port, protocol, action and source, searchable
+- add and delete rules without touching a terminal
+- block or unblock an IP outright
+
+**Nothing here can lock you out of your own server.** Enabling the firewall while no
+rule permits port 22 is refused by the API unless you explicitly confirm, the SSH rule
+is labelled *critical* in the list and needs a separate confirmation to delete, and rule
+numbers are re-read immediately before deletion so you never delete whatever shifted into
+that slot. Twenty-three tests cover exactly these paths.
+
+### Added — Act on an overloaded server from the panel
+
+When an IP holds an unusual share of connections, the monitoring page now offers to
+block it, with a confirmation that states how many connections it holds and warns that
+blocking a real customer cuts their service. The rule lands in the firewall page where
+it can be undone.
+
+### Added — Port filters
+
+Filter by risk, by whether the port faces the internet, and by free text across port,
+protocol and process name.
+
+### Fixed — Panel and bot were slower than they needed to be
+
+Three separate causes, all measured:
+
+- **the panel polled the server every 5 seconds forever, including while its tab was
+  hidden.** Each poll spawns several subprocesses server-side (`ss` twice, `systemctl`
+  per service, `ps`). Polling now stops when the tab is hidden and refreshes once on
+  return; the monitor interval moved 5s → 8s
+- **expensive monitor sections had no caching.** Open ports are re-read on every poll
+  though they change perhaps twice a week. Sections now carry a TTL matched to how fast
+  they actually change — ports 30s, services 15s, processes 10s, connections 4s
+- **the bot used its long-poll timeout for every API call.** `getUpdates` legitimately
+  waits 25 seconds; `sendMessage` inherited the same limit, so one slow send could stall
+  the entire bot loop for 25 seconds — not rare on an Iranian connection to Telegram.
+  Normal calls now time out at 10s, `getUpdates` keeps its own, and the HTTP session
+  reuses connections instead of renegotiating TLS per call
+
+### Fixed — Duplicate method in the Telegram client
+
+`Bot.action` was defined twice with different parameter names. The second silently
+replaced the first, so a call using the first signature would have raised `TypeError`.
+
+### Added — Sales report for the bot
+
+Accounting answers "what does each reseller owe me". Nothing answered "how is the bot
+itself selling". A new page next to Bot Users does:
+
+- revenue for the period, order count and average order value
+- **conversion rate** — of the people who arrived this period, what share bought
+- top buyers ranked by spend, with their phone numbers for follow-up outside Telegram
+- a daily trend bar chart
+- CSV export carrying the filter currently applied on the page, so you are not
+  re-filtering in Excel
+
+Receipts still awaiting review and subscriptions expiring within three days are
+surfaced on the same page, since both are things worth acting on today.
+
+### Added — Copy buttons where they matter
+
+Telegram's native copy button now appears on the card number and amount at checkout and
+top-up, and on the referral link. The card number copies **without dashes**, since bank
+apps generally reject them.
+
 ## [1.8.0]
 
 ### Changed — The panel actually looks different now

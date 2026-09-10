@@ -2,8 +2,8 @@
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:06090F,45:2B7FD6,100:5AA9E6&height=170&section=header&text=NEXORA&fontSize=68&fontColor=ffffff&fontAlignY=34&desc=Subscription%20Manager%20for%203x-ui&descSize=16&descAlignY=54" width="100%" alt="Nexora">
 
-<img src="https://img.shields.io/badge/version-1.8.0-2B7FD6?style=for-the-badge&labelColor=06090F" alt="version">
-<img src="https://img.shields.io/badge/tests-186%20passing-34D399?style=for-the-badge&labelColor=06090F" alt="tests">
+<img src="https://img.shields.io/badge/version-1.9.0-2B7FD6?style=for-the-badge&labelColor=06090F" alt="version">
+<img src="https://img.shields.io/badge/tests-248%20passing-34D399?style=for-the-badge&labelColor=06090F" alt="tests">
 <img src="https://img.shields.io/badge/3x--ui-3.5%2B-5AA9E6?style=for-the-badge&labelColor=06090F" alt="3x-ui">
 <img src="https://img.shields.io/badge/license-MIT-A78BFA?style=for-the-badge&labelColor=06090F" alt="license">
 
@@ -28,6 +28,8 @@
 | 🤖 ربات تلگرام | فروش خودکار، دریافت رسید، سکه و دعوت |
 | 💰 حسابداری | نرخ پلنی یا حجمی، صورتحساب PDF، ثبت پرداخت |
 | 🌐 تانل | اتصال سرور ایران به سرور خارج با پنج موتور |
+| 🛡 فایروال | مدیریت ufw از پنل، بستن آی‌پی، محافظت از دسترسی SSH |
+| 📊 مانیتورینگ | مصرف زنده، اتصال‌های فعال، پرمصرف‌ترین مشتری‌ها، نگهداری خودکار |
 
 ## صفحه اشتراک
 
@@ -116,6 +118,46 @@
 
 agent فقط به کتابخانه‌ی استاندارد پایتون نیاز دارد — هیچ `pip install` روی سروری که ممکن است اینترنت محدود داشته باشد.
 
+## فایروال و امنیت سرور
+
+یک فضای کاری جدا، روی `ufw`.
+
+| قابلیت | توضیح |
+|:--|:--|
+| 🧱 قواعد | همه‌ی قواعد با پورت، پروتکل، عمل و مبدأ — با جستجو |
+| ➕ افزودن و حذف | بدون رفتن به ترمینال |
+| 🚫 بستن آی‌پی | یک آدرس یا یک رنج کامل |
+| 🔗 اتصال به مانیتورینگ | آی‌پی پرمصرف را از همان صفحه‌ی مانیتورینگ ببندید |
+
+> [!IMPORTANT]
+> **هیچ‌کدام از این‌ها نمی‌تواند شما را از سرور خودتان بیرون بیندازد.** روشن‌کردن فایروال وقتی هیچ قاعده‌ای پورت ۲۲ را باز نگذاشته، بدون تایید صریح رد می‌شود. قاعده‌ی SSH در فهرست برچسب «حیاتی» می‌گیرد و حذفش تایید جدا می‌خواهد. شماره‌ی قواعد هم درست قبل از حذف دوباره خوانده می‌شود، تا هیچ‌وقت قاعده‌ای که جای آن نشسته حذف نشود.
+
+## مانیتورینگ سرور
+
+| قابلیت | توضیح |
+|:--|:--|
+| 📈 مصرف زنده | پردازنده، حافظه، دیسک و شبکه، با توضیح اینکه هر عدد از کجا خطرناک می‌شود |
+| 🔌 اتصال‌های فعال | سهم هر آی‌پی، و علامت‌زدن آن‌هایی که سهمشان غیرعادی است |
+| 👤 پرمصرف‌ترین مشتری‌ها | بر اساس ترافیک واقعی پنل — کدام *مشتری*، نه فقط کدام آی‌پی |
+| 🕐 تاریخچه و ساعت خلوت | نمونه‌گیری هر ۵ دقیقه، و اینکه کدام ساعت شبانه‌روز کم‌مصرف‌ترین است |
+| 🔄 نگهداری خودکار | ری‌استارت Xray در ساعت کم‌مصرف — با پرش از شب‌های شلوغ |
+| 🚪 پورت‌های باز | با فیلتر ریسک، دسترسی و جستجو |
+
+> [!NOTE]
+> نگهداری خودکار پیش‌فرض **خاموش** است. ریبوت کامل سرور هم جدا از ری‌استارت سرویس در نظر گرفته شده و بدون تایید صریح اجرا نمی‌شود.
+
+## گزارش فروش
+
+کنار «کاربران ربات»، یک صفحه‌ی گزارش دوره‌ای:
+
+| قابلیت | توضیح |
+|:--|:--|
+| 💵 فروش دوره | مجموع، تعداد سفارش و میانگین هر سفارش |
+| 📉 نرخ تبدیل | از کاربرانی که این دوره آمدند، چند درصد خریدند |
+| 🏆 بهترین خریداران | با شماره تماس، برای پیگیری بیرون از تلگرام |
+| 📊 نمودار روزانه | روند فروش در بازه‌ی انتخابی |
+| 📥 خروجی اکسل | با همان فیلتری که در صفحه اعمال کرده‌اید |
+
 ## نصب
 
 پیش‌نیاز: اوبونتو ۲۰.۰۴ به بالا یا دبیان ۱۱ به بالا، ۳x-ui نصب‌شده، یک دامنه، و یک گیگابایت رم.
@@ -194,11 +236,15 @@ python3 billing-trace.py      # traceback کامل به‌جای پیام عمو
 
 ```bash
 cd bot
-python3 test_bot.py                  # ۷۱ تست واحد
-python3 test_flow.py                 # ۳۸ تست جریان خرید
-python3 test_admin.py                # ۳۴ تست پنل مدیریت
+python3 test_bot.py                  # ۷۳ تست واحد
+python3 test_flow.py                 # ۷۶ تست جریان خرید
+python3 test_admin.py                # ۳۹ تست پنل مدیریت
+python3 test_xui.py                  # ۲۴ تست کلاینت ۳x-ui روی پنل شبیه‌سازی‌شده
 
 cd ..
+python3 tools/test-billing.py        # ۱۳ تست ریاضیات نرخ‌گذاری
+python3 tools/test-maintenance.py    # ۲۴ تست زمان‌بندی نگهداری
+python3 tools/test-firewall.py       # ۲۳ تست فایروال و نگهبان SSH
 python3 tools/check-api-contract.py  # هماهنگی فرانت‌اند و بک‌اند
 node tools/test-render.cjs           # ظاهر پنل در مرورگر شبیه‌سازی‌شده
 python3 tools/test-serve.py          # بارگذاری فایل‌ها مثل مرورگر واقعی
@@ -217,6 +263,12 @@ It's 3 AM. A customer paid and is waiting for their config. Get up and build it 
 **Accounting** — groups are read straight from 3x-ui. Price by plan or by gigabyte of actual traffic. Invoices build themselves as PDF with Jalali dates. Payments are logged in Nexora, since 3x-ui doesn't record them.
 
 **Tunnels** — connect an Iranian server without putting the panel inside Iran. Five engines: Backhaul, Chisel, Rathole, GOST and FRP. The Iranian server runs an agent that dials out, opens no ports and stores no password.
+
+**Firewall** — manage `ufw` from the panel: rules, blocked IPs, and one-click blocking of an address that is eating the server. Enabling the firewall with no rule permitting port 22 is refused unless you explicitly confirm, and the SSH rule needs a separate confirmation to delete. It cannot lock you out.
+
+**Monitoring** — live CPU, memory, disk and network with the threshold for each explained. Active connections by IP, with unusual shares flagged. Heaviest *customers* by real traffic, not just addresses. A 24-hour history that tells you which hour of the day is quietest — which is exactly what the optional automatic Xray restart should be scheduled for. That restart is off by default, and a full server reboot is gated behind its own confirmation.
+
+**Sales report** — revenue for a chosen period, conversion rate from new users, top buyers with their phone numbers, a daily trend chart, and CSV export.
 
 ```bash
 git clone https://github.com/nexoratech-v/nexora-subscription-manager.git

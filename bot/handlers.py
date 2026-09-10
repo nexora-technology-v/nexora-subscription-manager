@@ -402,8 +402,13 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins):
         f"<i>کد پیگیری:</i> <code>#{order['id']}</code>",
     ]
 
+    # شماره‌ی کارت بدون خط تیره کپی می‌شود — اپ بانک با خط تیره
+    # معمولاً قبول نمی‌کند و مشتری باید دستی پاکشان کند
+    digits = "".join(ch for ch in str(card["number"]) if ch.isdigit())
     _reply(ctx, chat_id, message_id, "\n".join(lines),
-           kb([[("✖️ لغو سفارش", f"cancel:{order['id']}")]]))
+           kb([[("📋 کپی شماره کارت", digits, "copy")],
+               [("📋 کپی مبلغ", str(pr["final"]), "copy")],
+               [("✖️ لغو سفارش", f"cancel:{order['id']}")]]))
 
 
 def wallet_pay(ctx, user, chat_id, message_id, plan_id):
@@ -1219,7 +1224,11 @@ def wallet_topup_amount(ctx, user, chat_id, message_id, amount):
                   f"به نام <b>{esc(card['holder'])}</b>\n\n"
                   f"بعد <b>عکس رسید</b> یا <b>متن پیامک بانک</b> را همین‌جا "
                   f"بفرستید تا موجودی‌تان اضافه شود.",
-                  kb([[("‹ انصراف", "wallet")]]))
+                  kb([[("📋 کپی شماره کارت",
+                        "".join(c for c in str(card["number"]) if c.isdigit()),
+                        "copy")],
+                      [("📋 کپی مبلغ", str(amount), "copy")],
+                      [("‹ انصراف", "wallet")]]))
 
 
 def show_coins(ctx, user, chat_id, message_id):
@@ -1315,6 +1324,9 @@ def show_referral(ctx, user, chat_id, message_id):
         share = (f"https://t.me/share/url?url={link}"
                  "&text=با این لینک ثبت‌نام کن و اینترنت پرسرعت بگیر")
         rows.append([("📤 ارسال به دوستان", share, "url")])
+        # کپی مستقیم لینک — همه دوست ندارند از پنجره‌ی اشتراک‌گذاری
+        # تلگرام برود؛ بعضی می‌خواهند لینک را جای دیگری بفرستند
+        rows.append([("📋 کپی لینک دعوت", link, "copy")])
     rows.append([("🪙 سکه‌های من", "coins")])
     rows.append([("‹ بازگشت", "menu")])
 

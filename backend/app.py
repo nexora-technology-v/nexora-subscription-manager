@@ -1526,6 +1526,172 @@ def bot_users(q: str = "", limit: int = 50, offset: int = 0,
         con.close()
 
 
+@app.get("/api/admin/bot/users/report")
+def bot_users_report(days: int = 30, x_admin_password: str = Header(...)):
+    """
+    گزارش دوره‌ای کاربران ربات — معادل صورتحساب حسابداری، ولی برای
+    سمت فروش.
+
+    حسابداری می‌گوید از هر واسطه چقدر طلب دارید. این می‌گوید در این
+    دوره چند نفر آمدند، چند نفر خریدند، چقدر فروش رفت و چه کسانی
+    بیشترین سهم را داشتند — چیزی که تا حالا فقط با نگاه‌کردن به
+    فهرست کاربران قابل حدس‌زدن بود.
+    """
+    check_auth(x_admin_password)
+    con = _bot_conn()
+    if not con:
+        return {"ready": False, "error": "دیتابیس ربات در دسترس نیست"}
+
+    days = max(1, min(int(days or 30), 365))
+    since = f"-{days} days"
+
+    def one(sql, args=()):
+        try:
+            r = con.execute(sql, args).fetchone()
+            return dict(r) if r else {}
+        except Exception:
+            return {}
+
+    def many(sql, args=()):
+        try:
+            return [dict(r) for r in con.execute(sql, args)]
+        except Exception:
+            return []
+
+    try:
+        totals = one("""
+            SELECT
+              (SELECT COUNT(*) FROM users) AS users,
+              (SELECT COUNT(*) FROM users
+                WHERE created_at >= datetime('now', ?)) AS newUsers,
+              (SELECT COUNT(*) FROM users WHERE is_blocked=1) AS blocked,
+              (SELECT COUNT(*) FROM users WHERE phone IS NOT NULL
+                AND phone != '') AS withPhone
+        """, (since,))
+
+        orders = one("""
+            SELECT COUNT(*) AS n, COALESCE(SUM(amount),0) AS sum
+            FROM orders
+            WHERE status='approved' AND created_at >= datetime('now', ?)
+        """, (since,))
+
+        rejected = one("""
+            SELECT COUNT(*) AS n FROM orders
+            WHERE status='rejected' AND created_at >= datetime('now', ?)
+        """, (since,))
+
+        pending = one("SELECT COUNT(*) AS n FROM orders WHERE status='awaiting'")
+
+        subs = one("""
+            SELECT
+              (SELECT COUNT(*) FROM subscriptions) AS total,
+              (SELECT COUNT(*) FROM subscriptions WHERE is_active=1
+                AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP))
+                AS active,
+              (SELECT COUNT(*) FROM subscriptions
+                WHERE expires_at IS NOT NULL
+                AND expires_at <= datetime('now', '+3 days')
+                AND expires_at > CURRENT_TIMESTAMP) AS expiringSoon
+        """)
+
+        # خریدارها — همان چیزی که تصمیم فروش رویش گرفته می‌شود
+        buyers = many("""
+            SELECT u.tg_id, u.first_name, u.username, u.phone,
+                   COUNT(o.id) AS orders,
+                   COALESCE(SUM(o.amount),0) AS spent,
+                   MAX(o.created_at) AS lastBuy
+            FROM users u JOIN orders o ON o.user_id = u.id
+            WHERE o.status='approved' AND o.created_at >= datetime('now', ?)
+            GROUP BY u.id
+            ORDER BY spent DESC
+            LIMIT 20
+        """, (since,))
+
+        # فروش روزانه، برای دیدن روند
+        daily = many("""
+            SELECT date(created_at) AS day, COUNT(*) AS n,
+                   COALESCE(SUM(amount),0) AS sum
+            FROM orders
+            WHERE status='approved' AND created_at >= datetime('now', ?)
+            GROUP BY date(created_at)
+            ORDER BY day
+        """, (since,))
+
+        n_orders = int(orders.get("n") or 0)
+        n_new = int(totals.get("newUsers") or 0)
+        n_buyers = len(many("""
+            SELECT DISTINCT user_id FROM orders
+            WHERE status='approved' AND created_at >= datetime('now', ?)
+        """, (since,)))
+
+        return {
+            "ready": True,
+            "days": days,
+            "users": totals,
+            "orders": {
+                "approved": n_orders,
+                "rejected": int(rejected.get("n") or 0),
+                "pending": int(pending.get("n") or 0),
+                "revenue": int(orders.get("sum") or 0),
+                "avg": int((orders.get("sum") or 0) / n_orders) if n_orders else 0,
+            },
+            "subs": subs,
+            "buyers": buyers,
+            "buyerCount": n_buyers,
+            # نرخ تبدیل: از کسانی که این دوره آمدند، چند درصد خریدند
+            "conversion": (round(n_buyers * 100.0 / n_new, 1)
+                           if n_new else None),
+            "daily": daily,
+        }
+    finally:
+        con.close()
+
+
+@app.get("/api/admin/bot/users/export")
+def bot_users_export(q: str = "", filter: str = "all", sort: str = "new",
+                     x_admin_password: str = Header(...)):
+    """
+    خروجی CSV کاربران ربات — با همان فیلتری که در صفحه اعمال شده.
+
+    شماره تماس هم می‌آید، چون همان چیزی است که برای پیگیری فروش
+    بیرون از تلگرام لازم می‌شود.
+    """
+    check_auth(x_admin_password)
+
+    data = bot_users(q=q, filter=filter, sort=sort, limit=100000, offset=0,
+                     x_admin_password=x_admin_password)
+    if not data.get("dbReady"):
+        raise HTTPException(status_code=400, detail="دیتابیس ربات در دسترس نیست")
+
+    import csv
+    import io as _io
+    buf = _io.StringIO()
+    buf.write("﻿")   # BOM تا اکسل فارسی را درست بخواند
+    w = csv.writer(buf)
+    w.writerow(["شناسه تلگرام", "نام", "یوزرنیم", "شماره تماس",
+                "سفارش موفق", "مجموع خرید (تومان)", "اشتراک", "اشتراک فعال",
+                "سکه", "کیف پول", "کد دعوت", "مسدود", "تاریخ عضویت"])
+
+    for u in data.get("users") or []:
+        w.writerow([
+            u.get("tg_id", ""), u.get("first_name") or "",
+            u.get("username") or "", u.get("phone") or "",
+            u.get("ordersCount", 0), u.get("spent", 0),
+            u.get("subsCount", 0), u.get("activeSubs", 0),
+            u.get("coins", 0), u.get("balance", 0),
+            u.get("ref_code") or "",
+            "بله" if u.get("is_blocked") else "خیر",
+            str(u.get("created_at") or "")[:19],
+        ])
+
+    from fastapi.responses import Response as _Resp
+    return _Resp(
+        content=buf.getvalue().encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition":
+                 'attachment; filename="nexora-bot-users.csv"'})
+
+
 def _bot_rw():
     """اتصال نوشتنی به دیتابیس ربات (برای تنظیمات از پنل)."""
     import sqlite3
@@ -2130,6 +2296,105 @@ def top_clients(limit: int = 10, x_admin_password: str = Header(...)):
     return {"ready": True, "clients": out[:max(1, min(limit, 100))],
             "totalClients": len(out),
             "totalUsedGB": round(total / (1024 ** 3), 1)}
+
+
+try:
+    import firewall as FIREWALL
+except Exception:
+    try:
+        import importlib.util as _ifw
+        _fs = _ifw.spec_from_file_location(
+            "firewall", Path(__file__).resolve().parent / "firewall.py")
+        FIREWALL = _ifw.module_from_spec(_fs)
+        _fs.loader.exec_module(FIREWALL)
+    except Exception:
+        FIREWALL = None
+
+
+def _fw_or_die():
+    if not FIREWALL:
+        raise HTTPException(status_code=500, detail="ماژول فایروال بارگذاری نشد")
+    return FIREWALL
+
+
+@app.get("/api/admin/firewall")
+def firewall_status(x_admin_password: str = Header(...)):
+    """وضعیت فایروال و قواعدش."""
+    check_auth(x_admin_password)
+    return _fw_or_die().status()
+
+
+@app.post("/api/admin/firewall/toggle")
+def firewall_toggle(payload: dict = None, x_admin_password: str = Header(...)):
+    """
+    روشن/خاموش کردن فایروال.
+
+    روشن‌کردن بدون قاعده‌ی SSH یعنی قطع دسترسی مدیر به سرور — پس
+    تا وقتی confirmSsh صریحاً فرستاده نشود، رد می‌شود.
+    """
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    p = payload or {}
+    want = bool(p.get("enable"))
+
+    if want:
+        ok, note = fw.enable(confirm_ssh=bool(p.get("confirmSsh")))
+    else:
+        ok, note = fw.disable()
+
+    if not ok:
+        raise HTTPException(status_code=400, detail=note)
+    return {"ok": True, "note": note, **fw.status()}
+
+
+@app.post("/api/admin/firewall/rule")
+def firewall_add_rule(payload: dict, x_admin_password: str = Header(...)):
+    """افزودن قاعده."""
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    p = payload or {}
+    ok, note = fw.add_rule(
+        port=p.get("port"), proto=p.get("proto") or "tcp",
+        action=p.get("action") or "allow",
+        source=p.get("source") or None, comment=p.get("comment") or None)
+    if not ok:
+        raise HTTPException(status_code=400, detail=note)
+    return {"ok": True, "note": note, **fw.status()}
+
+
+@app.delete("/api/admin/firewall/rule/{num}")
+def firewall_delete_rule(num: int, confirm: int = 0,
+                         x_admin_password: str = Header(...)):
+    """حذف قاعده. قواعد حیاتی مثل SSH تایید جدا می‌خواهند."""
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    ok, note = fw.delete_rule(num, confirm_critical=bool(confirm))
+    if not ok:
+        raise HTTPException(status_code=400, detail=note)
+    return {"ok": True, "note": note, **fw.status()}
+
+
+@app.post("/api/admin/firewall/block-ip")
+def firewall_block_ip(payload: dict, x_admin_password: str = Header(...)):
+    """
+    بستن یا بازکردن یک آی‌پی.
+
+    این همان دکمه‌ای است که از صفحه‌ی مانیتورینگ، وقتی یک آی‌پی سهم
+    غیرعادی گرفته، به آن وصل می‌شود.
+    """
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    p = payload or {}
+    ip = str(p.get("ip") or "").strip()
+
+    if p.get("unblock"):
+        ok, note = fw.unblock_ip(ip)
+    else:
+        ok, note = fw.block_ip(ip, comment=p.get("comment") or "از پنل نکسورا")
+
+    if not ok:
+        raise HTTPException(status_code=400, detail=note)
+    return {"ok": True, "note": note}
 
 
 #: پیش‌فرض زمان‌بندی نگهداری.

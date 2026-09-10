@@ -32,10 +32,7 @@
   --accent-2: #5AA9E6;
   --accent-soft: rgba(43, 127, 214, 0.12);
   --text: #EDF2F9;
-  /* شیشه‌ای شدن کارت‌ها پس‌زمینه را روشن‌تر کرد، و همین #8A98AC را
-     روی روشن‌ترین نقطه به ۴٫۰۱ رساند — زیر حد ۴٫۵. این مقدار
-     ۵٫۳۴ می‌دهد و همان لحن را نگه می‌دارد. */
-  --dim: #A3B0C1;
+  --dim: #8A98AC;
   /* متن توضیحی پنل با این رنگ نوشته می‌شود — ۳۴۵ جا در App.jsx.
      مقدار قبلی (#5A6880) روی کارت‌ها نسبت کنتراست ۳٫۲۴:۱ می‌داد،
      یعنی زیر حد ۴٫۵:۱ که برای متن عادی لازم است. این مقدار ۷٫۱۲:۱
@@ -69,26 +66,12 @@ body {
    بسیار ملایم و ثابت — کارش این است که کارت‌های شیشه‌ای چیزی برای
    بازتاب داشته باشند، نه اینکه خودش دیده شود. روی لایه‌ی جدا و
    پشت همه‌چیز، تا هیچ متنی را کدر نکند. */
-/* لایه‌ی نورِ پشتِ شیشه.
-   شیشه بدون چیزی پشتش، فقط یک مستطیل تیره است. این گرادیان‌ها همان
-   چیزی‌اند که بلورِ کارت‌ها می‌شکندشان و به پنل عمق می‌دهند. قبلاً
-   با آلفای ۰٫۰۷ عملاً نامرئی بودند. */
 body::before {
   content: "";
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(1100px 700px at 88% -12%, rgba(43,127,214,.34), transparent 58%),
-    radial-gradient(820px 620px at 4% 8%, rgba(90,169,230,.16), transparent 60%),
-    radial-gradient(900px 640px at 18% 112%, rgba(167,139,250,.20), transparent 62%),
-    radial-gradient(700px 520px at 96% 88%, rgba(52,211,153,.10), transparent 64%);
-}
-
-/* یک درخشش نرم که کل صفحه را از تخت بودن درمی‌آورد */
-body::after {
-  content: "";
-  position: fixed; inset: 0; z-index: -1; pointer-events: none;
-  background: radial-gradient(1400px 900px at 50% -20%,
-              rgba(255,255,255,.045), transparent 55%);
+    radial-gradient(900px 600px at 82% -8%, rgba(43,127,214,.10), transparent 60%),
+    radial-gradient(760px 520px at 8% 108%, rgba(90,169,230,.07), transparent 62%);
 }
 
 /* فقط فونت — عناصر فرم آن را از body ارث نمی‌برند.
@@ -124,15 +107,8 @@ input, select, textarea, button, optgroup {
 .fx-side {
   width: var(--side-w);
   flex-shrink: 0;
-  /* منوی کناری هم شیشه است، ولی مات‌تر از کارت‌ها.
-     ناوبری باید در هر شرایطی خوانا بماند؛ با آلفای پایین‌تر، نورِ
-     پس‌زمینه از زیرش رد می‌شد و متن آیتم‌ها شسته می‌شد. */
-  background: linear-gradient(200deg,
-              rgba(20, 29, 47, .90), rgba(9, 14, 24, .94));
-  -webkit-backdrop-filter: blur(22px) saturate(135%);
-  backdrop-filter: blur(22px) saturate(135%);
-  border-left: 1px solid rgba(255,255,255,.09);
-  box-shadow: -1px 0 0 rgba(255,255,255,.04) inset;
+  background: var(--surface-3);
+  border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   padding: 22px 14px;
@@ -160,16 +136,8 @@ input, select, textarea, button, optgroup {
   font-size: 13px; font-weight: 500; color: var(--dim);
   transition: all .16s ease; width: 100%; text-align: right; position: relative;
 }
-.fx-nav-item:hover { background: rgba(255,255,255,.06); color: var(--text); }
-/* آیتم فعال باید در یک نگاه پیدا شود، نه اینکه با بقیه فرق ظریفی
-   داشته باشد — این‌جا شیشه‌ی رنگی روی خودش می‌گیرد. */
-.fx-nav-item.on {
-  background: linear-gradient(90deg,
-              rgba(43,127,214,.26), rgba(43,127,214,.10));
-  color: var(--accent-2);
-  box-shadow: 0 1px 0 rgba(255,255,255,.07) inset,
-              0 2px 10px rgba(43,127,214,.16);
-}
+.fx-nav-item:hover { background: rgba(255,255,255,.03); color: var(--text); }
+.fx-nav-item.on { background: var(--accent-soft); color: var(--accent-2); }
 .fx-nav-item.on::before {
   content: ""; position: absolute; right: -14px; top: 50%; transform: translateY(-50%);
   width: 3px; height: 20px; border-radius: 0 3px 3px 0; background: var(--accent-2);
@@ -178,11 +146,10 @@ input, select, textarea, button, optgroup {
 /* ===== هدر ===== */
 .fx-topbar {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 16px 26px; border-bottom: 1px solid rgba(255,255,255,.09);
-  background: rgba(12,18,30,.78);
-  -webkit-backdrop-filter: blur(22px) saturate(140%);
-  backdrop-filter: blur(22px) saturate(140%);
-  box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 6px 22px rgba(0,0,0,.22);
+  padding: 16px 26px; border-bottom: 1px solid var(--border);
+  /* مات، نه نیمه‌شفاف با بلور: نوار بالا موقع اسکرول ثابت است، پس
+     بلورش در هر فریم دوباره محاسبه می‌شد. */
+  background: #0B111C;
   position: sticky; top: 0; z-index: 30;
 }
 .fx-search {
@@ -195,54 +162,29 @@ input, select, textarea, button, optgroup {
 .fx-search input::placeholder { color: var(--muted); }
 
 /* ===== کارت =====
-   شیشه‌ای، ولی نه به‌شکل تزئینی.
+   سطح مات و تخت، نه شیشه‌ای.
 
-   بلور فقط وقتی دیده می‌شود که پشتش چیزی باشد؛ روی یک پس‌زمینه‌ی
-   کاملاً تخت، backdrop-filter هیچ اثری ندارد و فقط GPU مصرف می‌کند.
-   برای همین اول به body یک هاله‌ی بسیار ملایم داده‌ایم (پایین‌تر)
-   تا کارت‌ها چیزی برای گرفتن داشته باشند.
+   backdrop-filter از اینجا برداشته شد: روی یک پس‌زمینه‌ی تقریباً
+   تخت هیچ چیزی برای بلورکردن نداشت، ولی مرورگر برای *هر کارت* یک
+   لایه‌ی ترکیب جدا می‌ساخت. در صفحه‌ای با بیست کارت، این هزینه‌ی
+   واقعی روی GPU بود بدون هیچ اثر دیداری.
 
-   رنگ متن عوض نشده: کف کارت هنوز تقریباً همان --surface درمی‌آید،
-   پس نسبت کنتراست ۴٫۵:۱ که تازه درستش کردیم دست‌نخورده می‌ماند. */
-/* کارت شیشه‌ای.
-   پس‌زمینه عمداً نیمه‌شفاف است تا نورِ لایه‌ی پشت از داخلش رد شود؛
-   قبلاً ۸۶٪ مات بود و بلور هیچ اثری نداشت. سایه‌ی دولایه عمق می‌دهد
-   و خط روشنِ بالای کارت، بازتاب نور است. */
+   عمق از سایه و مرز می‌آید، که ارزان‌اند و در هر مرورگری یکسان
+   دیده می‌شوند. */
 .fx-card {
-  background: linear-gradient(160deg,
-              rgba(30, 42, 66, .58), rgba(14, 21, 35, .52));
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  backdrop-filter: blur(18px) saturate(140%);
-  border: 1px solid rgba(255,255,255,.11);
-  border-radius: 18px;
-  box-shadow:
-    0 1px 0 rgba(255,255,255,.06) inset,
-    0 8px 28px rgba(0,0,0,.34),
-    0 2px 6px rgba(0,0,0,.22);
-  transition: border-color .22s ease, box-shadow .22s ease, transform .22s ease;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.28);
+  transition: border-color .16s ease, box-shadow .16s ease;
   position: relative;
 }
 
-/* بازتاب نور روی لبه‌ی بالا — همان «light reflection» که سبک شیشه‌ای
-   را از یک مستطیل نیمه‌شفاف ساده جدا می‌کند. */
-.fx-card::before {
-  content: "";
-  position: absolute; inset: 0 0 auto 0; height: 1px;
-  border-radius: 16px 16px 0 0;
-  background: linear-gradient(90deg, transparent,
-              rgba(255,255,255,.16) 22%, rgba(255,255,255,.16) 78%, transparent);
-  pointer-events: none;
+.fx-card-i:hover {
+  border-color: rgba(90,169,230,.34);
+  box-shadow: 0 4px 16px rgba(0,0,0,.32);
 }
-
-.fx-card-i:hover { border-color: rgba(90,169,230,.28); transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,.3); }
-.fx-card-hl { border-color: rgba(90,169,230,.4); box-shadow: 0 0 26px rgba(43,127,214,.1); }
-
-/* مرورگرهای بدون پشتیبانی بلور، سطح مات می‌گیرند نه شفافِ ناخوانا */
-@supports not (backdrop-filter: blur(4px)) {
-  .fx-card { background: var(--surface); }
-  .fx-side { background: var(--surface-3); }
-  .fx-topbar { background: #0B1220; }
-}
+.fx-card-hl { border-color: rgba(90,169,230,.4); }
 
 /* ===== آمار ===== */
 .fx-stat-num { font-family: var(--mono); font-size: 32px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
@@ -252,10 +194,21 @@ input, select, textarea, button, optgroup {
 
 /* ===== جدول ===== */
 .fx-table { width: 100%; border-collapse: collapse; }
-.fx-table th { font-size: 12px; color: var(--muted); font-weight: 500; text-align: right; padding: 11px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.fx-table td { padding: 13px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
-.fx-table tbody tr { transition: background .15s; }
-.fx-table tbody tr:hover { background: rgba(255,255,255,.015); }
+/* هدر چسبان: در جدول بلند، وقتی اسکرول می‌کنید باید هنوز بدانید
+   هر ستون چیست. بدون این، ردیف بیستم یک مشت عدد بی‌عنوان است. */
+.fx-table th {
+  font-size: 12px; color: var(--muted); font-weight: 600; text-align: right;
+  padding: 11px 14px; border-bottom: 1px solid var(--border-2);
+  white-space: nowrap; position: sticky; top: 0; z-index: 2;
+  background: var(--surface-2);
+  letter-spacing: .2px;
+}
+.fx-table td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.fx-table tbody tr { transition: background .13s ease; }
+/* هایلایت ردیف باید واقعاً دیده شود — ۰٫۰۱۵ عملاً هیچ بود و
+   دنبال‌کردن یک ردیف در جدول عریض را سخت می‌کرد. */
+.fx-table tbody tr:hover { background: rgba(90,169,230,.07); }
+.fx-table tbody tr:hover td { border-color: rgba(90,169,230,.16); }
 .fx-table tbody tr:last-child td { border-bottom: none; }
 
 .fx-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
@@ -263,26 +216,9 @@ input, select, textarea, button, optgroup {
 /* ===== دکمه ===== */
 .fx-btn {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #06090F; border-radius: 12px; font-weight: 700;
-  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
-  /* خط روشن بالای دکمه، همان بازتاب نوری است که به آن برجستگی
-     می‌دهد؛ بدون آن دکمه یک مستطیل رنگی تخت است. */
-  box-shadow:
-    0 1px 0 rgba(255,255,255,.30) inset,
-    0 -1px 0 rgba(0,0,0,.12) inset,
-    0 6px 20px rgba(43,127,214,.32),
-    0 2px 6px rgba(0,0,0,.20);
-  position: relative;
+  color: #06090F; border-radius: 11px; font-weight: 700;
+  transition: all .18s; box-shadow: 0 4px 18px rgba(43,127,214,.25);
 }
-.fx-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  filter: brightness(1.06);
-  box-shadow:
-    0 1px 0 rgba(255,255,255,.34) inset,
-    0 10px 28px rgba(43,127,214,.40),
-    0 3px 8px rgba(0,0,0,.24);
-}
-.fx-btn:active:not(:disabled) { transform: translateY(0); filter: brightness(.97); }
 .fx-btn:hover:not(:disabled) { filter: brightness(1.08); box-shadow: 0 6px 24px rgba(43,127,214,.35); }
 .fx-btn:active:not(:disabled) { transform: scale(.98); }
 .fx-btn:disabled { opacity: .35; cursor: not-allowed; box-shadow: none; }

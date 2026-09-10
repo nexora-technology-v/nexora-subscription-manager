@@ -113,6 +113,21 @@ const WORKSPACES = {
       },
     ],
   },
+  firewall: {
+    key: "firewall",
+    label: "فایروال",
+    shortLabel: "فایروال",
+    icon: ShieldCheck,
+    groups: [
+      {
+        title: "امنیت سرور",
+        items: [
+          { key: "fw-rules", label: "قواعد فایروال", icon: ShieldCheck },
+          { key: "fw-blocked", label: "آی‌پی‌های بسته‌شده", icon: XCircle },
+        ],
+      },
+    ],
+  },
   bot: {
     key: "bot",
     label: "ربات تلگرام",
@@ -127,6 +142,7 @@ const WORKSPACES = {
           { key: "bot-plans", label: "پلن‌ها و قیمت", icon: Package },
           { key: "bot-orders", label: "سفارش‌ها و رسیدها", icon: CreditCard },
           { key: "bot-users", label: "کاربران ربات", icon: Users },
+          { key: "bot-report", label: "گزارش فروش", icon: FileText },
           { key: "bot-coins", label: "سکه و دعوت", icon: Gift },
           { key: "bot-affiliates", label: "همکاری در فروش", icon: Coins },
           { key: "bot-texts", label: "متن‌ها", icon: MessageCircle },
@@ -4687,6 +4703,64 @@ const RISK_META = {
   low: { c: "var(--ok)", t: "پایین", bg: "rgba(52,211,153,.10)" },
 };
 
+/**
+ * پولینگ که وقتی تب دیده نمی‌شود متوقف می‌شود.
+ *
+ * قبلاً صفحه‌ی مانیتورینگ هر ۵ ثانیه سرور را صدا می‌زد — حتی وقتی
+ * پنل ساعت‌ها در یک تب پس‌زمینه باز مانده بود. هر فراخوانی روی سرور
+ * چند subprocess اجرا می‌کند (ss، systemctl، ps)، پس این یعنی بار
+ * دائمی روی همان سروری که قرار است سبک بماند.
+ *
+ * ms=0 یعنی پولینگ خاموش.
+ */
+function usePolling(fn, ms, deps = []) {
+  const saved = useRef(fn);
+  useEffect(() => { saved.current = fn; });
+
+  useEffect(() => {
+    if (!ms) return undefined;
+    let timer = null;
+
+    const tick = () => { if (!document.hidden) saved.current(); };
+    const start = () => { if (!timer) timer = setInterval(tick, ms); };
+    const stop = () => { if (timer) { clearInterval(timer); timer = null; } };
+
+    const onVis = () => {
+      if (document.hidden) { stop(); return; }
+      // برگشت به تب: یک‌بار فوری تازه کن، بعد دوباره زمان‌بندی
+      saved.current();
+      start();
+    };
+
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVis);
+    return () => { stop(); document.removeEventListener("visibilitychange", onVis); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ms, ...deps]);
+}
+
+/** گروه دکمه‌ی انتخاب — برای فیلترهایی که گزینه‌هایشان کم و ثابت‌اند. */
+function Segmented({ value, onChange, items }) {
+  return (
+    <div className="flex items-center rounded-[10px] overflow-hidden"
+      style={{ border: "1px solid var(--border-2)" }}>
+      {items.map(([v, label], i) => {
+        const on = value === v;
+        return (
+          <button key={v} onClick={() => onChange(v)}
+            className="px-3 py-2 text-[13px] transition-colors"
+            style={{
+              background: on ? "var(--accent-soft)" : "transparent",
+              color: on ? "var(--accent-2)" : "var(--muted)",
+              fontWeight: on ? 600 : 400,
+              borderRight: i ? "1px solid var(--border-2)" : "none",
+            }}>{label}</button>
+        );
+      })}
+    </div>
+  );
+}
+
 function CountChip({ label, n, color }) {
   return (
     <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px]"
@@ -4708,14 +4782,39 @@ function CountChip({ label, n, color }) {
  */
 function PortsCard({ ports }) {
   const [all, setAll] = useState(false);
+  // فیلتر: روی سرور واقعی ده‌ها پورت هست و بدون فیلتر، پیداکردن
+  // «آن یکی که یادم نیست چیست» یعنی چشم‌چرخاندن در کل فهرست
+  const [risk, setRisk] = useState("all");
+  const [scope, setScope] = useState("all");
+  const [q, setQ] = useState("");
   if (!ports.length) return null;
 
   const high = ports.filter((p) => p.risk === "high");
   const med = ports.filter((p) => p.risk === "medium");
   const low = ports.filter((p) => p.risk !== "high" && p.risk !== "medium");
+
+  const filtering = risk !== "all" || scope !== "all" || q.trim();
+  const match = (p) => {
+    if (risk === "high" && p.risk !== "high") return false;
+    if (risk === "medium" && p.risk !== "medium") return false;
+    if (risk === "low" && (p.risk === "high" || p.risk === "medium")) return false;
+    if (scope === "public" && !p.public) return false;
+    if (scope === "local" && p.public) return false;
+    if (q.trim()) {
+      const s = q.trim().toLowerCase();
+      if (!`${p.port} ${p.proto} ${p.process} ${p.known}`.toLowerCase().includes(s))
+        return false;
+    }
+    return true;
+  };
+
   const risky = [...high, ...med];
-  const shown = all ? [...risky, ...low] : risky.slice(0, 6);
-  const hidden = ports.length - shown.length;
+  // با فیلتر فعال، همه‌ی نتایج نشان داده می‌شوند؛ بدون فیلتر، همان
+  // رفتار قبلی: فقط چیزی که باید به آن رسیدگی شود
+  const shown = filtering
+    ? [...risky, ...low].filter(match)
+    : (all ? [...risky, ...low] : risky.slice(0, 6));
+  const hidden = filtering ? 0 : ports.length - shown.length;
 
   return (
     <div className="fx-card p-5 mb-4">
@@ -4728,6 +4827,24 @@ function PortsCard({ ports }) {
           <CountChip label="متوسط" n={med.length} color="var(--warn)" />
           <CountChip label="عادی" n={low.length} color="var(--ok)" />
         </div>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <Segmented value={risk} onChange={setRisk} items={[
+          ["all", "همه"], ["high", "پرخطر"], ["medium", "متوسط"], ["low", "عادی"],
+        ]} />
+        <Segmented value={scope} onChange={setScope} items={[
+          ["all", "هر دسترسی"], ["public", "اینترنت"], ["local", "فقط داخلی"],
+        ]} />
+        <div className="fx-search" style={{ width: 168 }}>
+          <Search size={14} style={{ color: "var(--muted)" }} />
+          <input value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="پورت یا پردازه..." />
+        </div>
+        {filtering && (
+          <button onClick={() => { setRisk("all"); setScope("all"); setQ(""); }}
+            className="fx-btn-g px-3 py-2 text-[13px]">پاک‌کردن فیلتر</button>
+        )}
       </div>
 
       <p className="text-[13px] mb-3" style={{ color: "var(--muted)" }}>
@@ -4785,7 +4902,7 @@ function PortsCard({ ports }) {
  * تو آمده. وقتی سرور کند می‌شود، اولین سؤال همین است: سهم هر IP چقدر
  * است و کدامشان غیرعادی است.
  */
-function ConnectionsCard({ conn }) {
+function ConnectionsCard({ conn, onBlock }) {
   const [all, setAll] = useState(false);
   if (!conn || !conn.total) {
     return (
@@ -4822,16 +4939,22 @@ function ConnectionsCard({ conn }) {
             {faNum(conn.heavy.length)} آی‌پی سهم غیرعادی دارد
           </div>
           {conn.heavy.map((h) => (
-            <div key={h.ip} className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
-              <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{h.ip}</span>
-              {" — "}<b>{faNum(h.count)}</b> اتصال ({faNum(h.pct)}٪ کل)
+            <div key={h.ip}
+              className="flex items-center justify-between gap-3 py-2 flex-wrap">
+              <div className="text-[13px]" style={{ color: "var(--dim)" }}>
+                <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{h.ip}</span>
+                {" — "}<b>{faNum(h.count)}</b> اتصال ({faNum(h.pct)}٪ کل)
+              </div>
+              <button onClick={() => onBlock && onBlock(h)}
+                className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
+                <XCircle size={13} /> بستن این آی‌پی
+              </button>
             </div>
           ))}
           <div className="text-[12px] mt-2 leading-relaxed" style={{ color: "var(--muted)" }}>
             معمولاً یعنی یک اشتراک بین چند نفر پخش شده یا کسی دارد سرور را اسکن می‌کند.
-            محدودیت <b>IP هم‌زمان</b> آن پلن را در بخش پلن‌ها کم کنید، یا اگر ناشناس است
-            با <code style={{ fontFamily: "var(--mono)" }}>ss -tunp | grep IP</code> ببینید
-            به کدام پورت وصل است.
+            اگر مشتری خودتان است، محدودیت <b>IP هم‌زمان</b> آن پلن را کم کنید؛
+            اگر ناشناس است، ببندیدش.
           </div>
         </div>
       )}
@@ -5340,6 +5463,563 @@ function MaintenanceCard({ password }) {
   );
 }
 
+/* ===================== فایروال ===================== */
+
+const FW_ACTIONS = [
+  ["allow", "اجازه", "var(--ok)"],
+  ["deny", "مسدود", "var(--danger)"],
+  ["limit", "محدود", "var(--warn)"],
+];
+
+function useFirewall(password) {
+  const [d, setD] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetch(`${API_URL}/api/admin/firewall`, {
+        headers: { "X-Admin-Password": password },
+      }).then((x) => x.json());
+      setD(r);
+    } catch { setD({ ready: false, error: "اتصال به سرور برقرار نشد", rules: [] }); }
+  }, [password]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (msg) { const t = setTimeout(() => setMsg(null), 5000); return () => clearTimeout(t); } }, [msg]);
+
+  const call = async (path, opts = {}) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}${path}`, {
+        ...opts,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Password": password, ...(opts.headers || {}),
+        },
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setMsg({ t: "err", m: j.detail || "عملیات ناموفق" }); return null; }
+      setMsg({ t: "ok", m: j.note || "انجام شد" });
+      if (j.rules) setD(j); else await load();
+      return j;
+    } catch {
+      setMsg({ t: "err", m: "اتصال برقرار نشد" });
+      return null;
+    } finally { setBusy(false); }
+  };
+
+  return { d, busy, msg, setMsg, load, call };
+}
+
+function FirewallRules({ password }) {
+  const { d, busy, msg, call } = useFirewall(password);
+  const [form, setForm] = useState({ port: "", proto: "tcp", action: "allow", comment: "" });
+  const [confirmSsh, setConfirmSsh] = useState(false);
+  const [q, setQ] = useState("");
+  const [confirmDel, setConfirmDel] = useState(null);
+
+  if (!d) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+
+  if (!d.installed) {
+    return (
+      <div className="fx-anim">
+        <SectionHead title="فایروال" desc="کنترل اینکه چه کسی از بیرون به سرور دسترسی دارد." />
+        <div className="fx-card p-5">
+          <div className="text-[14px] font-semibold text-white mb-2 flex items-center gap-2">
+            <AlertTriangle size={15} style={{ color: "var(--warn)" }} /> ufw نصب نیست
+          </div>
+          <p className="text-[13px] leading-relaxed" style={{ color: "var(--dim)" }}>
+            این صفحه با <b>ufw</b> کار می‌کند که روی اوبونتو و دبیان استاندارد است.
+            روی سرور اجرا کنید و صفحه را تازه کنید:
+          </p>
+          <div className="mt-3 rounded-xl p-3.5" style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
+            <code dir="ltr" className="text-[13px]" style={{ fontFamily: "var(--mono)", color: "var(--accent-2)" }}>
+              apt update &amp;&amp; apt install -y ufw
+            </code>
+          </div>
+          <InfoBox tone="warn">
+            بعد از نصب، <b>قبل از روشن‌کردن فایروال</b> حتماً قاعده‌ی SSH را اضافه کنید،
+            وگرنه دسترسی خودتان به سرور قطع می‌شود.
+          </InfoBox>
+        </div>
+      </div>
+    );
+  }
+
+  const rules = (d.rules || []).filter((r) => {
+    if (!q.trim()) return true;
+    const s = q.trim().toLowerCase();
+    return `${r.target} ${r.source} ${r.action}`.toLowerCase().includes(s);
+  });
+
+  const add = () => {
+    if (!form.port) return;
+    call("/api/admin/firewall/rule", {
+      method: "POST", body: JSON.stringify(form),
+    }).then((j) => { if (j) setForm({ ...form, port: "", comment: "" }); });
+  };
+
+  return (
+    <div className="fx-anim">
+      <SectionHead title="قواعد فایروال"
+        desc="هر قاعده یک در است که باز یا بسته می‌گذارید. چیزی که لازم ندارید را ببندید."
+        action={
+          <div className="flex items-center gap-2">
+            <span className="fx-pill" style={{
+              background: d.active ? "rgba(52,211,153,.14)" : "rgba(248,113,113,.14)",
+              color: d.active ? "var(--ok)" : "var(--danger)",
+            }}>
+              {d.active ? "روشن" : "خاموش"}
+            </span>
+            <button
+              onClick={() => call("/api/admin/firewall/toggle", {
+                method: "POST",
+                body: JSON.stringify({ enable: !d.active, confirmSsh }),
+              })}
+              disabled={busy}
+              className={d.active ? "fx-btn-g px-4 py-2.5 text-[13px]" : "fx-btn px-4 py-2.5 text-[13px]"}>
+              {busy ? <Loader2 size={14} className="animate-spin" /> : (d.active ? "خاموش کن" : "روشن کن")}
+            </button>
+          </div>
+        } />
+
+      <Msg msg={msg} />
+
+      {!d.active && (
+        <div className="fx-card p-5 mb-4" style={{ borderColor: "rgba(251,191,36,.3)" }}>
+          <div className="text-[14px] font-semibold mb-2 flex items-center gap-2" style={{ color: "var(--warn)" }}>
+            <AlertTriangle size={15} /> فایروال خاموش است
+          </div>
+          <p className="text-[13px] leading-relaxed" style={{ color: "var(--dim)" }}>
+            یعنی همه‌ی پورت‌های باز سرور از تمام اینترنت در دسترس‌اند.
+          </p>
+          {!d.sshProtected && (
+            <>
+              <InfoBox tone="warn">
+                <b>هیچ قاعده‌ای پورت ۲۲ (SSH) را باز نگذاشته.</b> اگر همین حالا
+                فایروال را روشن کنید، دسترسی خودتان به سرور قطع می‌شود و فقط از
+                کنسول ارائه‌دهنده می‌توانید برگردید. اول قاعده‌ی SSH را اضافه کنید.
+              </InfoBox>
+              <label className="flex items-center gap-2 text-[13px] cursor-pointer mt-3" style={{ color: "var(--dim)" }}>
+                <input type="checkbox" checked={confirmSsh}
+                  onChange={(e) => setConfirmSsh(e.target.checked)}
+                  style={{ accentColor: "var(--warn)" }} />
+                می‌دانم و با همین وضع روشن کن
+              </label>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="fx-card p-5 mb-4">
+        <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
+          <Plus size={15} style={{ color: "var(--accent-2)" }} /> قاعده‌ی جدید
+        </div>
+        <div className="fx-g4 grid grid-cols-4 gap-3">
+          <Field label="پورت">
+            <input className="fx-input" dir="ltr" type="number" min="1" max="65535"
+              value={form.port} placeholder="۴۴۳"
+              onChange={(e) => setForm({ ...form, port: e.target.value })}
+              style={{ fontFamily: "var(--mono)" }} />
+          </Field>
+          <Field label="پروتکل">
+            <select className="fx-input" value={form.proto}
+              onChange={(e) => setForm({ ...form, proto: e.target.value })}>
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+              <option value="any">هر دو</option>
+            </select>
+          </Field>
+          <Field label="عمل">
+            <select className="fx-input" value={form.action}
+              onChange={(e) => setForm({ ...form, action: e.target.value })}>
+              {FW_ACTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </Field>
+          <Field label="توضیح" hint="اختیاری">
+            <input className="fx-input" value={form.comment} placeholder="پنل"
+              onChange={(e) => setForm({ ...form, comment: e.target.value })} />
+          </Field>
+        </div>
+        <button onClick={add} disabled={busy || !form.port}
+          className="fx-btn px-4 py-2.5 text-[13px] flex items-center gap-1.5 mt-3">
+          <Plus size={14} /> افزودن قاعده
+        </button>
+      </div>
+
+      <div className="fx-card p-5">
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div className="text-[14px] font-semibold text-white flex items-center gap-2">
+            <ShieldCheck size={15} style={{ color: "var(--accent-2)" }} /> قواعد فعلی
+            <span className="text-[13px] font-normal" style={{ color: "var(--muted)" }}>
+              ({faNum(rules.length)})
+            </span>
+          </div>
+          <div className="fx-search" style={{ width: 200 }}>
+            <Search size={14} style={{ color: "var(--muted)" }} />
+            <input value={q} onChange={(e) => setQ(e.target.value)}
+              placeholder="جستجو در قواعد..." />
+          </div>
+        </div>
+
+        {!rules.length ? (
+          <EmptyState icon={ShieldCheck} text={q ? "چیزی پیدا نشد" : "هنوز قاعده‌ای ثبت نشده"} />
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="fx-table">
+              <thead>
+                <tr><th>#</th><th>مقصد</th><th>عمل</th><th>مبدأ</th><th></th></tr>
+              </thead>
+              <tbody>
+                {rules.map((r) => {
+                  const meta = FW_ACTIONS.find(([v]) => v === r.action.toLowerCase());
+                  return (
+                    <tr key={r.num}>
+                      <td style={{ fontFamily: "var(--mono)", color: "var(--muted)" }}>{faNum(r.num)}</td>
+                      <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
+                        {r.target}
+                        {r.critical && (
+                          <span className="fx-pill mr-2" style={{ background: "rgba(251,191,36,.14)", color: "var(--warn)" }}>
+                            حیاتی
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ color: meta ? meta[2] : "var(--dim)" }}>
+                        {meta ? meta[1] : r.action}
+                      </td>
+                      <td dir="ltr" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                        {r.source}
+                      </td>
+                      <td>
+                        <button onClick={() => setConfirmDel(r)} disabled={busy}
+                          className="fx-ico-btn" aria-label={`حذف قاعده ${r.num}`}
+                          style={{ width: 30, height: 30 }}>
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {r_note(d)}
+      </div>
+
+      {confirmDel && (
+        <ConfirmModal
+          title={`حذف قاعده #${faNum(confirmDel.num)}؟`}
+          desc={confirmDel.critical
+            ? `${confirmDel.note} — حذفش می‌تواند دسترسی شما به سرور را قطع کند.`
+            : `قاعده‌ی ${confirmDel.target} (${confirmDel.action}) حذف می‌شود.`}
+          confirmLabel="حذف کن"
+          onCancel={() => setConfirmDel(null)}
+          onConfirm={() => {
+            call(`/api/admin/firewall/rule/${confirmDel.num}?confirm=1`,
+                 { method: "DELETE" });
+            setConfirmDel(null);
+          }} />
+      )}
+    </div>
+  );
+}
+
+/** یادداشت پایین جدول قواعد — وضعیت پیش‌فرض ورودی. */
+function r_note(d) {
+  if (!d?.defaultIncoming || d.defaultIncoming === "?") return null;
+  const deny = d.defaultIncoming === "deny";
+  return (
+    <div className="text-[13px] mt-3 pt-3 leading-relaxed"
+      style={{ borderTop: "1px solid var(--border)", color: "var(--muted)" }}>
+      سیاست پیش‌فرض ورودی: <b style={{ color: deny ? "var(--ok)" : "var(--warn)" }}>
+        {deny ? "مسدود" : "باز"}
+      </b>
+      {deny
+        ? " — یعنی هرچه در فهرست بالا نیست، بسته است. این حالت درست است."
+        : " — یعنی هر پورتی که قاعده‌ی مسدود ندارد، باز است."}
+    </div>
+  );
+}
+
+function FirewallBlocked({ password }) {
+  const { d, busy, msg, call } = useFirewall(password);
+  const [ip, setIp] = useState("");
+
+  if (!d) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+
+  const blocked = (d.rules || []).filter(
+    (r) => r.action === "DENY" && r.source && r.source !== "Anywhere");
+
+  return (
+    <div className="fx-anim">
+      <SectionHead title="آی‌پی‌های بسته‌شده"
+        desc="آی‌پی‌هایی که کامل از سرور کنار گذاشته شده‌اند." />
+
+      <Msg msg={msg} />
+
+      <div className="fx-card p-5 mb-4">
+        <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
+          <XCircle size={15} style={{ color: "var(--danger)" }} /> بستن یک آی‌پی
+        </div>
+        <div className="flex gap-2 flex-wrap items-end">
+          <div className="flex-1" style={{ minWidth: 200 }}>
+            <Field label="آدرس آی‌پی" hint="مثلاً ۹۱٫۹۹٫۱۲٫۴ یا یک رنج مثل 91.99.12.0/24">
+              <input className="fx-input" dir="ltr" value={ip}
+                onChange={(e) => setIp(e.target.value)} placeholder="91.99.12.4"
+                style={{ fontFamily: "var(--mono)" }} />
+            </Field>
+          </div>
+          <button
+            onClick={() => call("/api/admin/firewall/block-ip", {
+              method: "POST", body: JSON.stringify({ ip }),
+            }).then((j) => { if (j) setIp(""); })}
+            disabled={busy || !ip.trim()}
+            className="fx-btn px-4 py-2.5 text-[13px] flex items-center gap-1.5">
+            <XCircle size={14} /> ببند
+          </button>
+        </div>
+        {!d.active && (
+          <InfoBox tone="warn">
+            فایروال خاموش است، پس این قاعده‌ها فعلاً اثری ندارند. از صفحه‌ی
+            «قواعد فایروال» روشنش کنید.
+          </InfoBox>
+        )}
+      </div>
+
+      <div className="fx-card p-5">
+        <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
+          <XCircle size={15} style={{ color: "var(--muted)" }} /> فهرست بسته‌شده‌ها
+          <span className="text-[13px] font-normal" style={{ color: "var(--muted)" }}>
+            ({faNum(blocked.length)})
+          </span>
+        </div>
+        {!blocked.length ? (
+          <EmptyState icon={ShieldCheck} text="هیچ آی‌پی‌ای بسته نشده" />
+        ) : blocked.map((r) => (
+          <div key={r.num} className="flex items-center justify-between gap-3 p-3 rounded-xl mb-2"
+            style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
+            <span dir="ltr" className="text-[13px]" style={{ fontFamily: "var(--mono)", color: "var(--dim)" }}>
+              {r.source}
+            </span>
+            <button
+              onClick={() => call("/api/admin/firewall/block-ip", {
+                method: "POST",
+                body: JSON.stringify({ ip: r.source, unblock: true }),
+              })}
+              disabled={busy}
+              className="fx-btn-g px-3 py-2 text-[13px]">
+              باز کن
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ===================== گزارش فروش ربات ===================== */
+
+const REPORT_RANGES = [[7, "۷ روز"], [30, "۳۰ روز"], [90, "۹۰ روز"], [365, "یک سال"]];
+
+function StatTile({ label, value, unit, hint, color = "var(--text)" }) {
+  return (
+    <div className="fx-card p-4">
+      <div className="text-[13px] mb-1.5" style={{ color: "var(--muted)" }}>{label}</div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-[21px] font-bold" style={{ color, fontFamily: "var(--mono)" }}>
+          {value}
+        </span>
+        {unit && <span className="text-[13px]" style={{ color: "var(--muted)" }}>{unit}</span>}
+      </div>
+      {hint && (
+        <div className="text-[12px] mt-1.5 leading-relaxed" style={{ color: "var(--muted)" }}>
+          {hint}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * گزارش فروش ربات.
+ *
+ * حسابداری می‌گوید از هر واسطه چقدر طلب دارید؛ این می‌گوید فروش
+ * مستقیم ربات در یک دوره چه شکلی بوده — چند نفر آمدند، چند درصدشان
+ * خریدند، و چه کسانی بیشترین سهم را داشتند.
+ */
+function BotReportSection({ password }) {
+  const [days, setDays] = useState(30);
+  const [d, setD] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    fetch(`${API_URL}/api/admin/bot/users/report?days=${days}`, {
+      headers: { "X-Admin-Password": password },
+    }).then((r) => r.json())
+      .then((j) => { if (alive) { setD(j); setLoading(false); } })
+      .catch(() => { if (alive) { setD({ ready: false }); setLoading(false); } });
+    return () => { alive = false; };
+  }, [password, days]);
+
+  const download = () => {
+    const a = document.createElement("a");
+    a.href = `${API_URL}/api/admin/bot/users/export`;
+    a.click();
+  };
+
+  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+
+  if (!d?.ready) {
+    return (
+      <div className="fx-anim">
+        <SectionHead title="گزارش فروش" desc="خلاصه‌ی عملکرد ربات در یک بازه." />
+        <div className="fx-card p-5">
+          <p className="text-[13px]" style={{ color: "var(--dim)" }}>
+            {d?.error || "دیتابیس ربات در دسترس نیست."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const o = d.orders || {};
+  const u = d.users || {};
+  const s = d.subs || {};
+  const maxDay = Math.max(...(d.daily || []).map((x) => x.sum), 1);
+
+  return (
+    <div className="fx-anim">
+      <SectionHead title="گزارش فروش"
+        desc="عملکرد ربات در بازه‌ی انتخابی — چند نفر آمدند، چند نفر خریدند، چقدر فروش رفت."
+        action={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Segmented value={days} onChange={setDays}
+              items={REPORT_RANGES.map(([v, l]) => [v, l])} />
+            <button onClick={download}
+              className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+              <Download size={13} /> خروجی اکسل
+            </button>
+          </div>
+        } />
+
+      <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
+        <StatTile label="فروش دوره" value={faNum(o.revenue || 0)} unit="تومان"
+          color="var(--ok)"
+          hint={o.approved ? `${faNum(o.approved)} سفارش · میانگین ${faNum(o.avg)}` : "سفارشی نبوده"} />
+        <StatTile label="کاربر جدید" value={faNum(u.newUsers || 0)} unit="نفر"
+          hint={`از ${faNum(u.users || 0)} کاربر کل`} />
+        <StatTile label="خریدار" value={faNum(d.buyerCount || 0)} unit="نفر"
+          color="var(--accent-2)"
+          hint={d.conversion !== null && d.conversion !== undefined
+            ? `نرخ تبدیل ${faNum(d.conversion)}٪ از کاربران جدید`
+            : "کاربر جدیدی نبوده"} />
+        <StatTile label="اشتراک فعال" value={faNum(s.active || 0)}
+          color={s.expiringSoon ? "var(--warn)" : "var(--text)"}
+          hint={s.expiringSoon
+            ? `${faNum(s.expiringSoon)} تا کمتر از ۳ روز اعتبار دارد`
+            : `از ${faNum(s.total || 0)} اشتراک کل`} />
+      </div>
+
+      {(o.pending > 0 || o.rejected > 0) && (
+        <div className="fx-card p-5 mb-4">
+          <div className="flex gap-4 flex-wrap text-[13px]">
+            {o.pending > 0 && (
+              <span style={{ color: "var(--warn)" }}>
+                ⏳ <b>{faNum(o.pending)}</b> رسید منتظر بررسی شماست
+              </span>
+            )}
+            {o.rejected > 0 && (
+              <span style={{ color: "var(--muted)" }}>
+                {faNum(o.rejected)} سفارش در این دوره رد شده
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(d.daily || []).length > 1 && (
+        <div className="fx-card p-5 mb-4">
+          <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
+            <TrendingUp size={15} style={{ color: "var(--accent-2)" }} /> فروش روزانه
+          </div>
+          <div className="flex items-end gap-[3px]" style={{ height: 90 }}>
+            {d.daily.map((x) => (
+              <div key={x.day} className="flex-1 rounded-t-[3px]"
+                title={`${x.day} — ${faNum(x.sum)} تومان از ${faNum(x.n)} سفارش`}
+                style={{
+                  height: `${Math.max(4, (x.sum / maxDay) * 100)}%`,
+                  background: "var(--accent-2)", opacity: 0.75,
+                }} />
+            ))}
+          </div>
+          <div className="flex justify-between text-[12px] mt-2" style={{ color: "var(--muted)" }}>
+            <span>{d.daily[0].day}</span>
+            <span>بیشترین روز: {faNum(maxDay)} تومان</span>
+            <span>{d.daily[d.daily.length - 1].day}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="fx-card p-5">
+        <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+          <div className="text-[14px] font-semibold text-white flex items-center gap-2">
+            <Users size={15} style={{ color: "var(--accent-2)" }} /> بهترین خریداران
+          </div>
+          <span className="text-[13px]" style={{ color: "var(--muted)" }}>
+            {faNum(u.withPhone || 0)} کاربر شماره تماس داده‌اند
+          </span>
+        </div>
+        <p className="text-[13px] mb-3" style={{ color: "var(--muted)" }}>
+          مرتب بر اساس مجموع خرید در همین دوره.
+        </p>
+
+        {!(d.buyers || []).length ? (
+          <EmptyState icon={Users} text="در این بازه خریدی ثبت نشده" />
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="fx-table">
+              <thead>
+                <tr><th>کاربر</th><th>شماره تماس</th><th>سفارش</th>
+                  <th>مجموع خرید</th><th>آخرین خرید</th></tr>
+              </thead>
+              <tbody>
+                {d.buyers.map((b) => (
+                  <tr key={b.tg_id}>
+                    <td>
+                      {esc0(b.first_name) || "—"}
+                      {b.username && (
+                        <span dir="ltr" className="mr-2" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                          @{b.username}
+                        </span>
+                      )}
+                    </td>
+                    <td dir="ltr" style={{ fontFamily: "var(--mono)", color: b.phone ? "var(--dim)" : "var(--muted)" }}>
+                      {b.phone || "—"}
+                    </td>
+                    <td style={{ fontFamily: "var(--mono)" }}>{faNum(b.orders)}</td>
+                    <td style={{ fontFamily: "var(--mono)", color: "var(--ok)" }}>
+                      {faNum(b.spent)}
+                    </td>
+                    <td style={{ color: "var(--muted)" }}>{String(b.lastBuy || "").slice(0, 10)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** نام کاربر ممکن است HTML داشته باشد — React خودش امن می‌کند، این فقط تمیزکاری است. */
+const esc0 = (s) => (s == null ? "" : String(s));
+
 function MonitorSection({ password }) {
   const [d, setD] = useState(null);
   const [heavy, setHeavy] = useState(null);
@@ -5347,6 +6027,30 @@ function MonitorSection({ password }) {
   const [heavyBusy, setHeavyBusy] = useState(false);
   const [live, setLive] = useState(true);
   const [err, setErr] = useState("");
+  // بستن آی‌پی یک عمل برگشت‌پذیر ولی مؤثر است — بدون تایید صریح
+  // انجام نمی‌شود، چون ممکن است همان آی‌پی مشتری واقعی باشد
+  const [blockTarget, setBlockTarget] = useState(null);
+  const [blockMsg, setBlockMsg] = useState(null);
+
+  useEffect(() => {
+    if (blockMsg) { const t = setTimeout(() => setBlockMsg(null), 5000); return () => clearTimeout(t); }
+  }, [blockMsg]);
+
+  const doBlock = async (ip) => {
+    try {
+      const res = await fetch(`${API_URL}/api/admin/firewall/block-ip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Password": password },
+        body: JSON.stringify({ ip, comment: "اتصال غیرعادی — از مانیتورینگ" }),
+      });
+      const j = await res.json().catch(() => ({}));
+      setBlockMsg(res.ok
+        ? { t: "ok", m: `${ip} بسته شد` }
+        : { t: "err", m: j.detail || "بستن ناموفق بود" });
+    } catch {
+      setBlockMsg({ t: "err", m: "اتصال برقرار نشد" });
+    }
+  };
 
   const get = async (sections) => {
     const r = await fetch(`${API_URL}/api/admin/monitor?sections=${sections}`,
@@ -5370,11 +6074,7 @@ function MonitorSection({ password }) {
   };
 
   useEffect(() => { load(); }, [password]);
-  useEffect(() => {
-    if (!live) return;
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
-  }, [live, password]);
+  usePolling(load, live ? 8000 : 0, [password]);
 
   if (loading) {
     return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
@@ -5527,7 +6227,20 @@ function MonitorSection({ password }) {
       <TopClientsCard password={password} />
 
       {/* اتصال‌های فعال */}
-      <ConnectionsCard conn={sec.connections} />
+      <Msg msg={blockMsg} />
+      <ConnectionsCard conn={sec.connections}
+        onBlock={(h) => setBlockTarget(h)} />
+
+      {blockTarget && (
+        <ConfirmModal
+          title={`بستن ${blockTarget.ip}؟`}
+          desc={`این آی‌پی ${faNum(blockTarget.count)} اتصال دارد (${faNum(blockTarget.pct)}٪ کل). `
+                + "با بستنش، اگر مشتری خودتان باشد سرویسش قطع می‌شود. "
+                + "هر وقت خواستید از صفحه‌ی فایروال بازش کنید."}
+          confirmLabel="ببند"
+          onCancel={() => setBlockTarget(null)}
+          onConfirm={() => { doBlock(blockTarget.ip); setBlockTarget(null); }} />
+      )}
 
       {/* پورت‌های باز */}
       <PortsCard ports={sec.ports || []} />
@@ -6276,12 +6989,9 @@ function useTunnel(password) {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    load();
-    // نودها هر ۲۰ ثانیه ping می‌زنند، پس تازه‌سازی خودکار
-    const t = setInterval(load, 20000);
-    return () => clearInterval(t);
-  }, [password]);
+  useEffect(() => { load(); }, [password]);
+  // نودها هر ۲۰ ثانیه ping می‌زنند — ولی وقتی تب مخفی است بی‌فایده
+  usePolling(load, 20000, [password]);
 
   return { data, loading, reload: load };
 }
@@ -7337,11 +8047,8 @@ function SystemHealth({ password }) {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 60000);
-    return () => clearInterval(t);
-  }, [password]);
+  useEffect(() => { load(); }, [password]);
+  usePolling(load, 60000, [password]);
 
   const recheck = async () => {
     setBusy(true);
@@ -10258,11 +10965,8 @@ export default function App() {
   const currentNav = ALL_NAV.find((n) => n.key === active);
   const filteredNav = (items) => search ? items.filter((n) => n.label.includes(search)) : items;
 
-  // پس‌زمینه‌ی ریشه عمداً شفاف است: لایه‌ی نورِ body::before باید از
-  // زیر آن دیده شود، وگرنه بلورِ کارت‌ها چیزی برای شکستن ندارد و کل
-  // افکت شیشه‌ای بی‌اثر می‌ماند — دقیقاً همان اتفاقی که افتاده بود.
   return (
-    <div className="min-h-screen w-full flex" style={{ background: "transparent" }} dir="rtl">
+    <div className="min-h-screen w-full flex" style={{ background: "var(--bg)" }} dir="rtl">
       {open && <div className="fx-backdrop fx-fade" onClick={() => setOpen(false)} />}
 
       <aside className={`fx-side ${open ? "open" : ""}`}>
@@ -10361,6 +11065,7 @@ export default function App() {
           {active === "bot-plans" && <BotPlansSection password={password} />}
           {active === "bot-orders" && <BotOrdersSection password={password} />}
           {active === "bot-users" && <BotUsersSection password={password} />}
+          {active === "bot-report" && <BotReportSection password={password} />}
           {active === "bot-coins" && <BotCoinsSection password={password} />}
           {active === "bot-affiliates" && <BotAffiliates password={password} />}
           {active === "bill-dash" && <BillingDash password={password} />}
@@ -10373,6 +11078,8 @@ export default function App() {
           {active === "tun-nodes" && <TunnelNodes password={password} />}
           {active === "tun-list" && <TunnelList password={password} />}
           {active === "monitor" && <MonitorSection password={password} />}
+          {active === "fw-rules" && <FirewallRules password={password} />}
+          {active === "fw-blocked" && <FirewallBlocked password={password} />}
           {active === "tun-health" && <SystemHealth password={password} />}
           {active === "tun-events" && <TunnelEvents password={password} />}
           {active === "bill-settings" && <BillingSettings password={password} />}
