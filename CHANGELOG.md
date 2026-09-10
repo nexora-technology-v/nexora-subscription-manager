@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.1.8]
+
+### Fixed — Approving a receipt did nothing, forever
+
+Tapping ✅ on a receipt produced no config, no error, and no visible change: the same
+receipt sat there with the same buttons, apparently waiting to be approved again. Two
+bugs stacked on top of each other.
+
+The callback handler called `approve_order` and **discarded its return value**. Success
+or failure, nothing was answered, nothing was edited, no message was sent. The admin
+had no way to know anything had happened — and the panel's real error message was
+thrown away every single time.
+
+Worse, the order was marked `approved` *before* the config was built. When the build
+failed the status stayed `approved` with no subscription attached, so the next attempt
+was rejected with "this order is already approved". The order was unrecoverable and the
+customer had paid for nothing.
+
+Now the config is built first and the order is only marked approved once it exists. A
+failure leaves the order in the review queue so it can be retried, reports the panel's
+actual error to the admin, and says the order is still pending. Orders already stuck in
+the `approved`-without-a-config state from earlier versions can be approved again
+instead of being refused.
+
+### Changed — Bot messages are readable again
+
+1.1.7 removed the decorative `━━━` rules, which was right, but stripped the functional
+emoji along with them and left blocks of undifferentiated text. Rows now carry a leading
+marker so the eye can scan them — 📦 for volume, ⏳ for validity, 📱 for devices, 💰 for
+amounts, 💳 for the card, 🔗 for links — on plan details, checkout, delivery, my
+subscriptions, the wallet, and the in-bot admin panel. No decorative rules were brought
+back.
+
 ## [1.1.7]
 
 ### Fixed — A paid order produced nothing when no default inbound was set

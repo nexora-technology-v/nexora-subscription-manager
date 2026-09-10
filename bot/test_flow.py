@@ -408,6 +408,51 @@ rep = [s for s in SENT if s["to"] == -100123]
 check("گزارش به گروه رفت", len(rep) > 0)
 check("در تاپیک آمار", any(s.get("topic") == 4 for s in rep))
 
+# ═══════════════ شکست ساخت کانفیگ هنگام تایید ═══════════════
+section("شکست ساخت کانفیگ هنگام تایید")
+
+# سناریوی واقعی گزارش‌شده: ادمین ✅ می‌زند، کانفیگ ساخته نمی‌شود،
+# هیچ پیامی نمی‌آید و همان رسید دوباره منتظر تایید می‌ماند.
+# دو باگ داشت: نتیجه‌ی approve_order دور ریخته می‌شد، و سفارش قبل از
+# ساخت کانفیگ approved می‌شد و بعد برای همیشه گیر می‌کرد.
+u3 = D.get_user(555)
+o_fail = D.create_order(u3["id"], plan["id"], plan["price"], plan["price"])
+D.exec("UPDATE orders SET status='awaiting' WHERE tenant_id=? AND id=?",
+       (tid, o_fail["id"]))
+
+_real_create = H.XUI.create_subscription
+
+
+def _boom(self, *a, **k):
+    raise H.XUIError("پنل: inbound not found")
+
+
+H.XUI.create_subscription = _boom
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(999, f"ap:{o_fail['id']}"))
+o_after = D.get_order(o_fail["id"])
+
+check("سفارش با شکست ساخت، approved نمی‌شود",
+      o_after["status"] != "approved", o_after["status"])
+admin_msgs = [s for s in SENT if s["to"] == 999]
+check("خطا به ادمین گزارش می‌شود", len(admin_msgs) > 0,
+      f"{len(admin_msgs)} پیام")
+check("متن خطای واقعی پنل دیده می‌شود",
+      any("inbound not found" in s["text"] for s in admin_msgs))
+check("برای مشتری کانفیگی فرستاده نمی‌شود",
+      len([s for s in SENT if s["to"] == 555]) == 0)
+
+# حالا مشکل رفع شد — تایید دوباره باید کار کند، نه اینکه بگوید
+# «قبلاً تایید شده»
+H.XUI.create_subscription = _real_create
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(999, f"ap:{o_fail['id']}"))
+o_retry = D.get_order(o_fail["id"])
+check("تلاش دوباره بعد از رفع مشکل موفق است",
+      o_retry["status"] == "approved", o_retry["status"])
+check("این بار کانفیگ برای مشتری رفت",
+      len([s for s in SENT if s["to"] == 555]) > 0)
+
 # ═══════════════ اینباند پیش‌فرض تنظیم‌نشده ═══════════════
 section("اینباند پیش‌فرض تنظیم‌نشده")
 

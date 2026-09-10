@@ -178,9 +178,8 @@ def welcome_text(ctx, user):
             status = f"<b>{core.fa(left)} روز</b> باقی مانده"
 
         lines += [
-            "📦 <b>اشتراک فعال شما</b>",
-            esc(s.get("plan_name") or "اشتراک شما"),
-            status,
+            f"📦 <b>{esc(s.get('plan_name') or 'اشتراک شما')}</b>",
+            f"⏳ {status}",
         ]
         if len(subs) > 1:
             lines.append(f"<i>و {core.fa(len(subs) - 1)} اشتراک دیگر</i>")
@@ -307,21 +306,23 @@ def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
 
     ips = p["ip_limit"]
     days = p["days"]
+    # هر سطر یک ایموجیِ نشانه دارد تا چشم بتواند اسکن کند. بدون
+    # آن‌ها، سطرها در موبایل یک بلوک متن یکنواخت می‌شوند.
     lines = [
-        f"📦 <b>{esc(p['name'])}</b>",
+        f"<b>{esc(p['name'])}</b>",
         "",
-        f"{core.fmt_gb(p['gb'])} ترافیک",
-        f"{core.fa(days)} روز اعتبار" if days else "بدون محدودیت زمانی",
-        f"{core.fa(ips) + ' دستگاه هم‌زمان' if ips else 'بدون محدودیت دستگاه'}",
+        f"📦 {core.fmt_gb(p['gb'])} ترافیک",
+        (f"⏳ {core.fa(days)} روز اعتبار" if days else "⏳ بدون محدودیت زمانی"),
+        (f"📱 {core.fa(ips)} دستگاه هم‌زمان" if ips else "📱 بدون محدودیت دستگاه"),
     ]
     if p.get("description"):
-        lines += ["", esc(p["description"])]
-    lines += ["", f"قیمت: <b>{core.toman(p['price'])}</b> تومان"]
+        lines += ["", f"<i>{esc(p['description'])}</i>"]
+    lines += ["", f"💰 قیمت: <b>{core.toman(p['price'])}</b> تومان"]
 
     rows = []
     if has_coin_discount:
         lines.append(
-            f"با <b>{core.fa(pr['coins_used'])}</b> سکه‌ی شما: "
+            f"🪙 با <b>{core.fa(pr['coins_used'])}</b> سکه‌ی شما: "
             f"<b>{core.toman(pr['final'])}</b> تومان "
             f"<i>({core.fa(pr['coin_percent'])}٪ تخفیف)</i>")
         rows.append([(f"🪙 خرید با تخفیف — {core.toman(pr['final'])} تومان",
@@ -374,29 +375,29 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins):
     lines = [
         "🧾 <b>سفارش شما</b>",
         "",
-        esc(p["name"]),
-        f"{core.fmt_gb(p['gb'])} · {core.fmt_days(p['days'])}",
+        f"📦 {esc(p['name'])}",
+        f"<i>{core.fmt_gb(p['gb'])} · {core.fmt_days(p['days'])}</i>",
         "",
     ]
     if pr["coin_discount"]:
         lines += [
             f"قیمت: <s>{core.toman(p['price'])}</s> تومان",
-            f"تخفیف سکه: {core.fa(pr['coin_percent'])}٪ "
+            f"🪙 تخفیف سکه: {core.fa(pr['coin_percent'])}٪ "
             f"({core.fa(pr['coins_used'])} سکه)",
         ]
     lines += [
-        f"مبلغ قابل پرداخت: <b>{core.toman(pr['final'])} تومان</b>",
+        f"💰 قابل پرداخت: <b>{core.toman(pr['final'])} تومان</b>",
         "",
-        "مبلغ را دقیقاً به همین کارت واریز کنید:",
+        "💳 <b>مبلغ را دقیقاً به همین کارت واریز کنید</b>",
         f"<code>{core.fmt_card(card['number'])}</code>",
-        f"به نام <b>{holder}</b>",
+        f"👤 {holder}",
         "",
         f"⏳ مهلت پرداخت: <b>{core.fa(ttl)} دقیقه</b>",
         "",
-        "بعد از واریز، <b>عکس رسید</b> یا <b>متن پیامک بانک</b> را "
+        "📸 بعد از واریز، <b>عکس رسید</b> یا <b>متن پیامک بانک</b> را "
         "همین‌جا بفرستید تا بررسی شود.",
         "",
-        f"<i>شناسه‌ی سفارش:</i> <code>#{order['id']}</code>",
+        f"<i>کد پیگیری:</i> <code>#{order['id']}</code>",
     ]
 
     _reply(ctx, chat_id, message_id, "\n".join(lines),
@@ -556,10 +557,9 @@ def _waiting_text(ctx, order_id):
 
     txt = (
         "✅ <b>رسیدتان رسید</b>\n\n"
-        "الان در صف بررسی است. معمولاً کمتر از <b>۱۵ دقیقه</b> طول می‌کشد و "
-        "به‌محض تأیید، اشتراک همین‌جا برایتان می‌آید.\n\n"
-        "لازم نیست منتظر بمانید — می‌توانید تلگرام را ببندید، "
-        "پیام به شما می‌رسد.\n\n"
+        "⏳ الان در صف بررسی است — معمولاً کمتر از <b>۱۵ دقیقه</b>.\n"
+        "📩 به‌محض تأیید، اشتراک همین‌جا برایتان می‌آید.\n\n"
+        "<i>لازم نیست منتظر بمانید؛ می‌توانید تلگرام را ببندید.</i>\n\n"
         f"<i>کد پیگیری:</i> <code>#{order_id}</code>"
     )
     if support:
@@ -611,18 +611,26 @@ def approve_order(ctx, order_id, admin_tg_id):
     order = ctx.db.get_order(order_id)
     if not order:
         return False, "سفارش پیدا نشد"
-    if order["status"] == "approved":
-        return False, "این سفارش قبلاً تایید شده"
+    # سفارشی که تایید شده *و* کانفیگش ساخته شده، دوباره تایید نمی‌شود.
+    #
+    # ولی سفارشی که در نسخه‌های قبل approved شد و ساخت کانفیگش شکست
+    # خورد، بدون sub_id مانده است. اگر آن را هم رد کنیم، برای همیشه
+    # گیر می‌کند و مشتری پول داده و چیزی نگرفته. این‌ها باید بتوانند
+    # دوباره تلاش کنند.
+    if order["status"] == "approved" and order.get("sub_id"):
+        return False, "این سفارش قبلاً تایید شده و کانفیگش ساخته شده"
 
-    ctx.db.exec(
-        """UPDATE orders SET status='approved', reviewed_by=?,
-                             reviewed_at=CURRENT_TIMESTAMP
-           WHERE tenant_id=? AND id=?""",
-        (admin_tg_id, ctx.tid, order_id)
-    )
+    def _mark_approved():
+        ctx.db.exec(
+            """UPDATE orders SET status='approved', reviewed_by=?,
+                                 reviewed_at=CURRENT_TIMESTAMP
+               WHERE tenant_id=? AND id=?""",
+            (admin_tg_id, ctx.tid, order_id)
+        )
 
     # شارژ کیف پول کانفیگ ندارد — فقط موجودی اضافه می‌شود
     if order.get("kind") == "topup":
+        _mark_approved()
         u = ctx.db.get_user_by_id(order["user_id"])
         ctx.db.add_balance(u["id"], order["amount"], "topup",
                            "شارژ کیف پول", order_id)
@@ -639,12 +647,20 @@ def approve_order(ctx, order_id, admin_tg_id):
             f"مبلغ: {core.toman(order['amount'])} تومان")
         return True, "شارژ انجام شد"
 
+    # ساخت کانفیگ *قبل* از تایید نهایی.
+    #
+    # قبلاً سفارش اول approved می‌شد و بعد کانفیگ ساخته می‌شد. اگر
+    # ساخت شکست می‌خورد، سفارش برای همیشه در حالت «تایید شده ولی
+    # بدون کانفیگ» گیر می‌کرد و تلاش دوباره هم با پیام «قبلاً تایید
+    # شده» رد می‌شد. حالا تا کانفیگ ساخته نشود، سفارش در صف بررسی
+    # می‌ماند و ادمین می‌تواند دوباره تایید بزند.
     ok, result = provision(ctx, order_id)
     if not ok:
         ctx.db.exec("UPDATE orders SET admin_note=? WHERE tenant_id=? AND id=?",
                     (f"خطای ساخت: {result}", ctx.tid, order_id))
         return False, result
 
+    _mark_approved()
     user = ctx.db.get_user_by_id(order["user_id"])
 
     # پورسانت همکار فروش — بعد از ساخت موفق کانفیگ، چون تا وقتی
@@ -896,16 +912,16 @@ def deliver(ctx, user, sub):
     lines = [
         f"✅ <b>اشتراک شما {title}</b>",
         "",
-        f"<b>{esc(str(sub.get('plan_name') or 'اشتراک'))}</b>",
-        f"{core.fmt_gb(sub.get('gb'))} ترافیک",
+        f"📦 <b>{esc(str(sub.get('plan_name') or 'اشتراک'))}</b>",
+        f"💾 {core.fmt_gb(sub.get('gb'))} ترافیک",
     ]
     if d is not None:
-        line = f"<b>{core.fa(d)} روز</b> اعتبار"
+        line = f"⏳ <b>{core.fa(d)} روز</b> اعتبار"
         if sub.get("expires_at"):
             line += f" — تا {core.fa(str(sub['expires_at'])[:10])}"
         lines.append(line)
     if sub.get("client_email"):
-        lines.append(f"نام کانفیگ: <code>{esc(sub['client_email'])}</code>")
+        lines.append(f"🏷 <code>{esc(sub['client_email'])}</code>")
 
     if url:
         lines += [
@@ -1003,25 +1019,25 @@ def show_subs(ctx, user, chat_id, message_id):
             bar = "█" * filled + "░" * (10 - filled)
             left_gb = max(0, round(total_gb - used_gb, 1))
             lines.append(f"<code>{bar}</code> {core.fa(pct)}٪")
-            lines.append(f"<b>{core.fa(left_gb)} گیگ</b> باقی مانده "
+            lines.append(f"💾 <b>{core.fa(left_gb)} گیگ</b> باقی مانده "
                          f"<i>({core.fa(used_gb)} از {core.fmt_gb(total_gb)} مصرف شده)</i>")
         elif used_gb is not None:
-            lines.append(f"<b>{core.fa(used_gb)} گیگ</b> مصرف شده — حجم نامحدود")
+            lines.append(f"💾 <b>{core.fa(used_gb)} گیگ</b> مصرف شده — حجم نامحدود")
         else:
-            lines.append(f"{core.fmt_gb(total_gb)} ترافیک")
+            lines.append(f"💾 {core.fmt_gb(total_gb)} ترافیک")
 
         if d is None:
-            lines.append("بدون محدودیت زمانی")
+            lines.append("⏳ بدون محدودیت زمانی")
         elif expired:
             lines.append(f"⛔ <b>{core.fa(abs(d))} روز پیش</b> منقضی شده")
         else:
-            line = f"<b>{core.fa(d)} روز</b> اعتبار"
+            line = f"⏳ <b>{core.fa(d)} روز</b> اعتبار"
             if s.get("expires_at"):
                 line += f" — تا {core.fa(str(s['expires_at'])[:10])}"
             lines.append(line)
 
         if s.get("client_email"):
-            lines.append(f"<i>نام کانفیگ:</i> <code>{esc(s['client_email'])}</code>")
+            lines.append(f"🏷 <code>{esc(s['client_email'])}</code>")
 
         if s.get("sub_url"):
             lines.append(f"🔗 <code>{esc(s['sub_url'])}</code>")
@@ -1049,10 +1065,10 @@ def show_wallet(ctx, user, chat_id, message_id):
     lines = [
         "👛 <b>کیف پول</b>",
         "",
-        f"موجودی: <b>{core.toman(u['balance'])}</b> تومان",
+        f"💰 موجودی: <b>{core.toman(u['balance'])}</b> تومان",
     ]
     if txs:
-        lines += ["", "<b>آخرین تراکنش‌ها</b>"]
+        lines += ["", "📄 <b>آخرین تراکنش‌ها</b>"]
         for t in txs:
             sign = "+" if t["amount"] > 0 else "−"
             lines.append(f"{sign} {core.toman(abs(t['amount']))} · "
@@ -1616,11 +1632,11 @@ def show_admin(ctx, user, chat_id, message_id=None):
 
     txt = (
         f"⚙️ <b>پنل مدیریت</b> · {esc(ctx.brand())}\n\n"
-        f"کاربران   <b>{core.fa(st.get('users', 0))}</b>\n"
-        f"اشتراک فعال   <b>{core.fa(st.get('active_subs', 0))}</b>\n"
-        f"رسید در انتظار   <b>{core.fa(pending)}</b>\n"
-        f"تیکت باز   <b>{core.fa(st.get('open_tickets', 0))}</b>\n\n"
-        f"فروش کل   <b>{core.toman(st.get('revenue_total', 0))}</b> تومان"
+        f"👥 کاربران   <b>{core.fa(st.get('users', 0))}</b>\n"
+        f"📦 اشتراک فعال   <b>{core.fa(st.get('active_subs', 0))}</b>\n"
+        f"💳 رسید در انتظار   <b>{core.fa(pending)}</b>\n"
+        f"🎫 تیکت باز   <b>{core.fa(st.get('open_tickets', 0))}</b>\n\n"
+        f"💰 فروش کل   <b>{core.toman(st.get('revenue_total', 0))}</b> تومان"
     )
     if pending:
         txt += f"\n\n⏳ <b>{core.fa(pending)}</b> رسید منتظر بررسی شماست."
@@ -1747,11 +1763,11 @@ def admin_user_detail(ctx, user, chat_id, message_id, target_id):
         f"👤 <b>{esc(u.get('first_name') or 'بدون نام')}</b>"
         + (f" · @{esc(u['username'])}" if u.get("username") else "") + "\n"
         f"<code>{u['tg_id']}</code>\n\n"
-        f"سکه   <b>{core.fa(u.get('coins', 0))}</b>\n"
-        f"کیف پول   <b>{core.toman(u.get('balance', 0))}</b> تومان\n"
-        f"اشتراک فعال   <b>{core.fa(len(active))}</b>\n"
-        f"عضویت   {core.fa(str(u.get('created_at', ''))[:10])}\n\n"
-        f"کد دعوت   <code>{u.get('ref_code', '—')}</code>"
+        f"🪙 سکه   <b>{core.fa(u.get('coins', 0))}</b>\n"
+        f"👛 کیف پول   <b>{core.toman(u.get('balance', 0))}</b> تومان\n"
+        f"📦 اشتراک فعال   <b>{core.fa(len(active))}</b>\n"
+        f"📅 عضویت   {core.fa(str(u.get('created_at', ''))[:10])}\n\n"
+        f"🔗 کد دعوت   <code>{u.get('ref_code', '—')}</code>"
     )
     if u.get("is_blocked"):
         txt += "\n\n🚫 <b>این کاربر مسدود است</b>"
@@ -1773,11 +1789,11 @@ def admin_stats(ctx, user, chat_id, message_id=None):
     st = ctx.db.stats()
     txt = (
         f"📊 <b>آمار</b>\n\n"
-        f"کاربران   <b>{core.fa(st.get('users', 0))}</b>\n"
-        f"اشتراک فعال   <b>{core.fa(st.get('active_subs', 0))}</b>\n"
-        f"رسید در انتظار   <b>{core.fa(st.get('pending', 0))}</b>\n"
-        f"تیکت باز   <b>{core.fa(st.get('open_tickets', 0))}</b>\n\n"
-        f"فروش کل   <b>{core.toman(st.get('revenue_total', 0))}</b> تومان"
+        f"👥 کاربران   <b>{core.fa(st.get('users', 0))}</b>\n"
+        f"📦 اشتراک فعال   <b>{core.fa(st.get('active_subs', 0))}</b>\n"
+        f"💳 رسید در انتظار   <b>{core.fa(st.get('pending', 0))}</b>\n"
+        f"🎫 تیکت باز   <b>{core.fa(st.get('open_tickets', 0))}</b>\n\n"
+        f"💰 فروش کل   <b>{core.toman(st.get('revenue_total', 0))}</b> تومان"
     )
     return _reply(ctx, chat_id, message_id, txt,
                   kb([[("🔄 تازه‌سازی", "adm:stats")], [("‹ بازگشت", "admin")]]))
@@ -2243,7 +2259,31 @@ def _on_callback(ctx, cq):
             if not ctx.is_admin(frm["id"]):
                 return ctx.bot.answer_cb(cq["id"], "دسترسی ندارید", alert=True)
             if action == "ap":
-                return approve_order(ctx, int(arg), frm["id"])
+                # نتیجه‌ی approve_order قبلاً دور ریخته می‌شد: نه
+                # answer_cb زده می‌شد نه پیام گروه عوض می‌شد. یعنی
+                # ادمین دکمه را می‌زد، هیچ اتفاقی نمی‌دید و همان رسید
+                # با همان دکمه‌ها سر جایش می‌ماند — انگار تایید اصلاً
+                # ثبت نشده. خطای واقعی پنل هم هیچ‌وقت دیده نمی‌شد.
+                okp, res = approve_order(ctx, int(arg), frm["id"])
+                # answer_cb بالای تابع یک‌بار مصرف شده، پس بازخورد را
+                # با پیام واقعی می‌دهیم نه با پاسخ کال‌بک
+                if okp:
+                    try:
+                        ctx.bot.edit_markup(chat_id, mid, keyboard=kb(
+                            [[(f"✅ تایید شد — سفارش #{arg}", f"adm:o:{arg}")]]))
+                    except TelegramError:
+                        pass
+                    ctx.bot.send(chat_id,
+                                 f"✅ <b>سفارش #{arg} تایید شد</b>\n"
+                                 "کانفیگ ساخته و برای مشتری ارسال شد.")
+                else:
+                    ctx.bot.send(
+                        chat_id,
+                        f"❌ <b>ساخت کانفیگ سفارش #{arg} ناموفق بود</b>\n\n"
+                        f"{esc(str(res))}\n\n"
+                        "سفارش هنوز در صف بررسی است — بعد از رفع مشکل "
+                        "دوباره تایید بزنید.")
+                return None
             # از ادمین دلیل می‌پرسیم — رد بدون توضیح، مشتری را سردرگم
             # و عصبانی می‌کند و بار پشتیبانی را بالا می‌برد.
             ctx.db.set_state(frm["id"], "adm_reject", {"t": str(arg)})
