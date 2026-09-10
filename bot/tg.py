@@ -83,6 +83,19 @@ class Bot:
             message_thread_id=topic_id,
         )
 
+    def action(self, chat_id, action="typing"):
+        """
+        نشان‌دادن «در حال تایپ…».
+
+        ساخت کانفیگ چند ثانیه طول می‌کشد و در آن فاصله کاربر فکر
+        می‌کند ربات قطع شده. این کوچک است ولی حس زنده‌بودن می‌دهد.
+        خطایش هم بی‌اهمیت است، پس بی‌صدا رد می‌شود.
+        """
+        try:
+            return self.call("sendChatAction", chat_id=chat_id, action=action)
+        except TelegramError:
+            return None
+
     def edit(self, chat_id, message_id, text, keyboard=None, parse_mode="HTML"):
         try:
             return self.call(
@@ -220,10 +233,18 @@ def kb(rows):
             if item is None:
                 continue
             text, data = item[0], item[1]
-            if len(item) > 2 and item[2] == "url":
+            kind = item[2] if len(item) > 2 else None
+            if kind == "url":
                 if not valid_button_url(data):
                     continue
                 line.append({"text": text, "url": data})
+            elif kind == "copy":
+                # دکمه‌ی کپی تلگرام: با یک ضربه متن در کلیپ‌بورد
+                # می‌نشیند. برای لینک اشتراک بهترین حالت است — کاربر
+                # لازم نیست متن را انتخاب کند و اشتباه ببرد.
+                if not data:
+                    continue
+                line.append({"text": text, "copy_text": {"text": str(data)[:256]}})
             else:
                 line.append({"text": text, "callback_data": data})
         if line:

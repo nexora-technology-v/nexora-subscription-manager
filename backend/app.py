@@ -5,6 +5,8 @@ import json
 import re as _re
 import secrets
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Header, Request, Response
@@ -1420,28 +1422,104 @@ def bot_orders(status: str = "awaiting", limit: int = 50,
         con.close()
 
 
+#: فیلترهای بخش کاربران — شرط SQL هرکدام.
+#
+# فهرست ساده‌ی «۵۰ کاربر آخر» وقتی چند صد کاربر دارید بی‌فایده است؛
+# ادمین معمولاً دنبال یک دسته‌ی مشخص می‌گردد: چه کسی خرید کرده، چه
+# کسی شماره داده، چه کسی اشتراکش تمام شده.
+_USER_FILTERS = {
+    "all": "1=1",
+    "active": "EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id=u.id "
+              "AND s.is_active=1 AND (s.expires_at IS NULL "
+              "OR s.expires_at > CURRENT_TIMESTAMP))",
+    "expired": "EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id=u.id) "
+               "AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id=u.id "
+               "AND s.is_active=1 AND (s.expires_at IS NULL "
+               "OR s.expires_at > CURRENT_TIMESTAMP))",
+    "never": "NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id=u.id)",
+    "buyers": "EXISTS (SELECT 1 FROM orders o WHERE o.user_id=u.id "
+              "AND o.status='approved')",
+    "blocked": "u.is_blocked=1",
+    "withPhone": "u.phone IS NOT NULL AND u.phone<>''",
+    "noPhone": "(u.phone IS NULL OR u.phone='')",
+    "withBalance": "COALESCE(u.balance,0) > 0",
+    "withCoins": "COALESCE(u.coins,0) > 0",
+    "referred": "u.referred_by IS NOT NULL",
+}
+
+_USER_SORTS = {
+    "new": "u.created_at DESC",
+    "old": "u.created_at ASC",
+    "spent": "spent DESC",
+    "balance": "COALESCE(u.balance,0) DESC",
+    "coins": "COALESCE(u.coins,0) DESC",
+    "lastSeen": "COALESCE(u.last_seen, u.created_at) DESC",
+}
+
+
 @app.get("/api/admin/bot/users")
-def bot_users(q: str = "", limit: int = 50, x_admin_password: str = Header(...)):
-    """جستجو در کاربران ربات."""
+def bot_users(q: str = "", limit: int = 50, offset: int = 0,
+              filter: str = "all", sort: str = "new",
+              x_admin_password: str = Header(...)):
+    """
+    کاربران ربات با فیلتر، مرتب‌سازی و آمار هر کاربر.
+
+    برای هر کاربر تعداد سفارش موفق، مجموع خرید و وضعیت اشتراک هم
+    برمی‌گردد — بدون این‌ها ادمین باید روی تک‌تک کاربران کلیک می‌کرد
+    تا بفهمد کدام مشتری واقعی است.
+    """
     check_auth(x_admin_password)
     con = _bot_conn()
     if not con:
         return {"users": [], "dbReady": False}
 
+    where = [_USER_FILTERS.get(filter, "1=1")]
+    params = []
+    if q:
+        like = f"%{q}%"
+        where.append("(u.first_name LIKE ? OR u.username LIKE ? "
+                     "OR CAST(u.tg_id AS TEXT) LIKE ? OR u.phone LIKE ?)")
+        params += [like, like, like, like]
+
+    where_sql = " AND ".join(f"({w})" for w in where)
+    order_sql = _USER_SORTS.get(sort, _USER_SORTS["new"])
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+
+    base = f"""
+        SELECT u.*,
+          (SELECT COUNT(*) FROM orders o
+            WHERE o.user_id=u.id AND o.status='approved') AS ordersCount,
+          (SELECT COALESCE(SUM(o.amount),0) FROM orders o
+            WHERE o.user_id=u.id AND o.status='approved') AS spent,
+          (SELECT COUNT(*) FROM subscriptions s WHERE s.user_id=u.id) AS subsCount,
+          (SELECT COUNT(*) FROM subscriptions s WHERE s.user_id=u.id
+            AND s.is_active=1 AND (s.expires_at IS NULL
+            OR s.expires_at > CURRENT_TIMESTAMP)) AS activeSubs
+        FROM users u
+        WHERE {where_sql}
+    """
+
     try:
-        if q:
-            like = f"%{q}%"
-            rows = con.execute(
-                "SELECT * FROM users WHERE first_name LIKE ? OR username LIKE ? "
-                "OR CAST(tg_id AS TEXT) LIKE ? ORDER BY created_at DESC LIMIT ?",
-                (like, like, like, min(limit, 200))
-            ).fetchall()
-        else:
-            rows = con.execute(
-                "SELECT * FROM users ORDER BY created_at DESC LIMIT ?",
-                (min(limit, 200),)
-            ).fetchall()
-        return {"users": [dict(r) for r in rows], "dbReady": True}
+        total = con.execute(
+            f"SELECT COUNT(*) AS n FROM users u WHERE {where_sql}",
+            params).fetchone()["n"]
+        rows = con.execute(f"{base} ORDER BY {order_sql} LIMIT ? OFFSET ?",
+                           params + [limit, offset]).fetchall()
+
+        # شمارش هر فیلتر، تا ادمین بدون کلیک‌کردن بداند هرکدام چندتاست
+        counts = {}
+        for key, cond in _USER_FILTERS.items():
+            try:
+                counts[key] = con.execute(
+                    f"SELECT COUNT(*) AS n FROM users u WHERE ({cond})"
+                ).fetchone()["n"]
+            except Exception:
+                counts[key] = 0
+
+        return {"users": [dict(r) for r in rows], "dbReady": True,
+                "total": total, "offset": offset, "limit": limit,
+                "counts": counts}
     except Exception as e:
         return {"users": [], "dbReady": True, "error": str(e)[:200]}
     finally:
@@ -2439,6 +2517,75 @@ def bot_subscriber_detail(tg_id: int, x_admin_password: str = Header(...)):
         "live": live,
         "liveAvailable": bool(live),
     }
+
+
+@app.post("/api/admin/bot/message/{tg_id}")
+def bot_message_user(tg_id: int, payload: dict,
+                     x_admin_password: str = Header(...)):
+    """
+    پیام مستقیم ادمین به یک کاربر، از طریق ربات.
+
+    بدون این، ادمین برای هر تماسی باید از پنل بیرون می‌رفت و در تلگرام
+    دنبال کاربر می‌گشت — و اگر کاربر یوزرنیم نداشت، اصلاً راهی نبود.
+    """
+    check_auth(x_admin_password)
+
+    text = (payload or {}).get("text") or ""
+    text = str(text).strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="متن پیام خالی است")
+    if len(text) > 3500:
+        raise HTTPException(status_code=400,
+                            detail="متن پیام از ۳۵۰۰ کاراکتر بیشتر است")
+
+    con = _bot_conn()
+    if not con:
+        raise HTTPException(status_code=404, detail="دیتابیس ربات موجود نیست")
+    try:
+        u = con.execute("SELECT id, tenant_id, first_name, is_blocked "
+                        "FROM users WHERE tg_id=?", (tg_id,)).fetchone()
+        if not u:
+            raise HTTPException(status_code=404, detail="کاربر پیدا نشد")
+        t = con.execute("SELECT bot_token FROM tenants WHERE id=?",
+                        (u["tenant_id"],)).fetchone()
+    finally:
+        con.close()
+
+    token = t["bot_token"] if t else None
+    if not token:
+        raise HTTPException(status_code=400, detail="توکن ربات تنظیم نشده است")
+
+    # امضای «پیام از پشتیبانی» تا کاربر نداند این پیام خودکار است یا انسان
+    body = json.dumps({
+        "chat_id": tg_id,
+        "text": f"💬 <b>پیام از پشتیبانی</b>\n\n{text}",
+        "parse_mode": "HTML",
+    }).encode()
+
+    try:
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data=body, headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            res = json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        try:
+            err = json.loads(e.read().decode("utf-8")).get("description", "")
+        except Exception:
+            err = str(e)
+        # پرتکرارترین حالت: کاربر ربات را بلاک کرده — این خطای ما نیست
+        if "blocked" in err.lower() or "deactivated" in err.lower():
+            raise HTTPException(status_code=409,
+                                detail="کاربر ربات را بلاک کرده یا حسابش حذف شده")
+        raise HTTPException(status_code=400, detail=f"تلگرام: {err[:200]}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"ارسال ناموفق: {str(e)[:160]}")
+
+    if not res.get("ok"):
+        raise HTTPException(status_code=400,
+                            detail=res.get("description") or "ارسال ناموفق")
+
+    return {"ok": True, "sentTo": tg_id}
 
 
 @app.post("/api/admin/bot/reload")

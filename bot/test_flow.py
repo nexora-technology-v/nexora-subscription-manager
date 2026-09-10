@@ -428,6 +428,14 @@ check("دکمه‌ی نامعتبر حذف می‌شود، معتبر می‌م�
 check("دکمه‌ی callback دست‌نخورده می‌ماند",
       any("callback_data" in b for r in _mixed["inline_keyboard"] for b in r))
 
+# دکمه‌ی کپی تلگرام — لینک اشتراک با یک ضربه در کلیپ‌بورد
+_cp = _kb([[("کپی", "https://sub.ir/x", "copy")], [("خالی", "", "copy")]])
+_flat = [b for r in _cp["inline_keyboard"] for b in r]
+check("دکمه‌ی کپی ساخته می‌شود",
+      len(_flat) == 1 and _flat[0].get("copy_text", {}).get("text") == "https://sub.ir/x",
+      str(_flat))
+check("دکمه‌ی کپی خالی ساخته نمی‌شود", len(_flat) == 1)
+
 # و اگر باز هم تلگرام صفحه‌کلید را رد کرد، متن باید برسد
 _real_send = FakeBot.send
 _calls = {"n": 0}

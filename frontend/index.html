@@ -4,9 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nexora | مدیریت صفحه اشتراک</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <!-- ایران‌سنس محلی است؛ فقط فونت مونواسپیس از گوگل می‌آید -->
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- ایران‌سنس محلی است. فونت مونواسپیس از گوگل می‌آید و در ایران
+         معمولاً بالا نمی‌آید، پس رندر را به آن گره نمی‌زنیم: با
+         media="print" بارگذاری‌اش غیرمسدودکننده می‌شود و اگر رسید،
+         onload فعالش می‌کند. اگر هم نرسید، زنجیره‌ی محلی --mono در
+         index.css جایش را می‌گیرد. -->
+    <link rel="stylesheet" media="print" onload="this.media='all'"
+          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" />
   </head>
   <body>
     <div id="root"></div>

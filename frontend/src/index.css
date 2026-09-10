@@ -37,6 +37,14 @@
   --danger: #F87171;
   --purple: #A78BFA;
   --side-w: 236px;
+
+  /* فونت اعداد و کدها.
+     JetBrains Mono از گوگل می‌آید و در ایران معمولاً بالا نمی‌آید؛
+     تا قبل از این، هر جای پنل که عدد یا کد داشت به مونواسپیس
+     پیش‌فرض سیستم می‌افتاد و با بقیه‌ی پنل جور درنمی‌آمد. حالا
+     پشتش یک زنجیره‌ی محلی هست که روی هر سیستمی وجود دارد. */
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", "Segoe UI Mono",
+          "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 * { -webkit-tap-highlight-color: transparent; }
@@ -139,7 +147,7 @@ input, select, textarea, button, optgroup {
 .fx-card-hl { border-color: rgba(90,169,230,.4); box-shadow: 0 0 26px rgba(43,127,214,.1); }
 
 /* ===== آمار ===== */
-.fx-stat-num { font-family: 'JetBrains Mono', monospace; font-size: 30px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
+.fx-stat-num { font-family: var(--mono); font-size: 30px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
 .fx-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; padding: 3px 7px; border-radius: 6px; }
 .fx-badge.up { background: rgba(52,211,153,.12); color: var(--ok); }
 .fx-badge.down { background: rgba(248,113,113,.12); color: var(--danger); }
@@ -213,7 +221,7 @@ select.fx-input {
 .fx-stepper-btn:disabled { opacity: .3; cursor: not-allowed; }
 .fx-stepper-val {
   flex: 1; text-align: center; border: none; background: transparent; color: var(--text);
-  font-size: 17px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+  font-size: 17px; font-weight: 700; font-family: var(--mono);
   outline: none; padding: 0 4px; min-width: 0; -moz-appearance: textfield;
 }
 .fx-stepper-val::-webkit-outer-spin-button, .fx-stepper-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }

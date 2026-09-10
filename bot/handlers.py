@@ -655,6 +655,15 @@ def approve_order(ctx, order_id, admin_tg_id):
     # بدون کانفیگ» گیر می‌کرد و تلاش دوباره هم با پیام «قبلاً تایید
     # شده» رد می‌شد. حالا تا کانفیگ ساخته نشود، سفارش در صف بررسی
     # می‌ماند و ادمین می‌تواند دوباره تایید بزند.
+    # ساخت کانفیگ چند ثانیه طول می‌کشد؛ تا آن موقع کاربر «در حال
+    # تایپ» می‌بیند و فکر نمی‌کند ربات قطع شده
+    try:
+        buyer = ctx.db.get_user_by_id(order["user_id"])
+        if buyer:
+            ctx.bot.action(buyer["tg_id"], "typing")
+    except Exception:
+        pass
+
     ok, result = provision(ctx, order_id)
     if not ok:
         ctx.db.exec("UPDATE orders SET admin_note=? WHERE tenant_id=? AND id=?",
@@ -906,6 +915,9 @@ def _deliver_kb(ctx, url):
     باز می‌شود؛ اگر آدرس اشتراک http(s) باشد، همان را دکمه می‌کنیم.
     """
     rows = []
+    if url:
+        # دکمه‌ی کپی تلگرام — کاربر لازم نیست متن را دستی انتخاب کند
+        rows.append([("📋 کپی لینک اشتراک", url, "copy")])
     if valid_button_url(url):
         rows.append([("📄 صفحه‌ی اشتراک من", url, "url")])
     rows.append([("📚 آموزش نصب", "help"), ("📊 اشتراک‌های من", "mysubs")])
@@ -950,8 +962,9 @@ def deliver(ctx, user, sub):
             "🔗 <b>لینک اشتراک شما</b>",
             f"<code>{esc(url)}</code>",
             "",
-            "<i>روی لینک بزنید تا کپی شود — یا با دکمه‌های پایین "
-            "مستقیم به برنامه‌تان اضافه کنید.</i>",
+            "<blockquote>با دکمه‌ی <b>کپی لینک</b> پایین، لینک را بردارید و "
+            "در برنامه‌تان وارد کنید. اگر بلد نیستید، «آموزش نصب» "
+            "قدم‌به‌قدم توضیح داده.</blockquote>",
         ]
     elif sub.get("configs"):
         # لینک اشتراک نداریم ولی خود کانفیگ‌ها را داریم — همان‌ها را

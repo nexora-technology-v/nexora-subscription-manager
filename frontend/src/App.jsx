@@ -350,7 +350,7 @@ function LoginScreen({ onLogin }) {
         </div>
         <Field label="رمز عبور مدیریت">
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()}
-            autoFocus className="fx-input" style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+            autoFocus className="fx-input" style={{ fontFamily: "var(--mono)" }} />
         </Field>
         {error && <p className="text-[12px] mb-3 flex items-center gap-1.5" style={{ color: "var(--danger)" }}><AlertTriangle size={13} />{error}</p>}
         <button onClick={submit} disabled={loading} className="fx-btn w-full py-3 text-[13px] flex items-center justify-center gap-2 mt-2">
@@ -452,7 +452,7 @@ function OverviewSection({ config, stats, navigate, dirty }) {
                           </div>
                         </td>
                         <td style={{ color: "var(--dim)" }}>{a.platform}</td>
-                        <td className="fx-hide-m" dir="ltr" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace", fontSize: 11 }}>
+                        <td className="fx-hide-m" dir="ltr" style={{ color: "var(--muted)", fontFamily: "var(--mono)", fontSize: 11 }}>
                           {a.scheme === "none" ? "—" : `${a.scheme}://`}
                         </td>
                         <td>
@@ -529,7 +529,7 @@ function PhonePreview({ config, os }) {
           <div className="flex items-center justify-center mb-1.5"><div className="w-14 h-1 rounded-full" style={{ background: "rgba(255,255,255,.15)" }} /></div>
           <div className="rounded-[1.7rem] overflow-hidden" style={{ background: "var(--bg)", minHeight: 380 }}>
             <div className="flex items-center justify-between px-4 pt-3 pb-1 text-[8px]" style={{ color: "var(--muted)" }}>
-              <span style={{ fontFamily: "'JetBrains Mono',monospace" }}>۱۰:۳۰</span>
+              <span style={{ fontFamily: "var(--mono)" }}>۱۰:۳۰</span>
               <div className="flex items-center gap-1"><span className="w-1 h-1 rounded-full" style={{ background: "var(--ok)" }} /><span>Nexora</span></div>
             </div>
             <div className="px-3.5 pb-4">
@@ -652,7 +652,7 @@ function VideosSection({ config, setConfig, requestDelete }) {
 
       <div className="mb-4">
         <InfoBox>
-          <b>چطور لینک بگیرم؟</b> ویدیو را در کانال تلگرام‌تان بفرستید، روی پیام لمس طولانی کنید و «Copy Link» را بزنید. لینکی شبیه <span dir="ltr" style={{ fontFamily: "'JetBrains Mono',monospace" }}>t.me/yanexoravpn/42</span> می‌گیرید.
+          <b>چطور لینک بگیرم؟</b> ویدیو را در کانال تلگرام‌تان بفرستید، روی پیام لمس طولانی کنید و «Copy Link» را بزنید. لینکی شبیه <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>t.me/yanexoravpn/42</span> می‌گیرید.
           <br /><span style={{ color: "var(--warn)" }}>توجه:</span> لینک Saved Messages شخصی برای مشتری‌ها باز نمی‌شود — حتماً از کانال عمومی استفاده کنید.
         </InfoBox>
       </div>
@@ -1075,7 +1075,7 @@ function SettingsSection({ config, setConfig, password, onPasswordChanged, onRes
         </Field>
         <Field label="CSS سفارشی" hint="برای کاربران حرفه‌ای — مستقیم به صفحه‌ی اشتراک تزریق می‌شود.">
           <textarea className="fx-input" dir="ltr" rows={4} value={a.customCss || ""} onChange={(e) => update({ customCss: e.target.value })}
-            placeholder=".my-class { color: red; }" style={{ fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5 }} />
+            placeholder=".my-class { color: red; }" style={{ fontFamily: "var(--mono)", fontSize: 11.5 }} />
         </Field>
       </div>
 
@@ -1146,7 +1146,7 @@ function ResellersSection({ config, setConfig, requestDelete, password }) {
           <br /><br />
           <b>دو روش تشخیص:</b>
           <br />
-          ۱. <b>پیشوند ایمیل</b> — کافی است در پنل 3x-ui، ایمیل مشتریان آن واسطه را با پیشوند بسازید (مثلاً <span dir="ltr" style={{ fontFamily: "'JetBrains Mono',monospace" }}>macan_ali@nexora</span>)
+          ۱. <b>پیشوند ایمیل</b> — کافی است در پنل 3x-ui، ایمیل مشتریان آن واسطه را با پیشوند بسازید (مثلاً <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>macan_ali@nexora</span>)
           <br />
           ۲. <b>دامنه اختصاصی</b> — واسطه یک دامنه می‌خرد و به IP همین سرور اشاره می‌دهد (کاملاً white-label)
         </InfoBox>
@@ -1496,13 +1496,13 @@ function ChangePasswordCard({ password, onPasswordChanged }) {
       <Field label="رمز عبور فعلی">
         <input className="fx-input" type={show ? "text" : "password"} value={current}
           onChange={(e) => setCurrent(e.target.value)} dir="ltr"
-          style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+          style={{ fontFamily: "var(--mono)" }} />
       </Field>
 
       <Field label="رمز عبور جدید" hint="حداقل ۸ کاراکتر — ترکیب حروف بزرگ/کوچک، عدد و علامت امن‌تر است">
         <input className="fx-input" type={show ? "text" : "password"} value={next}
           onChange={(e) => setNext(e.target.value)} dir="ltr"
-          style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+          style={{ fontFamily: "var(--mono)" }} />
       </Field>
 
       {next && (
@@ -1520,7 +1520,7 @@ function ChangePasswordCard({ password, onPasswordChanged }) {
       <Field label="تکرار رمز جدید">
         <input className="fx-input" type={show ? "text" : "password"} value={confirm}
           onChange={(e) => setConfirm(e.target.value)} dir="ltr"
-          style={{ fontFamily: "'JetBrains Mono',monospace",
+          style={{ fontFamily: "var(--mono)",
                    borderColor: confirm && next !== confirm ? "var(--danger)" : undefined }} />
       </Field>
 
@@ -1965,7 +1965,7 @@ function ConnectionTest({ password, tenant }) {
                   <span key={ib.id} className="fx-pill"
                     style={{ background: "var(--surface-3)", color: "var(--dim)",
                              border: "1px solid var(--border-2)" }}>
-                    <b style={{ fontFamily: "'JetBrains Mono',monospace" }}>#{ib.id}</b>
+                    <b style={{ fontFamily: "var(--mono)" }}>#{ib.id}</b>
                     {" "}{ib.remark || ib.protocol}
                     {ib.port ? ` · ${ib.port}` : ""}
                   </span>
@@ -2066,7 +2066,7 @@ function BotSection({ password, dirty }) {
           <div className="text-[11px] mt-5 pt-4" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
             اگر ادامه داشت، روی سرور اجرا کنید:{" "}
             <code dir="ltr" className="px-2 py-1 rounded-md"
-              style={{ background: "var(--surface-3)", color: "var(--accent-2)", fontFamily: "'JetBrains Mono',monospace" }}>
+              style={{ background: "var(--surface-3)", color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
               nexora doctor
             </code>
           </div>
@@ -2114,7 +2114,7 @@ function BotSection({ password, dirty }) {
           <div className="flex gap-2">
             <input className="fx-input" dir="ltr" type={showTok ? "text" : "password"}
               value={t.bot_token || ""} onChange={(e) => up({ bot_token: e.target.value })}
-              placeholder="123456:AAE..." style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+              placeholder="123456:AAE..." style={{ fontFamily: "var(--mono)" }} />
             <button onClick={() => setShowTok(!showTok)} className="fx-btn-g px-3 shrink-0">
               <Eye size={14} />
             </button>
@@ -2124,7 +2124,7 @@ function BotSection({ password, dirty }) {
         <Field label="آیدی عددی ادمین اصلی" hint="از @userinfobot بگیرید">
           <input className="fx-input" dir="ltr" value={t.owner_tg_id || ""}
             onChange={(e) => up({ owner_tg_id: e.target.value })} placeholder="123456789"
-            style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+            style={{ fontFamily: "var(--mono)" }} />
         </Field>
       </div>
 
@@ -2164,7 +2164,7 @@ function BotSection({ password, dirty }) {
               <input className="fx-input" dir="ltr" type="password" value={t.panel_token || ""}
                 onChange={(e) => up({ panel_token: e.target.value })}
                 placeholder="توکن را از پنل 3x-ui کپی کنید"
-                style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+                style={{ fontFamily: "var(--mono)" }} />
             </Field>
             <InfoBox>
               <b>چرا توکن بهتر است؟</b> رمز پنل دسترسی کامل می‌دهد و اگر لو برود
@@ -2187,7 +2187,7 @@ function BotSection({ password, dirty }) {
         <Field label="شناسه inbound پیش‌فرض" hint="عدد inbound که کانفیگ‌ها در آن ساخته شوند">
           <input className="fx-input" dir="ltr" value={t.default_inbound || ""}
             onChange={(e) => up({ default_inbound: e.target.value })} placeholder="1"
-            style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+            style={{ fontFamily: "var(--mono)" }} />
         </Field>
       </div>
 
@@ -2205,7 +2205,7 @@ function BotSection({ password, dirty }) {
         <Field label="آیدی گروه" hint="معمولاً با -100 شروع می‌شود">
           <input className="fx-input" dir="ltr" value={t.admin_group_id || ""}
             onChange={(e) => up({ admin_group_id: e.target.value })} placeholder="-1001234567890"
-            style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+            style={{ fontFamily: "var(--mono)" }} />
         </Field>
       </div>
 
@@ -2242,7 +2242,7 @@ function BotSection({ password, dirty }) {
             <Field label="شماره کارت">
               <input className="fx-input" dir="ltr" value={cd.number || ""}
                 onChange={(e) => { const l = [...cards]; l[i] = { ...cd, number: e.target.value }; upS({ cards: l }); }}
-                placeholder="6037997512345678" style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+                placeholder="6037997512345678" style={{ fontFamily: "var(--mono)" }} />
             </Field>
             <div className="fx-g3 grid grid-cols-2 gap-3">
               <Field label="به نام">
@@ -2292,7 +2292,7 @@ function BotSection({ password, dirty }) {
         بعد از ذخیره، روی سرور این دستور را بزنید تا ربات روشن شود:
         <br />
         <code dir="ltr" className="inline-block mt-2 px-3 py-1.5 rounded-lg text-[11.5px]"
-          style={{ background: "var(--surface-3)", color: "var(--accent-2)", fontFamily: "'JetBrains Mono',monospace" }}>
+          style={{ background: "var(--surface-3)", color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
           nexora bot enable
         </code>
       </InfoBox>
@@ -2493,7 +2493,7 @@ function ThemesSection({ config, setConfig, password }) {
                     <Check size={10} style={{ color: V.bg || "#06090F" }} />
                   </div>
                 )}
-                <span className="text-[12.5px] font-bold text-white" style={{ fontFamily: "'JetBrains Mono',monospace" }}>{t.name}</span>
+                <span className="text-[12.5px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>{t.name}</span>
                 <span className="text-[10px]" style={{ color: "var(--muted)" }}>· {t.fa}</span>
               </div>
               <div className="text-[10px] mt-1 leading-relaxed" style={{ color: "var(--muted)" }}>{t.desc}</div>
@@ -2535,7 +2535,7 @@ function ThemesSection({ config, setConfig, password }) {
                     </div>
                   )}
                 </div>
-                <div className="text-[11.5px] font-bold text-white" style={{ fontFamily: "'JetBrains Mono',monospace" }}>{p.name}</div>
+                <div className="text-[11.5px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>{p.name}</div>
                 <div className="text-[9.5px] mt-0.5" style={{ color: "var(--muted)" }}>{p.fa}</div>
               </button>
               {p.builtin === false && (
@@ -2651,7 +2651,7 @@ function AddPaletteModal({ password, onClose, onAdded }) {
                   ? { background: `${vars.accent}16`, border: `1px solid ${vars.accent}77` }
                   : { background: "var(--surface-3)", border: "1px solid var(--border-2)" }}>
                 <TemplateThumb id={id} vars={vars} active={preview === id} />
-                <div className="text-[10.5px] mt-1.5 font-semibold" style={{ color: preview === id ? vars.accent2 : "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+                <div className="text-[10.5px] mt-1.5 font-semibold" style={{ color: preview === id ? vars.accent2 : "var(--muted)", fontFamily: "var(--mono)" }}>
                   {id}
                 </div>
               </button>
@@ -2765,7 +2765,7 @@ function BotPlansSection({ password }) {
             <Field label="قیمت (تومان)">
               <input className="fx-input" dir="ltr" type="number" value={p.price ?? 0}
                 onChange={(e) => up(i, { price: Number(e.target.value) })}
-                style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+                style={{ fontFamily: "var(--mono)" }} />
             </Field>
           </div>
 
@@ -2927,13 +2927,13 @@ function BotOrdersSection({ password }) {
                 <div className="mt-2.5 rounded-xl p-3 text-[11px] leading-relaxed whitespace-pre-wrap"
                   dir="auto" style={{
                     background: "var(--surface-3)", border: "1px solid var(--border)",
-                    color: "var(--dim)", fontFamily: "'JetBrains Mono',monospace",
+                    color: "var(--dim)", fontFamily: "var(--mono)",
                     maxHeight: 130, overflowY: "auto",
                   }}>
                   {o.receipt_text}
                 </div>
               )}
-              <div className="text-[10.5px] mt-1.5" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+              <div className="text-[10.5px] mt-1.5" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                 #{o.id} · {o.created_at?.slice(0, 16)}
               </div>
             </div>
@@ -3038,74 +3038,282 @@ function StatusPill({ s }) {
 
 /* ===================== ربات: کاربران ===================== */
 
+// فیلترهای بخش کاربران — کلیدها باید عیناً با _USER_FILTERS در
+// backend/app.py بخوانند.
+const USER_FILTERS = [
+  { key: "all", label: "همه" },
+  { key: "active", label: "اشتراک فعال" },
+  { key: "expired", label: "منقضی‌شده" },
+  { key: "never", label: "بدون خرید" },
+  { key: "buyers", label: "خریدار" },
+  { key: "withPhone", label: "شماره دارد" },
+  { key: "noPhone", label: "بدون شماره" },
+  { key: "withBalance", label: "کیف پول دار" },
+  { key: "withCoins", label: "سکه دار" },
+  { key: "referred", label: "با دعوت" },
+  { key: "blocked", label: "مسدود" },
+];
+
+const USER_SORTS = [
+  { key: "new", label: "تازه‌ترین" },
+  { key: "old", label: "قدیمی‌ترین" },
+  { key: "spent", label: "بیشترین خرید" },
+  { key: "balance", label: "بیشترین موجودی" },
+  { key: "coins", label: "بیشترین سکه" },
+  { key: "lastSeen", label: "آخرین فعالیت" },
+];
+
+const PAGE = 40;
+
 function BotUsersSection({ password }) {
-  const [users, setUsers] = useState([]);
+  const [d, setD] = useState({ users: [], total: 0, counts: {} });
   const [q, setQ] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [sort, setSort] = useState("new");
+  const [offset, setOffset] = useState(0);
   const [detail, setDetail] = useState(null);
+  const [msgTo, setMsgTo] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const load = async (query = "") => {
+  const load = async (opts = {}) => {
+    const query = opts.q !== undefined ? opts.q : q;
+    const f = opts.filter || filter;
+    const s = opts.sort || sort;
+    const off = opts.offset !== undefined ? opts.offset : offset;
     setLoading(true);
     try {
-      const d = await fetch(`${API_URL}/api/admin/bot/users?q=${encodeURIComponent(query)}`,
-        { headers: { "X-Admin-Password": password } }).then(r => r.json());
-      setUsers(d.users || []);
+      const p = new URLSearchParams({
+        q: query, filter: f, sort: s, offset: off, limit: PAGE,
+      });
+      const r = await fetch(`${API_URL}/api/admin/bot/users?${p}`,
+        { headers: { "X-Admin-Password": password } }).then((x) => x.json());
+      setD({ users: r.users || [], total: r.total || 0, counts: r.counts || {} });
     } catch { /* بی‌صدا */ }
     finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, [password]);
+  useEffect(() => { load({ offset: 0 }); }, [password]);
+
+  // جستجوی زنده — بدون این، ادمین باید هر بار Enter بزند
+  useEffect(() => {
+    const t = setTimeout(() => { setOffset(0); load({ q, offset: 0 }); }, 350);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const pick = (key) => { setFilter(key); setOffset(0); load({ filter: key, offset: 0 }); };
+  const pickSort = (key) => { setSort(key); setOffset(0); load({ sort: key, offset: 0 }); };
+  const go = (off) => { setOffset(off); load({ offset: off }); };
+
+  const users = d.users;
+  const pages = Math.ceil(d.total / PAGE) || 1;
+  const page = Math.floor(offset / PAGE) + 1;
 
   return (
     <div className="fx-anim">
-      <SectionHead title="کاربران ربات" desc="جستجو در کاربرانی که با ربات تعامل داشته‌اند." />
+      <SectionHead title="کاربران ربات"
+        desc="هر کسی که با ربات تعامل داشته — با سابقه‌ی خرید، شماره تماس و امکان پیام مستقیم."
+        action={
+          <button onClick={() => load()} disabled={loading}
+            className="fx-btn-g px-3 py-2.5 text-[12px] flex items-center gap-1.5">
+            <RefreshCw size={13} /> بازخوانی
+          </button>
+        } />
 
-      <div className="fx-card p-4 mb-4 flex gap-2">
-        <div className="fx-search flex-1" style={{ width: "auto" }}>
+      <div className="fx-card p-4 mb-4">
+        <div className="fx-search mb-3" style={{ width: "auto" }}>
           <Search size={14} style={{ color: "var(--muted)" }} />
-          <input placeholder="نام، یوزرنیم یا آیدی عددی..." value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && load(q)} />
+          <input placeholder="نام، یوزرنیم، آیدی عددی یا شماره تماس..." value={q}
+            onChange={(e) => setQ(e.target.value)} />
+          {q && (
+            <button onClick={() => setQ("")} className="shrink-0">
+              <X size={13} style={{ color: "var(--muted)" }} />
+            </button>
+          )}
         </div>
-        <button onClick={() => load(q)} className="fx-btn px-4 py-2.5 text-[12px]">جستجو</button>
+
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {USER_FILTERS.map((f) => {
+            const on = filter === f.key;
+            const n = d.counts[f.key];
+            return (
+              <button key={f.key} onClick={() => pick(f.key)}
+                className="px-2.5 py-1.5 rounded-[9px] text-[11.5px] transition-all"
+                style={on
+                  ? { background: "var(--accent-2)", color: "#06090F", fontWeight: 600 }
+                  : { color: "var(--dim)", border: "1px solid var(--border-2)" }}>
+                {f.label}
+                {n !== undefined && (
+                  <span className="mr-1" style={{ opacity: 0.65 }}>({faNum(n)})</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10.5px]" style={{ color: "var(--muted)" }}>مرتب‌سازی:</span>
+          {USER_SORTS.map((s) => (
+            <button key={s.key} onClick={() => pickSort(s.key)}
+              className="px-2 py-1 rounded-[8px] text-[11px] transition-all"
+              style={sort === s.key
+                ? { background: "var(--accent-soft)", color: "var(--accent-2)" }
+                : { color: "var(--muted)" }}>
+              {s.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-14"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>
       ) : users.length === 0 ? (
-        <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
-          <Users size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[12.5px]" style={{ color: "var(--muted)" }}>کاربری یافت نشد</div>
-        </div>
+        <EmptyState icon={Users} text={q ? `چیزی برای «${q}» پیدا نشد` : "در این دسته کاربری نیست"} />
       ) : (
-        <div className="fx-card overflow-hidden">
-          {users.map((u, i) => (
-            <button key={u.id} onClick={() => setDetail(u.tg_id)}
-              className="w-full flex items-center justify-between gap-3 p-4 flex-wrap text-right transition-colors hover:bg-white/[.02]"
-              style={{ borderBottom: i < users.length - 1 ? "1px solid var(--border)" : "none" }}>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[12.5px] font-semibold text-white">{u.first_name || "بدون نام"}</span>
-                  {u.username && <span className="text-[11px]" dir="ltr" style={{ color: "var(--muted)" }}>@{u.username}</span>}
-                  {u.is_blocked === 1 && <span className="fx-pill" style={{ background: "rgba(248,113,113,.12)", color: "var(--danger)" }}>مسدود</span>}
-                </div>
-                <div className="text-[10.5px] mt-1" dir="ltr" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
-                  {u.tg_id} · {u.ref_code}
+        <>
+          <div className="fx-card overflow-hidden mb-3">
+            {users.map((u, i) => (
+              <div key={u.id}
+                className="flex items-center justify-between gap-3 p-4 flex-wrap transition-colors hover:bg-white/[.02]"
+                style={{ borderBottom: i < users.length - 1 ? "1px solid var(--border)" : "none" }}>
+                <button onClick={() => setDetail(u.tg_id)}
+                  className="min-w-0 flex-1 text-right">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[12.5px] font-semibold text-white">
+                      {u.first_name || "بدون نام"}
+                    </span>
+                    {u.username && (
+                      <span className="text-[11px]" dir="ltr" style={{ color: "var(--muted)" }}>
+                        @{u.username}
+                      </span>
+                    )}
+                    {u.activeSubs > 0 && (
+                      <span className="fx-pill" style={{ background: "rgba(52,211,153,.12)", color: "var(--ok)" }}>
+                        فعال
+                      </span>
+                    )}
+                    {u.is_blocked === 1 && (
+                      <span className="fx-pill" style={{ background: "rgba(248,113,113,.12)", color: "var(--danger)" }}>
+                        مسدود
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10.5px] mt-1 flex items-center gap-2 flex-wrap"
+                    style={{ color: "var(--muted)" }}>
+                    <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{u.tg_id}</span>
+                    {u.phone && (
+                      <>
+                        <span style={{ opacity: 0.4 }}>•</span>
+                        <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{u.phone}</span>
+                      </>
+                    )}
+                    {u.ordersCount > 0 && (
+                      <>
+                        <span style={{ opacity: 0.4 }}>•</span>
+                        <span>{faNum(u.ordersCount)} خرید · {faNum(u.spent)} تومان</span>
+                      </>
+                    )}
+                  </div>
+                </button>
+                <div className="flex items-center gap-3 text-[11.5px] shrink-0">
+                  {!!u.coins && <span style={{ color: "var(--warn)" }}>{faNum(u.coins)} سکه</span>}
+                  {!!u.balance && <span style={{ color: "var(--ok)" }}>{faNum(u.balance)}</span>}
+                  <button onClick={() => setMsgTo(u)} className="fx-ico-btn"
+                    title="پیام به این کاربر" style={{ width: 30, height: 30 }}>
+                    <Send size={13} />
+                  </button>
+                  <button onClick={() => setDetail(u.tg_id)} className="fx-ico-btn"
+                    title="پرونده‌ی کاربر" style={{ width: 30, height: 30 }}>
+                    <ChevronLeft size={14} />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-4 text-[11.5px] shrink-0">
-                <span style={{ color: "var(--warn)" }}>{u.coins || 0} سکه</span>
-                <span style={{ color: "var(--ok)" }}>{Number(u.balance || 0).toLocaleString("fa-IR")} تومان</span>
-                <ChevronLeft size={14} style={{ color: "var(--muted)" }} />
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-[11px]" style={{ color: "var(--muted)" }}>
+              {faNum(offset + 1)}–{faNum(Math.min(offset + PAGE, d.total))} از {faNum(d.total)}
+            </span>
+            {pages > 1 && (
+              <div className="flex items-center gap-2">
+                <button onClick={() => go(Math.max(0, offset - PAGE))} disabled={offset === 0}
+                  className="fx-btn-g px-3 py-2 text-[11.5px]">قبلی</button>
+                <span className="text-[11px]" style={{ color: "var(--dim)" }}>
+                  {faNum(page)} از {faNum(pages)}
+                </span>
+                <button onClick={() => go(offset + PAGE)} disabled={offset + PAGE >= d.total}
+                  className="fx-btn-g px-3 py-2 text-[11.5px]">بعدی</button>
               </div>
-            </button>
-          ))}
-        </div>
+            )}
+          </div>
+        </>
       )}
 
       {detail && (
-        <SubscriberModal tgId={detail} password={password} onClose={() => setDetail(null)} />
+        <SubscriberModal tgId={detail} password={password} onClose={() => setDetail(null)}
+          onMessage={(u) => { setDetail(null); setMsgTo(u); }} />
+      )}
+      {msgTo && (
+        <MessageUserModal user={msgTo} password={password} onClose={() => setMsgTo(null)} />
       )}
     </div>
+  );
+}
+
+function MessageUserModal({ user, password, onClose }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const name = user.first_name || user.tg_id;
+
+  const send = async () => {
+    if (!text.trim()) return;
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/bot/message/${user.tg_id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Password": password },
+        body: JSON.stringify({ text }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMsg({ t: "ok", m: "پیام فرستاده شد" });
+        setText("");
+        setTimeout(onClose, 1200);
+      } else {
+        setMsg({ t: "err", m: j.detail || "ارسال ناموفق بود" });
+      }
+    } catch {
+      setMsg({ t: "err", m: "اتصال برقرار نشد" });
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal title={`پیام به ${name}`} onClose={onClose} width="480px"
+      footer={
+        <div className="flex items-center justify-between gap-3 w-full">
+          <span className="text-[10.5px]" style={{ color: "var(--muted)" }}>
+            از طرف ربات، با عنوان «پیام از پشتیبانی» فرستاده می‌شود
+          </span>
+          <button onClick={send} disabled={busy || !text.trim()}
+            className="fx-btn px-4 py-2.5 text-[12.5px] flex items-center gap-1.5 shrink-0">
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} ارسال
+          </button>
+        </div>
+      }>
+      <Msg msg={msg} />
+      <textarea className="fx-input" rows={6} value={text} autoFocus
+        onChange={(e) => setText(e.target.value)}
+        placeholder="سلام! درباره‌ی سفارشتان تماس می‌گیرم…"
+        style={{ resize: "vertical", lineHeight: 1.8 }} />
+      <div className="text-[10.5px] mt-2 flex items-center justify-between"
+        style={{ color: "var(--muted)" }}>
+        <span>{faNum(text.length)} از ۳۵۰۰ کاراکتر</span>
+        {user.username && <span dir="ltr">@{user.username}</span>}
+      </div>
+      <InfoBox>
+        اگر کاربر ربات را بلاک کرده باشد، پیام نمی‌رسد و همین‌جا به شما گفته می‌شود.
+      </InfoBox>
+    </Modal>
   );
 }
 
@@ -3182,7 +3390,7 @@ function RollbackCard({ password }) {
                   <span className="text-[12.5px] font-semibold text-white">نسخه {s.version}</span>
                   {s.hasBot && <span className="fx-pill" style={{ background: "rgba(43,127,214,.12)", color: "var(--accent-2)" }}>شامل ربات</span>}
                 </div>
-                <div className="text-[10.5px] mt-1" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+                <div className="text-[10.5px] mt-1" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                   {s.createdAt?.replace("T", " ").slice(0, 16)} · {s.sizeMb} MB
                 </div>
               </div>
@@ -3298,7 +3506,7 @@ function BotTextsSection({ password }) {
                 {f.vars.map((v) => (
                   <code key={v} className="text-[9.5px] px-2 py-1 rounded-md"
                     style={{ background: "rgba(43,127,214,.14)", color: "var(--accent-2)",
-                             fontFamily: "'JetBrains Mono',monospace" }}>{v}</code>
+                             fontFamily: "var(--mono)" }}>{v}</code>
                 ))}
               </div>
             )}
@@ -3383,7 +3591,7 @@ function BotPreviewSection() {
       if (p.startsWith("<i>")) return <i key={i} style={{ opacity: .72 }}>{p.slice(3, -4)}</i>;
       if (p.startsWith("<code>")) return <code key={i} style={{
         background: "rgba(255,255,255,.09)", padding: "1px 5px", borderRadius: 4,
-        fontFamily: "'JetBrains Mono',monospace", fontSize: 9.5, color: "#8FC1EE" }}>{p.slice(6, -7)}</code>;
+        fontFamily: "var(--mono)", fontSize: 9.5, color: "#8FC1EE" }}>{p.slice(6, -7)}</code>;
       return p;
     });
   };
@@ -3564,7 +3772,7 @@ function BotStatsSection({ password }) {
             <div key={i} className="mb-3">
               <div className="flex justify-between mb-1.5">
                 <span className="text-[11.5px]" style={{ color: "var(--dim)" }}>{s.label}</span>
-                <span className="text-[11.5px] font-bold" style={{ color: c, fontFamily: "'JetBrains Mono',monospace" }}>
+                <span className="text-[11.5px] font-bold" style={{ color: c, fontFamily: "var(--mono)" }}>
                   {s.n} <span style={{ color: "var(--muted)", fontSize: 10 }}>({s.pct}٪)</span>
                 </span>
               </div>
@@ -3708,7 +3916,7 @@ const daysLeft = (ms) => {
   return d;
 };
 
-function SubscriberModal({ tgId, password, onClose }) {
+function SubscriberModal({ tgId, password, onClose, onMessage }) {
   const [d, setD] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -3758,11 +3966,19 @@ function SubscriberModal({ tgId, password, onClose }) {
               )}
             </div>
             <div className="text-[10.5px] mt-1.5" dir="ltr"
-              style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+              style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
               {u.tg_id}{u.phone ? ` · ${u.phone}` : ""}
             </div>
           </div>
-          <button onClick={onClose} className="fx-ico-btn shrink-0"><X size={16} /></button>
+          <div className="flex items-center gap-2 shrink-0">
+            {onMessage && u.tg_id && (
+              <button onClick={() => onMessage(u)}
+                className="fx-btn-g px-3 py-2 text-[11.5px] flex items-center gap-1.5">
+                <Send size={13} /> پیام
+              </button>
+            )}
+            <button onClick={onClose} className="fx-ico-btn"><X size={16} /></button>
+          </div>
         </div>
 
         <div className="p-5 overflow-y-auto flex-1" style={{ minHeight: 0 }}>
@@ -3790,7 +4006,7 @@ function SubscriberModal({ tgId, password, onClose }) {
                 ].map(([l, v, c2], i) => (
                   <div key={i} className="rounded-xl p-3 text-center"
                     style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
-                    <div className="text-[16px] font-bold" style={{ color: c2, fontFamily: "'JetBrains Mono',monospace" }}>{v}</div>
+                    <div className="text-[16px] font-bold" style={{ color: c2, fontFamily: "var(--mono)" }}>{v}</div>
                     <div className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>{l}</div>
                   </div>
                 ))}
@@ -3838,7 +4054,7 @@ function SubscriberModal({ tgId, password, onClose }) {
                     </div>
 
                     <div className="text-[10.5px] mb-3" dir="ltr"
-                      style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+                      style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                       {s.client_email}
                     </div>
 
@@ -3847,7 +4063,7 @@ function SubscriberModal({ tgId, password, onClose }) {
                         <div className="flex justify-between mb-2">
                           <span className="text-[11px]" style={{ color: "var(--dim)" }}>مصرف حجم</span>
                           <span className="text-[11.5px] font-bold"
-                            style={{ color: "var(--accent-2)", fontFamily: "'JetBrains Mono',monospace" }}>
+                            style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
                             {fmtBytes(used)} {total > 0 ? `/ ${fmtBytes(total)}` : "· نامحدود"}
                           </span>
                         </div>
@@ -3873,7 +4089,7 @@ function SubscriberModal({ tgId, password, onClose }) {
                             <div key={i} className="text-center">
                               <div className="text-[9.5px]" style={{ color: "var(--muted)" }}>{l}</div>
                               <div className="text-[11px] font-bold mt-0.5"
-                                style={{ color: c2, fontFamily: "'JetBrains Mono',monospace" }}>{v}</div>
+                                style={{ color: c2, fontFamily: "var(--mono)" }}>{v}</div>
                             </div>
                           ))}
                         </div>
@@ -3908,7 +4124,7 @@ function SubscriberModal({ tgId, password, onClose }) {
                           {o.plan_name || "—"}
                         </div>
                         <div className="text-[10px] mt-0.5"
-                          style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+                          style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                           #{o.id} · {String(o.created_at || "").slice(0, 10)}
                         </div>
                       </div>
@@ -4006,7 +4222,7 @@ function BotCoinsSection({ password }) {
         <Field label="حداقل مبلغ خرید برای احتساب" hint="خریدهای کمتر از این، سکه نمی‌دهند">
           <input className="fx-input" dir="ltr" type="number" value={s.min_purchase_for_coin ?? 0}
             onChange={(e) => upS({ min_purchase_for_coin: Number(e.target.value) })}
-            style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+            style={{ fontFamily: "var(--mono)" }} />
         </Field>
 
         <InfoBox tone="warn">
@@ -4037,13 +4253,13 @@ function BotCoinsSection({ password }) {
                 <label className="text-[10.5px] mb-1 block" style={{ color: "var(--muted)" }}>سکه لازم</label>
                 <input className="fx-input" dir="ltr" type="number" value={tr.coins}
                   onChange={(e) => { const l = [...tiers]; l[i] = { ...tr, coins: Number(e.target.value) }; upS({ coin_tiers: l }); }}
-                  style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+                  style={{ fontFamily: "var(--mono)" }} />
               </div>
               <div>
                 <label className="text-[10.5px] mb-1 block" style={{ color: "var(--muted)" }}>درصد تخفیف</label>
                 <input className="fx-input" dir="ltr" type="number" value={tr.pct}
                   onChange={(e) => { const l = [...tiers]; l[i] = { ...tr, pct: Number(e.target.value) }; upS({ coin_tiers: l }); }}
-                  style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+                  style={{ fontFamily: "var(--mono)" }} />
               </div>
             </div>
             <button onClick={() => upS({ coin_tiers: tiers.filter((_, x) => x !== i) })}
@@ -4098,7 +4314,7 @@ function InboundRow({ inb, checked, onToggle }) {
           )}
         </div>
         <div className="text-[10.5px] mt-1 flex items-center gap-2" style={{ color: "var(--muted)" }}>
-          <span dir="ltr" style={{ fontFamily: "'JetBrains Mono',monospace" }}>
+          <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>
             {inb.protocol || "—"}:{inb.port ?? "—"}
           </span>
           <span style={{ opacity: 0.4 }}>•</span>
@@ -4255,7 +4471,7 @@ function BotInboundsSection({ password }) {
               <InfoBox>
                 {defInb ? (
                   <>اینباند پیش‌فرض الان <b>{defInb.remark}</b> است (
-                    <span dir="ltr" style={{ fontFamily: "'JetBrains Mono',monospace" }}>
+                    <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>
                       {defInb.protocol}:{defInb.port}
                     </span>). تغییرش در «اتصال و تنظیمات» انجام می‌شود.</>
                 ) : (
@@ -4323,7 +4539,7 @@ function BotInboundsSection({ password }) {
                         )}
                       </div>
                       <div className="text-[10.5px] mt-1 flex items-center gap-2" style={{ color: "var(--muted)" }}>
-                        <span dir="ltr" style={{ fontFamily: "'JetBrains Mono',monospace" }}>
+                        <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>
                           {i.protocol || "—"}:{i.port ?? "—"}
                         </span>
                         <span style={{ opacity: 0.4 }}>•</span>
@@ -4754,7 +4970,7 @@ function BotAffiliates({ password }) {
             </span>
             <span className="text-[20px] font-extrabold"
               style={{ color: data.totalOwed > 0 ? "var(--warn)" : "var(--ok)",
-                       fontFamily: "'JetBrains Mono',monospace" }}>
+                       fontFamily: "var(--mono)" }}>
               {faNum(data.totalOwed)} <span className="text-[12px]">تومان</span>
             </span>
           </div>
@@ -4781,7 +4997,7 @@ function BotAffiliates({ password }) {
                 {a.name}
                 <span className="text-[10px] px-2 py-0.5 rounded-lg"
                   style={{ background: "var(--accent-soft)", color: "var(--accent-2)",
-                           fontFamily: "'JetBrains Mono',monospace" }}>
+                           fontFamily: "var(--mono)" }}>
                   {faNum(a.percent)}٪
                 </span>
                 {!a.active && (
@@ -4792,7 +5008,7 @@ function BotAffiliates({ password }) {
                 )}
               </div>
               <div className="text-[10.5px] mt-1.5" dir="ltr"
-                style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace",
+                style={{ color: "var(--muted)", fontFamily: "var(--mono)",
                          textAlign: "right" }}>
                 aff_{a.code}
                 {a.tg_id ? ` · ${a.tg_id}` : " · بدون تلگرام"}
@@ -4825,7 +5041,7 @@ function BotAffiliates({ password }) {
               <div key={i} className="p-3 rounded-xl text-center"
                 style={{ background: "var(--surface-3)" }}>
                 <div className="text-[14px] font-bold" style={{ color: col,
-                     fontFamily: "'JetBrains Mono',monospace" }}>
+                     fontFamily: "var(--mono)" }}>
                   {faNum(v)}
                 </div>
                 <div className="text-[9.5px] mt-1" style={{ color: "var(--muted)" }}>{l}</div>
@@ -4919,7 +5135,7 @@ function AffiliateForm({ password, affiliate, onClose, onDone }) {
             value={f.percent}
             onChange={(e) => setF({ ...f,
               percent: e.target.value.replace(/[^0-9.]/g, "").slice(0, 5) })}
-            style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+            style={{ fontFamily: "var(--mono)" }} />
           <div className="flex gap-1.5 shrink-0">
             {[5, 10, 15, 20].map((p) => (
               <button key={p} onClick={() => setF({ ...f, percent: p })}
@@ -4928,7 +5144,7 @@ function AffiliateForm({ password, affiliate, onClose, onDone }) {
                   background: +f.percent === p ? "var(--accent-soft)" : "transparent",
                   border: `1px solid ${+f.percent === p ? "rgba(43,127,214,.4)" : "var(--border)"}`,
                   color: +f.percent === p ? "var(--accent-2)" : "var(--muted)",
-                  fontFamily: "'JetBrains Mono',monospace",
+                  fontFamily: "var(--mono)",
                 }}>{faNum(p)}٪</button>
             ))}
           </div>
@@ -4941,7 +5157,7 @@ function AffiliateForm({ password, affiliate, onClose, onDone }) {
           value={f.tg_id}
           onChange={(e) => setF({ ...f, tg_id: e.target.value.replace(/[^0-9]/g, "") })}
           placeholder="123456789"
-          style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+          style={{ fontFamily: "var(--mono)" }} />
       </Field>
 
       {!editing && (
@@ -4949,7 +5165,7 @@ function AffiliateForm({ password, affiliate, onClose, onDone }) {
           <input className="fx-input" dir="ltr" value={f.code}
             onChange={(e) => setF({ ...f, code: e.target.value.replace(/[^A-Za-z0-9]/g, "") })}
             placeholder="yaser"
-            style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+            style={{ fontFamily: "var(--mono)" }} />
         </Field>
       )}
 
@@ -4998,7 +5214,7 @@ function AffiliatePayoutModal({ affiliate, password, onClose, onDone }) {
       <div className="p-3.5 rounded-xl mb-4" style={{ background: "var(--surface-3)" }}>
         <div className="flex justify-between text-[12px]">
           <span style={{ color: "var(--muted)" }}>مانده‌ی فعلی</span>
-          <span style={{ color: "var(--warn)", fontFamily: "'JetBrains Mono',monospace" }}>
+          <span style={{ color: "var(--warn)", fontFamily: "var(--mono)" }}>
             {faNum(affiliate.balance)} تومان
           </span>
         </div>
@@ -5008,7 +5224,7 @@ function AffiliatePayoutModal({ affiliate, password, onClose, onDone }) {
         <input className="fx-input" type="text" inputMode="numeric" dir="ltr"
           value={amount}
           onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
-          style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+          style={{ fontFamily: "var(--mono)" }} />
       </Field>
 
       <Field label="یادداشت (اختیاری)">
@@ -5107,7 +5323,7 @@ function TunnelOverview({ password }) {
               <I size={15} style={{ color: col }} />
             </div>
             <div className="fx-stat-num text-[19px] font-extrabold text-white leading-none"
-              style={{ fontFamily: "'JetBrains Mono',monospace" }}>{faNum(v)}</div>
+              style={{ fontFamily: "var(--mono)" }}>{faNum(v)}</div>
             <div className="text-[10.5px] mt-1.5" style={{ color: "var(--dim)" }}>{l}</div>
           </div>
         ))}
@@ -5144,7 +5360,7 @@ function TunnelOverview({ password }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-4 shrink-0 text-[11px]"
-                  style={{ color: "var(--dim)", fontFamily: "'JetBrains Mono',monospace" }}>
+                  style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
                   {n.cpu_percent != null && <span>CPU {faNum(n.cpu_percent)}٪</span>}
                   {n.mem_percent != null && <span>RAM {faNum(n.mem_percent)}٪</span>}
                   <span style={{ color: n.online ? "var(--ok)" : "var(--muted)" }}>
@@ -5305,7 +5521,7 @@ function TunnelNodes({ password }) {
                     <span className="text-[12px] font-bold" style={{
                       color: v == null ? "var(--muted)"
                            : v > 85 ? "var(--danger)" : v > 65 ? "var(--warn)" : "var(--dim)",
-                      fontFamily: "'JetBrains Mono',monospace",
+                      fontFamily: "var(--mono)",
                     }}>{v == null ? "—" : `${faNum(v)}٪`}</span>
                   </div>
                   <div style={{ height: 4, borderRadius: 99, background: "rgba(255,255,255,.06)", overflow: "hidden" }}>
@@ -5325,7 +5541,7 @@ function TunnelNodes({ password }) {
               {faNum(n.running_count)} از {faNum(n.tunnel_count)} تانل در حال کار
             </span>
             <span className="text-[10px]" dir="ltr"
-              style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+              style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
               {n.token}
             </span>
           </div>
@@ -5418,7 +5634,7 @@ function NodeDiagnoseModal({ nodeId, password, onClose }) {
                   className="rounded-lg px-3 py-2 cursor-pointer" dir="ltr"
                   style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
                   <code className="text-[11px]"
-                    style={{ color: "var(--accent-2)", fontFamily: "'JetBrains Mono',monospace" }}>
+                    style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
                     {cm.cmd}
                   </code>
                 </div>
@@ -5454,7 +5670,7 @@ function AgentInstallModal({ data, onClose }) {
       <div className="rounded-xl p-3.5 mb-3" dir="ltr"
         style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
         <code className="text-[11px] break-all block leading-relaxed"
-          style={{ color: "var(--accent-2)", fontFamily: "'JetBrains Mono',monospace" }}>
+          style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
           {cmd}
         </code>
       </div>
@@ -5544,7 +5760,7 @@ function TunnelList({ password }) {
                   </span>
                 </div>
                 <div className="text-[10.5px] mt-1.5" dir="ltr"
-                  style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace", textAlign: "right" }}>
+                  style={{ color: "var(--muted)", fontFamily: "var(--mono)", textAlign: "right" }}>
                   {t.node_name} ← {t.remote_host}:{t.bridge_port}
                 </div>
               </div>
@@ -5558,7 +5774,7 @@ function TunnelList({ password }) {
               {t.ports.map((p, i) => (
                 <span key={i} className="text-[10.5px] px-2 py-1 rounded-lg" dir="ltr"
                   style={{ background: "var(--surface-3)", color: "var(--dim)",
-                           fontFamily: "'JetBrains Mono',monospace" }}>
+                           fontFamily: "var(--mono)" }}>
                   {p.local === p.remote ? p.local : `${p.local}→${p.remote}`}
                 </span>
               ))}
@@ -5660,7 +5876,7 @@ function TunnelForm({ password, nodes, engines, onClose, onDone }) {
         style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
 
         <div className="flex items-center gap-2 mb-3 text-[12px] flex-wrap" dir="ltr"
-          style={{ fontFamily: "'JetBrains Mono',monospace" }}>
+          style={{ fontFamily: "var(--mono)" }}>
           <span style={{ color: "var(--muted)" }}>مشتری</span>
           <span style={{ color: "var(--accent-2)" }}>──►</span>
           <span style={{ color: "var(--ok)", fontWeight: 700 }}>سرور ایران</span>
@@ -5767,7 +5983,7 @@ function TunnelForm({ password, nodes, engines, onClose, onDone }) {
           hint="همان سروری که بالا انتخاب کردید — سرور خارج به این آدرس وصل می‌شود">
           <input className="fx-input" dir="ltr" value={f.remote_host}
             onChange={(e) => setF({ ...f, remote_host: e.target.value })}
-            placeholder="1.2.3.4" style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+            placeholder="1.2.3.4" style={{ fontFamily: "var(--mono)" }} />
         </Field>
         <Field label="پورت ارتباط" hint="پورتی که دو سرور از آن حرف می‌زنند">
           <input className="fx-input" type="text" inputMode="numeric" dir="ltr"
@@ -5775,7 +5991,7 @@ function TunnelForm({ password, nodes, engines, onClose, onDone }) {
             onChange={(e) => setF({ ...f,
               bridge_port: e.target.value.replace(/[^0-9]/g, "").slice(0, 5) })}
             placeholder="3080"
-            style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+            style={{ fontFamily: "var(--mono)" }} />
         </Field>
       </div>
 
@@ -5801,7 +6017,7 @@ function TunnelForm({ password, nodes, engines, onClose, onDone }) {
                 style={{
                   width: 68, background: "transparent", border: "none", outline: "none",
                   color: "var(--text)", fontSize: 12.5, padding: "8px 10px",
-                  textAlign: "center", fontFamily: "'JetBrains Mono',monospace",
+                  textAlign: "center", fontFamily: "var(--mono)",
                 }} />
               <button onClick={() => setPorts(ports.filter((_, x) => x !== i))}
                 className="flex items-center justify-center transition-colors"
@@ -5840,7 +6056,7 @@ function TunnelForm({ password, nodes, engines, onClose, onDone }) {
                   background: has ? "var(--accent-soft)" : "transparent",
                   border: `1px solid ${has ? "rgba(43,127,214,.4)" : "var(--border)"}`,
                   color: has ? "var(--accent-2)" : "var(--muted)",
-                  fontFamily: "'JetBrains Mono',monospace",
+                  fontFamily: "var(--mono)",
                   cursor: "pointer",
                 }}>
                 {q}
@@ -5916,7 +6132,7 @@ function TunnelMonitorModal({ tunnel, password, onClose }) {
       <div className="flex justify-between text-[11.5px] mb-1.5">
         <span style={{ color: "var(--muted)" }}>{label}</span>
         <span style={{ color: color || "var(--dim)",
-                       fontFamily: "'JetBrains Mono',monospace" }}>
+                       fontFamily: "var(--mono)" }}>
           {value === null || value === undefined ? "—" : `${faNum(value)} ${unit}`}
         </span>
       </div>
@@ -5947,7 +6163,7 @@ function TunnelMonitorModal({ tunnel, password, onClose }) {
                   border: `1px solid color-mix(in srgb, ${qc} 28%, transparent)`,
                 }}>
                 <div className="text-[26px] font-extrabold"
-                  style={{ color: qc, fontFamily: "'JetBrains Mono',monospace" }}>
+                  style={{ color: qc, fontFamily: "var(--mono)" }}>
                   {faNum(s.latest)} <span className="text-[14px]">ms</span>
                 </div>
                 <div className="text-[12px] mt-1" style={{ color: qc }}>{s.quality}</div>
@@ -5997,7 +6213,7 @@ function TunnelMonitorModal({ tunnel, password, onClose }) {
                     style={{ background: "var(--surface-3)" }}>
                     <div className="text-[15px] font-bold"
                       style={{ color: "var(--text)",
-                               fontFamily: "'JetBrains Mono',monospace" }}>
+                               fontFamily: "var(--mono)" }}>
                       {v === null || v === undefined ? "—" : faNum(v)}
                     </div>
                     <div className="text-[9.5px] mt-1" style={{ color: "var(--muted)" }}>
@@ -6073,12 +6289,12 @@ function TunnelConfigModal({ tunnel, password, onClose }) {
           <div className="rounded-xl p-3.5 mb-3 overflow-auto" dir="ltr"
             style={{ background: "var(--surface-3)", border: "1px solid var(--border)", maxHeight: 300 }}>
             <pre className="text-[11px] leading-relaxed whitespace-pre-wrap"
-              style={{ color: "var(--dim)", fontFamily: "'JetBrains Mono',monospace" }}>
+              style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
               {cfg.config}
             </pre>
           </div>
           <div className="text-[10.5px] mb-3" dir="ltr"
-            style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+            style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
             {cfg.filename}
           </div>
           <button onClick={copy}
@@ -6419,11 +6635,11 @@ function BillingPeriod({ password }) {
                 <input className="fx-input" dir="ltr" value={range.start}
                   onChange={(e) => setRange({ ...range, start: e.target.value })}
                   placeholder="از  2026-08-01"
-                  style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+                  style={{ fontFamily: "var(--mono)" }} />
                 <input className="fx-input" dir="ltr" value={range.end}
                   onChange={(e) => setRange({ ...range, end: e.target.value })}
                   placeholder="تا  2026-08-15"
-                  style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+                  style={{ fontFamily: "var(--mono)" }} />
                 <button
                   onClick={() => { setCustom(true); load(0, range); }}
                   disabled={!range.start || !range.end}
@@ -6456,7 +6672,7 @@ function BillingPeriod({ password }) {
                   </span>
                   <span className="text-[22px] font-extrabold"
                     style={{ color: "var(--accent-2)",
-                             fontFamily: "'JetBrains Mono',monospace" }}>
+                             fontFamily: "var(--mono)" }}>
                     {faNum(t.due)} <span className="text-[12px]">تومان</span>
                   </span>
                 </div>
@@ -6476,12 +6692,12 @@ function BillingPeriod({ password }) {
                         <div className="flex justify-between items-baseline">
                           <span className="text-[11px]" style={{ color: "var(--muted)" }}>{l}</span>
                           <span className="text-[15px] font-bold" style={{ color: col,
-                                fontFamily: "'JetBrains Mono',monospace" }}>
+                                fontFamily: "var(--mono)" }}>
                             {faNum(n)}
                           </span>
                         </div>
                         <div className="text-[12px] mt-1.5" style={{ color: "var(--dim)",
-                             fontFamily: "'JetBrains Mono',monospace" }}>
+                             fontFamily: "var(--mono)" }}>
                           {faNum(amt)} تومان
                         </div>
                       </div>
@@ -6493,14 +6709,14 @@ function BillingPeriod({ password }) {
                   style={{ borderTop: "1px solid var(--border)" }}>
                   <span style={{ color: "var(--muted)" }}>پرداخت‌شده در این دوره</span>
                   <span style={{ color: "var(--ok)",
-                                 fontFamily: "'JetBrains Mono',monospace" }}>
+                                 fontFamily: "var(--mono)" }}>
                     {faNum(t.paid)}
                   </span>
                 </div>
                 <div className="flex justify-between mt-2 text-[13px] font-bold">
                   <span className="text-white">مانده</span>
                   <span style={{ color: t.balance > 0 ? "var(--warn)" : "var(--ok)",
-                                 fontFamily: "'JetBrains Mono',monospace" }}>
+                                 fontFamily: "var(--mono)" }}>
                     {faNum(t.balance)} تومان
                   </span>
                 </div>
@@ -6527,7 +6743,7 @@ function BillingPeriod({ password }) {
                         <div className="min-w-0">
                           <div className="text-[12px]" dir="ltr"
                             style={{ color: "var(--dim)", textAlign: "right",
-                                     fontFamily: "'JetBrains Mono',monospace" }}>
+                                     fontFamily: "var(--mono)" }}>
                             {x.email}
                           </div>
                           <div className="text-[10px] mt-0.5" style={{ color: "var(--muted)" }}>
@@ -6539,7 +6755,7 @@ function BillingPeriod({ password }) {
                         </div>
                         <span className="text-[12.5px] font-bold shrink-0"
                           style={{ color: x.price === null ? "var(--warn)" : col,
-                                   fontFamily: "'JetBrains Mono',monospace" }}>
+                                   fontFamily: "var(--mono)" }}>
                           {x.price === null ? "بدون نرخ" : faNum(x.amount)}
                         </span>
                       </div>
@@ -6699,7 +6915,7 @@ function BillingClients({ password }) {
               <I size={15} style={{ color: col }} />
             </div>
             <div className="fx-stat-num text-[19px] font-extrabold text-white leading-none"
-              style={{ fontFamily: "'JetBrains Mono',monospace" }}>{faNum(v)}</div>
+              style={{ fontFamily: "var(--mono)" }}>{faNum(v)}</div>
             <div className="text-[10.5px] mt-1.5" style={{ color: "var(--dim)" }}>{l}</div>
             {sub && <div className="text-[9.5px] mt-1" style={{ color: "var(--muted)" }}>{sub}</div>}
           </div>
@@ -6723,7 +6939,7 @@ function BillingClients({ password }) {
               }}>
               <Circle size={7} fill={col} strokeWidth={0} />
               {label}
-              <span style={{ fontFamily: "'JetBrains Mono',monospace", opacity: .8 }}>
+              <span style={{ fontFamily: "var(--mono)", opacity: .8 }}>
                 {faNum(n)}
               </span>
             </button>
@@ -6737,7 +6953,7 @@ function BillingClients({ password }) {
               border: `1px solid ${group === "بدون گروه" ? "var(--border-2)" : "var(--border)"}`,
               color: "var(--muted)",
             }}>
-            بدون گروه <span style={{ fontFamily: "'JetBrains Mono',monospace" }}>{faNum(s.noGroup)}</span>
+            بدون گروه <span style={{ fontFamily: "var(--mono)" }}>{faNum(s.noGroup)}</span>
           </button>
         )}
       </div>
@@ -6783,7 +6999,7 @@ function BillingClients({ password }) {
                   }}>
                   {label}
                   {n !== undefined && (
-                    <span style={{ fontFamily: "'JetBrains Mono',monospace", opacity: .8 }}>
+                    <span style={{ fontFamily: "var(--mono)", opacity: .8 }}>
                       {faNum(n)}
                     </span>
                   )}
@@ -6799,13 +7015,13 @@ function BillingClients({ password }) {
             <input className="fx-input" dir="ltr" value={dates.from}
               onChange={(e) => { setDates({ ...dates, from: e.target.value }); setPage(0); }}
               placeholder="2026-08-01"
-              style={{ width: 130, fontFamily: "'JetBrains Mono',monospace",
+              style={{ width: 130, fontFamily: "var(--mono)",
                        fontSize: 11.5, padding: "7px 10px" }} />
             <span className="text-[10.5px]" style={{ color: "var(--muted)" }}>تا</span>
             <input className="fx-input" dir="ltr" value={dates.to}
               onChange={(e) => { setDates({ ...dates, to: e.target.value }); setPage(0); }}
               placeholder="2026-08-31"
-              style={{ width: 130, fontFamily: "'JetBrains Mono',monospace",
+              style={{ width: 130, fontFamily: "var(--mono)",
                        fontSize: 11.5, padding: "7px 10px" }} />
 
             {[["۷ روز", 7], ["۳۰ روز", 30]].map(([l, n]) => (
@@ -6874,7 +7090,7 @@ function BillingClients({ password }) {
                       <div className="text-[13px] font-semibold" dir="ltr"
                         style={{ color: c.enable ? "var(--text)" : "var(--muted)",
                                  textAlign: "right",
-                                 fontFamily: "'JetBrains Mono',monospace" }}>
+                                 fontFamily: "var(--mono)" }}>
                         {c.email}
                       </div>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -6930,7 +7146,7 @@ function BillingClients({ password }) {
 
                     {/* ایجاد */}
                     <td className="px-3 py-3 text-center text-[12px]" dir="ltr"
-                      style={{ color: "var(--dim)", fontFamily: "'JetBrains Mono',monospace" }}>
+                      style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
                       {c.createdJalali || "—"}
                       {c.days && (
                         <div className="text-[10px] mt-0.5" style={{ color: "var(--muted)" }}>
@@ -6941,7 +7157,7 @@ function BillingClients({ password }) {
 
                     {/* انقضا */}
                     <td className="px-3 py-3 text-center text-[12px]" dir="ltr"
-                      style={{ color: "var(--dim)", fontFamily: "'JetBrains Mono',monospace" }}>
+                      style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
                       {c.expiryJalali || "—"}
                     </td>
 
@@ -6955,7 +7171,7 @@ function BillingClients({ password }) {
                             style={{
                               color: c.remainingDays < 0 ? "var(--danger)"
                                    : c.remainingDays <= 3 ? "var(--warn)" : "var(--text)",
-                              fontFamily: "'JetBrains Mono',monospace",
+                              fontFamily: "var(--mono)",
                             }}>
                             {faNum(Math.abs(Math.round(c.remainingDays)))}
                           </div>
@@ -6969,7 +7185,7 @@ function BillingClients({ password }) {
                     {/* ماه */}
                     <td className="px-3 py-3 text-center">
                       <div className="text-[15px] font-bold" style={{ color: "var(--text)",
-                           fontFamily: "'JetBrains Mono',monospace" }}>
+                           fontFamily: "var(--mono)" }}>
                         {faNum(c.months)}
                       </div>
                     </td>
@@ -6980,7 +7196,7 @@ function BillingClients({ password }) {
                         <div>
                           <span className="px-2.5 py-1 rounded-lg text-[13px] font-bold inline-block"
                             style={{ background: "rgba(43,127,214,.18)", color: "var(--accent-2)",
-                                     fontFamily: "'JetBrains Mono',monospace" }}>
+                                     fontFamily: "var(--mono)" }}>
                             {faNum(c.renewals)}
                           </span>
                           {c.renewalKind === "تخمینی" && (
@@ -6998,7 +7214,7 @@ function BillingClients({ password }) {
                     <td className="px-3 py-3">
                       <div className="flex items-baseline gap-1.5 justify-center mb-1.5">
                         <span className="text-[13px] font-semibold"
-                          style={{ color: "var(--text)", fontFamily: "'JetBrains Mono',monospace" }}>
+                          style={{ color: "var(--text)", fontFamily: "var(--mono)" }}>
                           {faNum(c.usedGB)}
                         </span>
                         <span className="text-[10.5px]" style={{ color: "var(--muted)" }}>
@@ -7025,7 +7241,7 @@ function BillingClients({ password }) {
                       {c.amount ? (
                         <div>
                           <div className="text-[13px] font-bold" style={{ color: "var(--text)",
-                               fontFamily: "'JetBrains Mono',monospace" }}>
+                               fontFamily: "var(--mono)" }}>
                             {faNum(c.amount)}
                           </div>
                           {c.months > 1 && c.price && (
@@ -7066,7 +7282,7 @@ function BillingClients({ password }) {
               className="fx-btn-g px-3 py-2 text-[12px]"
               style={page === 0 ? { opacity: .35, cursor: "not-allowed" } : {}}>قبلی</button>
             <span className="px-3 text-[12px]" style={{ color: "var(--dim)",
-              fontFamily: "'JetBrains Mono',monospace" }}>
+              fontFamily: "var(--mono)" }}>
               {faNum(page + 1)} / {faNum(pages)}
             </span>
             <button onClick={() => setPage(Math.min(pages - 1, page + 1))} disabled={page >= pages - 1}
@@ -7091,7 +7307,7 @@ function ClientDetailModal({ client: c, onClose }) {
       <span className="text-[11.5px] shrink-0" style={{ color: "var(--muted)" }}>{label}</span>
       <span className="text-[11.5px] text-left" dir={mono ? "ltr" : "rtl"}
         style={{ color: color || "var(--dim)",
-                 fontFamily: mono ? "'JetBrains Mono',monospace" : "inherit" }}>
+                 fontFamily: mono ? "var(--mono)" : "inherit" }}>
         {value}
       </span>
     </div>
@@ -7138,14 +7354,14 @@ function ClientDetailModal({ client: c, onClose }) {
           style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
           <div className="flex justify-between text-[12px]">
             <span style={{ color: "var(--muted)" }}>نرخ ماهانه</span>
-            <span style={{ color: "var(--dim)", fontFamily: "'JetBrains Mono',monospace" }}>
+            <span style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
               {c.price ? faNum(c.price) : "تعریف نشده"}
             </span>
           </div>
           <div className="flex justify-between text-[13px] font-bold mt-2 pt-2"
             style={{ borderTop: "1px solid var(--border)" }}>
             <span className="text-white">مبلغ کل</span>
-            <span style={{ color: "var(--accent-2)", fontFamily: "'JetBrains Mono',monospace" }}>
+            <span style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
               {faNum(c.amount)} تومان
             </span>
           </div>
@@ -7258,7 +7474,7 @@ function BillingSettings({ password }) {
               {info.readable ? "خوانده می‌شود" : info.exists ? "پیدا شد ولی دسترسی خواندن نیست" : "پیدا نشد"}
             </div>
             <div className="text-[10.5px] mt-1 break-all" dir="ltr"
-              style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+              style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
               {info.current}
             </div>
             {info.exists && !info.readable && (
@@ -7283,7 +7499,7 @@ function BillingSettings({ password }) {
                   border: `1px solid ${f.path === info.current ? "rgba(43,127,214,.4)" : "var(--border)"}`,
                 }}>
                 <span className="text-[11px] truncate" dir="ltr"
-                  style={{ color: "var(--dim)", fontFamily: "'JetBrains Mono',monospace" }}>{f.path}</span>
+                  style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>{f.path}</span>
                 <span className="text-[9.5px] shrink-0" style={{ color: "var(--muted)" }}>
                   {(f.size / 1024 / 1024).toFixed(1)} MB
                 </span>
@@ -7297,7 +7513,7 @@ function BillingSettings({ password }) {
             <input className="fx-input" dir="ltr" value={path}
               onChange={(e) => setPath(e.target.value)}
               placeholder="/etc/x-ui/x-ui.db"
-              style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+              style={{ fontFamily: "var(--mono)" }} />
             <button onClick={() => savePath(path)} disabled={busy === "path"}
               className="fx-btn px-4 py-2.5 text-[12px] shrink-0 flex items-center gap-1.5">
               {busy === "path" ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
@@ -7388,7 +7604,7 @@ function RateRow({ rate, onChange, onDelete }) {
                 onChange={(e) => onChange({ gb: Math.max(0, Number(e.target.value)) })}
                 placeholder="مثلاً ۵۰"
                 className="flex-1 bg-transparent border-0 outline-none py-2.5 text-[12.5px]"
-                style={{ color: "var(--text)", fontFamily: "'JetBrains Mono',monospace" }} />
+                style={{ color: "var(--text)", fontFamily: "var(--mono)" }} />
               <span className="text-[10.5px] shrink-0" style={{ color: "var(--muted)" }}>گیگابایت</span>
             </div>
           </div>
@@ -7417,7 +7633,7 @@ function RateRow({ rate, onChange, onDelete }) {
             onChange={(e) => onChange({ price: Math.max(0, Number(e.target.value)) })}
             placeholder="0"
             className="flex-1 bg-transparent border-0 outline-none text-center py-2 text-[15px] font-bold"
-            style={{ color: "var(--text)", fontFamily: "'JetBrains Mono',monospace" }} />
+            style={{ color: "var(--text)", fontFamily: "var(--mono)" }} />
           <button onClick={() => bump(RATE_STEP)} className="nx-step">+</button>
         </div>
 
@@ -7431,7 +7647,7 @@ function RateRow({ rate, onChange, onDelete }) {
                   background: on ? "rgba(43,127,214,.14)" : "transparent",
                   border: `1px solid ${on ? "rgba(43,127,214,.4)" : "var(--border)"}`,
                   color: on ? "var(--accent-2)" : "var(--muted)",
-                  fontFamily: "'JetBrains Mono',monospace",
+                  fontFamily: "var(--mono)",
                 }}>{faNum(q / 1000)}k</button>
             );
           })}
@@ -7493,7 +7709,7 @@ function BillingUnavailable({ info, password }) {
                 style={{ color: s.ok ? "var(--text)" : "var(--danger)" }}>{s.title}</div>
               {s.detail && (
                 <div className="text-[10.5px] mt-1 break-all" dir="auto"
-                  style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+                  style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                   {s.detail}
                 </div>
               )}
@@ -7523,7 +7739,7 @@ function BillingUnavailable({ info, password }) {
       </p>
       {(info?.xuiPath || info?.dbPath) && (
         <code dir="ltr" className="text-[10.5px] px-3 py-1.5 rounded-lg inline-block"
-          style={{ background: "var(--surface-3)", color: "var(--accent-2)", fontFamily: "'JetBrains Mono',monospace" }}>
+          style={{ background: "var(--surface-3)", color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
           {info.xuiPath || info.dbPath}
         </code>
       )}
@@ -7532,7 +7748,7 @@ function BillingUnavailable({ info, password }) {
           روی سرور این را اجرا کنید تا مسیر خودکار پیدا و تنظیم شود:
         </p>
         <code dir="ltr" className="text-[11px] px-3 py-2 rounded-lg inline-block"
-          style={{ background: "var(--surface-3)", color: "var(--ok)", fontFamily: "'JetBrains Mono',monospace" }}>
+          style={{ background: "var(--surface-3)", color: "var(--ok)", fontFamily: "var(--mono)" }}>
           nexora fix-xui
         </code>
         <p className="text-[10.5px] leading-relaxed mt-3" style={{ color: "var(--muted)" }}>
@@ -7579,7 +7795,7 @@ function BillingDash({ password }) {
           ["مانده", due - paid, due - paid > 0 ? "var(--warn)" : "var(--ok)"]].map(([l, v, col], i) => (
           <div key={i} className="fx-card p-4">
             <div className="fx-stat-num text-[19px] font-extrabold leading-none"
-              style={{ color: col, fontFamily: "'JetBrains Mono',monospace" }}>{faNum(v)}</div>
+              style={{ color: col, fontFamily: "var(--mono)" }}>{faNum(v)}</div>
             <div className="text-[10.5px] mt-2" style={{ color: "var(--dim)" }}>{l} · تومان</div>
           </div>
         ))}
@@ -7601,13 +7817,13 @@ function BillingDash({ password }) {
                 <div>
                   <div className="text-[12.5px] font-semibold text-white">{g.label}</div>
                   <div className="text-[10px] mt-1" dir="ltr"
-                    style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+                    style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                     {g.name} · {g.configs} config · {g.months} months
                   </div>
                 </div>
                 <div className="text-left">
                   <div className="text-[13.5px] font-extrabold"
-                    style={{ color: rest > 0 ? "var(--warn)" : "var(--ok)", fontFamily: "'JetBrains Mono',monospace" }}>
+                    style={{ color: rest > 0 ? "var(--warn)" : "var(--ok)", fontFamily: "var(--mono)" }}>
                     {faNum(rest)}
                   </div>
                   <div className="text-[9.5px] mt-0.5" style={{ color: "var(--muted)" }}>
@@ -7701,7 +7917,7 @@ function BillingGroups({ password }) {
                 <div>
                   <div className="text-[12.5px] font-semibold text-white">{d.label || g.name}</div>
                   <div className="text-[10px] mt-1" dir="ltr"
-                    style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+                    style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                     {g.name} · {g.configs} configs · {g.usedGB}GB used
                   </div>
                 </div>
@@ -7709,7 +7925,7 @@ function BillingGroups({ password }) {
               <div className="flex items-center gap-3">
                 {d.billed && g.amount > 0 && (
                   <span className="text-[11.5px] font-bold"
-                    style={{ color: "var(--accent-2)", fontFamily: "'JetBrains Mono',monospace" }}>
+                    style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
                     {faNum(g.amount)}
                   </span>
                 )}
@@ -7763,7 +7979,7 @@ function BillingGroups({ password }) {
                               value={d.perGb || ""}
                               onChange={(e) => set(g, { perGb: Math.max(0, +e.target.value) })}
                               placeholder="3000"
-                              style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+                              style={{ fontFamily: "var(--mono)" }} />
                             <div className="flex gap-1.5 shrink-0">
                               {[2000, 3000, 5000].map((q) => (
                                 <button key={q} onClick={() => set(g, { perGb: q })}
@@ -7772,7 +7988,7 @@ function BillingGroups({ password }) {
                                     background: d.perGb === q ? "var(--accent-soft)" : "transparent",
                                     border: `1px solid ${d.perGb === q ? "rgba(43,127,214,.4)" : "var(--border)"}`,
                                     color: d.perGb === q ? "var(--accent-2)" : "var(--muted)",
-                                    fontFamily: "'JetBrains Mono',monospace",
+                                    fontFamily: "var(--mono)",
                                   }}>{faNum(q / 1000)}k</button>
                               ))}
                             </div>
@@ -7847,13 +8063,13 @@ function BillingGroups({ password }) {
                           <input className="fx-input" dir="ltr" value={d.periodStart || ""}
                             onChange={(e) => set(g, { periodStart: e.target.value })}
                             placeholder="2026-08-01"
-                            style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+                            style={{ fontFamily: "var(--mono)" }} />
                         </Field>
                         <Field label="تسویه‌شده تا" hint="قبل از این تاریخ حساب نمی‌شود">
                           <input className="fx-input" dir="ltr" value={d.settledUntil || ""}
                             onChange={(e) => set(g, { settledUntil: e.target.value })}
                             placeholder="2026-08-01"
-                            style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+                            style={{ fontFamily: "var(--mono)" }} />
                         </Field>
                       </div>
                     </div>
@@ -7865,7 +8081,7 @@ function BillingGroups({ password }) {
                       {[["کانفیگ", g.configs], ["فعال", g.active],
                         ["ماه", g.months], ["تمدید", g.renewals]].map(([k, v], i) => (
                         <div key={i} className="text-center">
-                          <div className="text-[15px] font-bold text-white" style={{ fontFamily: "'JetBrains Mono',monospace" }}>
+                          <div className="text-[15px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>
                             {faNum(v)}
                           </div>
                           <div className="text-[9.5px] mt-1" style={{ color: "var(--muted)" }}>{k}</div>
@@ -7996,7 +8212,7 @@ function BillingInvoice({ password }) {
                     <span className="text-[11.5px]" style={{ color: i === 2 ? "var(--text)" : "var(--muted)" }}>{k}</span>
                     <span className="font-bold" style={{
                       color: col, fontSize: i === 2 ? 14 : 12,
-                      fontFamily: "'JetBrains Mono',monospace",
+                      fontFamily: "var(--mono)",
                     }}>{faNum(v)}</span>
                   </div>
                 ))}
@@ -8011,7 +8227,7 @@ function BillingInvoice({ password }) {
                     style={{ borderBottom: i < inv.items.length - 1 ? "1px solid var(--border)" : "none" }}>
                     <div className="min-w-0">
                       <div className="text-[11.5px] truncate" dir="ltr"
-                        style={{ color: "var(--text)", fontFamily: "'JetBrains Mono',monospace" }}>
+                        style={{ color: "var(--text)", fontFamily: "var(--mono)" }}>
                         {it.email}
                       </div>
                       <div className="text-[9.5px] mt-1" style={{ color: "var(--muted)" }}>
@@ -8023,7 +8239,7 @@ function BillingInvoice({ password }) {
                     <span className="text-[11.5px] font-semibold shrink-0"
                       style={{
                         color: it.lineTotal == null ? "var(--warn)" : "var(--dim)",
-                        fontFamily: "'JetBrains Mono',monospace",
+                        fontFamily: "var(--mono)",
                       }}>
                       {it.lineTotal == null ? "بدون نرخ" : faNum(it.lineTotal)}
                     </span>
@@ -8108,7 +8324,7 @@ function BillingPayments({ password }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-[13px] font-bold" style={{ color: "var(--ok)", fontFamily: "'JetBrains Mono',monospace" }}>
+                  <span className="text-[13px] font-bold" style={{ color: "var(--ok)", fontFamily: "var(--mono)" }}>
                     +{faNum(p.amount)}
                   </span>
                   <button onClick={() => del(p.id)} className="fx-ico-btn" style={{ width: 28, height: 28 }}>
@@ -8141,7 +8357,7 @@ function BillingPayments({ password }) {
             <Field label="مبلغ (تومان)">
               <input className="fx-input" dir="ltr" type="number" value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+                style={{ fontFamily: "var(--mono)" }} />
             </Field>
             <Field label="تاریخ" hint="اختیاری">
               <input className="fx-input" value={form.date}
@@ -8228,7 +8444,7 @@ function GithubCard({ password }) {
             onChange={(e) => setRepo(e.target.value)}
             placeholder="username/nexora"
             onKeyDown={(e) => e.key === "Enter" && dirty && save()}
-            style={{ fontFamily: "'JetBrains Mono',monospace" }} />
+            style={{ fontFamily: "var(--mono)" }} />
           <button onClick={save} disabled={busy || !dirty}
             className="fx-btn px-4 py-2.5 text-[12.5px] shrink-0 flex items-center gap-1.5"
             style={!dirty ? { opacity: 0.45, cursor: "not-allowed" } : {}}>
@@ -8257,7 +8473,7 @@ function GithubCard({ password }) {
           متصل به{" "}
           <a href={`https://github.com/${saved}`} target="_blank" rel="noreferrer"
             dir="ltr" className="underline"
-            style={{ color: "var(--accent-2)", fontFamily: "'JetBrains Mono',monospace" }}>
+            style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
             {saved}
           </a>
         </div>
@@ -8442,7 +8658,7 @@ function UpdateCard({ password }) {
                   {stuck ? "پاسخی از سرور نمی‌آید" : "در حال به‌روزرسانی — صفحه را نبندید"}
                 </span>
               </div>
-              <span className="text-[11px]" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+              <span className="text-[11px]" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                 {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, "0")}
               </span>
             </div>
@@ -8470,13 +8686,13 @@ function UpdateCard({ password }) {
             <div className="rounded-lg p-3 max-h-52 overflow-y-auto" dir="ltr"
               style={{ background: "#05070C", border: "1px solid var(--border)" }}>
               {log.length === 0 ? (
-                <div className="text-[11px]" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+                <div className="text-[11px]" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                   waiting for output...
                 </div>
               ) : log.map((l, i) => (
                 <div key={i} className="text-[11px] leading-relaxed"
                   style={{ color: l.includes("✓") ? "var(--ok)" : l.includes("✗") ? "var(--danger)" : "var(--dim)",
-                           fontFamily: "'JetBrains Mono',monospace" }}>
+                           fontFamily: "var(--mono)" }}>
                   {l}
                 </div>
               ))}
@@ -8534,11 +8750,11 @@ function UpdateCard({ password }) {
             </p>
             <code dir="ltr" className="block px-3 py-2.5 rounded-lg text-[11px]"
               style={{ background: "#05070C", border: "1px solid var(--border-2)", color: "var(--accent-2)",
-                       fontFamily: "'JetBrains Mono',monospace", wordBreak: "break-all" }}>
+                       fontFamily: "var(--mono)", wordBreak: "break-all" }}>
               echo 'GITHUB_REPO="nexoratech-v/nexora-subscription-manager"' &gt; /opt/nexora-panel/.github
             </code>
             <p className="text-[10.5px] mt-2" style={{ color: "var(--muted)" }}>
-              سپس <span dir="ltr" style={{ fontFamily: "'JetBrains Mono',monospace" }}>nexora restart</span> را بزنید.
+              سپس <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>nexora restart</span> را بزنید.
             </p>
           </div>
         )}
@@ -8552,7 +8768,7 @@ function UpdateCard({ password }) {
                 <div className="text-[12px] mb-1" style={{ color: "var(--warn)" }}>ارتباط با گیت‌هاب برقرار نشد</div>
                 <div className="text-[10.5px]" style={{ color: "var(--muted)" }}>
                   ممکن است سرور به گیت‌هاب دسترسی نداشته باشد. می‌توانید از ترمینال به‌روزرسانی کنید:
-                  <span dir="ltr" style={{ fontFamily: "'JetBrains Mono',monospace" }}> nexora update</span>
+                  <span dir="ltr" style={{ fontFamily: "var(--mono)" }}> nexora update</span>
                 </div>
               </div>
             </div>
@@ -8608,7 +8824,7 @@ function SystemSection({ password }) {
   const CMD = ({ children }) => (
     <code dir="ltr" className="block px-3 py-2.5 rounded-lg text-[11.5px] my-1.5"
       style={{ background: "var(--surface-3)", border: "1px solid var(--border-2)",
-               color: "var(--accent-2)", fontFamily: "'JetBrains Mono',monospace" }}>
+               color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
       {children}
     </code>
   );
@@ -8627,7 +8843,7 @@ function SystemSection({ password }) {
           <div className="fx-ico mb-3" style={{ background: "rgba(43,127,214,.12)" }}>
             <Server size={16} style={{ color: "var(--accent-2)" }} />
           </div>
-          <div className="text-[17px] font-bold text-white" style={{ fontFamily: "'JetBrains Mono',monospace" }}>
+          <div className="text-[17px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>
             {sys?.version || "?"}
           </div>
           <div className="text-[11.5px] mt-1" style={{ color: "var(--dim)" }}>نسخه فعلی</div>
@@ -8652,7 +8868,7 @@ function SystemSection({ password }) {
           <div className="fx-ico mb-3" style={{ background: "rgba(167,139,250,.12)" }}>
             <Smartphone size={16} style={{ color: "var(--purple)" }} />
           </div>
-          <div className="text-[17px] font-bold text-white" style={{ fontFamily: "'JetBrains Mono',monospace" }}>
+          <div className="text-[17px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>
             {sys?.counts?.apps ?? 0}
           </div>
           <div className="text-[11.5px] mt-1" style={{ color: "var(--dim)" }}>اپلیکیشن</div>
@@ -8662,7 +8878,7 @@ function SystemSection({ password }) {
           <div className="fx-ico mb-3" style={{ background: "rgba(251,191,36,.12)" }}>
             <Users size={16} style={{ color: "var(--warn)" }} />
           </div>
-          <div className="text-[17px] font-bold text-white" style={{ fontFamily: "'JetBrains Mono',monospace" }}>
+          <div className="text-[17px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>
             {sys?.counts?.resellers ?? 0}
           </div>
           <div className="text-[11.5px] mt-1" style={{ color: "var(--dim)" }}>واسطه</div>
@@ -8675,7 +8891,7 @@ function SystemSection({ password }) {
           <InfoBox tone="warn">
             <b>هشدار:</b> آدرس API داخل قالب روی <span dir="ltr">localhost</span> است.
             مرورگر مشتری نمی‌تواند به آن وصل شود و تنظیمات پنل اعمال نخواهد شد.
-            <br />با دستور <span dir="ltr" style={{ fontFamily: "'JetBrains Mono',monospace" }}>nexora update</span> یا اجرای مجدد نصب، آن را به دامنه‌ی واقعی تغییر دهید.
+            <br />با دستور <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>nexora update</span> یا اجرای مجدد نصب، آن را به دامنه‌ی واقعی تغییر دهید.
           </InfoBox>
         </div>
       )}
@@ -8693,7 +8909,7 @@ function SystemSection({ password }) {
           ].map((row, i) => (
             <div key={i} className="flex items-center justify-between gap-3 py-2" style={{ borderBottom: i < 2 ? "1px solid var(--border)" : "none" }}>
               <span className="text-[12px] shrink-0" style={{ color: "var(--dim)" }}>{row.l}</span>
-              <span dir="ltr" className="text-[11px] truncate" style={{ color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+              <span dir="ltr" className="text-[11px] truncate" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                 {row.v || "—"}
               </span>
             </div>
@@ -8716,7 +8932,7 @@ function SystemSection({ password }) {
               شکست خورده است.
               <br />
               <code dir="ltr" className="inline-block mt-2 px-3 py-1.5 rounded-lg text-[11.5px]"
-                style={{ background: "var(--surface-3)", color: "var(--warn)", fontFamily: "'JetBrains Mono',monospace" }}>
+                style={{ background: "var(--surface-3)", color: "var(--warn)", fontFamily: "var(--mono)" }}>
                 nexora rebuild
               </code>
             </div>
@@ -8744,7 +8960,7 @@ function SystemSection({ password }) {
           { c: "nexora diagnose", d: "عیب‌یابی نمایش قالب" },
         ].map((x, i, arr) => (
           <div key={i} className="flex items-center justify-between gap-3 py-2" style={{ borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
-            <code dir="ltr" className="text-[11.5px]" style={{ color: "var(--accent-2)", fontFamily: "'JetBrains Mono',monospace" }}>{x.c}</code>
+            <code dir="ltr" className="text-[11.5px]" style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>{x.c}</code>
             <span className="text-[11px]" style={{ color: "var(--muted)" }}>{x.d}</span>
           </div>
         ))}
@@ -8813,7 +9029,7 @@ function LivePreview({ dirty, onSave, saving }) {
               </button>
             ))}
           </div>
-          <span className="text-[10.5px] px-2.5 py-1.5 rounded-lg" style={{ background: "var(--surface-3)", color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+          <span className="text-[10.5px] px-2.5 py-1.5 rounded-lg" style={{ background: "var(--surface-3)", color: "var(--muted)", fontFamily: "var(--mono)" }}>
             {d.w}px · {d.sub}
           </span>
         </div>
@@ -8821,7 +9037,7 @@ function LivePreview({ dirty, onSave, saving }) {
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1 px-1 py-1 rounded-[11px]" style={{ background: "var(--surface-3)", border: "1px solid var(--border-2)" }}>
             <button onClick={() => setZoom((z) => Math.max(50, z - 10))} className="fx-ico-btn" style={{ width: 28, height: 28 }} aria-label="کوچک‌نمایی"><Minus size={13} /></button>
-            <span className="text-[11px] w-11 text-center" style={{ color: "var(--dim)", fontFamily: "'JetBrains Mono',monospace" }}>{zoom}%</span>
+            <span className="text-[11px] w-11 text-center" style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>{zoom}%</span>
             <button onClick={() => setZoom((z) => Math.min(150, z + 10))} className="fx-ico-btn" style={{ width: 28, height: 28 }} aria-label="بزرگ‌نمایی"><Plus size={13} /></button>
           </div>
           <a href={`${API_URL}/api/preview`} target="_blank" rel="noreferrer" className="fx-btn-g px-3 py-2 text-[11.5px] flex items-center gap-1.5">
@@ -8842,7 +9058,7 @@ function LivePreview({ dirty, onSave, saving }) {
             <span className="w-2.5 h-2.5 rounded-full" style={{ background: "#28C840" }} />
           </div>
           <div className="text-[10.5px] px-3 py-1 rounded-md flex-1 mx-3 text-center truncate" dir="ltr"
-            style={{ background: "var(--surface)", color: "var(--muted)", fontFamily: "'JetBrains Mono',monospace" }}>
+            style={{ background: "var(--surface)", color: "var(--muted)", fontFamily: "var(--mono)" }}>
             {API_URL}/api/preview
           </div>
           <div className="w-14 fx-hide-m" />

@@ -1,5 +1,47 @@
 # Changelog
 
+## [1.2.0]
+
+### Added — Message a customer straight from the panel
+
+`POST /api/admin/bot/message/{tg_id}` sends through the bot, so there is no need to
+leave the panel and hunt for someone in Telegram — which was impossible anyway for users
+with no username. It arrives headed "پیام از پشتیبانی". If the customer has blocked the
+bot you are told so plainly instead of the message vanishing.
+
+Reachable from the users list and from the customer's file.
+
+### Added — Filters for the users section
+
+The old page showed the last 50 users and a search box. It now filters by subscription
+state (active, expired, never subscribed), buyers, phone on file, wallet balance, coins,
+referred, and blocked — each chip showing its own count, so you can see the shape of your
+user base without clicking. Sorting by newest, oldest, highest spend, balance, coins or
+last activity, with paging.
+
+Each row now carries what you actually need to decide something: phone number, number of
+approved orders, total spent, and whether a subscription is live.
+
+Search also covers phone numbers, and runs as you type.
+
+### Fixed — Half the panel was using the wrong font
+
+`JetBrains Mono` was loaded from Google Fonts. From Iran that request usually fails, so
+every number, ID, card number and config name — 140 places — silently fell back to the
+system monospace and looked nothing like the rest of the panel.
+
+Those now use a `--mono` variable with a local fallback chain that exists on every
+system. The Google stylesheet is still requested, but no longer blocks rendering, so a
+blocked request costs nothing.
+
+### Changed — Telegram's own features in bot messages
+
+- a **copy button** on the delivery message puts the subscription link straight on the
+  clipboard, no text selection
+- `blockquote` for asides, so tips read as tips rather than more body text
+- a typing indicator while the config is being built, which takes a few seconds and
+  previously looked like the bot had died
+
 ## [1.1.9]
 
 ### Fixed — The config was built but never reached the customer
