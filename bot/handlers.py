@@ -742,7 +742,27 @@ def provision(ctx, order_id):
     t = DB.get_tenant(ctx.tid)
     inbound = plan.get("inbound_id") or t.get("default_inbound")
     if not inbound:
-        return False, "inbound پیش‌فرض تنظیم نشده است"
+        # اینباند پیش‌فرض تنظیم نشده.
+        #
+        # شکست کامل اینجا از دید مشتری یعنی «پول دادم و کانفیگ
+        # نگرفتم» — آن هم فقط به‌خاطر یک تنظیم که مدیر جا انداخته.
+        # به‌جایش اولین اینباند فعال پنل را برمی‌داریم؛ در حالت
+        # پیش‌فرض (all) کلاینت به‌هرحال به همه‌ی اینباندهای فعال
+        # وصل می‌شود، پس این انتخاب فقط نقطه‌ی شروع است.
+        try:
+            active = [i for i in (ctx.xui.inbounds() or [])
+                      if i.get("enable", True)]
+        except Exception as e:
+            log.warning("خواندن اینباندها برای انتخاب خودکار ناموفق: %s", e)
+            active = []
+
+        if not active:
+            return False, ("اینباند پیش‌فرض تنظیم نشده و هیچ اینباند فعالی "
+                           "هم در پنل پیدا نشد")
+
+        inbound = active[0].get("id")
+        log.warning("اینباند پیش‌فرض تنظیم نشده — به‌طور خودکار از #%s "
+                    "استفاده شد", inbound)
 
     prefix = ctx.s.get("email_prefix") or (t.get("name") or "nx")
     sub_base = ctx.s.get("sub_base_url")

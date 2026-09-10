@@ -107,6 +107,11 @@ class FakeXUI:
         self.extended.append(email or client_uuid)
         return {"ok": True, "expiry_ms": 1800000000000}
 
+    def inbounds(self):
+        return [{"id": 28, "remark": "FR-1", "enable": True},
+                {"id": 41, "remark": "FR-2", "enable": True},
+                {"id": 45, "remark": "TR", "enable": False}]
+
     def client_traffic(self, email):
         return {"email": email, "up": 0, "down": 0, "total": 0}
 
@@ -402,6 +407,30 @@ H.send_daily_report(tenant)
 rep = [s for s in SENT if s["to"] == -100123]
 check("گزارش به گروه رفت", len(rep) > 0)
 check("در تاپیک آمار", any(s.get("topic") == 4 for s in rep))
+
+# ═══════════════ اینباند پیش‌فرض تنظیم‌نشده ═══════════════
+section("اینباند پیش‌فرض تنظیم‌نشده")
+
+# روی سرور واقعی، default_inbound خالی بود و پلن هم inbound_id نداشت.
+# قبلاً provision همین‌جا شکست می‌خورد و مشتری بعد از پرداخت هیچ
+# کانفیگی نمی‌گرفت — بدترین حالت ممکن.
+D.exec("UPDATE tenants SET default_inbound=NULL WHERE id=?", (tid,))
+D.exec("""INSERT INTO plans (tenant_id,name,price,gb,days,inbound_id,sort_order)
+          VALUES (?,?,?,?,?,?,?)""", (tid, "بدون اینباند", 150_000, 20, 20, None, 9))
+free_plan = [p for p in D.plans() if p["name"] == "بدون اینباند"][0]
+
+u2 = D.get_user(555)
+o_free = D.create_order(u2["id"], free_plan["id"], free_plan["price"],
+                        free_plan["price"])
+ctx_free = H.Ctx(bot, db.get_tenant(tid))
+okp, resp = H.provision(ctx_free, o_free["id"])
+check("بدون اینباند پیش‌فرض هم کانفیگ ساخته می‌شود", okp,
+      resp if not okp else f"اشتراک #{resp.get('id')}")
+if okp:
+    made = D.q("SELECT inbound_id FROM subscriptions WHERE tenant_id=? AND id=?",
+               (tid, resp["id"]), one=True)
+    check("اولین اینباند فعال انتخاب شد", made and made["inbound_id"] == 28,
+          f"inbound #{made['inbound_id'] if made else '—'}")
 
 os.unlink(tmp)
 

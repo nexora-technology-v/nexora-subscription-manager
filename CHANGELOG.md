@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.1.7]
+
+### Fixed — A paid order produced nothing when no default inbound was set
+`provision` refused outright with "inbound پیش‌فرض تنظیم نشده است" when neither the
+plan nor the tenant named an inbound — which is the state a fresh install is in, and
+the state the production panel was found in. From the customer's side that is paying
+and receiving nothing, because of one unset setting. It now falls back to the first
+enabled inbound in the panel and logs that it did.
+
+`xui-trace.py` never caught this because it already fell back to the first inbound
+itself, so its seven green steps said nothing about the path the bot actually takes.
+
+Upgrade from 1.1.6 if a config was never delivered after an approved receipt.
+
 ## [1.1.6]
 
 ### Fixed — Renewals and blocking never worked against 3x-ui 3.x
