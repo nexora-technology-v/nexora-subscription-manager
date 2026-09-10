@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.6.0]
+
+### Fixed — Helper text failed the contrast floor
+
+`--muted` is the colour of every explanatory line in the panel — 345 uses in `App.jsx`
+alone. At `#5A6880` it measured **3.24:1** against the card background, below the 4.5:1
+required for body text. It is now `#94A3B8`, which measures **7.12:1** and keeps the
+same grey register.
+
+Card borders were `rgba(255,255,255,0.05)`, effectively invisible, so cards ran into each
+other. Raised to `0.10` and `0.16` — still quiet, now actually there.
+
+### Changed — Type snapped to a modular scale
+
+The previous pass raised every size but left 23 distinct values full of half-steps, which
+is the "random font sizes" anti-pattern rather than a hierarchy. Sizes now follow one
+scale — 12, 13, 14, 16, 18, 21, 24, 28, 32 — with 244 declarations moved onto it and the
+count of distinct sizes cut from 23 to 15. The phone-preview mockup keeps its sub-12px
+type, since it is simulating a small screen rather than presenting text to read.
+
+### Added — Design system recorded in the repo
+
+`design-system/nexora-panel/MASTER.md`, generated from the UI/UX database rather than
+improvised, so later work starts from the same decisions instead of re-deriving them.
+
 ## [1.5.0]
 
 ### Added — Which customer is consuming, not just which IP

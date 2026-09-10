@@ -237,7 +237,7 @@ function Tabs({ items, active, onChange, counts }) {
             className="flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[13px] font-medium transition-all"
             style={on ? { color: "#06090F", background: "var(--accent-2)" } : { color: "var(--dim)", border: "1px solid var(--border-2)" }}>
             {t.icon && <t.icon size={13} />} {t.label}
-            {counts && <span className="opacity-60 text-[12.5px]">({counts[t.key] ?? 0})</span>}
+            {counts && <span className="opacity-60 text-[13px]">({counts[t.key] ?? 0})</span>}
           </button>
         );
       })}
@@ -301,12 +301,12 @@ function ConfirmModal({ title, desc, onConfirm, onCancel, confirmLabel = "حذف
       <div className="w-full max-w-sm rounded-2xl p-5 fx-scale" onClick={(e) => e.stopPropagation()}
         style={{ background: "var(--surface)", border: "1px solid rgba(248,113,113,.3)" }}>
         <div className="flex items-center gap-2 mb-2.5" style={{ color: "var(--danger)" }}>
-          <AlertTriangle size={18} /><span className="text-[15px] font-semibold">{title}</span>
+          <AlertTriangle size={18} /><span className="text-[16px] font-semibold">{title}</span>
         </div>
         <p className="text-[13px] mb-5 leading-relaxed" style={{ color: "var(--muted)" }}>{desc}</p>
         <div className="flex gap-2">
-          <button onClick={onCancel} className="fx-btn-g flex-1 py-2.5 text-[13.5px]">انصراف</button>
-          <button onClick={onConfirm} className="flex-1 py-2.5 rounded-[11px] text-[13.5px] font-semibold text-white transition-all hover:brightness-110" style={{ background: "var(--danger)" }}>{confirmLabel}</button>
+          <button onClick={onCancel} className="fx-btn-g flex-1 py-2.5 text-[14px]">انصراف</button>
+          <button onClick={onConfirm} className="flex-1 py-2.5 rounded-[11px] text-[14px] font-semibold text-white transition-all hover:brightness-110" style={{ background: "var(--danger)" }}>{confirmLabel}</button>
         </div>
       </div>
     </div>
@@ -315,7 +315,7 @@ function ConfirmModal({ title, desc, onConfirm, onCancel, confirmLabel = "حذف
 
 function Toast({ message, type }) {
   return (
-    <div className="fx-toast fixed bottom-[92px] lg:bottom-6 left-1/2 z-[80] px-4 py-3 rounded-xl text-[13.5px] font-medium flex items-center gap-2 shadow-2xl max-w-[90vw]"
+    <div className="fx-toast fixed bottom-[92px] lg:bottom-6 left-1/2 z-[80] px-4 py-3 rounded-xl text-[14px] font-medium flex items-center gap-2 shadow-2xl max-w-[90vw]"
       style={{
         background: type === "error" ? "#3F1414" : "var(--surface)",
         border: `1px solid ${type === "error" ? "var(--danger)" : "rgba(90,169,230,.4)"}`,
@@ -344,7 +344,7 @@ function LoginScreen({ onLogin }) {
       style={{ background: "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(43,127,214,.15), transparent), var(--bg)" }} dir="rtl">
       <div className="w-full max-w-sm rounded-2xl p-7 fx-anim" style={{ background: "var(--surface)", border: "1px solid rgba(90,169,230,.25)", boxShadow: "0 0 80px rgba(43,127,214,.18)" }}>
         <div className="flex flex-col items-center text-center mb-7">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-[27px] mb-4"
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-[28px] mb-4"
             style={{ background: "linear-gradient(135deg,#2B7FD6,#8FC1EE)", color: "#06090F" }}>N</div>
           <span className="text-white font-bold text-[18px]">NEXORA</span>
           <span className="text-[13px] mt-1" style={{ color: "var(--muted)" }}>پنل مدیریت صفحه اشتراک</span>
@@ -418,8 +418,8 @@ function OverviewSection({ config, stats, navigate, dirty }) {
         <div className="fx-card overflow-hidden">
           <div className="flex items-center justify-between p-5 pb-4 gap-3 flex-wrap">
             <div>
-              <h2 className="text-[15px] font-bold text-white">اپلیکیشن‌های پیکربندی‌شده</h2>
-              <p className="text-[12.5px] mt-1" style={{ color: "var(--muted)" }}>لیست اپ‌های موجود در صفحه اشتراک</p>
+              <h2 className="text-[16px] font-bold text-white">اپلیکیشن‌های پیکربندی‌شده</h2>
+              <p className="text-[13px] mt-1" style={{ color: "var(--muted)" }}>لیست اپ‌های موجود در صفحه اشتراک</p>
             </div>
             <button onClick={() => navigate("apps")} className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
               مدیریت <ChevronLeft size={13} />
@@ -480,8 +480,8 @@ function OverviewSection({ config, stats, navigate, dirty }) {
               <div className="fx-ico" style={{ background: "rgba(43,127,214,.16)" }}><Activity size={17} style={{ color: "var(--accent-2)" }} /></div>
               <StatusChip dirty={dirty} />
             </div>
-            <h3 className="text-[14.5px] font-bold text-white mb-1.5">وضعیت صفحه اشتراک</h3>
-            <p className="text-[12.5px] leading-relaxed mb-4" style={{ color: "var(--dim)" }}>قابلیت‌هایی که الان به مشتریان نمایش داده می‌شوند.</p>
+            <h3 className="text-[14px] font-bold text-white mb-1.5">وضعیت صفحه اشتراک</h3>
+            <p className="text-[13px] leading-relaxed mb-4" style={{ color: "var(--dim)" }}>قابلیت‌هایی که الان به مشتریان نمایش داده می‌شوند.</p>
             <div className="flex flex-col gap-2.5">
               {features.map((x, i) => (
                 <button key={i} onClick={() => navigate(x.k)} className="flex items-center justify-between w-full">
@@ -523,7 +523,7 @@ function PhonePreview({ config, os }) {
     <div className="fx-hide-m">
       <div className="sticky top-24">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-1.5 text-[12.5px]" style={{ color: "var(--muted)" }}><Eye size={13} /> پیش‌نمایش زنده</div>
+          <div className="flex items-center gap-1.5 text-[13px]" style={{ color: "var(--muted)" }}><Eye size={13} /> پیش‌نمایش زنده</div>
           <span className="text-[12px] px-2 py-0.5 rounded-full" style={{ background: "rgba(43,127,214,.12)", color: "var(--accent-2)" }}>{osLabel}</span>
         </div>
         <div className="mx-auto rounded-[2.2rem] p-2.5" style={{ width: 250, background: "linear-gradient(160deg,#1a2130,#0a0e17)", border: "1px solid rgba(255,255,255,.12)", boxShadow: "0 24px 70px rgba(0,0,0,.55)" }}>
@@ -600,7 +600,7 @@ function AppsSection({ config, setConfig, requestDelete }) {
                     <div className="fx-ico" style={{ background: app.recommended ? "linear-gradient(135deg,#2B7FD6,#8FC1EE)" : "rgba(255,255,255,.05)" }}>
                       <Icon size={16} color={app.recommended ? "#06090F" : "#5A6880"} />
                     </div>
-                    <button onClick={() => setRec(i)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[10px] text-[12.5px] font-semibold transition-all"
+                    <button onClick={() => setRec(i)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[10px] text-[13px] font-semibold transition-all"
                       style={app.recommended ? { color: "#06090F", background: "linear-gradient(135deg,#2B7FD6,#5AA9E6)" } : { color: "var(--muted)", background: "rgba(255,255,255,.05)" }}>
                       <Star size={11} fill={app.recommended ? "#06090F" : "none"} /> {app.recommended ? "پیشنهادی" : "انتخاب به‌عنوان پیشنهادی"}
                     </button>
@@ -619,7 +619,7 @@ function AppsSection({ config, setConfig, requestDelete }) {
               </div>
             );
           })}
-          <button onClick={addApp} className="fx-btn-dash flex items-center justify-center gap-2 py-3.5 text-[13.5px]">
+          <button onClick={addApp} className="fx-btn-dash flex items-center justify-center gap-2 py-3.5 text-[14px]">
             <Plus size={15} /> افزودن اپ جدید به {OS_TABS.find((t) => t.key === osTab)?.label}
           </button>
         </div>
@@ -664,7 +664,7 @@ function VideosSection({ config, setConfig, requestDelete }) {
             <div className="flex items-center justify-between gap-2 mb-3">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="fx-ico" style={{ background: "rgba(43,127,214,.12)" }}><PlayCircle size={16} style={{ color: "var(--accent-2)" }} /></div>
-                <span className="text-[13.5px] font-semibold text-white truncate">{v.title || "بدون عنوان"}</span>
+                <span className="text-[14px] font-semibold text-white truncate">{v.title || "بدون عنوان"}</span>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {v.telegramUrl && <a href={v.telegramUrl} target="_blank" rel="noreferrer" className="fx-ico-btn" style={{ color: "var(--accent-2)" }}><ExternalLink size={14} /></a>}
@@ -685,7 +685,7 @@ function VideosSection({ config, setConfig, requestDelete }) {
             </Field>
           </div>
         ))}
-        <button onClick={add} className="fx-btn-dash flex items-center justify-center gap-2 py-3.5 text-[13.5px]"><Plus size={15} /> افزودن ویدیوی آموزشی</button>
+        <button onClick={add} className="fx-btn-dash flex items-center justify-center gap-2 py-3.5 text-[14px]"><Plus size={15} /> افزودن ویدیوی آموزشی</button>
       </div>
     </div>
   );
@@ -716,7 +716,7 @@ function FaqSection({ config, setConfig, requestDelete }) {
             <Field label="متن پاسخ"><textarea className="fx-input" value={item.a} onChange={(e) => update(i, { a: e.target.value })} rows={2} /></Field>
           </div>
         ))}
-        <button onClick={add} className="fx-btn-dash flex items-center justify-center gap-2 py-3.5 text-[13.5px]"><Plus size={15} /> افزودن سوال جدید</button>
+        <button onClick={add} className="fx-btn-dash flex items-center justify-center gap-2 py-3.5 text-[14px]"><Plus size={15} /> افزودن سوال جدید</button>
       </div>
     </div>
   );
@@ -745,7 +745,7 @@ function BannersSection({ config, setConfig }) {
             <div className="fx-ico" style={{ background: "rgba(43,127,214,.12)" }}><Bell size={16} style={{ color: "var(--accent-2)" }} /></div>
             <div className="min-w-0">
               <div className="text-[14px] font-semibold text-white">فعال‌سازی کلی بنرها</div>
-              <div className="text-[12.5px] mt-0.5" style={{ color: "var(--muted)" }}>اگر خاموش کنید، هیچ بنری نمایش داده نمی‌شود</div>
+              <div className="text-[13px] mt-0.5" style={{ color: "var(--muted)" }}>اگر خاموش کنید، هیچ بنری نمایش داده نمی‌شود</div>
             </div>
           </div>
           <Toggle checked={b.enabled !== false} onChange={() => update({ enabled: !(b.enabled !== false) })} label="بنرها" />
@@ -758,14 +758,14 @@ function BannersSection({ config, setConfig }) {
         {tab === "thresholds" && (
           <div className="fx-g3 grid grid-cols-2 gap-4 fx-fade">
             <div className="fx-card p-5">
-              <div className="flex items-center gap-2 mb-4"><Clock size={14} style={{ color: "var(--warn)" }} /><span className="text-[13.5px] font-semibold text-white">هشدار پایان زمان</span></div>
+              <div className="flex items-center gap-2 mb-4"><Clock size={14} style={{ color: "var(--warn)" }} /><span className="text-[14px] font-semibold text-white">هشدار پایان زمان</span></div>
               <NumberStepper value={b.lowQuotaDaysThreshold ?? 3} onChange={(v) => update({ lowQuotaDaysThreshold: v })} min={1} max={30} unit="روز" />
               <p className="text-[12px] mt-3 leading-relaxed" style={{ color: "#475569" }}>
                 از <b style={{ color: "var(--warn)" }}>{b.lowQuotaDaysThreshold ?? 3} روز</b> مانده به انقضا، بنر نمایش داده می‌شود.
               </p>
             </div>
             <div className="fx-card p-5">
-              <div className="flex items-center gap-2 mb-4"><Package size={14} style={{ color: "var(--warn)" }} /><span className="text-[13.5px] font-semibold text-white">هشدار پایان حجم</span></div>
+              <div className="flex items-center gap-2 mb-4"><Package size={14} style={{ color: "var(--warn)" }} /><span className="text-[14px] font-semibold text-white">هشدار پایان حجم</span></div>
               <NumberStepper value={b.lowQuotaPercentThreshold ?? 15} onChange={(v) => update({ lowQuotaPercentThreshold: v })} min={1} max={50} unit="درصد" />
               <p className="text-[12px] mt-3 leading-relaxed" style={{ color: "#475569" }}>
                 وقتی کمتر از <b style={{ color: "var(--warn)" }}>{b.lowQuotaPercentThreshold ?? 15}٪</b> حجم باقی باشد، بنر ظاهر می‌شود.
@@ -778,7 +778,7 @@ function BannersSection({ config, setConfig }) {
           <div className="fx-g2 grid gap-5 fx-fade" style={{ gridTemplateColumns: "1fr 280px" }}>
             <div className="fx-card p-5">
               <div className="text-[14px] font-semibold text-white mb-1">بنر «کانفیگ غیرفعال است»</div>
-              <p className="text-[12.5px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+              <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
                 وقتی کانفیگ مشتری غیرفعال شده باشد (مثلاً به‌خاطر تخطی از محدودیت IP) این بنر نمایش داده می‌شود.
               </p>
               <Field label="عنوان" hint="خالی بگذارید تا متن پیش‌فرض استفاده شود">
@@ -794,7 +794,7 @@ function BannersSection({ config, setConfig }) {
             </div>
             <div className="fx-hide-m">
               <div className="sticky top-24">
-                <div className="flex items-center gap-1.5 text-[12.5px] mb-3" style={{ color: "var(--muted)" }}><Eye size={13} /> پیش‌نمایش</div>
+                <div className="flex items-center gap-1.5 text-[13px] mb-3" style={{ color: "var(--muted)" }}><Eye size={13} /> پیش‌نمایش</div>
                 <div className="rounded-2xl p-4" style={{ background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.3)" }}>
                   <div className="flex items-start gap-2.5">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(248,113,113,.18)" }}>
@@ -820,7 +820,7 @@ function BannersSection({ config, setConfig }) {
           <div className="fx-g2 grid gap-5 fx-fade" style={{ gridTemplateColumns: "1fr 280px" }}>
             <div className="fx-card p-5">
               <div className="text-[14px] font-semibold text-white mb-1">بنر «اشتراک رو به اتمام»</div>
-              <p className="text-[12.5px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+              <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
                 وقتی حجم یا زمان اشتراک مشتری به آستانه‌ی تعیین‌شده برسد، این بنر نمایش داده می‌شود.
               </p>
               <Field label="عنوان">
@@ -845,7 +845,7 @@ function BannersSection({ config, setConfig }) {
             </div>
             <div className="fx-hide-m">
               <div className="sticky top-24">
-                <div className="flex items-center gap-1.5 text-[12.5px] mb-3" style={{ color: "var(--muted)" }}><Eye size={13} /> پیش‌نمایش</div>
+                <div className="flex items-center gap-1.5 text-[13px] mb-3" style={{ color: "var(--muted)" }}><Eye size={13} /> پیش‌نمایش</div>
                 <div className="rounded-2xl p-4" style={{ background: "rgba(251,191,36,.08)", border: "1px solid rgba(251,191,36,.3)" }}>
                   <div className="flex items-start gap-2.5">
                     <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(251,191,36,.18)" }}>
@@ -884,7 +884,7 @@ function ReferralSection({ config, setConfig }) {
             <div className="fx-ico" style={{ background: "rgba(43,127,214,.12)" }}><Gift size={16} style={{ color: "var(--accent-2)" }} /></div>
             <div className="min-w-0">
               <div className="text-[14px] font-semibold text-white">نمایش کارت رفرال</div>
-              <div className="text-[12.5px] mt-0.5" style={{ color: "var(--muted)" }}>اگر خاموش کنید، کارت معرفی نمایش داده نمی‌شود</div>
+              <div className="text-[13px] mt-0.5" style={{ color: "var(--muted)" }}>اگر خاموش کنید، کارت معرفی نمایش داده نمی‌شود</div>
             </div>
           </div>
           <Toggle checked={r.enabled} onChange={() => setConfig({ ...config, referral: { ...r, enabled: !r.enabled } })} label="رفرال" />
@@ -916,10 +916,10 @@ function LinksSection({ config, setConfig }) {
           </Field>
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
-          <a href={`https://t.me/${l.supportUsername}`} target="_blank" rel="noreferrer" className="text-[12.5px] px-3 py-1.5 rounded-lg flex items-center gap-1.5" style={{ background: "rgba(43,127,214,.1)", color: "var(--accent-2)" }}>
+          <a href={`https://t.me/${l.supportUsername}`} target="_blank" rel="noreferrer" className="text-[13px] px-3 py-1.5 rounded-lg flex items-center gap-1.5" style={{ background: "rgba(43,127,214,.1)", color: "var(--accent-2)" }}>
             <ExternalLink size={11} /> تست لینک پشتیبانی
           </a>
-          <a href={`https://t.me/${l.channelUsername}`} target="_blank" rel="noreferrer" className="text-[12.5px] px-3 py-1.5 rounded-lg flex items-center gap-1.5" style={{ background: "rgba(43,127,214,.1)", color: "var(--accent-2)" }}>
+          <a href={`https://t.me/${l.channelUsername}`} target="_blank" rel="noreferrer" className="text-[13px] px-3 py-1.5 rounded-lg flex items-center gap-1.5" style={{ background: "rgba(43,127,214,.1)", color: "var(--accent-2)" }}>
             <ExternalLink size={11} /> تست لینک کانال
           </a>
         </div>
@@ -951,7 +951,7 @@ function SettingsSection({ config, setConfig, password, onPasswordChanged, onRes
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
           <LayoutGrid size={15} style={{ color: "var(--accent-2)" }} /> نمایش فضاهای کاری
         </div>
-        <p className="text-[12.5px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
           چطور بین صفحه اشتراک، حسابداری و ربات جابه‌جا شوید. فقط روی همین مرورگر ذخیره می‌شود.
         </p>
 
@@ -1037,12 +1037,12 @@ function SettingsSection({ config, setConfig, password, onPasswordChanged, onRes
 
       <div className="fx-card p-5 mb-4">
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2"><Eye size={15} style={{ color: "var(--accent-2)" }} /> نمایش بخش‌ها</div>
-        <p className="text-[12.5px] mb-4" style={{ color: "var(--muted)" }}>هر بخشی را که نمی‌خواهید در صفحه‌ی مشتری دیده شود، خاموش کنید.</p>
+        <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>هر بخشی را که نمی‌خواهید در صفحه‌ی مشتری دیده شود، خاموش کنید.</p>
         <div className="flex flex-col">
           {vis.map((v, i) => (
             <div key={v.key} className="flex items-center justify-between gap-3 py-3" style={{ borderBottom: i < vis.length - 1 ? "1px solid var(--border)" : "none" }}>
               <div className="min-w-0">
-                <div className="text-[13.5px] text-white">{v.label}</div>
+                <div className="text-[14px] text-white">{v.label}</div>
                 <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>{v.desc}</div>
               </div>
               <Toggle checked={a[v.key] !== false} onChange={() => update({ [v.key]: !(a[v.key] !== false) })} label={v.label} />
@@ -1057,10 +1057,10 @@ function SettingsSection({ config, setConfig, password, onPasswordChanged, onRes
 
       <div className="fx-card p-5 mb-4">
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2"><ShieldCheck size={15} style={{ color: "var(--accent-2)" }} /> امنیت و حریم خصوصی</div>
-        <p className="text-[12.5px] mb-4" style={{ color: "var(--muted)" }}>کنترل چیزی که مشتری می‌تواند ببیند یا کپی کند.</p>
+        <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>کنترل چیزی که مشتری می‌تواند ببیند یا کپی کند.</p>
         <div className="flex items-center justify-between gap-3 py-3">
           <div className="min-w-0">
-            <div className="text-[13.5px] text-white">مخفی‌کردن لیست کانفیگ‌ها</div>
+            <div className="text-[14px] text-white">مخفی‌کردن لیست کانفیگ‌ها</div>
             <div className="text-[12px] mt-0.5 leading-relaxed" style={{ color: "var(--muted)" }}>
               دکمه‌ی «کپی کانفیگ» حذف می‌شود تا مشتری نتواند کانفیگ خام را کپی و با دیگران به اشتراک بگذارد. لینک اشتراک همچنان کار می‌کند.
             </div>
@@ -1291,7 +1291,7 @@ function ResellersSection({ config, setConfig, requestDelete, password }) {
                           <div style={{ width: 96, flexShrink: 0 }}>
                             <TemplateThumb id={tid} vars={pv || {}} active />
                           </div>
-                          <div className="text-[12.5px] leading-relaxed" style={{ color: "var(--muted)" }}>
+                          <div className="text-[13px] leading-relaxed" style={{ color: "var(--muted)" }}>
                             ترکیب این واسطه:{" "}
                             <b style={{ color: "var(--text)" }}>
                               {tplOptions.find((t) => t.id === tid)?.name || tid}
@@ -1308,7 +1308,7 @@ function ResellersSection({ config, setConfig, requestDelete, password }) {
                     {/* تست زنده */}
                     {(r.emailPrefix || r.domains?.length > 0) && (
                       <div className="mt-3 rounded-xl p-3" style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
-                        <div className="text-[12.5px] mb-2" style={{ color: "var(--muted)" }}>تست تشخیص این واسطه:</div>
+                        <div className="text-[13px] mb-2" style={{ color: "var(--muted)" }}>تست تشخیص این واسطه:</div>
                         <div className="flex flex-wrap gap-2">
                           {r.emailPrefix && (
                             <a href={`${API_URL}/api/public/config?email=${r.emailPrefix}_test@nexora`} target="_blank" rel="noreferrer"
@@ -1332,7 +1332,7 @@ function ResellersSection({ config, setConfig, requestDelete, password }) {
           );
         })}
 
-        <button onClick={add} className="fx-btn-dash flex items-center justify-center gap-2 py-3.5 text-[13.5px]">
+        <button onClick={add} className="fx-btn-dash flex items-center justify-center gap-2 py-3.5 text-[14px]">
           <UserPlus size={15} /> افزودن واسطه جدید
         </button>
       </div>
@@ -1403,7 +1403,7 @@ function BackupCard({ password, onRestored }) {
       <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
         <Download size={15} style={{ color: "var(--accent-2)" }} /> پشتیبان‌گیری و بازیابی
       </div>
-      <p className="text-[12.5px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+      <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
         قبل از هر تغییر بزرگ، یک نسخه پشتیبان بگیرید. هنگام بازیابی، از نسخه‌ی فعلی خودکار یک کپی روی سرور نگه داشته می‌شود.
       </p>
 
@@ -1490,7 +1490,7 @@ function ChangePasswordCard({ password, onPasswordChanged }) {
       <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
         <Key size={15} style={{ color: "var(--accent-2)" }} /> تغییر رمز عبور
       </div>
-      <p className="text-[12.5px] mb-4" style={{ color: "var(--muted)" }}>
+      <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>
         رمز جدید بلافاصله فعال می‌شود و در فایل امن روی سرور ذخیره می‌گردد.
       </p>
 
@@ -1543,7 +1543,7 @@ function ChangePasswordCard({ password, onPasswordChanged }) {
       )}
 
       <button onClick={submit} disabled={busy || !current || !next || !confirm}
-        className="fx-btn w-full py-3 text-[13.5px] flex items-center justify-center gap-2">
+        className="fx-btn w-full py-3 text-[14px] flex items-center justify-center gap-2">
         {busy ? <Loader2 size={15} className="animate-spin" /> : <Key size={15} />}
         {busy ? "در حال تغییر..." : "تغییر رمز عبور"}
       </button>
@@ -1569,7 +1569,7 @@ function PopupSection({ config, setConfig }) {
               <div className="fx-ico" style={{ background: "rgba(43,127,214,.12)" }}><MessageSquare size={16} style={{ color: "var(--accent-2)" }} /></div>
               <div className="min-w-0">
                 <div className="text-[14px] font-semibold text-white">نمایش پاپ‌آپ</div>
-                <div className="text-[12.5px] mt-0.5" style={{ color: "var(--muted)" }}>اگر خاموش کنید، هیچ پاپ‌آپی نمایش داده نمی‌شود</div>
+                <div className="text-[13px] mt-0.5" style={{ color: "var(--muted)" }}>اگر خاموش کنید، هیچ پاپ‌آپی نمایش داده نمی‌شود</div>
               </div>
             </div>
             <Toggle checked={p.enabled !== false} onChange={() => update({ enabled: !(p.enabled !== false) })} label="پاپ‌آپ" />
@@ -1584,7 +1584,7 @@ function PopupSection({ config, setConfig }) {
               <div className="flex items-center gap-2 flex-wrap">
                 {EMOJIS.map((e) => (
                   <button key={e} onClick={() => update({ icon: e })}
-                    className="w-11 h-11 rounded-xl text-[20px] transition-all"
+                    className="w-11 h-11 rounded-xl text-[21px] transition-all"
                     style={p.icon === e
                       ? { background: "var(--accent-soft)", border: "1px solid var(--accent)" }
                       : { background: "var(--surface-3)", border: "1px solid var(--border-2)" }}>
@@ -1639,22 +1639,22 @@ function PopupSection({ config, setConfig }) {
       {/* پیش‌نمایش زنده پاپ‌آپ */}
       <div className="fx-hide-m">
         <div className="sticky top-24">
-          <div className="flex items-center gap-1.5 text-[12.5px] mb-3" style={{ color: "var(--muted)" }}>
+          <div className="flex items-center gap-1.5 text-[13px] mb-3" style={{ color: "var(--muted)" }}>
             <Eye size={13} /> پیش‌نمایش
           </div>
           <div className="rounded-2xl p-5" style={{ background: "var(--surface-3)", border: "1px solid var(--border-2)" }}>
             <div className="rounded-2xl p-5 text-center" style={{ background: "var(--surface)", border: "1px solid rgba(90,169,230,.3)", boxShadow: "0 8px 32px rgba(0,0,0,.4)" }}>
-              <div className="text-[31px] mb-2">{p.icon || "🔔"}</div>
+              <div className="text-[32px] mb-2">{p.icon || "🔔"}</div>
               <div className="text-[14px] font-bold text-white mb-2 leading-relaxed">{p.title || "آیا مشکلی در اتصال دارید؟"}</div>
-              <div className="text-[12.5px] leading-relaxed mb-3" style={{ color: "var(--dim)" }}>{p.description || "متن توضیحات اینجا نمایش داده می‌شود"}</div>
+              <div className="text-[13px] leading-relaxed mb-3" style={{ color: "var(--dim)" }}>{p.description || "متن توضیحات اینجا نمایش داده می‌شود"}</div>
               <div className="h-1 rounded-full mb-4 overflow-hidden" style={{ background: "rgba(255,255,255,.06)" }}>
                 <div className="h-full rounded-full" style={{ width: "65%", background: "var(--accent-2)" }} />
               </div>
               <div className="flex gap-2">
-                <div className="flex-1 py-2 rounded-lg text-[12.5px]" style={{ border: "1px solid var(--border-2)", color: "var(--muted)" }}>
+                <div className="flex-1 py-2 rounded-lg text-[13px]" style={{ border: "1px solid var(--border-2)", color: "var(--muted)" }}>
                   {p.dismissButtonText || "خیر"}
                 </div>
-                <div className="flex-1 py-2 rounded-lg text-[12.5px] font-bold" style={{ background: "linear-gradient(135deg,var(--accent),var(--accent-2))", color: "#06090F" }}>
+                <div className="flex-1 py-2 rounded-lg text-[13px] font-bold" style={{ background: "linear-gradient(135deg,var(--accent),var(--accent-2))", color: "#06090F" }}>
                   {p.primaryButtonText || "پشتیبانی"}
                 </div>
               </div>
@@ -1741,7 +1741,7 @@ function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
               {running ? "ربات در حال اجراست" : ready ? "ربات متوقف است" : "ربات راه‌اندازی نشده"}
               <Circle size={7} fill={tone} strokeWidth={0} />
             </div>
-            <div className="text-[12.5px] mt-0.5" style={{ color: "var(--muted)" }}>
+            <div className="text-[13px] mt-0.5" style={{ color: "var(--muted)" }}>
               {ready
                 ? `${status.stats?.users ?? 0} کاربر · ${status.stats?.plans ?? 0} پلن فعال · ${status.stats?.pendingOrders ?? 0} رسید در انتظار`
                 : (status.message || "توکن را وارد و ذخیره کنید")}
@@ -1893,14 +1893,14 @@ function ConnectionTest({ password, tenant }) {
           <div className="text-[14px] font-semibold text-white flex items-center gap-2">
             <ShieldCheck size={15} style={{ color: "var(--accent-2)" }} /> تست اتصال
           </div>
-          <p className="text-[12.5px] mt-1.5 leading-relaxed max-w-md" style={{ color: "var(--muted)" }}>
+          <p className="text-[13px] mt-1.5 leading-relaxed max-w-md" style={{ color: "var(--muted)" }}>
             یک کانفیگ آزمایشی می‌سازد و بلافاصله پاک می‌کند — تا مطمئن شوید
             ربات واقعاً می‌تواند برای مشتری کانفیگ بسازد، نه فقط وصل شود.
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
           <button onClick={run} disabled={busy || !tenant.panel_url}
-            className="fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-1.5"
+            className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5"
             style={!tenant.panel_url ? { opacity: 0.45, cursor: "not-allowed" } : {}}>
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
             {busy ? "در حال بررسی..." : "اجرای تست"}
@@ -1914,14 +1914,14 @@ function ConnectionTest({ password, tenant }) {
       </div>
 
       {!tenant.panel_url && (
-        <p className="text-[12.5px] mt-3" style={{ color: "var(--warn)" }}>
+        <p className="text-[13px] mt-3" style={{ color: "var(--warn)" }}>
           ابتدا آدرس پنل را وارد و ذخیره کنید.
         </p>
       )}
 
       {result && (
         <div className="mt-4">
-          <div className="rounded-xl p-3 mb-3 flex items-center gap-2.5 text-[13.5px] font-semibold"
+          <div className="rounded-xl p-3 mb-3 flex items-center gap-2.5 text-[14px] font-semibold"
             style={{
               background: result.ok ? "rgba(52,211,153,.1)" : "rgba(248,113,113,.1)",
               border: `1px solid ${result.ok ? "rgba(52,211,153,.3)" : "rgba(248,113,113,.3)"}`,
@@ -1943,12 +1943,12 @@ function ConnectionTest({ password, tenant }) {
                 <div className="text-[13px] font-semibold"
                   style={{ color: s.ok ? "var(--text)" : "var(--danger)" }}>{s.title}</div>
                 {s.detail && (
-                  <div className="text-[12.5px] mt-1 leading-relaxed break-words" style={{ color: "var(--muted)" }}>
+                  <div className="text-[13px] mt-1 leading-relaxed break-words" style={{ color: "var(--muted)" }}>
                     {s.detail}
                   </div>
                 )}
                 {s.hint && (
-                  <div className="text-[12.5px] mt-1.5 leading-relaxed" style={{ color: "var(--warn)" }}>
+                  <div className="text-[13px] mt-1.5 leading-relaxed" style={{ color: "var(--warn)" }}>
                     {s.hint}
                   </div>
                 )}
@@ -2054,17 +2054,17 @@ function BotSection({ password, dirty }) {
         <SectionHead title="اتصال و تنظیمات ربات" desc="" />
         <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
           <AlertTriangle size={24} style={{ color: "var(--warn)" }} className="mx-auto mb-3" />
-          <div className="text-[14.5px] font-semibold text-white mb-2">
+          <div className="text-[14px] font-semibold text-white mb-2">
             تنظیمات ربات خوانده نشد
           </div>
           <p className="text-[13px] mb-5 max-w-sm mx-auto leading-relaxed" style={{ color: "var(--muted)" }}>
             {msg?.m || "ماژول ربات ممکن است نصب نشده باشد."}
           </p>
           <button onClick={() => { setLoading(true); load(); }}
-            className="fx-btn px-5 py-2.5 text-[13.5px] inline-flex items-center gap-2">
+            className="fx-btn px-5 py-2.5 text-[14px] inline-flex items-center gap-2">
             <RefreshCw size={14} /> تلاش دوباره
           </button>
-          <div className="text-[12.5px] mt-5 pt-4" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
+          <div className="text-[13px] mt-5 pt-4" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
             اگر ادامه داشت، روی سرور اجرا کنید:{" "}
             <code dir="ltr" className="px-2 py-1 rounded-md"
               style={{ background: "var(--surface-3)", color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
@@ -2085,7 +2085,7 @@ function BotSection({ password, dirty }) {
       <SectionHead title="اتصال و تنظیمات ربات"
         desc="توکن ربات، اتصال به پنل 3x-ui، گروه مدیریت و شماره کارت‌ها."
         action={
-          <button onClick={save} disabled={saving} className="fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-1.5">
+          <button onClick={save} disabled={saving} className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} ذخیره
           </button>
         } />
@@ -2098,7 +2098,7 @@ function BotSection({ password, dirty }) {
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
           <Bot size={15} style={{ color: "var(--accent-2)" }} /> ربات تلگرام
         </div>
-        <p className="text-[12.5px] mb-4" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>
           توکن را از <span dir="ltr">@BotFather</span> بگیرید.
         </p>
 
@@ -2134,7 +2134,7 @@ function BotSection({ password, dirty }) {
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
           <Server size={15} style={{ color: "var(--accent-2)" }} /> اتصال به پنل 3x-ui
         </div>
-        <p className="text-[12.5px] mb-4" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>
           ربات از این اتصال برای ساخت خودکار کانفیگ استفاده می‌کند.
         </p>
 
@@ -2199,7 +2199,7 @@ function BotSection({ password, dirty }) {
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
           <Users size={15} style={{ color: "var(--accent-2)" }} /> گروه مدیریت
         </div>
-        <p className="text-[12.5px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
           یک سوپرگروه خصوصی بسازید، تاپیک‌ها را فعال کنید، ربات را ادمین کنید و آیدی گروه را اینجا بگذارید.
           ربات خودش تاپیک‌های لازم را می‌سازد.
         </p>
@@ -2221,7 +2221,7 @@ function BotSection({ password, dirty }) {
             <PlusIcon size={13} /> افزودن کارت
           </button>
         </div>
-        <p className="text-[12.5px] mb-4" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>
           اگر چند کارت فعال باشد، ربات به‌صورت چرخشی از آن‌ها استفاده می‌کند.
         </p>
 
@@ -2270,7 +2270,7 @@ function BotSection({ password, dirty }) {
           <Toggle checked={!!s.force_channel_on}
             onChange={() => upS({ force_channel_on: !s.force_channel_on })} label="فعال" />
         </div>
-        <p className="text-[12.5px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
           اگر فعال باشد، کاربر تا در کانال عضو نشود نمی‌تواند پلن‌ها را ببیند یا تست رایگان بگیرد.
         </p>
 
@@ -2402,8 +2402,8 @@ function ThemeStep({ n, title, desc, accent, bg }) {
           boxShadow: `0 1px 0 rgba(255,255,255,.3) inset, 0 4px 10px -3px ${accent || "var(--accent)"}`,
         }}>{n}</div>
       <div>
-        <div className="text-[14.5px] font-bold text-white leading-tight">{title}</div>
-        {desc && <div className="text-[12.5px] mt-1" style={{ color: "var(--muted)" }}>{desc}</div>}
+        <div className="text-[14px] font-bold text-white leading-tight">{title}</div>
+        {desc && <div className="text-[13px] mt-1" style={{ color: "var(--muted)" }}>{desc}</div>}
       </div>
     </div>
   );
@@ -2451,7 +2451,7 @@ function ThemesSection({ config, setConfig, password }) {
       <SectionHead title="قالب صفحه اشتراک"
         desc={`ساختار و رنگ جدا هستند — ${templates.length} ساختار × ${palettes.length} پالت = ${templates.length * palettes.length} ترکیب`}
         action={
-          <button onClick={() => setAddOpen(true)} className="fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-2">
+          <button onClick={() => setAddOpen(true)} className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-2">
             <PlusIcon size={14} /> پالت سفارشی
           </button>
         } />
@@ -2494,7 +2494,7 @@ function ThemesSection({ config, setConfig, password }) {
                     <Check size={10} style={{ color: V.bg || "#06090F" }} />
                   </div>
                 )}
-                <span className="text-[13.5px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>{t.name}</span>
+                <span className="text-[14px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>{t.name}</span>
                 <span className="text-[12px]" style={{ color: "var(--muted)" }}>· {t.fa}</span>
               </div>
               <div className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--muted)" }}>{t.desc}</div>
@@ -2614,7 +2614,7 @@ function AddPaletteModal({ password, onClose, onAdded }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <PaletteIcon size={17} style={{ color: "var(--accent-2)" }} />
-              <span className="text-[15.5px] font-bold text-white">پالت رنگی سفارشی</span>
+              <span className="text-[16px] font-bold text-white">پالت رنگی سفارشی</span>
             </div>
             <button onClick={onClose} className="fx-ico-btn"><X size={16} /></button>
           </div>
@@ -2668,8 +2668,8 @@ function AddPaletteModal({ password, onClose, onAdded }) {
         </div>
 
         <div className="nx-modal-foot p-5 flex gap-2" style={{ borderTop: "1px solid var(--border)" }}>
-          <button onClick={onClose} className="fx-btn-g flex-1 py-3 text-[13.5px]">انصراف</button>
-          <button onClick={submit} disabled={busy} className="fx-btn flex-1 py-3 text-[13.5px] flex items-center justify-center gap-2">
+          <button onClick={onClose} className="fx-btn-g flex-1 py-3 text-[14px]">انصراف</button>
+          <button onClick={submit} disabled={busy} className="fx-btn flex-1 py-3 text-[14px] flex items-center justify-center gap-2">
             {busy ? <Loader2 size={14} className="animate-spin" /> : <PlusIcon size={14} />} افزودن پالت
           </button>
         </div>
@@ -2724,7 +2724,7 @@ function BotPlansSection({ password }) {
         action={
           <div className="flex gap-2">
             <button onClick={add} className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5"><PlusIcon size={13} /> پلن جدید</button>
-            <button onClick={save} disabled={saving} className="fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-1.5">
+            <button onClick={save} disabled={saving} className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} ذخیره
             </button>
           </div>
@@ -2891,7 +2891,7 @@ function BotOrdersSection({ password }) {
       ) : orders.length === 0 ? (
         <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
           <CreditCard size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>
+          <div className="text-[14px]" style={{ color: "var(--muted)" }}>
             {filter === "awaiting" ? "رسیدی در انتظار تایید نیست" : "موردی یافت نشد"}
           </div>
         </div>
@@ -2916,7 +2916,7 @@ function BotOrdersSection({ password }) {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-[14px] font-semibold text-white">{o.first_name || "بدون نام"}</span>
-                {o.username && <span className="text-[12.5px]" dir="ltr" style={{ color: "var(--muted)" }}>@{o.username}</span>}
+                {o.username && <span className="text-[13px]" dir="ltr" style={{ color: "var(--muted)" }}>@{o.username}</span>}
                 <StatusPill s={o.status} />
               </div>
               <div className="text-[13px] leading-relaxed" style={{ color: "var(--dim)" }}>
@@ -2925,7 +2925,7 @@ function BotOrdersSection({ password }) {
               </div>
 
               {o.receipt_type === "text" && o.receipt_text && (
-                <div className="mt-2.5 rounded-xl p-3 text-[12.5px] leading-relaxed whitespace-pre-wrap"
+                <div className="mt-2.5 rounded-xl p-3 text-[13px] leading-relaxed whitespace-pre-wrap"
                   dir="auto" style={{
                     background: "var(--surface-3)", border: "1px solid var(--border)",
                     color: "var(--dim)", fontFamily: "var(--mono)",
@@ -2980,7 +2980,7 @@ function BotOrdersSection({ password }) {
             <div className="p-5 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
               <div className="flex items-center gap-2">
                 <AlertTriangle size={16} style={{ color: "var(--danger)" }} />
-                <span className="text-[15px] font-bold text-white">رد سفارش #{rejecting.id}</span>
+                <span className="text-[16px] font-bold text-white">رد سفارش #{rejecting.id}</span>
               </div>
               <p className="text-[13px] mt-2 leading-relaxed" style={{ color: "var(--muted)" }}>
                 دلیل برای مشتری فرستاده می‌شود و سکه‌های خرج‌شده خودکار برمی‌گردند.
@@ -3009,11 +3009,11 @@ function BotOrdersSection({ password }) {
             </div>
 
             <div className="p-5 shrink-0 flex gap-2" style={{ borderTop: "1px solid var(--border)" }}>
-              <button onClick={() => setRejecting(null)} className="fx-btn-g flex-1 py-3 text-[13.5px]">
+              <button onClick={() => setRejecting(null)} className="fx-btn-g flex-1 py-3 text-[14px]">
                 انصراف
               </button>
               <button onClick={doReject} disabled={!reason.trim()}
-                className="flex-1 py-3 rounded-[11px] text-[13.5px] font-bold"
+                className="flex-1 py-3 rounded-[11px] text-[14px] font-bold"
                 style={{ background: reason.trim() ? "var(--danger)" : "var(--surface-2)",
                          color: reason.trim() ? "#fff" : "var(--muted)" }}>
                 رد کن و اطلاع بده
@@ -3154,7 +3154,7 @@ function BotUsersSection({ password }) {
           <span className="text-[12px]" style={{ color: "var(--muted)" }}>مرتب‌سازی:</span>
           {USER_SORTS.map((s) => (
             <button key={s.key} onClick={() => pickSort(s.key)}
-              className="px-2 py-1 rounded-[8px] text-[12.5px] transition-all"
+              className="px-2 py-1 rounded-[8px] text-[13px] transition-all"
               style={sort === s.key
                 ? { background: "var(--accent-soft)", color: "var(--accent-2)" }
                 : { color: "var(--muted)" }}>
@@ -3178,11 +3178,11 @@ function BotUsersSection({ password }) {
                 <button onClick={() => setDetail(u.tg_id)}
                   className="min-w-0 flex-1 text-right">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[13.5px] font-semibold text-white">
+                    <span className="text-[14px] font-semibold text-white">
                       {u.first_name || "بدون نام"}
                     </span>
                     {u.username && (
-                      <span className="text-[12.5px]" dir="ltr" style={{ color: "var(--muted)" }}>
+                      <span className="text-[13px]" dir="ltr" style={{ color: "var(--muted)" }}>
                         @{u.username}
                       </span>
                     )}
@@ -3231,14 +3231,14 @@ function BotUsersSection({ password }) {
           </div>
 
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>
+            <span className="text-[13px]" style={{ color: "var(--muted)" }}>
               {faNum(offset + 1)}–{faNum(Math.min(offset + PAGE, d.total))} از {faNum(d.total)}
             </span>
             {pages > 1 && (
               <div className="flex items-center gap-2">
                 <button onClick={() => go(Math.max(0, offset - PAGE))} disabled={offset === 0}
                   className="fx-btn-g px-3 py-2 text-[13px]">قبلی</button>
-                <span className="text-[12.5px]" style={{ color: "var(--dim)" }}>
+                <span className="text-[13px]" style={{ color: "var(--dim)" }}>
                   {faNum(page)} از {faNum(pages)}
                 </span>
                 <button onClick={() => go(offset + PAGE)} disabled={offset + PAGE >= d.total}
@@ -3296,7 +3296,7 @@ function MessageUserModal({ user, password, onClose }) {
             از طرف ربات، با عنوان «پیام از پشتیبانی» فرستاده می‌شود
           </span>
           <button onClick={send} disabled={busy || !text.trim()}
-            className="fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-1.5 shrink-0">
+            className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5 shrink-0">
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} ارسال
           </button>
         </div>
@@ -3363,7 +3363,7 @@ function RollbackCard({ password }) {
         <History size={15} style={{ color: "var(--warn)" }} />
         <span className="text-[14px] font-semibold text-white">بازگشت به نسخه قبلی</span>
       </div>
-      <p className="text-[12.5px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+      <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
         قبل از هر به‌روزرسانی یک نسخه‌ی کامل ذخیره می‌شود و پنج نسخه‌ی آخر نگه داشته می‌شوند.
         وضعیت فعلی هم قبل از بازگشت ذخیره می‌شود، پس همیشه می‌توانید دوباره جلو بروید.
       </p>
@@ -3388,7 +3388,7 @@ function RollbackCard({ password }) {
               style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-[13.5px] font-semibold text-white">نسخه {s.version}</span>
+                  <span className="text-[14px] font-semibold text-white">نسخه {s.version}</span>
                   {s.hasBot && <span className="fx-pill" style={{ background: "rgba(43,127,214,.12)", color: "var(--accent-2)" }}>شامل ربات</span>}
                 </div>
                 <div className="text-[12px] mt-1" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
@@ -3487,7 +3487,7 @@ function BotTextsSection({ password }) {
       <SectionHead title="متن‌های ربات"
         desc="هر پیامی که ربات می‌فرستد قابل ویرایش است. خالی بگذارید تا متن پیش‌فرض استفاده شود."
         action={
-          <button onClick={save} disabled={saving} className="fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-1.5">
+          <button onClick={save} disabled={saving} className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} ذخیره
           </button>
         } />
@@ -3501,7 +3501,7 @@ function BotTextsSection({ password }) {
       {BOT_TEXTS.map((f) => (
         <div key={f.k} className="fx-card p-4 mt-3">
           <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-            <span className="text-[13.5px] font-semibold text-white">{f.label}</span>
+            <span className="text-[14px] font-semibold text-white">{f.label}</span>
             {f.vars.length > 0 && (
               <div className="flex gap-1.5 flex-wrap">
                 {f.vars.map((v) => (
@@ -3615,7 +3615,7 @@ function BotPreviewSection() {
                     : { background: "var(--surface)", border: "1px solid var(--border)" }}>
                   {on ? <Check size={14} style={{ color: "var(--accent-2)" }} />
                       : <Circle size={7} fill="var(--muted)" strokeWidth={0} />}
-                  <span className="text-[13.5px] font-semibold"
+                  <span className="text-[14px] font-semibold"
                     style={{ color: on ? "var(--text)" : "var(--dim)" }}>{v.label}</span>
                 </button>
               );
@@ -3652,7 +3652,7 @@ function BotPreviewSection() {
                     fontSize: 12, fontWeight: 800, color: "#06090F",
                   }}>N</div>
                   <div>
-                    <div className="text-[12.5px] font-bold" style={{ color: "#fff" }}>ربات نکسورا</div>
+                    <div className="text-[13px] font-bold" style={{ color: "#fff" }}>ربات نکسورا</div>
                     <div className="text-[10.5px]" style={{ color: "#6B8299" }}>آنلاین</div>
                   </div>
                 </div>
@@ -3730,7 +3730,7 @@ function BotStatsSection({ password }) {
         <SectionHead title="آمار و قیف تبدیل" desc="وقتی ربات راه بیفتد، آمار اینجا نمایش داده می‌شود." />
         <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
           <TrendingUp size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>هنوز داده‌ای نیست</div>
+          <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز داده‌ای نیست</div>
         </div>
       </div>
     );
@@ -3862,7 +3862,7 @@ function BotBackupSection({ password }) {
                            : <Download size={20} style={{ color: "var(--accent-2)" }} />}
           </div>
           <div className="text-[14px] font-semibold text-white mb-1">دریافت بک‌آپ</div>
-          <div className="text-[12.5px]" style={{ color: "var(--muted)" }}>یک فایل JSON دانلود می‌شود</div>
+          <div className="text-[13px]" style={{ color: "var(--muted)" }}>یک فایل JSON دانلود می‌شود</div>
         </button>
 
         <label className="fx-card p-6 text-center cursor-pointer">
@@ -3871,7 +3871,7 @@ function BotBackupSection({ password }) {
                            : <Upload size={20} style={{ color: "var(--warn)" }} />}
           </div>
           <div className="text-[14px] font-semibold text-white mb-1">بازیابی از فایل</div>
-          <div className="text-[12.5px]" style={{ color: "var(--muted)" }}>فایل بک‌آپ را انتخاب کنید</div>
+          <div className="text-[13px]" style={{ color: "var(--muted)" }}>فایل بک‌آپ را انتخاب کنید</div>
           <input type="file" accept=".json" onChange={pickFile} className="hidden" disabled={!!busy} />
         </label>
       </div>
@@ -3952,7 +3952,7 @@ function SubscriberModal({ tgId, password, onClose, onMessage }) {
           style={{ borderBottom: "1px solid var(--border)" }}>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[15.5px] font-bold text-white">
+              <span className="text-[16px] font-bold text-white">
                 {u.first_name || "بدون نام"}
               </span>
               {u.username && (
@@ -4007,14 +4007,14 @@ function SubscriberModal({ tgId, password, onClose, onMessage }) {
                 ].map(([l, v, c2], i) => (
                   <div key={i} className="rounded-xl p-3 text-center"
                     style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
-                    <div className="text-[17px] font-bold" style={{ color: c2, fontFamily: "var(--mono)" }}>{v}</div>
+                    <div className="text-[18px] font-bold" style={{ color: c2, fontFamily: "var(--mono)" }}>{v}</div>
                     <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>{l}</div>
                   </div>
                 ))}
               </div>
 
               {/* اشتراک‌ها */}
-              <div className="text-[13.5px] font-semibold text-white mb-3">
+              <div className="text-[14px] font-semibold text-white mb-3">
                 اشتراک‌ها
                 {!d.liveAvailable && subs.length > 0 && (
                   <span className="text-[12px] font-normal mr-2" style={{ color: "var(--warn)" }}>
@@ -4042,7 +4042,7 @@ function SubscriberModal({ tgId, password, onClose, onMessage }) {
                     <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
                       <div className="flex items-center gap-2">
                         <Package size={14} style={{ color: "var(--accent-2)" }} />
-                        <span className="text-[13.5px] font-semibold text-white">
+                        <span className="text-[14px] font-semibold text-white">
                           {s.plan_name || "اشتراک"}
                         </span>
                       </div>
@@ -4062,7 +4062,7 @@ function SubscriberModal({ tgId, password, onClose, onMessage }) {
                     {lv ? (
                       <>
                         <div className="flex justify-between mb-2">
-                          <span className="text-[12.5px]" style={{ color: "var(--dim)" }}>مصرف حجم</span>
+                          <span className="text-[13px]" style={{ color: "var(--dim)" }}>مصرف حجم</span>
                           <span className="text-[13px] font-bold"
                             style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
                             {fmtBytes(used)} {total > 0 ? `/ ${fmtBytes(total)}` : "· نامحدود"}
@@ -4089,13 +4089,13 @@ function SubscriberModal({ tgId, password, onClose, onMessage }) {
                           ].map(([l, v, c2], i) => (
                             <div key={i} className="text-center">
                               <div className="text-[11.5px]" style={{ color: "var(--muted)" }}>{l}</div>
-                              <div className="text-[12.5px] font-bold mt-0.5"
+                              <div className="text-[13px] font-bold mt-0.5"
                                 style={{ color: c2, fontFamily: "var(--mono)" }}>{v}</div>
                             </div>
                           ))}
                         </div>
 
-                        <div className="flex justify-between text-[12.5px] pt-2"
+                        <div className="flex justify-between text-[13px] pt-2"
                           style={{ borderTop: "1px solid var(--border)" }}>
                           <span style={{ color: "var(--muted)" }}>انقضا</span>
                           <span style={{ color: near ? "var(--warn)" : "var(--dim)" }}>
@@ -4105,7 +4105,7 @@ function SubscriberModal({ tgId, password, onClose, onMessage }) {
                         </div>
                       </>
                     ) : (
-                      <div className="text-[12.5px] py-2" style={{ color: "var(--muted)" }}>
+                      <div className="text-[13px] py-2" style={{ color: "var(--muted)" }}>
                         داده‌ی زنده از 3x-ui دریافت نشد — اتصال پنل را بررسی کنید
                       </div>
                     )}
@@ -4116,7 +4116,7 @@ function SubscriberModal({ tgId, password, onClose, onMessage }) {
               {/* آخرین سفارش‌ها */}
               {(d.orders || []).length > 0 && (
                 <>
-                  <div className="text-[13.5px] font-semibold text-white mt-5 mb-3">آخرین سفارش‌ها</div>
+                  <div className="text-[14px] font-semibold text-white mt-5 mb-3">آخرین سفارش‌ها</div>
                   {d.orders.slice(0, 6).map((o) => (
                     <div key={o.id} className="flex items-center justify-between gap-2 py-2.5"
                       style={{ borderBottom: "1px solid var(--border)" }}>
@@ -4130,7 +4130,7 @@ function SubscriberModal({ tgId, password, onClose, onMessage }) {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[12.5px]" style={{ color: "var(--dim)" }}>
+                        <span className="text-[13px]" style={{ color: "var(--dim)" }}>
                           {Number(o.amount || 0).toLocaleString("fa-IR")}
                         </span>
                         <StatusPill s={o.status} />
@@ -4199,7 +4199,7 @@ function BotCoinsSection({ password }) {
       <SectionHead title="سکه و دعوت"
         desc="کاربران با دعوت دوستان سکه می‌گیرند و با نگه‌داشتن سکه، تخفیف بزرگ‌تری باز می‌کنند."
         action={
-          <button onClick={save} disabled={saving} className="fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-1.5">
+          <button onClick={save} disabled={saving} className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
             {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} ذخیره
           </button>
         } />
@@ -4242,7 +4242,7 @@ function BotCoinsSection({ password }) {
             <PlusIcon size={13} /> افزودن پله
           </button>
         </div>
-        <p className="text-[12.5px] mb-4" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>
           هرچه سکه بیشتری نگه دارد، تخفیف بزرگ‌تری می‌گیرد.
         </p>
 
@@ -4306,7 +4306,7 @@ function InboundRow({ inb, checked, onToggle }) {
         style={{ accentColor: "var(--accent)", flexShrink: 0 }} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[13.5px] font-semibold text-white truncate">{inb.remark}</span>
+          <span className="text-[14px] font-semibold text-white truncate">{inb.remark}</span>
           {!inb.enable && (
             <span className="text-[11px] px-1.5 py-0.5 rounded"
               style={{ background: "rgba(248,113,113,.14)", color: "var(--danger)" }}>
@@ -4400,7 +4400,7 @@ function BotInboundsSection({ password }) {
               <RefreshCw size={13} /> بازخوانی
             </button>
             <button onClick={save} disabled={saving || !d?.ready || blocked || !dirty}
-              className="fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-1.5">
+              className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
               {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} ذخیره
             </button>
           </div>
@@ -4427,7 +4427,7 @@ function BotInboundsSection({ password }) {
             <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
               <Network size={15} style={{ color: "var(--accent-2)" }} /> کانفیگ روی کدام اینباندها ساخته شود؟
             </div>
-            <p className="text-[12.5px] mb-4" style={{ color: "var(--muted)" }}>
+            <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>
               پنل الان <b style={{ color: "var(--dim)" }}>{faNum(inbounds.length)}</b> اینباند دارد که{" "}
               <b style={{ color: "var(--dim)" }}>{faNum(active.length)}</b> تای آن فعال است.
             </p>
@@ -4488,7 +4488,7 @@ function BotInboundsSection({ password }) {
               <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
                 <div className="text-[14px] font-semibold text-white flex items-center gap-2">
                   <Layers size={15} style={{ color: "var(--accent-2)" }} /> اینباندهای انتخاب‌شده
-                  <span className="text-[12.5px] font-normal" style={{ color: "var(--muted)" }}>
+                  <span className="text-[13px] font-normal" style={{ color: "var(--muted)" }}>
                     ({faNum(sel.length)} از {faNum(inbounds.length)})
                   </span>
                 </div>
@@ -4498,7 +4498,7 @@ function BotInboundsSection({ password }) {
                   {sel.length === active.length ? "هیچ‌کدام" : "همه‌ی فعال‌ها"}
                 </button>
               </div>
-              <p className="text-[12.5px] mb-4" style={{ color: "var(--muted)" }}>
+              <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>
                 اینباند غیرفعال هم قابل انتخاب است، ولی تا وقتی در پنل روشن نشود کانفیگی رویش ساخته نمی‌شود.
               </p>
 
@@ -4531,7 +4531,7 @@ function BotInboundsSection({ password }) {
                       : <Circle size={15} style={{ color: "var(--muted)", flexShrink: 0 }} />}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[13.5px] font-semibold text-white truncate">{i.remark}</span>
+                        <span className="text-[14px] font-semibold text-white truncate">{i.remark}</span>
                         {!i.enable && (
                           <span className="text-[11px] px-1.5 py-0.5 rounded"
                             style={{ background: "rgba(248,113,113,.14)", color: "var(--danger)" }}>
@@ -4622,10 +4622,10 @@ function MetricCard({ m }) {
       </div>
 
       <div className="flex items-baseline gap-1.5 mb-2">
-        <span className="text-[23px] font-bold" style={{ color: s.c, fontFamily: "var(--mono)" }}>
+        <span className="text-[24px] font-bold" style={{ color: s.c, fontFamily: "var(--mono)" }}>
           {val}
         </span>
-        {m.unit && <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>{m.unit}</span>}
+        {m.unit && <span className="text-[13px]" style={{ color: "var(--muted)" }}>{m.unit}</span>}
       </div>
 
       {m.pct !== null && m.pct !== undefined && <Gauge pct={m.pct} color={s.c} />}
@@ -4671,7 +4671,7 @@ const RISK_META = {
 
 function CountChip({ label, n, color }) {
   return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12.5px]"
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px]"
       style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
       <span style={{ width: 7, height: 7, borderRadius: "50%", background: color }} />
       <span style={{ color: "var(--dim)" }}>{label}</span>
@@ -4712,7 +4712,7 @@ function PortsCard({ ports }) {
         </div>
       </div>
 
-      <p className="text-[12.5px] mb-3" style={{ color: "var(--muted)" }}>
+      <p className="text-[13px] mb-3" style={{ color: "var(--muted)" }}>
         {risky.length === 0
           ? "هیچ پورت ناشناخته‌ای رو به اینترنت باز نیست — وضعیت تمیز است."
           : "هر پورتِ رو به اینترنت یک در است. این‌ها را بشناسید یا ببندید."}
@@ -4750,7 +4750,7 @@ function PortsCard({ ports }) {
 
       {(hidden > 0 || all) && (
         <button onClick={() => setAll(!all)}
-          className="fx-btn-g w-full mt-3 py-2.5 text-[12.5px] flex items-center justify-center gap-1.5">
+          className="fx-btn-g w-full mt-3 py-2.5 text-[13px] flex items-center justify-center gap-1.5">
           {all
             ? <>کمتر <ChevronDown size={14} style={{ transform: "rotate(180deg)" }} /></>
             : <>نمایش همه‌ی {faNum(ports.length)} پورت <ChevronDown size={14} /></>}
@@ -4775,7 +4775,7 @@ function ConnectionsCard({ conn }) {
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
           <Activity size={15} style={{ color: "var(--accent-2)" }} /> اتصال‌های فعال
         </div>
-        <p className="text-[12.5px]" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px]" style={{ color: "var(--muted)" }}>
           {conn ? "الان هیچ اتصال برقراری نیست." : "این بخش روی این سرور در دسترس نیست."}
         </p>
       </div>
@@ -4800,11 +4800,11 @@ function ConnectionsCard({ conn }) {
       {conn.heavy?.length > 0 && (
         <div className="rounded-xl p-3.5 mb-3"
           style={{ background: "rgba(251,191,36,.07)", border: "1px solid rgba(251,191,36,.22)" }}>
-          <div className="text-[12.5px] font-semibold mb-1.5" style={{ color: "var(--warn)" }}>
+          <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--warn)" }}>
             {faNum(conn.heavy.length)} آی‌پی سهم غیرعادی دارد
           </div>
           {conn.heavy.map((h) => (
-            <div key={h.ip} className="text-[12.5px] mb-1" style={{ color: "var(--dim)" }}>
+            <div key={h.ip} className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
               <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{h.ip}</span>
               {" — "}<b>{faNum(h.count)}</b> اتصال ({faNum(h.pct)}٪ کل)
             </div>
@@ -4818,12 +4818,12 @@ function ConnectionsCard({ conn }) {
         </div>
       )}
 
-      <div className="mb-1 text-[12.5px]" style={{ color: "var(--muted)" }}>
+      <div className="mb-1 text-[13px]" style={{ color: "var(--muted)" }}>
         پرمصرف‌ترین آی‌پی‌ها
       </div>
       {ips.map((x) => (
         <div key={x.ip} className="flex items-center gap-3 py-1.5">
-          <span dir="ltr" className="text-[12.5px] shrink-0"
+          <span dir="ltr" className="text-[13px] shrink-0"
             style={{ fontFamily: "var(--mono)", color: "var(--dim)", width: 130 }}>
             {x.ip}
           </span>
@@ -4833,7 +4833,7 @@ function ConnectionsCard({ conn }) {
               background: x.pct >= 15 ? "var(--warn)" : "var(--accent-2)",
             }} />
           </div>
-          <span className="text-[12.5px] shrink-0" style={{ fontFamily: "var(--mono)", color: "var(--dim)", width: 58, textAlign: "left" }}>
+          <span className="text-[13px] shrink-0" style={{ fontFamily: "var(--mono)", color: "var(--dim)", width: 58, textAlign: "left" }}>
             {faNum(x.count)}
           </span>
         </div>
@@ -4841,7 +4841,7 @@ function ConnectionsCard({ conn }) {
 
       {conn.byIp.length > 5 && (
         <button onClick={() => setAll(!all)}
-          className="fx-btn-g w-full mt-2.5 py-2.5 text-[12.5px] flex items-center justify-center gap-1.5">
+          className="fx-btn-g w-full mt-2.5 py-2.5 text-[13px] flex items-center justify-center gap-1.5">
           {all ? "کمتر" : `نمایش همه‌ی ${faNum(conn.byIp.length)} آی‌پی`}
           <ChevronDown size={14} style={all ? { transform: "rotate(180deg)" } : undefined} />
         </button>
@@ -4849,7 +4849,7 @@ function ConnectionsCard({ conn }) {
 
       {conn.byPort?.length > 0 && (
         <div className="mt-4 pt-3.5" style={{ borderTop: "1px solid var(--border)" }}>
-          <div className="text-[12.5px] mb-2" style={{ color: "var(--muted)" }}>
+          <div className="text-[13px] mb-2" style={{ color: "var(--muted)" }}>
             پرترافیک‌ترین پورت‌ها
           </div>
           <div className="flex gap-1.5 flex-wrap">
@@ -4879,7 +4879,7 @@ function UsageChart({ series, color, label, unit, height = 74 }) {
   const raw = series.filter((v) => typeof v === "number");
   if (raw.length < 2) {
     return (
-      <div className="text-[12.5px] py-6 text-center" style={{ color: "var(--muted)" }}>
+      <div className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
         هنوز داده‌ی کافی جمع نشده — هر ۵ دقیقه یک نمونه ذخیره می‌شود.
       </div>
     );
@@ -4916,8 +4916,8 @@ function UsageChart({ series, color, label, unit, height = 74 }) {
   return (
     <div>
       <div className="flex items-baseline justify-between mb-1.5">
-        <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>{label}</span>
-        <span className="text-[15px] font-bold" style={{ color, fontFamily: "var(--mono)" }}>
+        <span className="text-[13px]" style={{ color: "var(--muted)" }}>{label}</span>
+        <span className="text-[16px] font-bold" style={{ color, fontFamily: "var(--mono)" }}>
           {faNum(Math.round(cur))}
           <span className="text-[12px] font-normal mr-1" style={{ color: "var(--muted)" }}>{unit}</span>
         </span>
@@ -5001,11 +5001,11 @@ function UsageHistoryCard({ password }) {
         <div className="text-[14px] font-semibold text-white flex items-center gap-2">
           <TrendingUp size={15} style={{ color: "var(--accent-2)" }} /> تاریخچه‌ی مصرف
         </div>
-        <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>
+        <span className="text-[13px]" style={{ color: "var(--muted)" }}>
           {faNum(d.count || 0)} نمونه از ۲۴ ساعت گذشته
         </span>
       </div>
-      <p className="text-[12.5px] mb-4" style={{ color: "var(--muted)" }}>
+      <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>
         هر ۵ دقیقه یک نمونه. تا وقتی چند ساعت جمع نشود، الگو معنا ندارد.
       </p>
 
@@ -5019,13 +5019,13 @@ function UsageHistoryCard({ password }) {
           </div>
 
           <div className="pt-4" style={{ borderTop: "1px solid var(--border)" }}>
-            <div className="text-[12.5px] mb-2" style={{ color: "var(--muted)" }}>
+            <div className="text-[13px] mb-2" style={{ color: "var(--muted)" }}>
               میانگین هر ساعت شبانه‌روز
             </div>
             <HourStrip hourly={d.hourly} quietest={d.quietestHour} busiest={d.busiestHour} />
 
             {d.quietestHour !== null && d.quietestHour !== undefined && (
-              <div className="flex gap-3 flex-wrap mt-3 text-[12.5px]">
+              <div className="flex gap-3 flex-wrap mt-3 text-[13px]">
                 <span style={{ color: "var(--ok)" }}>
                   ● خلوت‌ترین ساعت: <b>{faNum(d.quietestHour)}</b>
                 </span>
@@ -5043,7 +5043,7 @@ function UsageHistoryCard({ password }) {
           </div>
         </>
       ) : (
-        <div className="text-[12.5px] py-6 text-center" style={{ color: "var(--muted)" }}>
+        <div className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
           هنوز نمونه‌ای ذخیره نشده. چند ساعت بعد از به‌روزرسانی دوباره سر بزنید.
         </div>
       )}
@@ -5072,7 +5072,7 @@ function TopClientsCard({ password }) {
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
           <Users size={15} style={{ color: "var(--accent-2)" }} /> پرمصرف‌ترین مشتری‌ها
         </div>
-        <p className="text-[12.5px]" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px]" style={{ color: "var(--muted)" }}>
           {d.error || "دیتابیس پنل در دسترس نیست."}
         </p>
       </div>
@@ -5088,11 +5088,11 @@ function TopClientsCard({ password }) {
         <div className="text-[14px] font-semibold text-white flex items-center gap-2">
           <Users size={15} style={{ color: "var(--accent-2)" }} /> پرمصرف‌ترین مشتری‌ها
         </div>
-        <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>
+        <span className="text-[13px]" style={{ color: "var(--muted)" }}>
           {faNum(d.totalClients || 0)} کانفیگ · {faNum(d.totalUsedGB || 0)} گیگ کل
         </span>
       </div>
-      <p className="text-[12.5px] mb-3" style={{ color: "var(--muted)" }}>
+      <p className="text-[13px] mb-3" style={{ color: "var(--muted)" }}>
         بر اساس ترافیک واقعی پنل — این می‌گوید کدام <b>مشتری</b> بار می‌آورد،
         نه فقط کدام آی‌پی.
       </p>
@@ -5102,11 +5102,11 @@ function TopClientsCard({ password }) {
       ) : list.map((c) => (
         <div key={c.email} className="py-2">
           <div className="flex items-baseline justify-between gap-2 mb-1 flex-wrap">
-            <span dir="ltr" className="text-[12.5px] truncate"
+            <span dir="ltr" className="text-[13px] truncate"
               style={{ fontFamily: "var(--mono)", color: "var(--dim)", maxWidth: "60%" }}>
               {c.email}
             </span>
-            <span className="text-[12.5px]" style={{ color: "var(--dim)" }}>
+            <span className="text-[13px]" style={{ color: "var(--dim)" }}>
               <b style={{ fontFamily: "var(--mono)" }}>{faNum(c.usedGB)}</b> گیگ
               {c.quotaGB ? <span style={{ color: "var(--muted)" }}> از {faNum(c.quotaGB)}</span> : null}
               <span style={{ color: "var(--muted)" }}> · {faNum(c.pctOfAll)}٪ کل</span>
@@ -5130,7 +5130,7 @@ function TopClientsCard({ password }) {
 
       {(d.clients || []).length > 6 && (
         <button onClick={() => setAll(!all)}
-          className="fx-btn-g w-full mt-3 py-2.5 text-[12.5px] flex items-center justify-center gap-1.5">
+          className="fx-btn-g w-full mt-3 py-2.5 text-[13px] flex items-center justify-center gap-1.5">
           {all ? "کمتر" : `نمایش همه‌ی ${faNum(d.clients.length)} مشتری`}
           <ChevronDown size={14} style={all ? { transform: "rotate(180deg)" } : undefined} />
         </button>
@@ -5212,7 +5212,7 @@ function MaintenanceCard({ password }) {
         <Toggle checked={!!m.enabled} onChange={(v) => up({ enabled: v })}
           label={m.enabled ? "روشن" : "خاموش"} />
       </div>
-      <p className="text-[12.5px] mb-4" style={{ color: "var(--muted)" }}>
+      <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>
         در ساعت کم‌مصرف، سرویس را تازه می‌کند تا نشتی حافظه و نشست‌های
         مرده جمع نشوند.
       </p>
@@ -5263,7 +5263,7 @@ function MaintenanceCard({ password }) {
               <button key={d}
                 onClick={() => up({ days: on ? m.days.filter((x) => x !== d)
                                               : [...(m.days || []), d] })}
-                className="px-3 py-2 rounded-lg text-[12.5px]"
+                className="px-3 py-2 rounded-lg text-[13px]"
                 style={{
                   background: on ? "var(--accent-soft)" : "var(--surface-3)",
                   border: `1px solid ${on ? "var(--accent-2)" : "var(--border)"}`,
@@ -5274,7 +5274,7 @@ function MaintenanceCard({ password }) {
         </div>
       </div>
 
-      <label className="flex items-center gap-2 text-[12.5px] cursor-pointer mb-3"
+      <label className="flex items-center gap-2 text-[13px] cursor-pointer mb-3"
         style={{ color: "var(--dim)" }}>
         <input type="checkbox" checked={!!m.skipIfBusy}
           onChange={(e) => up({ skipIfBusy: e.target.checked })}
@@ -5302,12 +5302,12 @@ function MaintenanceCard({ password }) {
           {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} ذخیره
         </button>
         <button onClick={runNow} disabled={saving}
-          className="fx-btn-g px-3 py-2.5 text-[12.5px] flex items-center gap-1.5">
+          className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
           <Zap size={13} /> همین حالا Xray را تازه کن
         </button>
       </div>
 
-      <div className="mt-3.5 pt-3 text-[12.5px] leading-relaxed"
+      <div className="mt-3.5 pt-3 text-[13px] leading-relaxed"
         style={{ borderTop: "1px solid var(--border)", color: "var(--muted)" }}>
         {m.enabled && m.nextRun
           ? <>اجرای بعدی: <b style={{ color: "var(--dim)" }}>{m.nextRun.replace("T", " ساعت ")}</b></>
@@ -5434,7 +5434,7 @@ function MonitorSection({ password }) {
             <div key={i.name} className="flex items-center justify-between gap-3 py-2 flex-wrap"
               style={{ borderBottom: "1px solid var(--border)" }}>
               <span className="text-[13px] font-semibold text-white" dir="ltr">{i.name}</span>
-              <div className="flex items-center gap-4 text-[12.5px]">
+              <div className="flex items-center gap-4 text-[13px]">
                 <span style={{ color: "var(--ok)" }}>↓ {fmtSize(i.rx)}/s</span>
                 <span style={{ color: "var(--accent-2)" }}>↑ {fmtSize(i.tx)}/s</span>
                 <span style={{ color: "var(--muted)" }}>
@@ -5528,7 +5528,7 @@ function MonitorSection({ password }) {
             {heavy ? "بررسی دوباره" : "بررسی کن"}
           </button>
         </div>
-        <p className="text-[12.5px] mb-3" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px] mb-3" style={{ color: "var(--muted)" }}>
           چند ثانیه طول می‌کشد، پس خودکار تازه نمی‌شود.
         </p>
         {heavy ? (
@@ -5560,7 +5560,7 @@ function ComingSoon({ title, desc, features }) {
         </p>
         {features && (
           <div className="max-w-sm mx-auto text-right">
-            <div className="text-[12.5px] mb-2.5" style={{ color: "var(--dim)" }}>قابلیت‌های برنامه‌ریزی‌شده:</div>
+            <div className="text-[13px] mb-2.5" style={{ color: "var(--dim)" }}>قابلیت‌های برنامه‌ریزی‌شده:</div>
             {features.map((f, i) => (
               <div key={i} className="flex items-center gap-2 py-1.5">
                 <Circle size={5} fill="var(--muted)" strokeWidth={0} />
@@ -5709,7 +5709,7 @@ function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive }) {
                           fontWeight: sel ? 600 : 400,
                         }}>
                         <it.icon size={12} style={{ flexShrink: 0 }} />
-                        <span className="text-[12.5px] truncate">{it.label}</span>
+                        <span className="text-[13px] truncate">{it.label}</span>
                         {it.badge && (
                           <span className="text-[10.5px] px-1.5 py-0.5 rounded-full shrink-0"
                             style={{ background: "rgba(255,255,255,.06)", color: "var(--muted)" }}>
@@ -5847,7 +5847,7 @@ function Modal({ title, onClose, children, footer, width = "440px" }) {
 
         <div className="nx-modal-head flex justify-between items-center px-5 py-4"
           style={{ borderBottom: "1px solid var(--border)" }}>
-          <span className="text-[15px] font-bold text-white">{title}</span>
+          <span className="text-[16px] font-bold text-white">{title}</span>
           <button onClick={onClose} className="fx-ico-btn" style={{ width: 30, height: 30 }}>
             <X size={15} />
           </button>
@@ -5923,7 +5923,7 @@ function BotAffiliates({ password }) {
         <SectionHead title="همکاری در فروش" desc="" />
         <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
           <AlertTriangle size={24} style={{ color: "var(--warn)" }} className="mx-auto mb-3" />
-          <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>
+          <div className="text-[14px]" style={{ color: "var(--muted)" }}>
             {data?.error || "دیتابیس ربات در دسترس نیست"}
           </div>
         </div>
@@ -5939,7 +5939,7 @@ function BotAffiliates({ password }) {
         desc="کسانی که برای شما می‌فروشند و درصد می‌گیرند."
         action={
           <button onClick={() => setAdding(true)}
-            className="fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-1.5">
+            className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
             <PlusIcon size={14} /> همکار جدید
           </button>
         } />
@@ -5949,7 +5949,7 @@ function BotAffiliates({ password }) {
       {list.length > 0 && (
         <div className="fx-card p-5 mb-4">
           <div className="flex justify-between items-baseline flex-wrap gap-2">
-            <span className="text-[13.5px]" style={{ color: "var(--dim)" }}>
+            <span className="text-[14px]" style={{ color: "var(--dim)" }}>
               مجموع بدهی به همکاران
             </span>
             <span className="text-[21px] font-extrabold"
@@ -6024,7 +6024,7 @@ function BotAffiliates({ password }) {
               ["پورسانت", a.earned, "var(--ok)"]].map(([l, v, col], i) => (
               <div key={i} className="p-3 rounded-xl text-center"
                 style={{ background: "var(--surface-3)" }}>
-                <div className="text-[15px] font-bold" style={{ color: col,
+                <div className="text-[16px] font-bold" style={{ color: col,
                      fontFamily: "var(--mono)" }}>
                   {faNum(v)}
                 </div>
@@ -6101,7 +6101,7 @@ function AffiliateForm({ password, affiliate, onClose, onDone }) {
     <Modal title={editing ? "ویرایش همکار" : "همکار جدید"} onClose={onClose} width="480px"
       footer={
         <button onClick={submit} disabled={busy || !f.name.trim()}
-          className="fx-btn w-full py-3 text-[13.5px] flex items-center justify-center gap-2"
+          className="fx-btn w-full py-3 text-[14px] flex items-center justify-center gap-2"
           style={!f.name.trim() ? { opacity: .45, cursor: "not-allowed" } : {}}>
           {busy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
           {editing ? "ذخیره" : "افزودن"}
@@ -6189,7 +6189,7 @@ function AffiliatePayoutModal({ affiliate, password, onClose, onDone }) {
     <Modal title={`پرداخت به ${affiliate.name}`} onClose={onClose} width="420px"
       footer={
         <button onClick={submit} disabled={busy || !(+amount > 0)}
-          className="fx-btn w-full py-3 text-[13.5px] flex items-center justify-center gap-2"
+          className="fx-btn w-full py-3 text-[14px] flex items-center justify-center gap-2"
           style={!(+amount > 0) ? { opacity: .45, cursor: "not-allowed" } : {}}>
           {busy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
           ثبت پرداخت
@@ -6280,7 +6280,7 @@ function TunnelOverview({ password }) {
         <SectionHead title="داشبورد تانل" desc="" />
         <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
           <AlertTriangle size={24} style={{ color: "var(--warn)" }} className="mx-auto mb-3" />
-          <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>
+          <div className="text-[14px]" style={{ color: "var(--muted)" }}>
             {data?.error || "ماژول تانل در دسترس نیست"}
           </div>
         </div>
@@ -6306,7 +6306,7 @@ function TunnelOverview({ password }) {
             <div className="fx-ico mb-3" style={{ background: `color-mix(in srgb, ${col} 12%, transparent)` }}>
               <I size={15} style={{ color: col }} />
             </div>
-            <div className="fx-stat-num text-[20px] font-extrabold text-white leading-none"
+            <div className="fx-stat-num text-[21px] font-extrabold text-white leading-none"
               style={{ fontFamily: "var(--mono)" }}>{faNum(v)}</div>
             <div className="text-[12px] mt-1.5" style={{ color: "var(--dim)" }}>{l}</div>
           </div>
@@ -6337,13 +6337,13 @@ function TunnelOverview({ password }) {
                     flexShrink: 0,
                   }} />
                   <div className="min-w-0">
-                    <div className="text-[13.5px] font-semibold text-white">{n.name}</div>
+                    <div className="text-[14px] font-semibold text-white">{n.name}</div>
                     <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>
                       {n.os_info || "—"}{n.public_ip ? ` · ${n.public_ip}` : ""}
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-4 shrink-0 text-[12.5px]"
+                <div className="flex items-center gap-4 shrink-0 text-[13px]"
                   style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
                   {n.cpu_percent != null && <span>CPU {faNum(n.cpu_percent)}٪</span>}
                   {n.mem_percent != null && <span>RAM {faNum(n.mem_percent)}٪</span>}
@@ -6365,7 +6365,7 @@ function TunnelOverview({ password }) {
                   <div key={t.id} className="flex items-center justify-between gap-3 py-3 flex-wrap"
                     style={{ borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
                     <div className="min-w-0">
-                      <div className="text-[13.5px] font-semibold text-white">{t.name}</div>
+                      <div className="text-[14px] font-semibold text-white">{t.name}</div>
                       <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>
                         {t.node_name} · {t.ports.length} پورت
                       </div>
@@ -6375,7 +6375,7 @@ function TunnelOverview({ password }) {
                         style={{ background: `color-mix(in srgb, ${ec} 14%, transparent)`, color: ec }}>
                         {t.engineName}
                       </span>
-                      <span className="text-[12.5px]" style={{ color: st.color }}>{st.label}</span>
+                      <span className="text-[13px]" style={{ color: st.color }}>{st.label}</span>
                     </div>
                   </div>
                 );
@@ -6441,7 +6441,7 @@ function TunnelNodes({ password }) {
     <div className="fx-anim">
       <SectionHead title="سرورها"
         desc="سرورهایی که agent روی آن‌ها نصب است."
-        action={<button onClick={() => setAdding(true)} className="fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-1.5">
+        action={<button onClick={() => setAdding(true)} className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
           <PlusIcon size={14} /> افزودن سرور</button>} />
 
       {msg && <Msg msg={msg} />}
@@ -6449,7 +6449,7 @@ function TunnelNodes({ password }) {
       {(!data?.nodes || data.nodes.length === 0) ? (
         <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
           <Server size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>هنوز سروری اضافه نشده</div>
+          <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز سروری اضافه نشده</div>
         </div>
       ) : data.nodes.map((n) => (
         <div key={n.id} className="fx-card p-5 mb-3">
@@ -6482,7 +6482,7 @@ function TunnelNodes({ password }) {
             <div className="flex gap-2 shrink-0">
               {!n.online && (
                 <button onClick={() => setDiag(n.id)}
-                  className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
+                  className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
                   <ShieldCheck size={12} /> چرا آفلاین؟
                 </button>
               )}
@@ -6521,7 +6521,7 @@ function TunnelNodes({ password }) {
 
           <div className="flex items-center justify-between mt-4 pt-3 flex-wrap gap-2"
             style={{ borderTop: "1px solid var(--border)" }}>
-            <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>
+            <span className="text-[13px]" style={{ color: "var(--muted)" }}>
               {faNum(n.running_count)} از {faNum(n.tunnel_count)} تانل در حال کار
             </span>
             <span className="text-[12px]" dir="ltr"
@@ -6547,7 +6547,7 @@ function TunnelNodes({ password }) {
             سرور شما هیچ پورتی باز نمی‌کند و رمزی جایی ذخیره نمی‌شود.
           </InfoBox>
           <button onClick={add} disabled={busy || !name.trim()}
-            className="fx-btn w-full py-3 text-[13.5px] flex items-center justify-center gap-2 mt-4">
+            className="fx-btn w-full py-3 text-[14px] flex items-center justify-center gap-2 mt-4">
             {busy ? <Loader2 size={14} className="animate-spin" /> : <PlusIcon size={14} />}
             ساخت و دریافت دستور نصب
           </button>
@@ -6596,7 +6596,7 @@ function NodeDiagnoseModal({ nodeId, password, onClose }) {
                   </div>
                 )}
                 {s.hint && (
-                  <div className="text-[12.5px] mt-2 px-2.5 py-1.5 rounded-lg leading-relaxed"
+                  <div className="text-[13px] mt-2 px-2.5 py-1.5 rounded-lg leading-relaxed"
                     style={{ color: "var(--warn)", background: "rgba(251,191,36,.08)" }}>
                     {s.hint}
                   </div>
@@ -6617,7 +6617,7 @@ function NodeDiagnoseModal({ nodeId, password, onClose }) {
                 <div onClick={() => copy(cm.cmd)}
                   className="rounded-lg px-3 py-2 cursor-pointer" dir="ltr"
                   style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
-                  <code className="text-[12.5px]"
+                  <code className="text-[13px]"
                     style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
                     {cm.cmd}
                   </code>
@@ -6653,14 +6653,14 @@ function AgentInstallModal({ data, onClose }) {
 
       <div className="rounded-xl p-3.5 mb-3" dir="ltr"
         style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
-        <code className="text-[12.5px] break-all block leading-relaxed"
+        <code className="text-[13px] break-all block leading-relaxed"
           style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
           {cmd}
         </code>
       </div>
 
       <button onClick={copy}
-        className="fx-btn w-full py-2.5 text-[13.5px] flex items-center justify-center gap-2">
+        className="fx-btn w-full py-2.5 text-[14px] flex items-center justify-center gap-2">
         {copied ? <><Check size={14} /> کپی شد</> : <><Copy size={14} /> کپی دستور</>}
       </button>
 
@@ -6710,7 +6710,7 @@ function TunnelList({ password }) {
       <SectionHead title="تانل‌ها"
         desc="اتصال بین سرور ایران و سرور خارج."
         action={hasNodes && (
-          <button onClick={() => setAdding(true)} className="fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-1.5">
+          <button onClick={() => setAdding(true)} className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
             <PlusIcon size={14} /> تانل جدید
           </button>
         )} />
@@ -6720,14 +6720,14 @@ function TunnelList({ password }) {
       {!hasNodes ? (
         <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
           <Server size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>
+          <div className="text-[14px]" style={{ color: "var(--muted)" }}>
             اول از بخش «سرورها» یک سرور اضافه کنید
           </div>
         </div>
       ) : data.tunnels.length === 0 ? (
         <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
           <Network size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>هنوز تانلی ساخته نشده</div>
+          <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز تانلی ساخته نشده</div>
         </div>
       ) : data.tunnels.map((t) => {
         const st = TUN_STATUS[t.status] || TUN_STATUS.pending;
@@ -6748,7 +6748,7 @@ function TunnelList({ password }) {
                   {t.node_name} ← {t.remote_host}:{t.bridge_port}
                 </div>
               </div>
-              <span className="text-[12.5px] px-2.5 py-1 rounded-lg shrink-0"
+              <span className="text-[13px] px-2.5 py-1 rounded-lg shrink-0"
                 style={{ background: `color-mix(in srgb, ${st.color} 12%, transparent)`, color: st.color }}>
                 {st.label}
               </span>
@@ -6850,7 +6850,7 @@ function TunnelForm({ password, nodes, engines, onClose, onDone }) {
     <Modal title="تانل جدید" onClose={onClose} width="560px"
       footer={
         <button onClick={submit} disabled={busy || !f.name.trim() || !f.remote_host.trim()}
-          className="fx-btn w-full py-3 text-[13.5px] flex items-center justify-center gap-2">
+          className="fx-btn w-full py-3 text-[14px] flex items-center justify-center gap-2">
           {busy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
           ساخت تانل
         </button>
@@ -6868,12 +6868,12 @@ function TunnelForm({ password, nodes, engines, onClose, onDone }) {
           <span style={{ color: "var(--dim)" }}>سرور خارج</span>
         </div>
 
-        <div className="text-[12.5px] leading-relaxed mb-3" style={{ color: "var(--muted)" }}>
+        <div className="text-[13px] leading-relaxed mb-3" style={{ color: "var(--muted)" }}>
           مشتری به <b style={{ color: "var(--ok)" }}>سرور ایران</b> وصل می‌شود.
           سرور ایران ترافیک را از تانل به سرور خارج می‌فرستد.
         </div>
 
-        <div className="text-[12.5px] font-semibold mb-2" style={{ color: "var(--dim)" }}>
+        <div className="text-[13px] font-semibold mb-2" style={{ color: "var(--dim)" }}>
           سه مرحله:
         </div>
         {[
@@ -7146,9 +7146,9 @@ function TunnelMonitorModal({ tunnel, password, onClose }) {
                   background: `color-mix(in srgb, ${qc} 10%, transparent)`,
                   border: `1px solid color-mix(in srgb, ${qc} 28%, transparent)`,
                 }}>
-                <div className="text-[27px] font-extrabold"
+                <div className="text-[28px] font-extrabold"
                   style={{ color: qc, fontFamily: "var(--mono)" }}>
-                  {faNum(s.latest)} <span className="text-[15px]">ms</span>
+                  {faNum(s.latest)} <span className="text-[16px]">ms</span>
                 </div>
                 <div className="text-[13px] mt-1" style={{ color: qc }}>{s.quality}</div>
                 <div className="text-[12px] mt-2" style={{ color: "var(--muted)" }}>
@@ -7158,7 +7158,7 @@ function TunnelMonitorModal({ tunnel, password, onClose }) {
 
               {samples.length > 1 && (
                 <div className="mb-4">
-                  <div className="text-[12.5px] mb-2" style={{ color: "var(--muted)" }}>روند</div>
+                  <div className="text-[13px] mb-2" style={{ color: "var(--muted)" }}>روند</div>
                   <div className="flex items-end gap-1" style={{ height: 48 }}>
                     {samples.slice(-30).map((x, i) => {
                       const v = x.tcp_avg || 0;
@@ -7216,14 +7216,14 @@ function TunnelMonitorModal({ tunnel, password, onClose }) {
           ) : (
             <div className="text-center py-8">
               <Activity size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-              <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>
+              <div className="text-[14px]" style={{ color: "var(--muted)" }}>
                 هنوز سنجشی انجام نشده
               </div>
             </div>
           )}
 
           <button onClick={measure} disabled={busy || !tunnel.nodeOnline}
-            className="fx-btn w-full py-3 text-[13.5px] flex items-center justify-center gap-2 mt-4"
+            className="fx-btn w-full py-3 text-[14px] flex items-center justify-center gap-2 mt-4"
             style={!tunnel.nodeOnline ? { opacity: 0.4, cursor: "not-allowed" } : {}}>
             {busy
               ? <><Loader2 size={14} className="animate-spin" /> در حال سنجش…</>
@@ -7272,7 +7272,7 @@ function TunnelConfigModal({ tunnel, password, onClose }) {
         <>
           <div className="rounded-xl p-3.5 mb-3 overflow-auto" dir="ltr"
             style={{ background: "var(--surface-3)", border: "1px solid var(--border)", maxHeight: 300 }}>
-            <pre className="text-[12.5px] leading-relaxed whitespace-pre-wrap"
+            <pre className="text-[13px] leading-relaxed whitespace-pre-wrap"
               style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
               {cfg.config}
             </pre>
@@ -7282,7 +7282,7 @@ function TunnelConfigModal({ tunnel, password, onClose }) {
             {cfg.filename}
           </div>
           <button onClick={copy}
-            className="fx-btn w-full py-2.5 text-[13.5px] flex items-center justify-center gap-2">
+            className="fx-btn w-full py-2.5 text-[14px] flex items-center justify-center gap-2">
             {copied ? <><Check size={14} /> کپی شد</> : <><Copy size={14} /> کپی کانفیگ</>}
           </button>
         </>
@@ -7363,10 +7363,10 @@ function SystemHealth({ password }) {
           <div style={{ width: 10, height: 10, borderRadius: "50%", background: worst,
                         boxShadow: `0 0 10px ${worst}`, flexShrink: 0 }} />
           <div className="min-w-0">
-            <div className="text-[15px] font-bold" style={{ color: worst }}>
+            <div className="text-[16px] font-bold" style={{ color: worst }}>
               {HEALTH_LABEL[data?.level] || "نامشخص"}
             </div>
-            <div className="text-[12.5px] mt-0.5" style={{ color: "var(--muted)" }}>
+            <div className="text-[13px] mt-0.5" style={{ color: "var(--muted)" }}>
               {faNum(servers.length)} سرور · آخرین بررسی {data?.at?.slice(11, 16) || "—"}
             </div>
           </div>
@@ -7396,14 +7396,14 @@ function SystemHealth({ password }) {
                     ? "rgba(248,113,113,.2)" : "rgba(251,191,36,.2)"}`,
                 }}>
                 <div className="flex justify-between items-baseline gap-3 flex-wrap">
-                  <span className="text-[13.5px] font-semibold"
+                  <span className="text-[14px] font-semibold"
                     style={{ color: HEALTH_COLOR[c.level] }}>{c.title}</span>
                   <span className="text-[13px]" style={{ color: "var(--dim)" }}>
                     {c.detail}
                   </span>
                 </div>
                 {c.hint && (
-                  <div className="text-[12.5px] mt-2 leading-relaxed"
+                  <div className="text-[13px] mt-2 leading-relaxed"
                     style={{ color: "var(--muted)" }}>{c.hint}</div>
                 )}
               </div>
@@ -7452,7 +7452,7 @@ function TunnelEvents({ password }) {
       {events.length === 0 ? (
         <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
           <Clock size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>هنوز رویدادی ثبت نشده</div>
+          <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز رویدادی ثبت نشده</div>
         </div>
       ) : (
         <div className="fx-card overflow-hidden" style={{ padding: 0 }}>
@@ -7542,7 +7542,7 @@ function BillingPeriod({ password }) {
       {billed.length === 0 ? (
         <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
           <Users size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>
+          <div className="text-[14px]" style={{ color: "var(--muted)" }}>
             ابتدا یک گروه را واسطه علامت بزنید
           </div>
         </div>
@@ -7654,7 +7654,7 @@ function BillingPeriod({ password }) {
                   <span className="text-[14px] font-semibold text-white">
                     بدهی این دوره
                   </span>
-                  <span className="text-[23px] font-extrabold"
+                  <span className="text-[24px] font-extrabold"
                     style={{ color: "var(--accent-2)",
                              fontFamily: "var(--mono)" }}>
                     {faNum(t.due)} <span className="text-[13px]">تومان</span>
@@ -7674,7 +7674,7 @@ function BillingPeriod({ password }) {
                       <div key={i} className="p-3.5 rounded-xl"
                         style={{ background: "var(--surface-3)" }}>
                         <div className="flex justify-between items-baseline">
-                          <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>{l}</span>
+                          <span className="text-[13px]" style={{ color: "var(--muted)" }}>{l}</span>
                           <span className="text-[16px] font-bold" style={{ color: col,
                                 fontFamily: "var(--mono)" }}>
                             {faNum(n)}
@@ -7737,7 +7737,7 @@ function BillingPeriod({ password }) {
                             )}
                           </div>
                         </div>
-                        <span className="text-[13.5px] font-bold shrink-0"
+                        <span className="text-[14px] font-bold shrink-0"
                           style={{ color: x.price === null ? "var(--warn)" : col,
                                    fontFamily: "var(--mono)" }}>
                           {x.price === null ? "بدون نرخ" : faNum(x.amount)}
@@ -7898,7 +7898,7 @@ function BillingClients({ password }) {
             <div className="fx-ico mb-3" style={{ background: `color-mix(in srgb, ${col} 12%, transparent)` }}>
               <I size={15} style={{ color: col }} />
             </div>
-            <div className="fx-stat-num text-[20px] font-extrabold text-white leading-none"
+            <div className="fx-stat-num text-[21px] font-extrabold text-white leading-none"
               style={{ fontFamily: "var(--mono)" }}>{faNum(v)}</div>
             <div className="text-[12px] mt-1.5" style={{ color: "var(--dim)" }}>{l}</div>
             {sub && <div className="text-[11.5px] mt-1" style={{ color: "var(--muted)" }}>{sub}</div>}
@@ -7975,7 +7975,7 @@ function BillingClients({ password }) {
               return (
                 <button key={label}
                   onClick={() => { setter(on ? "" : val); setPage(0); }}
-                  className="px-3 py-1.5 rounded-lg text-[12.5px] flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-lg text-[13px] flex items-center gap-1.5"
                   style={{
                     background: on ? `color-mix(in srgb, ${col} 14%, transparent)` : "transparent",
                     border: `1px solid ${on ? col : "var(--border)"}`,
@@ -8030,7 +8030,7 @@ function BillingClients({ password }) {
               setQ(""); setGroup(""); setStatus(""); setRenewed("");
               setAge(""); setPriced(""); setDates({ from: "", to: "" }); setPage(0);
             }}
-            className="text-[12.5px] mt-3 flex items-center gap-1.5"
+            className="text-[13px] mt-3 flex items-center gap-1.5"
             style={{ color: "var(--accent-2)" }}>
             <X size={12} /> پاک کردن فیلترها ({faNum(data.total)} نتیجه)
           </button>
@@ -8109,7 +8109,7 @@ function BillingClients({ password }) {
 
                     {/* گروه */}
                     <td className="px-3 py-3">
-                      <div className="text-[13.5px]" style={{ color: "var(--dim)" }}>
+                      <div className="text-[14px]" style={{ color: "var(--dim)" }}>
                         {c.groupLabel}
                       </div>
                       {c.billable && (
@@ -8248,7 +8248,7 @@ function BillingClients({ password }) {
         {data.clients.length === 0 && (
           <div className="py-16 text-center">
             <Users size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-            <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>
+            <div className="text-[14px]" style={{ color: "var(--muted)" }}>
               کاربری با این فیلترها پیدا نشد
             </div>
           </div>
@@ -8300,11 +8300,11 @@ function ClientDetailModal({ client: c, onClose }) {
   return (
     <Modal title={c.email} onClose={onClose} width="480px">
       <div className="flex items-center gap-2 mb-4">
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12.5px]"
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[13px]"
           style={{ background: `color-mix(in srgb, ${col} 14%, transparent)`, color: col }}>
           <Circle size={6} fill={col} strokeWidth={0} /> {c.status}
         </span>
-        <span className="text-[12.5px] px-2.5 py-1 rounded-lg"
+        <span className="text-[13px] px-2.5 py-1 rounded-lg"
           style={{ background: "var(--surface-3)", color: "var(--dim)" }}>
           {c.groupLabel}
         </span>
@@ -8441,7 +8441,7 @@ function BillingSettings({ password }) {
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
           <Database size={15} style={{ color: "var(--accent-2)" }} /> مسیر دیتابیس ۳x-ui
         </div>
-        <p className="text-[12.5px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
           حسابداری گروه‌ها و مصرف را از این فایل می‌خواند — فقط‌خواندنی، بدون هیچ تغییری در آن.
         </p>
 
@@ -8472,7 +8472,7 @@ function BillingSettings({ password }) {
 
         {info.found?.length > 0 && (
           <div className="mb-4">
-            <div className="text-[12.5px] mb-2" style={{ color: "var(--muted)" }}>
+            <div className="text-[13px] mb-2" style={{ color: "var(--muted)" }}>
               مسیرهای پیداشده روی این سرور:
             </div>
             {info.found.map((f) => (
@@ -8482,7 +8482,7 @@ function BillingSettings({ password }) {
                   background: f.path === info.current ? "var(--accent-soft)" : "var(--surface-3)",
                   border: `1px solid ${f.path === info.current ? "rgba(43,127,214,.4)" : "var(--border)"}`,
                 }}>
-                <span className="text-[12.5px] truncate" dir="ltr"
+                <span className="text-[13px] truncate" dir="ltr"
                   style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>{f.path}</span>
                 <span className="text-[11.5px] shrink-0" style={{ color: "var(--muted)" }}>
                   {(f.size / 1024 / 1024).toFixed(1)} MB
@@ -8511,18 +8511,18 @@ function BillingSettings({ password }) {
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
           <Database size={15} style={{ color: "var(--accent-2)" }} /> بک‌آپ حسابداری
         </div>
-        <p className="text-[12.5px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
           نرخ‌ها، پرداخت‌ها و لاگ تمدید. داده‌ی ۳x-ui در بک‌آپ نیست — آن از خودش خوانده می‌شود.
         </p>
 
         <div className="fx-g3 grid grid-cols-2 gap-3">
           <button onClick={backup} disabled={busy === "backup"}
-            className="fx-btn py-3 text-[13.5px] flex items-center justify-center gap-2">
+            className="fx-btn py-3 text-[14px] flex items-center justify-center gap-2">
             {busy === "backup" ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             دریافت بک‌آپ
           </button>
           <button onClick={() => fileRef.current?.click()} disabled={busy === "restore"}
-            className="fx-btn-g py-3 text-[13.5px] flex items-center justify-center gap-2">
+            className="fx-btn-g py-3 text-[14px] flex items-center justify-center gap-2">
             {busy === "restore" ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
             بازیابی از فایل
           </button>
@@ -8587,7 +8587,7 @@ function RateRow({ rate, onChange, onDelete }) {
                 onFocus={() => unlimited && onChange({ gb: 30 })}
                 onChange={(e) => onChange({ gb: Math.max(0, Number(e.target.value)) })}
                 placeholder="مثلاً ۵۰"
-                className="flex-1 bg-transparent border-0 outline-none py-2.5 text-[13.5px]"
+                className="flex-1 bg-transparent border-0 outline-none py-2.5 text-[14px]"
                 style={{ color: "var(--text)", fontFamily: "var(--mono)" }} />
               <span className="text-[12px] shrink-0" style={{ color: "var(--muted)" }}>گیگابایت</span>
             </div>
@@ -8698,7 +8698,7 @@ function BillingUnavailable({ info, password }) {
                 </div>
               )}
               {s.hint && (
-                <div className="text-[12.5px] mt-2 px-2.5 py-1.5 rounded-lg break-all" dir="auto"
+                <div className="text-[13px] mt-2 px-2.5 py-1.5 rounded-lg break-all" dir="auto"
                   style={{ color: "var(--warn)", background: "rgba(251,191,36,.08)" }}>
                   {s.hint}
                 </div>
@@ -8715,7 +8715,7 @@ function BillingUnavailable({ info, password }) {
   return (
     <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
       <AlertTriangle size={24} style={{ color: "var(--warn)" }} className="mx-auto mb-3" />
-      <div className="text-[14.5px] font-semibold text-white mb-2">
+      <div className="text-[14px] font-semibold text-white mb-2">
         دیتابیس ۳x-ui خوانده نشد
       </div>
       <p className="text-[13px] mb-4 max-w-sm mx-auto leading-relaxed" style={{ color: "var(--muted)" }}>
@@ -8728,10 +8728,10 @@ function BillingUnavailable({ info, password }) {
         </code>
       )}
       <div className="mt-5 pt-4 max-w-sm mx-auto" style={{ borderTop: "1px solid var(--border)" }}>
-        <p className="text-[12.5px] leading-relaxed mb-3" style={{ color: "var(--muted)" }}>
+        <p className="text-[13px] leading-relaxed mb-3" style={{ color: "var(--muted)" }}>
           روی سرور این را اجرا کنید تا مسیر خودکار پیدا و تنظیم شود:
         </p>
-        <code dir="ltr" className="text-[12.5px] px-3 py-2 rounded-lg inline-block"
+        <code dir="ltr" className="text-[13px] px-3 py-2 rounded-lg inline-block"
           style={{ background: "var(--surface-3)", color: "var(--ok)", fontFamily: "var(--mono)" }}>
           nexora fix-xui
         </code>
@@ -8778,7 +8778,7 @@ function BillingDash({ password }) {
           ["دریافت‌شده", paid, "var(--ok)"],
           ["مانده", due - paid, due - paid > 0 ? "var(--warn)" : "var(--ok)"]].map(([l, v, col], i) => (
           <div key={i} className="fx-card p-4">
-            <div className="fx-stat-num text-[20px] font-extrabold leading-none"
+            <div className="fx-stat-num text-[21px] font-extrabold leading-none"
               style={{ color: col, fontFamily: "var(--mono)" }}>{faNum(v)}</div>
             <div className="text-[12px] mt-2" style={{ color: "var(--dim)" }}>{l} · تومان</div>
           </div>
@@ -8799,14 +8799,14 @@ function BillingDash({ password }) {
               style={{ borderBottom: i < billed.length - 1 ? "1px solid var(--border)" : "none" }}>
               <div className="flex justify-between items-start gap-3 mb-2.5 flex-wrap">
                 <div>
-                  <div className="text-[13.5px] font-semibold text-white">{g.label}</div>
+                  <div className="text-[14px] font-semibold text-white">{g.label}</div>
                   <div className="text-[12px] mt-1" dir="ltr"
                     style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                     {g.name} · {g.configs} config · {g.months} months
                   </div>
                 </div>
                 <div className="text-left">
-                  <div className="text-[14.5px] font-extrabold"
+                  <div className="text-[14px] font-extrabold"
                     style={{ color: rest > 0 ? "var(--warn)" : "var(--ok)", fontFamily: "var(--mono)" }}>
                     {faNum(rest)}
                   </div>
@@ -8899,7 +8899,7 @@ function BillingGroups({ password }) {
                   <Users size={16} style={{ color: d.billed ? "var(--accent-2)" : "var(--muted)" }} />
                 </div>
                 <div>
-                  <div className="text-[13.5px] font-semibold text-white">{d.label || g.name}</div>
+                  <div className="text-[14px] font-semibold text-white">{d.label || g.name}</div>
                   <div className="text-[12px] mt-1" dir="ltr"
                     style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                     {g.name} · {g.configs} configs · {g.usedGB}GB used
@@ -8979,7 +8979,7 @@ function BillingGroups({ password }) {
                           </div>
                         </Field>
                         {g.usedGB > 0 && (
-                          <div className="text-[12.5px] p-2.5 rounded-lg"
+                          <div className="text-[13px] p-2.5 rounded-lg"
                             style={{ background: "var(--surface-3)", color: "var(--dim)" }}>
                             {faNum(g.usedGB)} GB × {faNum(d.perGb)} = {" "}
                             <b style={{ color: "var(--accent-2)" }}>
@@ -8993,7 +8993,7 @@ function BillingGroups({ password }) {
                     <div className="flex justify-between items-center mb-3 mt-1 flex-wrap gap-2">
                       <span className="text-[13px]" style={{ color: "var(--dim)" }}>نرخ ماهانه بر اساس حجم</span>
                       <button onClick={() => set(g, { rates: [...(d.rates || []), { gb: 0, price: 190000 }] })}
-                        className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
+                        className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
                         <PlusIcon size={12} /> افزودن نرخ
                       </button>
                     </div>
@@ -9077,7 +9077,7 @@ function BillingGroups({ password }) {
 
                 {dirty && (
                   <button onClick={() => save(g)} disabled={saving === g.name}
-                    className="fx-btn w-full mt-4 py-2.5 text-[13.5px] flex items-center justify-center gap-2">
+                    className="fx-btn w-full mt-4 py-2.5 text-[14px] flex items-center justify-center gap-2">
                     {saving === g.name ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                     ذخیره
                   </button>
@@ -9152,7 +9152,7 @@ function BillingInvoice({ password }) {
       {billed.length === 0 ? (
         <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
           <FileText size={24} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>
+          <div className="text-[14px]" style={{ color: "var(--muted)" }}>
             ابتدا حداقل یک گروه را واسطه علامت بزنید
           </div>
         </div>
@@ -9166,12 +9166,12 @@ function BillingInvoice({ password }) {
             </Field>
             <div className="fx-g3 grid grid-cols-2 gap-3">
               <button onClick={gen} disabled={busy}
-                className="fx-btn py-2.5 text-[13.5px] flex items-center justify-center gap-2">
+                className="fx-btn py-2.5 text-[14px] flex items-center justify-center gap-2">
                 {busy ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
                 نمایش صورتحساب
               </button>
               <button onClick={downloadPdf} disabled={busy || !sel}
-                className="fx-btn-g py-2.5 text-[13.5px] flex items-center justify-center gap-2">
+                className="fx-btn-g py-2.5 text-[14px] flex items-center justify-center gap-2">
                 <Download size={14} /> دانلود PDF
               </button>
             </div>
@@ -9284,7 +9284,7 @@ function BillingPayments({ password }) {
       <SectionHead title="پرداخت‌ها"
         desc="پرداخت‌های واسطه در ۳x-ui ثبت نمی‌شوند — هر دریافتی را اینجا بزنید تا مانده درست حساب شود."
         action={
-          <button onClick={() => setAdd(true)} className="fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-1.5">
+          <button onClick={() => setAdd(true)} className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
             <PlusIcon size={14} /> ثبت پرداخت
           </button>
         } />
@@ -9292,7 +9292,7 @@ function BillingPayments({ password }) {
       {list.length === 0 ? (
         <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
           <Wallet size={24} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[13.5px]" style={{ color: "var(--muted)" }}>هنوز پرداختی ثبت نشده</div>
+          <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز پرداختی ثبت نشده</div>
         </div>
       ) : (
         <div className="fx-card overflow-hidden" style={{ padding: 0 }}>
@@ -9302,7 +9302,7 @@ function BillingPayments({ password }) {
               <div key={p.id} className="p-4 flex justify-between items-center gap-3 flex-wrap"
                 style={{ borderBottom: i < list.length - 1 ? "1px solid var(--border)" : "none" }}>
                 <div>
-                  <div className="text-[13.5px] font-semibold text-white">{g?.label || p.group_name}</div>
+                  <div className="text-[14px] font-semibold text-white">{g?.label || p.group_name}</div>
                   <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
                     {p.paid_at || p.created_at?.slice(0, 10)}{p.note && ` · ${p.note}`}
                   </div>
@@ -9326,7 +9326,7 @@ function BillingPayments({ password }) {
           <div className="fx-card fx-scale p-5" style={{ width: "min(400px,92vw)" }}
             onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <span className="text-[15px] font-bold text-white">ثبت پرداخت</span>
+              <span className="text-[16px] font-bold text-white">ثبت پرداخت</span>
               <button onClick={() => setAdd(false)} className="fx-ico-btn" style={{ width: 28, height: 28 }}>
                 <X size={14} />
               </button>
@@ -9353,7 +9353,7 @@ function BillingPayments({ password }) {
                 onChange={(e) => setForm({ ...form, note: e.target.value })} />
             </Field>
             <button onClick={submit} disabled={busy || !form.group || !form.amount}
-              className="fx-btn w-full py-2.5 text-[13.5px] flex items-center justify-center gap-2 mt-2">
+              className="fx-btn w-full py-2.5 text-[14px] flex items-center justify-center gap-2 mt-2">
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
               ثبت
             </button>
@@ -9417,7 +9417,7 @@ function GithubCard({ password }) {
       <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
         <Github size={15} style={{ color: "var(--accent-2)" }} /> مخزن به‌روزرسانی
       </div>
-      <p className="text-[12.5px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+      <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
         وقتی مخزن را وصل کنید، پنل نسخه‌های جدید را از Releases گیت‌هاب می‌گیرد
         و به‌روزرسانی از همین‌جا انجام می‌شود.
       </p>
@@ -9430,7 +9430,7 @@ function GithubCard({ password }) {
             onKeyDown={(e) => e.key === "Enter" && dirty && save()}
             style={{ fontFamily: "var(--mono)" }} />
           <button onClick={save} disabled={busy || !dirty}
-            className="fx-btn px-4 py-2.5 text-[13.5px] shrink-0 flex items-center gap-1.5"
+            className="fx-btn px-4 py-2.5 text-[14px] shrink-0 flex items-center gap-1.5"
             style={!dirty ? { opacity: 0.45, cursor: "not-allowed" } : {}}>
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
             {busy ? "بررسی..." : "اتصال"}
@@ -9606,7 +9606,7 @@ function UpdateCard({ password }) {
             </div>
             <div className="min-w-0">
               <div className="text-[14px] font-semibold text-white">به‌روزرسانی</div>
-              <div className="text-[12.5px] mt-0.5" style={{ color: "var(--muted)" }}>
+              <div className="text-[13px] mt-0.5" style={{ color: "var(--muted)" }}>
                 {checking ? "در حال بررسی..." :
                  !info?.configured ? "به‌روزرسانی خودکار تنظیم نشده" :
                  info?.error ? "ارتباط با گیت‌هاب برقرار نشد" :
@@ -9642,7 +9642,7 @@ function UpdateCard({ password }) {
                   {stuck ? "پاسخی از سرور نمی‌آید" : "در حال به‌روزرسانی — صفحه را نبندید"}
                 </span>
               </div>
-              <span className="text-[12.5px]" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
+              <span className="text-[13px]" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                 {Math.floor(elapsedSec / 60)}:{String(elapsedSec % 60).padStart(2, "0")}
               </span>
             </div>
@@ -9670,11 +9670,11 @@ function UpdateCard({ password }) {
             <div className="rounded-lg p-3 max-h-52 overflow-y-auto" dir="ltr"
               style={{ background: "#05070C", border: "1px solid var(--border)" }}>
               {log.length === 0 ? (
-                <div className="text-[12.5px]" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                <div className="text-[13px]" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                   waiting for output...
                 </div>
               ) : log.map((l, i) => (
-                <div key={i} className="text-[12.5px] leading-relaxed"
+                <div key={i} className="text-[13px] leading-relaxed"
                   style={{ color: l.includes("✓") ? "var(--ok)" : l.includes("✗") ? "var(--danger)" : "var(--dim)",
                            fontFamily: "var(--mono)" }}>
                   {l}
@@ -9693,12 +9693,12 @@ function UpdateCard({ password }) {
             <div className="rounded-xl p-4 mb-3" style={{ background: "rgba(52,211,153,.06)", border: "1px solid rgba(52,211,153,.25)" }}>
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle2 size={14} style={{ color: "var(--ok)" }} />
-                <span className="text-[13.5px] font-semibold" style={{ color: "var(--ok)" }}>
+                <span className="text-[14px] font-semibold" style={{ color: "var(--ok)" }}>
                   نسخه {info.latestVersion} منتشر شده
                 </span>
               </div>
               {info.releaseNotes && (
-                <div className="text-[12.5px] leading-relaxed max-h-32 overflow-y-auto mt-2 whitespace-pre-line"
+                <div className="text-[13px] leading-relaxed max-h-32 overflow-y-auto mt-2 whitespace-pre-line"
                   style={{ color: "var(--dim)" }}>
                   {info.releaseNotes}
                 </div>
@@ -9732,7 +9732,7 @@ function UpdateCard({ password }) {
             <p className="text-[13px] mb-2.5" style={{ color: "var(--dim)" }}>
               برای فعال‌سازی به‌روزرسانی خودکار، این دستور را روی سرور اجرا کنید:
             </p>
-            <code dir="ltr" className="block px-3 py-2.5 rounded-lg text-[12.5px]"
+            <code dir="ltr" className="block px-3 py-2.5 rounded-lg text-[13px]"
               style={{ background: "#05070C", border: "1px solid var(--border-2)", color: "var(--accent-2)",
                        fontFamily: "var(--mono)", wordBreak: "break-all" }}>
               echo 'GITHUB_REPO="nexoratech-v/nexora-subscription-manager"' &gt; /opt/nexora-panel/.github
@@ -9767,20 +9767,20 @@ function UpdateCard({ password }) {
             style={{ background: "var(--surface)", border: "1px solid rgba(90,169,230,.35)" }}>
             <div className="flex items-center gap-2 mb-2.5" style={{ color: "var(--accent-2)" }}>
               <Download size={18} />
-              <span className="text-[15px] font-semibold">به‌روزرسانی به {info?.latestVersion}؟</span>
+              <span className="text-[16px] font-semibold">به‌روزرسانی به {info?.latestVersion}؟</span>
             </div>
             <p className="text-[13px] mb-3 leading-relaxed" style={{ color: "var(--muted)" }}>
               سرویس برای چند دقیقه ری‌استارت می‌شود. صفحه‌ی اشتراک مشتریان در این مدت
               با تنظیمات فعلی به کار خود ادامه می‌دهد.
             </p>
             <div className="rounded-lg p-3 mb-4" style={{ background: "rgba(52,211,153,.07)", border: "1px solid rgba(52,211,153,.2)" }}>
-              <div className="text-[12.5px] leading-relaxed" style={{ color: "var(--dim)" }}>
+              <div className="text-[13px] leading-relaxed" style={{ color: "var(--dim)" }}>
                 قبل از شروع، یک بک‌آپ خودکار از تنظیمات گرفته می‌شود.
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setConfirmOpen(false)} className="fx-btn-g flex-1 py-2.5 text-[13.5px]">انصراف</button>
-              <button onClick={startUpdate} className="fx-btn flex-1 py-2.5 text-[13.5px]">شروع به‌روزرسانی</button>
+              <button onClick={() => setConfirmOpen(false)} className="fx-btn-g flex-1 py-2.5 text-[14px]">انصراف</button>
+              <button onClick={startUpdate} className="fx-btn flex-1 py-2.5 text-[14px]">شروع به‌روزرسانی</button>
             </div>
           </div>
         </div>
@@ -9893,7 +9893,7 @@ function SystemSection({ password }) {
           ].map((row, i) => (
             <div key={i} className="flex items-center justify-between gap-3 py-2" style={{ borderBottom: i < 2 ? "1px solid var(--border)" : "none" }}>
               <span className="text-[13px] shrink-0" style={{ color: "var(--dim)" }}>{row.l}</span>
-              <span dir="ltr" className="text-[12.5px] truncate" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
+              <span dir="ltr" className="text-[13px] truncate" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                 {row.v || "—"}
               </span>
             </div>
@@ -9945,7 +9945,7 @@ function SystemSection({ password }) {
         ].map((x, i, arr) => (
           <div key={i} className="flex items-center justify-between gap-3 py-2" style={{ borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
             <code dir="ltr" className="text-[13px]" style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>{x.c}</code>
-            <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>{x.d}</span>
+            <span className="text-[13px]" style={{ color: "var(--muted)" }}>{x.d}</span>
           </div>
         ))}
       </div>
@@ -9987,7 +9987,7 @@ function LivePreview({ dirty, onSave, saving }) {
           <div className="rounded-2xl p-4 flex items-start gap-3 flex-wrap" style={{ background: "rgba(251,191,36,.07)", border: "1px solid rgba(251,191,36,.28)" }}>
             <AlertTriangle size={16} className="shrink-0 mt-0.5" style={{ color: "var(--warn)" }} />
             <div className="flex-1 min-w-[200px]">
-              <div className="text-[13.5px] font-semibold mb-1" style={{ color: "var(--warn)" }}>تغییرات ذخیره‌نشده دارید</div>
+              <div className="text-[14px] font-semibold mb-1" style={{ color: "var(--warn)" }}>تغییرات ذخیره‌نشده دارید</div>
               <p className="text-[13px] leading-relaxed" style={{ color: "var(--dim)" }}>
                 پیش‌نمایش، آخرین نسخه‌ی <b>ذخیره‌شده</b> را نشان می‌دهد. برای دیدن تغییرات جدید، اول ذخیره کنید.
               </p>
@@ -10021,7 +10021,7 @@ function LivePreview({ dirty, onSave, saving }) {
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1 px-1 py-1 rounded-[11px]" style={{ background: "var(--surface-3)", border: "1px solid var(--border-2)" }}>
             <button onClick={() => setZoom((z) => Math.max(50, z - 10))} className="fx-ico-btn" style={{ width: 28, height: 28 }} aria-label="کوچک‌نمایی"><Minus size={13} /></button>
-            <span className="text-[12.5px] w-11 text-center" style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>{zoom}%</span>
+            <span className="text-[13px] w-11 text-center" style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>{zoom}%</span>
             <button onClick={() => setZoom((z) => Math.min(150, z + 10))} className="fx-ico-btn" style={{ width: 28, height: 28 }} aria-label="بزرگ‌نمایی"><Plus size={13} /></button>
           </div>
           <a href={`${API_URL}/api/preview`} target="_blank" rel="noreferrer" className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
@@ -10054,7 +10054,7 @@ function LivePreview({ dirty, onSave, saving }) {
               {loading && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[18px] z-10" style={{ background: "var(--surface-3)" }}>
                   <Loader2 size={22} className="animate-spin" style={{ color: "var(--accent-2)" }} />
-                  <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>در حال بارگذاری...</span>
+                  <span className="text-[13px]" style={{ color: "var(--muted)" }}>در حال بارگذاری...</span>
                 </div>
               )}
               <iframe
@@ -10249,7 +10249,7 @@ export default function App() {
             <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-[18px] shrink-0"
               style={{ background: "linear-gradient(135deg,#2B7FD6,#8FC1EE)", color: "#06090F" }}>N</div>
             <div className="min-w-0">
-              <div className="text-[15.5px] font-bold text-white leading-none">NEXORA</div>
+              <div className="text-[16px] font-bold text-white leading-none">NEXORA</div>
               <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>پنل مدیریت</div>
             </div>
           </div>
@@ -10290,7 +10290,7 @@ export default function App() {
           <div className="fx-card p-3 mb-3" style={{ background: "var(--surface-2)" }}>
             <div className="flex items-center gap-2 mb-1.5">
               <Circle size={7} fill="var(--ok)" strokeWidth={0} />
-              <span className="text-[12.5px] font-semibold" style={{ color: "var(--ok)" }}>سرویس فعال</span>
+              <span className="text-[13px] font-semibold" style={{ color: "var(--ok)" }}>سرویس فعال</span>
             </div>
             <div className="text-[12px]" style={{ color: "var(--muted)" }} dir="ltr">t.me/{config.links?.channelUsername}</div>
           </div>
@@ -10303,8 +10303,8 @@ export default function App() {
           <div className="flex items-center gap-3 min-w-0">
             <button className="fx-burger" onClick={() => setOpen(true)} aria-label="منو"><Menu size={19} /></button>
             <div className="min-w-0">
-              <h1 className="text-[17.5px] font-bold text-white truncate">{currentNav?.label}</h1>
-              <p className="text-[12.5px] mt-0.5 fx-hide-m" style={{ color: "var(--muted)" }}>مدیریت صفحه اشتراک مشتریان</p>
+              <h1 className="text-[18px] font-bold text-white truncate">{currentNav?.label}</h1>
+              <p className="text-[13px] mt-0.5 fx-hide-m" style={{ color: "var(--muted)" }}>مدیریت صفحه اشتراک مشتریان</p>
             </div>
           </div>
           <div className="flex items-center gap-2.5">
@@ -10320,7 +10320,7 @@ export default function App() {
                 <span className="fx-hide-m">لغو تغییرات</span>
               </button>
             )}
-            <button onClick={save} disabled={saving || !dirty} className="fx-desktop-save fx-btn px-4 py-2.5 text-[13.5px] flex items-center gap-1.5 shrink-0">
+            <button onClick={save} disabled={saving || !dirty} className="fx-desktop-save fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5 shrink-0">
               {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
               <span className="fx-hide-m">{saving ? "در حال ذخیره..." : "ذخیره تغییرات"}</span>
             </button>
