@@ -1,0 +1,36 @@
+name: پیشنهاد قابلیت / Feature request
+description: چیزی که نکسورا ندارد و به کارتان می‌آید
+title: "[پیشنهاد] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: چه مشکلی را حل می‌کند
+      description: |
+        نه خودِ راه‌حل — کاری که الان سخت است. بهترین قابلیت‌های این پنل
+        از همین جمله‌ها آمده‌اند.
+      placeholder: |
+        وقتی سرور کند می‌شود نمی‌فهمم کدام مشتری بیشترین بار را می‌آورد
+        و باید دستی در پنل 3x-ui بگردم.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: اگر راه‌حلی در ذهن دارید
+      description: اختیاری
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: کدام بخش
+      options:
+        - صفحه اشتراک
+        - ربات تلگرام
+        - حسابداری
+        - تانل
+        - فایروال
+        - مانیتورینگ
+        - جای دیگر

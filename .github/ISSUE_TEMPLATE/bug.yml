@@ -1,0 +1,73 @@
+name: گزارش مشکل / Bug report
+description: چیزی کار نمی‌کند یا آن‌طور که انتظار دارید کار نمی‌کند
+title: "[باگ] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        قبل از گزارش، اگر می‌توانید این را روی سرور بزنید و خروجی‌اش را ضمیمه کنید:
+
+        ```bash
+        nexora doctor
+        ```
+
+        بیشتر مشکلات نصب و اتصال را خودش پیدا و رفع می‌کند.
+
+  - type: input
+    id: version
+    attributes:
+      label: نسخه
+      description: خروجی `cat /opt/nexora/VERSION` یا شماره‌ای که پایین پنل می‌بینید
+      placeholder: "1.9.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: کدام بخش
+      options:
+        - صفحه اشتراک
+        - ربات تلگرام
+        - حسابداری
+        - تانل
+        - فایروال
+        - مانیتورینگ
+        - نصب و به‌روزرسانی
+        - جای دیگر
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: چه اتفاقی افتاد
+      description: چه کاری کردید، چه انتظاری داشتید، و چه شد
+      placeholder: |
+        رسید را تایید کردم، انتظار داشتم کانفیگ برای مشتری برود.
+        هیچ پیامی نرفت و همان دکمه‌های تایید سر جایشان ماندند.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: لاگ
+      description: خروجی `nexora logs` در همان لحظه — اگر دارید
+      render: shell
+
+  - type: input
+    id: os
+    attributes:
+      label: سیستم‌عامل و نسخه‌ی 3x-ui
+      placeholder: "Ubuntu 22.04 · 3x-ui 3.7.0"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: قبل از ارسال
+      options:
+        - label: نسخه‌ام آخرین نسخه است (`nexora update`)
+        - label: توکن، رمز و شماره کارت را از متن و عکس‌ها پاک کرده‌ام
+          required: true

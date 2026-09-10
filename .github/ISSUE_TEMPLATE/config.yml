@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: پشتیبانی و سوال
+    url: https://t.me/crm_nexoravpn
+    about: سوال نصب یا راه‌اندازی — سریع‌تر از باز کردن issue جواب می‌گیرید
+  - name: کانال نکسورا
+    url: https://t.me/yanexoravpn
+    about: اعلان نسخه‌های جدید و تغییرات
+  - name: گزارش مشکل امنیتی
+    url: https://github.com/nexoratech-v/nexora-subscription-manager/security/advisories/new
+    about: مشکل امنیتی را عمومی گزارش نکنید — از این مسیر بفرستید

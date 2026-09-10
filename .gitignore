@@ -14,7 +14,6 @@ data/auth.json
 data/bot.db
 data/bot.db-*
 data/*.backup*
-.github
 
 # Logs and temporary files
 *.log
