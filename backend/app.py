@@ -1993,6 +1993,145 @@ def _selfheal_backup_cron():
         return None
 
 
+HISTORY_PATH = Path(os.getenv("HISTORY_PATH",
+                              str(CONFIG_PATH.parent / "usage-history.json")))
+
+#: چند نمونه نگه داریم. هر ۵ دقیقه یک نمونه یعنی ۵۷۶ نمونه = دو روز.
+#: بیشتر از این، فایل بزرگ می‌شود بدون اینکه به تصمیم کمکی کند.
+HISTORY_MAX = 576
+
+
+def _history_load():
+    try:
+        with open(HISTORY_PATH, encoding="utf-8") as f:
+            d = json.load(f)
+        return d if isinstance(d, list) else []
+    except Exception:
+        return []
+
+
+def _history_sample():
+    """
+    یک نمونه از وضعیت سرور.
+
+    بدون تاریخچه، «پیک سرور کی است؟» جواب ندارد و زمان‌بندی نگهداری
+    فقط حدس است. نمونه‌ها همراه همان حلقه‌ی پنج‌دقیقه‌ای گرفته می‌شوند
+    تا بار اضافه‌ای به سرور تحمیل نشود.
+    """
+    if not MONITOR:
+        return
+    try:
+        snap = MONITOR.snapshot(include=["cpu", "memory", "connections"])
+    except Exception:
+        return
+
+    def _val(key):
+        for m in snap.get("metrics") or []:
+            if m.get("key") == key and isinstance(m.get("value"), (int, float)):
+                return round(float(m["value"]), 1)
+        return None
+
+    conn = (snap.get("sections") or {}).get("connections") or {}
+    row = {
+        "t": datetime.now().isoformat(timespec="minutes"),
+        "cpu": _val("cpu"),
+        "mem": _val("memory"),
+        "conn": int(conn.get("total") or 0),
+        "ips": int(conn.get("uniqueIps") or 0),
+    }
+
+    rows = _history_load()
+    rows.append(row)
+    rows = rows[-HISTORY_MAX:]
+    try:
+        HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(HISTORY_PATH, "w", encoding="utf-8") as f:
+            json.dump(rows, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+@app.get("/api/admin/usage-history")
+def usage_history(hours: int = 24, x_admin_password: str = Header(...)):
+    """تاریخچه‌ی مصرف سرور و ساعت پیک."""
+    check_auth(x_admin_password)
+    from datetime import timedelta
+
+    rows = _history_load()
+    if hours and hours > 0:
+        cut = (datetime.now() - timedelta(hours=int(hours))).isoformat(
+            timespec="minutes")
+        rows = [r for r in rows if str(r.get("t") or "") >= cut]
+
+    # میانگین هر ساعت شبانه‌روز — همان چیزی که ساعت کم‌مصرف را نشان
+    # می‌دهد و زمان‌بندی نگهداری باید رویش بنشیند
+    buckets = {}
+    for r in _history_load():
+        try:
+            h = int(str(r["t"])[11:13])
+        except (ValueError, KeyError, IndexError):
+            continue
+        b = buckets.setdefault(h, {"conn": 0, "cpu": 0.0, "n": 0})
+        b["conn"] += int(r.get("conn") or 0)
+        b["cpu"] += float(r.get("cpu") or 0)
+        b["n"] += 1
+
+    hourly = [{"hour": h,
+               "conn": round(b["conn"] / b["n"], 1),
+               "cpu": round(b["cpu"] / b["n"], 1)}
+              for h, b in sorted(buckets.items()) if b["n"]]
+
+    quietest = min(hourly, key=lambda x: x["conn"])["hour"] if hourly else None
+    busiest = max(hourly, key=lambda x: x["conn"])["hour"] if hourly else None
+
+    return {"samples": rows, "hourly": hourly, "count": len(rows),
+            "quietestHour": quietest, "busiestHour": busiest,
+            "maxSamples": HISTORY_MAX}
+
+
+@app.get("/api/admin/top-clients")
+def top_clients(limit: int = 10, x_admin_password: str = Header(...)):
+    """
+    پرمصرف‌ترین مشتری‌ها بر اساس ترافیک واقعی پنل.
+
+    شمارش اتصال فقط IP می‌دهد؛ این می‌گوید کدام *مشتری* — با نام
+    کانفیگ، حجم مصرفی و سهمش از کل — بیشترین بار را می‌برد.
+    """
+    check_auth(x_admin_password)
+
+    clients, _groups, err = _read_xui_clients()
+    if clients is None:
+        return {"ready": False, "error": err or "دیتابیس پنل در دسترس نیست",
+                "clients": []}
+
+    out = []
+    for c in clients:
+        email = c.get("email")
+        if not email:
+            continue
+        used = int(c.get("used") or 0)
+        quota = int(c.get("totalGB") or 0)
+        out.append({
+            "email": email,
+            "group": c.get("group") or "بدون گروه",
+            "usedBytes": used,
+            "usedGB": round(used / (1024 ** 3), 2),
+            "quotaGB": round(quota / (1024 ** 3), 1) if quota else 0,
+            "pctOfQuota": (round(used * 100.0 / quota, 1) if quota else None),
+            "enable": bool(c.get("enable", True)),
+            "expiryTime": c.get("expiry_time") or c.get("expiryTime") or 0,
+        })
+
+    total = sum(x["usedBytes"] for x in out) or 1
+    for x in out:
+        x["pctOfAll"] = round(x["usedBytes"] * 100.0 / total, 1)
+
+    out.sort(key=lambda x: x["usedBytes"], reverse=True)
+    return {"ready": True, "clients": out[:max(1, min(limit, 100))],
+            "totalClients": len(out),
+            "totalUsedGB": round(total / (1024 ** 3), 1)}
+
+
 #: پیش‌فرض زمان‌بندی نگهداری.
 #
 # ۰۵:۰۰ به وقت سرور انتخاب شده چون کم‌ترین مصرف VPN ایرانی همان‌جاست:
@@ -2232,6 +2371,11 @@ def _start_health_loop():
 
             # پنجره‌ی نگهداری هم همین‌جا بررسی می‌شود — نخ جدا لازم
             # ندارد و هر دو با سرویس بالا و پایین می‌روند
+            try:
+                _history_sample()
+            except Exception:
+                pass
+
             try:
                 _maint_tick()
             except Exception:

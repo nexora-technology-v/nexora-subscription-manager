@@ -4867,6 +4867,278 @@ function ConnectionsCard({ conn }) {
   );
 }
 
+/**
+ * نمودار تاریخچه‌ی مصرف.
+ *
+ * SVG خام و بدون کتابخانه — یک نمودار ساده ارزش ۱۲۰ کیلوبایت وابستگی
+ * را ندارد. رنگ تنها حامل معنا نیست: هر سری برچسب و عدد جداگانه دارد،
+ * چون قواعد دسترسی‌پذیری می‌گویند نباید فقط با رنگ تفکیک شود.
+ */
+function UsageChart({ series, color, label, unit, height = 74 }) {
+  const [hover, setHover] = useState(null);
+  const raw = series.filter((v) => typeof v === "number");
+  if (raw.length < 2) {
+    return (
+      <div className="text-[12.5px] py-6 text-center" style={{ color: "var(--muted)" }}>
+        هنوز داده‌ی کافی جمع نشده — هر ۵ دقیقه یک نمونه ذخیره می‌شود.
+      </div>
+    );
+  }
+
+  // ۲۸۸ نقطه در چند صد پیکسل فقط دندانه‌ی بی‌معنا می‌سازد. میانگین
+  // هر دسته را می‌گیریم تا روند دیده شود، نه نویز.
+  const CAP = 64;
+  const pts = raw.length <= CAP ? raw : (() => {
+    const size = Math.ceil(raw.length / CAP);
+    const out = [];
+    for (let i = 0; i < raw.length; i += size) {
+      const chunk = raw.slice(i, i + size);
+      out.push(chunk.reduce((a, b) => a + b, 0) / chunk.length);
+    }
+    return out;
+  })();
+
+  const max = Math.max(...pts, 1);
+  // کف نمودار صفر است تا نسبت‌ها صادقانه دیده شوند، ولی برچسب
+  // «کمینه» باید کمینه‌ی واقعی داده باشد نه صفرِ کف
+  const dataMin = Math.min(...raw);
+  const min = 0;
+  const span = max - min || 1;
+  const W = 100;
+  const xy = (v, i) => [
+    (i / (pts.length - 1)) * W,
+    height - ((v - min) / span) * (height - 8) - 4,
+  ];
+  const line = pts.map((v, i) => xy(v, i).join(",")).join(" ");
+  const area = `0,${height} ${line} ${W},${height}`;
+  const cur = hover !== null ? pts[hover] : pts[pts.length - 1];
+
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>{label}</span>
+        <span className="text-[15px] font-bold" style={{ color, fontFamily: "var(--mono)" }}>
+          {faNum(Math.round(cur))}
+          <span className="text-[12px] font-normal mr-1" style={{ color: "var(--muted)" }}>{unit}</span>
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${height}`} preserveAspectRatio="none"
+        style={{ width: "100%", height, display: "block" }}
+        role="img" aria-label={`${label}: بیشینه ${Math.round(max)} ${unit}`}
+        onMouseLeave={() => setHover(null)}
+        onMouseMove={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          const p = (e.clientX - r.left) / r.width;
+          setHover(Math.min(pts.length - 1, Math.max(0, Math.round(p * (pts.length - 1)))));
+        }}>
+        <polygon points={area} fill={color} opacity="0.13" />
+        <polyline points={line} fill="none" stroke={color} strokeWidth="1.4"
+          vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+        {hover !== null && (
+          <circle cx={xy(pts[hover], hover)[0]} cy={xy(pts[hover], hover)[1]}
+            r="2.5" fill={color} vectorEffect="non-scaling-stroke" />
+        )}
+      </svg>
+      <div className="flex justify-between text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+        <span>کمینه {faNum(Math.round(dataMin))}</span>
+        <span>بیشینه {faNum(Math.round(Math.max(...raw)))}</span>
+      </div>
+    </div>
+  );
+}
+
+/** نوار ۲۴ ساعته — کدام ساعت شبانه‌روز شلوغ است و کدام خلوت. */
+function HourStrip({ hourly, quietest, busiest }) {
+  if (!hourly?.length) return null;
+  const max = Math.max(...hourly.map((h) => h.conn), 1);
+  const byHour = Object.fromEntries(hourly.map((h) => [h.hour, h]));
+
+  return (
+    <div>
+      <div className="flex items-end gap-[2px]" style={{ height: 52 }}>
+        {Array.from({ length: 24 }, (_, h) => {
+          const d = byHour[h];
+          const v = d ? d.conn : 0;
+          const isQuiet = h === quietest;
+          const isBusy = h === busiest;
+          return (
+            <div key={h} className="flex-1 rounded-t-[3px]" title={
+              d ? `ساعت ${h} — میانگین ${Math.round(v)} اتصال` : `ساعت ${h} — داده‌ای نیست`}
+              style={{
+                height: `${Math.max(3, (v / max) * 100)}%`,
+                background: isBusy ? "var(--danger)"
+                  : isQuiet ? "var(--ok)"
+                    : d ? "var(--accent-2)" : "var(--surface-3)",
+                opacity: d ? (isBusy || isQuiet ? 1 : 0.55) : 0.35,
+              }} />
+          );
+        })}
+      </div>
+      <div className="flex justify-between text-[12px] mt-1.5" style={{ color: "var(--muted)" }}>
+        <span>۰۰</span><span>۰۶</span><span>۱۲</span><span>۱۸</span><span>۲۳</span>
+      </div>
+    </div>
+  );
+}
+
+function UsageHistoryCard({ password }) {
+  const [d, setD] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`${API_URL}/api/admin/usage-history?hours=24`, {
+      headers: { "X-Admin-Password": password },
+    }).then((r) => r.json()).then((j) => alive && setD(j)).catch(() => alive && setD({}));
+    return () => { alive = false; };
+  }, [password]);
+
+  if (!d) return null;
+  const s = d.samples || [];
+
+  return (
+    <div className="fx-card p-5 mb-4">
+      <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+        <div className="text-[14px] font-semibold text-white flex items-center gap-2">
+          <TrendingUp size={15} style={{ color: "var(--accent-2)" }} /> تاریخچه‌ی مصرف
+        </div>
+        <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>
+          {faNum(d.count || 0)} نمونه از ۲۴ ساعت گذشته
+        </span>
+      </div>
+      <p className="text-[12.5px] mb-4" style={{ color: "var(--muted)" }}>
+        هر ۵ دقیقه یک نمونه. تا وقتی چند ساعت جمع نشود، الگو معنا ندارد.
+      </p>
+
+      {s.length >= 2 ? (
+        <>
+          <div className="fx-g3 grid grid-cols-2 gap-5 mb-5">
+            <UsageChart series={s.map((x) => x.conn)} color="var(--accent-2)"
+              label="اتصال‌های هم‌زمان" unit="اتصال" />
+            <UsageChart series={s.map((x) => x.cpu)} color="var(--warn)"
+              label="پردازنده" unit="٪" />
+          </div>
+
+          <div className="pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+            <div className="text-[12.5px] mb-2" style={{ color: "var(--muted)" }}>
+              میانگین هر ساعت شبانه‌روز
+            </div>
+            <HourStrip hourly={d.hourly} quietest={d.quietestHour} busiest={d.busiestHour} />
+
+            {d.quietestHour !== null && d.quietestHour !== undefined && (
+              <div className="flex gap-3 flex-wrap mt-3 text-[12.5px]">
+                <span style={{ color: "var(--ok)" }}>
+                  ● خلوت‌ترین ساعت: <b>{faNum(d.quietestHour)}</b>
+                </span>
+                <span style={{ color: "var(--danger)" }}>
+                  ● شلوغ‌ترین ساعت: <b>{faNum(d.busiestHour)}</b>
+                </span>
+              </div>
+            )}
+            {d.quietestHour !== null && d.quietestHour !== undefined && (
+              <InfoBox>
+                بر اساس همین داده، ساعت <b>{faNum(d.quietestHour)}</b> کم‌مصرف‌ترین
+                زمان سرور شماست — اگر نگهداری خودکار را روشن کردید، همان را انتخاب کنید.
+              </InfoBox>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="text-[12.5px] py-6 text-center" style={{ color: "var(--muted)" }}>
+          هنوز نمونه‌ای ذخیره نشده. چند ساعت بعد از به‌روزرسانی دوباره سر بزنید.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** پرمصرف‌ترین مشتری‌ها — بر اساس ترافیک واقعی پنل، نه شمارش اتصال. */
+function TopClientsCard({ password }) {
+  const [d, setD] = useState(null);
+  const [all, setAll] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`${API_URL}/api/admin/top-clients?limit=25`, {
+      headers: { "X-Admin-Password": password },
+    }).then((r) => r.json()).then((j) => alive && setD(j)).catch(() => alive && setD({ ready: false }));
+    return () => { alive = false; };
+  }, [password]);
+
+  if (!d) return null;
+
+  if (!d.ready) {
+    return (
+      <div className="fx-card p-5 mb-4">
+        <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
+          <Users size={15} style={{ color: "var(--accent-2)" }} /> پرمصرف‌ترین مشتری‌ها
+        </div>
+        <p className="text-[12.5px]" style={{ color: "var(--muted)" }}>
+          {d.error || "دیتابیس پنل در دسترس نیست."}
+        </p>
+      </div>
+    );
+  }
+
+  const list = all ? d.clients : (d.clients || []).slice(0, 6);
+  const max = d.clients?.[0]?.usedGB || 1;
+
+  return (
+    <div className="fx-card p-5 mb-4">
+      <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+        <div className="text-[14px] font-semibold text-white flex items-center gap-2">
+          <Users size={15} style={{ color: "var(--accent-2)" }} /> پرمصرف‌ترین مشتری‌ها
+        </div>
+        <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>
+          {faNum(d.totalClients || 0)} کانفیگ · {faNum(d.totalUsedGB || 0)} گیگ کل
+        </span>
+      </div>
+      <p className="text-[12.5px] mb-3" style={{ color: "var(--muted)" }}>
+        بر اساس ترافیک واقعی پنل — این می‌گوید کدام <b>مشتری</b> بار می‌آورد،
+        نه فقط کدام آی‌پی.
+      </p>
+
+      {!list.length ? (
+        <EmptyState icon={Users} text="هنوز مصرفی ثبت نشده" />
+      ) : list.map((c) => (
+        <div key={c.email} className="py-2">
+          <div className="flex items-baseline justify-between gap-2 mb-1 flex-wrap">
+            <span dir="ltr" className="text-[12.5px] truncate"
+              style={{ fontFamily: "var(--mono)", color: "var(--dim)", maxWidth: "60%" }}>
+              {c.email}
+            </span>
+            <span className="text-[12.5px]" style={{ color: "var(--dim)" }}>
+              <b style={{ fontFamily: "var(--mono)" }}>{faNum(c.usedGB)}</b> گیگ
+              {c.quotaGB ? <span style={{ color: "var(--muted)" }}> از {faNum(c.quotaGB)}</span> : null}
+              <span style={{ color: "var(--muted)" }}> · {faNum(c.pctOfAll)}٪ کل</span>
+            </span>
+          </div>
+          <div className="rounded-full overflow-hidden" style={{ height: 7, background: "var(--surface-3)" }}>
+            <div style={{
+              width: `${Math.max(3, (c.usedGB / max) * 100)}%`, height: "100%",
+              background: !c.enable ? "var(--muted)"
+                : (c.pctOfQuota !== null && c.pctOfQuota >= 90) ? "var(--danger)"
+                  : c.pctOfAll >= 20 ? "var(--warn)" : "var(--accent-2)",
+            }} />
+          </div>
+          {(!c.enable || (c.pctOfQuota !== null && c.pctOfQuota >= 90)) && (
+            <div className="text-[12px] mt-1" style={{ color: !c.enable ? "var(--muted)" : "var(--danger)" }}>
+              {!c.enable ? "غیرفعال" : `${faNum(c.pctOfQuota)}٪ از حجمش مصرف شده — نزدیک تمام‌شدن`}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {(d.clients || []).length > 6 && (
+        <button onClick={() => setAll(!all)}
+          className="fx-btn-g w-full mt-3 py-2.5 text-[12.5px] flex items-center justify-center gap-1.5">
+          {all ? "کمتر" : `نمایش همه‌ی ${faNum(d.clients.length)} مشتری`}
+          <ChevronDown size={14} style={all ? { transform: "rotate(180deg)" } : undefined} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 const WEEKDAYS = [["دوشنبه", 0], ["سه‌شنبه", 1], ["چهارشنبه", 2],
                   ["پنجشنبه", 3], ["جمعه", 4], ["شنبه", 5], ["یکشنبه", 6]];
 
@@ -5229,11 +5501,17 @@ function MonitorSection({ password }) {
         )}
       </div>
 
-      {/* پورت‌های باز */}
-      <PortsCard ports={sec.ports || []} />
+      {/* تاریخچه‌ی مصرف */}
+      <UsageHistoryCard password={password} />
+
+      {/* پرمصرف‌ترین مشتری‌ها */}
+      <TopClientsCard password={password} />
 
       {/* اتصال‌های فعال */}
       <ConnectionsCard conn={sec.connections} />
+
+      {/* پورت‌های باز */}
+      <PortsCard ports={sec.ports || []} />
 
       {/* نگهداری خودکار */}
       <MaintenanceCard password={password} />

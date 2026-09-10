@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.5.0]
+
+### Added — Which customer is consuming, not just which IP
+
+Connection counts answer "which address", never "which customer". This reads real
+traffic from the panel database and ranks configs by consumption: gigabytes used, share
+of the server total, and how much of their own quota is gone.
+
+Anyone past 90% of their quota is flagged. That is the moment to offer a renewal rather
+than wait for them to run out and complain.
+
+### Added — Usage history and the quiet hour
+
+A sample of CPU, memory, connections and unique IPs is stored every five minutes,
+alongside the existing health loop so it costs nothing extra. Two days are kept — more
+would grow the file without improving any decision.
+
+The page shows the last 24 hours as two charts, plus a 24-bar strip of the average for
+each hour of the day with the busiest hour in red and the quietest in green. The quiet
+hour is the one that matters: it is exactly what the maintenance schedule should be set
+to, and until now that was guesswork.
+
+Charts are inline SVG with no library — a line chart does not justify 120 KB of
+dependency. Series are downsampled to 64 points, because 288 samples across a few
+hundred pixels renders noise rather than a trend. Each series carries its own label and
+value, so colour is never the only thing distinguishing them.
+
+### Changed — Server page rebuilt
+
+Reordered so the page answers questions in the order they get asked: how is it doing
+now, what has it been doing, who is causing it, who is connected, what is exposed, when
+does it get maintained.
+
 ## [1.4.0]
 
 ### Added — Active connections
