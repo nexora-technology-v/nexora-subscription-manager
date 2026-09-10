@@ -10,7 +10,8 @@ import time
 import logging
 from datetime import datetime
 
-from tg import kb, esc, TelegramError, Bot, contact_kb, remove_kb
+from tg import (kb, esc, TelegramError, Bot, contact_kb, remove_kb,
+                valid_button_url)
 import core
 import db as DB
 from xui import XUI, XUIError
@@ -698,7 +699,24 @@ def approve_order(ctx, order_id, admin_tg_id):
     # پاداش معرف — فقط بعد از اولین خرید موفق
     _reward_referrer(ctx, user, order_id)
 
-    deliver(ctx, user, result)
+    # تحویل نباید بتواند جریان تایید را بشکند.
+    #
+    # قبلاً اگر ارسال پیام به مشتری خطا می‌داد، همان استثنا تا بالا
+    # می‌رفت: پیام تایید به ادمین هم نمی‌رسید و دکمه‌های رسید سر جایشان
+    # می‌ماندند، انگار تایید اصلاً ثبت نشده. کانفیگ ساخته شده بود ولی
+    # هیچ‌کس خبر نداشت.
+    try:
+        deliver(ctx, user, result)
+    except Exception as e:
+        log.exception("ارسال کانفیگ به مشتری ناموفق")
+        ctx.notify_group(
+            f"⚠️ <b>کانفیگ ساخته شد ولی به مشتری نرسید</b>\n\n"
+            f"سفارش <code>#{order_id}</code> · "
+            f"{esc(user.get('first_name') or user['tg_id'])}\n"
+            f"<code>{esc(str(e)[:200])}</code>\n\n"
+            "اشتراک در پنل سالم است — لینک را دستی بفرستید.")
+        return True, result
+
     return True, result
 
 
@@ -879,15 +897,18 @@ def _add_days_iso(iso, days):
 
 
 def _deliver_kb(ctx, url):
-    """دکمه‌های افزودن یک‌کلیک به اپلیکیشن‌ها."""
+    """
+    دکمه‌های پیام تحویل.
+
+    دکمه‌ی «افزودن یک‌کلیک» با اسکیم اپلیکیشن (happ:// و امثالش)
+    این‌جا ساخته نمی‌شود: تلگرام آن را نمی‌پذیرد و کل پیام را رد
+    می‌کند. یک‌کلیک از روی صفحه‌ی اشتراک انجام می‌شود که با https
+    باز می‌شود؛ اگر آدرس اشتراک http(s) باشد، همان را دکمه می‌کنیم.
+    """
     rows = []
-    if url:
-        rows.append([("📲 افزودن به Happ", f"happ://add/{url}", "url")])
-        rows.append([
-            ("v2rayNG", f"v2rayng://install-config?url={url}", "url"),
-            ("V2Box", f"v2box://install-sub?url={url}&name={esc(ctx.brand())}", "url"),
-        ])
-    rows.append([("📚 راهنمای نصب", "help")])
+    if valid_button_url(url):
+        rows.append([("📄 صفحه‌ی اشتراک من", url, "url")])
+    rows.append([("📚 آموزش نصب", "help"), ("📊 اشتراک‌های من", "mysubs")])
     rows.append([("‹ منوی اصلی", "menu")])
     return kb(rows)
 
@@ -953,8 +974,25 @@ def deliver(ctx, user, sub):
     lines += ["", "<i>هر وقت خواستید، از «اشتراک‌های من» مصرف و روزهای "
               "باقی‌مانده را ببینید.</i>"]
 
-    ctx.bot.send(user["tg_id"], "\n".join(lines),
-                 keyboard=_deliver_kb(ctx, url))
+    _send_delivery(ctx, user, "\n".join(lines), url)
+
+
+def _send_delivery(ctx, user, text, url):
+    """
+    ارسال پیام تحویل با تضمین رسیدن.
+
+    اگر تلگرام صفحه‌کلید را رد کند (مثلاً یک دکمه‌ی url نامعتبر)،
+    کل پیام رد می‌شود و مشتری کانفیگش را نمی‌گیرد — در حالی که پول
+    داده و کانفیگ در پنل ساخته شده. پس اگر ارسال با دکمه شکست خورد،
+    بدون دکمه دوباره می‌فرستیم. متن مهم است، دکمه تزئین.
+    """
+    try:
+        return ctx.bot.send(user["tg_id"], text,
+                            keyboard=_deliver_kb(ctx, url))
+    except TelegramError as e:
+        log.warning("ارسال تحویل با صفحه‌کلید ناموفق (%s) — بدون دکمه "
+                    "دوباره تلاش می‌شود", e)
+    return ctx.bot.send(user["tg_id"], text)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -2055,10 +2093,23 @@ def dispatch(tenant, bot, update):
     """
     ctx = Ctx(bot, tenant)
 
-    if "callback_query" in update:
-        return _on_callback(ctx, update["callback_query"])
-    if "message" in update:
-        return _on_message(ctx, update["message"])
+    # داکstring بالا این را وعده می‌داد ولی try واقعی وجود نداشت؛ هر
+    # خطای یک آپدیت تا حلقه‌ی اصلی بالا می‌رفت.
+    try:
+        if "callback_query" in update:
+            return _on_callback(ctx, update["callback_query"])
+        if "message" in update:
+            return _on_message(ctx, update["message"])
+    except Exception:
+        log.exception("خطای پردازش آپدیت %s", update.get("update_id"))
+        try:
+            ctx.notify_group(
+                "⚠️ <b>خطای پردازش یک پیام در ربات</b>\n\n"
+                f"<code>{esc(str(update.get('update_id')))}</code>\n"
+                "<i>جزئیات کامل در لاگ سرور است.</i>",
+                topic="alerts")
+        except Exception:
+            pass
     return None
 
 

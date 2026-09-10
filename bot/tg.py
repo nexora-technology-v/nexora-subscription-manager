@@ -192,8 +192,27 @@ def remove_kb():
     return {"remove_keyboard": True}
 
 
+#: تنها اسکیم‌هایی که تلگرام در دکمه‌ی شیشه‌ای می‌پذیرد.
+#
+# اسکیم اپلیکیشن‌ها (happ://، v2rayng://، v2box://) را رد می‌کند و
+# خطای BUTTON_URL_INVALID می‌دهد — و این خطا *کل پیام* را از بین
+# می‌برد، نه فقط آن دکمه را. یعنی کانفیگ ساخته می‌شد ولی هیچ‌وقت
+# به دست مشتری نمی‌رسید.
+_OK_SCHEMES = ("http://", "https://", "tg://")
+
+
+def valid_button_url(url):
+    """آیا تلگرام این آدرس را در دکمه می‌پذیرد؟"""
+    return isinstance(url, str) and url.lower().startswith(_OK_SCHEMES)
+
+
 def kb(rows):
-    """صفحه‌کلید شیشه‌ای. هر ردیف لیستی از (متن، داده) یا (متن، داده, 'url')."""
+    """
+    صفحه‌کلید شیشه‌ای. هر ردیف لیستی از (متن، داده) یا (متن، داده, 'url').
+
+    دکمه‌ی url با اسکیم غیرمجاز حذف می‌شود — یک دکمه‌ی نمایش‌داده‌نشده
+    خیلی بهتر از پیامی است که اصلاً ارسال نمی‌شود.
+    """
     out = []
     for row in rows:
         line = []
@@ -202,6 +221,8 @@ def kb(rows):
                 continue
             text, data = item[0], item[1]
             if len(item) > 2 and item[2] == "url":
+                if not valid_button_url(data):
+                    continue
                 line.append({"text": text, "url": data})
             else:
                 line.append({"text": text, "callback_data": data})

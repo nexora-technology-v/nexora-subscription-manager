@@ -408,6 +408,45 @@ rep = [s for s in SENT if s["to"] == -100123]
 check("گزارش به گروه رفت", len(rep) > 0)
 check("در تاپیک آمار", any(s.get("topic") == 4 for s in rep))
 
+# ═══════════════ دکمه‌ی url نامعتبر ═══════════════
+section("دکمه‌ی url نامعتبر")
+
+# تلگرام دکمه‌ی شیشه‌ای را فقط با http/https/tg می‌پذیرد. اسکیم
+# اپلیکیشن‌ها (happ://) کل پیام را رد می‌کرد، نه فقط آن دکمه را —
+# یعنی کانفیگ ساخته می‌شد ولی هیچ‌وقت به مشتری نمی‌رسید.
+from tg import kb as _kb, valid_button_url as _vbu   # noqa: E402
+
+check("اسکیم اپلیکیشن نامعتبر است", not _vbu("happ://add/x"))
+check("https معتبر است", _vbu("https://sub.example.ir/sub/x"))
+check("tg معتبر است", _vbu("tg://resolve?domain=x"))
+
+_mixed = _kb([[("اپ", "happ://add/x", "url"), ("سایت", "https://a.ir", "url")],
+              [("منو", "menu")]])
+_urls = [b.get("url") for r in _mixed["inline_keyboard"] for b in r if "url" in b]
+check("دکمه‌ی نامعتبر حذف می‌شود، معتبر می‌ماند",
+      _urls == ["https://a.ir"], str(_urls))
+check("دکمه‌ی callback دست‌نخورده می‌ماند",
+      any("callback_data" in b for r in _mixed["inline_keyboard"] for b in r))
+
+# و اگر باز هم تلگرام صفحه‌کلید را رد کرد، متن باید برسد
+_real_send = FakeBot.send
+_calls = {"n": 0}
+
+
+def _picky_send(self, chat_id, text, keyboard=None, **k):
+    _calls["n"] += 1
+    if keyboard is not None:
+        raise H.TelegramError("Bad Request: BUTTON_URL_INVALID")
+    return _real_send(self, chat_id, text, keyboard=None, **k)
+
+
+FakeBot.send = _picky_send
+SENT.clear()
+H._send_delivery(H.Ctx(bot, tenant), D.get_user(555), "متن کانفیگ", "happ://x")
+FakeBot.send = _real_send
+check("رد شدن صفحه‌کلید، جلوی رسیدن کانفیگ را نمی‌گیرد",
+      any("متن کانفیگ" in s["text"] for s in SENT), f"{len(SENT)} پیام")
+
 # ═══════════════ شکست ساخت کانفیگ هنگام تایید ═══════════════
 section("شکست ساخت کانفیگ هنگام تایید")
 

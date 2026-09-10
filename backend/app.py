@@ -3260,18 +3260,47 @@ def _price_per_gb(conf):
 def _price_for(gb, rates):
     """
     قیمت یک کانفیگ. نرخ نامحدود با gb=0 مشخص می‌شود.
-    اگر حجم دقیقاً پیدا نشد، نزدیک‌ترین نرخ بالاتر انتخاب می‌شود.
+
+    ترتیب انتخاب:
+      ۱. نرخ دقیقاً همان حجم
+      ۲. نزدیک‌ترین نرخ بالاتر
+      ۳. بالاترین نرخ تعریف‌شده — وقتی حجم کانفیگ از همه‌ی نرخ‌ها
+         بزرگ‌تر است
+
+    مرحله‌ی سوم قبلاً نبود: اگر واسطه‌ای نرخ ۳۰ و ۵۰ و ۱۰۰ گیگ تعریف
+    کرده بود و مشتری کانفیگ ۲۰۰ گیگی داشت، هیچ نرخی پیدا نمی‌شد و آن
+    ردیف *صفر* حساب می‌شد — با اینکه نرخ تعریف شده بود. صفر گرفتن از
+    یک کانفیگ واقعی بدتر از تقریب زدن است.
+
+    نامحدود (gb=0) عمداً از این قاعده مستثناست: نرخ حجمی را نمی‌شود
+    به نامحدود تعمیم داد، پس تا وقتی نرخ نامحدود تعریف نشده بدون نرخ
+    می‌ماند و در فهرست «نیاز به بررسی» دیده می‌شود.
     """
     if not rates:
         return None
+
+    valid = []
     for r in rates:
-        if int(r.get("gb", -1)) == gb:
-            return int(r.get("price", 0))
+        try:
+            valid.append((int(r.get("gb", -1)), int(r.get("price", 0))))
+        except (TypeError, ValueError):
+            continue
+    if not valid:
+        return None
+
+    for g, price in valid:
+        if g == gb:
+            return price
+
     if gb > 0:
-        higher = sorted((r for r in rates if int(r.get("gb", 0)) > gb),
-                        key=lambda r: int(r["gb"]))
+        higher = sorted((v for v in valid if v[0] > gb), key=lambda v: v[0])
         if higher:
-            return int(higher[0].get("price", 0))
+            return higher[0][1]
+        # از همه‌ی نرخ‌ها بزرگ‌تر است — بالاترین نرخ حجمی را می‌گیرد
+        volume_rates = [v for v in valid if v[0] > 0]
+        if volume_rates:
+            return max(volume_rates, key=lambda v: v[0])[1]
+
     return None
 
 
@@ -3674,7 +3703,12 @@ def billing_invoice(group_key: str, x_admin_password: str = Header(...)):
         elif l["status"] in ("بدون انقضا", "شروع‌نشده"):
             reason = "بدون تاریخ انقضا"
         elif l["price"] is None:
-            reason = f"حجم {l['gbLabel']} GB نرخ ندارد"
+            # تفکیک دو حالت، چون راه‌حلشان فرق دارد: یکی نرخ نامحدود
+            # می‌خواهد، دیگری اصلاً هیچ نرخی برای گروه تعریف نشده.
+            if not l.get("gb"):
+                reason = "کانفیگ نامحدود است و نرخ نامحدود تعریف نشده"
+            else:
+                reason = f"حجم {l['gbLabel']} GB نرخ ندارد"
         if reason:
             review.append({"email": l["email"], "status": l["status"],
                            "reason": reason,

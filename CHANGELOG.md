@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.1.9]
+
+### Fixed — The config was built but never reached the customer
+
+Telegram only accepts `http`, `https` and `tg` URLs in inline keyboard buttons. The
+delivery message carried `happ://`, `v2rayng://` and `v2box://` one-click buttons, so
+Telegram rejected **the entire message** with `BUTTON_URL_INVALID` — not just the
+offending button. The config existed in the panel, the customer got nothing.
+
+The same exception then travelled up through `approve_order` into the callback handler,
+so the admin's confirmation never ran either and the receipt kept its ✅/❌ buttons,
+looking exactly as if the approval had never registered.
+
+Three layers now stop this:
+
+- `kb()` drops URL buttons whose scheme Telegram will not accept. A missing button beats
+  a message that never sends
+- delivery retries without the keyboard if Telegram rejects the markup — the text is
+  what matters, the buttons are decoration
+- a delivery failure can no longer break the approval flow. The admin is told the config
+  exists but did not reach the customer, with the link to send manually
+
+One-click app buttons need an `https` redirect to work through Telegram; the delivery
+message now links to the subscription page when its address is `https`, and the raw link
+stays copyable in the text either way.
+
+`dispatch` also gained the try/except its docstring had been promising, so one bad update
+can no longer take down a tenant's loop.
+
+### Fixed — Configs billed at zero despite rates being set
+
+`_price_for` matched an exact rate, then the nearest higher one, then gave up. A group
+with rates at 30, 50 and 100 GB and a customer on a 200 GB config found nothing above
+200, returned no rate, and that line was billed as **zero** — silently, while the panel
+reported rates were configured.
+
+It now falls back to the highest defined volume rate. Unlimited configs are deliberately
+still unpriced without an explicit unlimited rate, since a volume rate cannot be
+generalised to unlimited — but the review list now says which of the two situations it
+is, because the fix differs.
+
+Added `tools/test-billing.py` covering rate selection, including the case that was
+silently zeroing money.
+
 ## [1.1.8]
 
 ### Fixed — Approving a receipt did nothing, forever
