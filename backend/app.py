@@ -5633,6 +5633,38 @@ def _health_alert(server, data, key):
         pass
 
 
+try:
+    import monitor as MONITOR
+except Exception:
+    try:
+        import importlib.util as _ilu
+        _ms = _ilu.spec_from_file_location(
+            "monitor", Path(__file__).resolve().parent / "monitor.py")
+        MONITOR = _ilu.module_from_spec(_ms)
+        _ms.loader.exec_module(MONITOR)
+    except Exception:
+        MONITOR = None
+
+
+@app.get("/api/admin/monitor")
+def monitor_snapshot(sections: str = "", x_admin_password: str = Header(...)):
+    """
+    وضعیت زنده‌ی سرور.
+
+    sections: فهرست کاما-جدا برای گرفتن فقط بخشی از داده‌ها — صفحه‌ای
+    که هر ۵ ثانیه تازه می‌شود نباید هر بار apt را هم صدا بزند.
+    """
+    check_auth(x_admin_password)
+    if not MONITOR:
+        raise HTTPException(status_code=500, detail="ماژول مانیتورینگ بارگذاری نشد")
+
+    want = [s.strip() for s in sections.split(",") if s.strip()] or None
+    t0 = time.time()
+    snap = MONITOR.snapshot(include=want)
+    snap["took"] = round(time.time() - t0, 2)
+    return snap
+
+
 @app.get("/api/admin/health/local")
 def health_local(x_admin_password: str = Header(...)):
     """سلامت همین سرور — جایی که پنل نصب است."""

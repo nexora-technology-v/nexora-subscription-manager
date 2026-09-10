@@ -106,7 +106,8 @@ const WORKSPACES = {
           { key: "tun-overview", label: "داشبورد", icon: LayoutGrid },
           { key: "tun-nodes", label: "سرورها", icon: Server },
           { key: "tun-list", label: "تانل‌ها", icon: Network },
-          { key: "tun-health", label: "سلامت سرورها", icon: Activity },
+          { key: "monitor", label: "مانیتورینگ سرور", icon: Activity },
+          { key: "tun-health", label: "سلامت سرورها", icon: ShieldCheck },
           { key: "tun-events", label: "رویدادها", icon: Clock },
         ],
       },
@@ -4555,6 +4556,358 @@ function BotInboundsSection({ password }) {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/* ===================== مانیتورینگ سرور ===================== */
+
+const LEVEL_STYLE = {
+  ok: { c: "var(--ok)", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.30)",
+        label: "سالم", Icon: CheckCircle2 },
+  warn: { c: "var(--warn)", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.30)",
+          label: "هشدار", Icon: AlertTriangle },
+  crit: { c: "var(--danger)", bg: "rgba(248,113,113,.10)", bd: "rgba(248,113,113,.32)",
+          label: "بحرانی", Icon: XCircle },
+};
+
+// بخش‌های سبک هر چند ثانیه تازه می‌شوند؛ سنگین‌ها (apt و journal)
+// فقط با درخواست، چون هرکدام چند ثانیه طول می‌کشند.
+const LIGHT = "cpu,memory,disk,network,xray,services,ports,processes";
+const HEAVY = "packages,security";
+
+// faNum یک عدد می‌خواهد؛ برای رشته‌هایی مثل «13:45:22» یا نسخه‌ی
+// کرنل باید رقم‌به‌رقم تبدیل کرد، وگرنه NaN می‌شود.
+const toFaDigits = (s) =>
+  String(s ?? "").replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[d]);
+
+function fmtUptime(s) {
+  if (!s) return "—";
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600);
+  if (d) return `${faNum(d)} روز و ${faNum(h)} ساعت`;
+  const m = Math.floor((s % 3600) / 60);
+  return h ? `${faNum(h)} ساعت و ${faNum(m)} دقیقه` : `${faNum(m)} دقیقه`;
+}
+
+function fmtSize(n) {
+  if (n === null || n === undefined) return "—";
+  const u = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0, v = Number(n);
+  while (Math.abs(v) >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${faNum(v.toFixed(i ? 1 : 0))} ${u[i]}`;
+}
+
+function Gauge({ pct, color }) {
+  const v = Math.max(0, Math.min(100, Number(pct) || 0));
+  return (
+    <div style={{ height: 6, borderRadius: 99, background: "rgba(255,255,255,.06)", overflow: "hidden" }}>
+      <div style={{ width: `${v}%`, height: "100%", background: color, borderRadius: 99,
+                    transition: "width .4s ease" }} />
+    </div>
+  );
+}
+
+function MetricCard({ m }) {
+  const [open, setOpen] = useState(false);
+  const s = LEVEL_STYLE[m.level] || LEVEL_STYLE.ok;
+  const val = m.value === null || m.value === undefined
+    ? "—"
+    : (typeof m.value === "number" ? faNum(m.value) : m.value);
+
+  return (
+    <div className="fx-card p-4" style={{ borderColor: m.level === "ok" ? "var(--border)" : s.bd }}>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <span className="text-[11.5px]" style={{ color: "var(--dim)" }}>{m.title}</span>
+        <s.Icon size={14} style={{ color: s.c, flexShrink: 0 }} />
+      </div>
+
+      <div className="flex items-baseline gap-1.5 mb-2">
+        <span className="text-[22px] font-bold" style={{ color: s.c, fontFamily: "var(--mono)" }}>
+          {val}
+        </span>
+        {m.unit && <span className="text-[11px]" style={{ color: "var(--muted)" }}>{m.unit}</span>}
+      </div>
+
+      {m.pct !== null && m.pct !== undefined && <Gauge pct={m.pct} color={s.c} />}
+
+      {m.detail && (
+        <div className="text-[10.5px] mt-2 leading-relaxed" style={{ color: "var(--muted)" }}>
+          {m.detail}
+        </div>
+      )}
+
+      {(m.why || m.hint) && (
+        <>
+          <button onClick={() => setOpen(!open)}
+            className="text-[10.5px] mt-2.5 flex items-center gap-1"
+            style={{ color: "var(--accent-2)" }}>
+            <HelpCircle size={11} /> {open ? "بستن" : "چرا مهم است؟"}
+          </button>
+          {open && (
+            <div className="mt-2 rounded-xl p-3 text-[10.5px] leading-relaxed"
+              style={{ background: "rgba(255,255,255,.02)", color: "var(--dim)" }}>
+              {m.why}
+              {m.hint && (
+                <div className="mt-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
+                  <span style={{ color: "var(--muted)" }}>چه کار کنم: </span>
+                  <span dir="auto" style={{ fontFamily: "var(--mono)", color: "var(--accent-2)" }}>
+                    {m.hint}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function MonitorSection({ password }) {
+  const [d, setD] = useState(null);
+  const [heavy, setHeavy] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [heavyBusy, setHeavyBusy] = useState(false);
+  const [live, setLive] = useState(true);
+  const [err, setErr] = useState("");
+
+  const get = async (sections) => {
+    const r = await fetch(`${API_URL}/api/admin/monitor?sections=${sections}`,
+      { headers: { "X-Admin-Password": password } });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || "خطای سرور");
+    return j;
+  };
+
+  const load = async () => {
+    try { setD(await get(LIGHT)); setErr(""); }
+    catch (e) { setErr(e.message); }
+    finally { setLoading(false); }
+  };
+
+  const loadHeavy = async () => {
+    setHeavyBusy(true);
+    try { setHeavy(await get(HEAVY)); }
+    catch { /* بی‌صدا */ }
+    finally { setHeavyBusy(false); }
+  };
+
+  useEffect(() => { load(); }, [password]);
+  useEffect(() => {
+    if (!live) return;
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, [live, password]);
+
+  if (loading) {
+    return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  }
+
+  const sec = d?.sections || {};
+  const metrics = [...(d?.metrics || []), ...(heavy?.metrics || [])];
+  const worst = heavy && heavy.level === "crit" ? "crit"
+    : (d?.level === "crit" ? "crit"
+      : (d?.level === "warn" || heavy?.level === "warn" ? "warn" : "ok"));
+  const s = LEVEL_STYLE[worst] || LEVEL_STYLE.ok;
+  const problems = metrics.filter((m) => m.level !== "ok");
+
+  return (
+    <div className="fx-anim">
+      <SectionHead title="مانیتورینگ سرور"
+        desc="وضعیت زنده‌ی سروری که پنل رویش نصب است — با توضیح اینکه هر عدد از کجا به بعد خطرناک می‌شود."
+        action={
+          <div className="flex items-center gap-2">
+            <button onClick={() => setLive(!live)}
+              className="fx-btn-g px-3 py-2.5 text-[11.5px] flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full"
+                style={{ background: live ? "var(--ok)" : "var(--muted)" }} />
+              {live ? "زنده" : "متوقف"}
+            </button>
+            <button onClick={load} className="fx-btn-g px-3 py-2.5 text-[12px] flex items-center gap-1.5">
+              <RefreshCw size={13} /> تازه‌سازی
+            </button>
+          </div>
+        } />
+
+      {err && <InfoBox tone="warn">{err}</InfoBox>}
+
+      {/* حکم کلی */}
+      <div className="fx-card p-5 mb-4" style={{ background: s.bg, borderColor: s.bd }}>
+        <div className="flex items-start gap-3 flex-wrap">
+          <s.Icon size={22} style={{ color: s.c, flexShrink: 0 }} className="mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <div className="text-[15px] font-bold" style={{ color: s.c }}>
+              {worst === "ok" ? "سرور سالم است" : (d?.headline || s.label)}
+            </div>
+            <div className="text-[11.5px] mt-1" style={{ color: "var(--dim)" }}>
+              {problems.length === 0
+                ? "هیچ موردی نیاز به رسیدگی ندارد."
+                : problems.map((p) => p.title).join(" · ")}
+            </div>
+            <div className="text-[10.5px] mt-2.5 flex items-center gap-3 flex-wrap"
+              style={{ color: "var(--muted)" }}>
+              <span>{d?.host?.hostname || "—"}</span>
+              <span style={{ opacity: 0.4 }}>•</span>
+              <span>روشن از {fmtUptime(d?.host?.uptime)}</span>
+              <span style={{ opacity: 0.4 }}>•</span>
+              <span>{faNum(d?.host?.cores || 0)} هسته</span>
+              <span style={{ opacity: 0.4 }}>•</span>
+              <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{d?.host?.kernel}</span>
+              <span style={{ opacity: 0.4 }}>•</span>
+              {/* faNum روی ساعت «ناعدد» می‌داد — رشته‌ی زمان عدد نیست */}
+              <span>آخرین بررسی {toFaDigits(d?.at?.slice(11) || "—")}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* سنجه‌ها */}
+      <div className="fx-g4 grid grid-cols-3 gap-3 mb-4">
+        {(d?.metrics || []).map((m) => <MetricCard key={m.key} m={m} />)}
+      </div>
+
+      {/* شبکه */}
+      {sec.network && sec.network[0]?.extra?.interfaces?.length > 0 && (
+        <div className="fx-card p-5 mb-4">
+          <div className="text-[13px] font-semibold text-white mb-3 flex items-center gap-2">
+            <Network size={15} style={{ color: "var(--accent-2)" }} /> کارت‌های شبکه
+          </div>
+          {sec.network[0].extra.interfaces.map((i) => (
+            <div key={i.name} className="flex items-center justify-between gap-3 py-2 flex-wrap"
+              style={{ borderBottom: "1px solid var(--border)" }}>
+              <span className="text-[12px] font-semibold text-white" dir="ltr">{i.name}</span>
+              <div className="flex items-center gap-4 text-[11px]">
+                <span style={{ color: "var(--ok)" }}>↓ {fmtSize(i.rx)}/s</span>
+                <span style={{ color: "var(--accent-2)" }}>↑ {fmtSize(i.tx)}/s</span>
+                <span style={{ color: "var(--muted)" }}>
+                  کل: {fmtSize(i.rxTotal)} / {fmtSize(i.txTotal)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="fx-g3 grid grid-cols-2 gap-3 mb-4">
+        {/* سرویس‌ها */}
+        {sec.services?.length > 0 && (
+          <div className="fx-card p-5">
+            <div className="text-[13px] font-semibold text-white mb-3 flex items-center gap-2">
+              <Server size={15} style={{ color: "var(--accent-2)" }} /> سرویس‌ها
+            </div>
+            {sec.services.map((sv) => {
+              const bad = sv.level !== "ok";
+              return (
+                <div key={sv.name} className="flex items-center justify-between gap-2 py-2"
+                  style={{ borderBottom: "1px solid var(--border)" }}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ background: bad ? "var(--danger)" : (sv.flapping ? "var(--warn)" : "var(--ok)") }} />
+                    <span className="text-[12px] truncate" dir="ltr"
+                      style={{ color: bad ? "var(--danger)" : "var(--text)" }}>{sv.name}</span>
+                    {sv.flapping && (
+                      <span className="fx-pill" style={{ background: "rgba(251,191,36,.12)", color: "var(--warn)" }}>
+                        ناپایدار
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10.5px] shrink-0" style={{ color: "var(--muted)" }}>
+                    {sv.active === "active" ? fmtSize(sv.memory) : sv.active}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* سنگین‌ترین پردازه‌ها */}
+        {sec.processes?.length > 0 && (
+          <div className="fx-card p-5">
+            <div className="text-[13px] font-semibold text-white mb-3 flex items-center gap-2">
+              <Activity size={15} style={{ color: "var(--accent-2)" }} /> سنگین‌ترین پردازه‌ها
+            </div>
+            {sec.processes.map((p) => (
+              <div key={p.pid} className="flex items-center justify-between gap-2 py-2"
+                style={{ borderBottom: "1px solid var(--border)" }}>
+                <span className="text-[12px] truncate" dir="ltr">{p.name}</span>
+                <div className="flex items-center gap-3 text-[10.5px] shrink-0"
+                  style={{ fontFamily: "var(--mono)" }}>
+                  <span style={{ color: p.cpu > 50 ? "var(--warn)" : "var(--muted)" }}>
+                    {faNum(p.cpu)}٪ CPU
+                  </span>
+                  <span style={{ color: "var(--muted)" }}>{faNum(p.mem)}٪ RAM</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* پورت‌های باز */}
+      {sec.ports?.length > 0 && (
+        <div className="fx-card p-5 mb-4">
+          <div className="text-[13px] font-semibold text-white mb-1 flex items-center gap-2">
+            <ShieldCheck size={15} style={{ color: "var(--accent-2)" }} /> پورت‌های باز
+          </div>
+          <p className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>
+            هر پورتِ رو به اینترنت یک در است. پورتی که نمی‌شناسید را ببندید.
+          </p>
+          <div style={{ overflowX: "auto" }}>
+            <table className="fx-table">
+              <thead>
+                <tr><th>پورت</th><th>پروتکل</th><th>پردازه</th><th>دسترسی</th><th>ریسک</th></tr>
+              </thead>
+              <tbody>
+                {sec.ports.map((p, i) => {
+                  const risk = p.risk === "high"
+                    ? { c: "var(--danger)", t: "بالا" }
+                    : p.risk === "medium" ? { c: "var(--warn)", t: "متوسط" }
+                      : { c: "var(--ok)", t: "پایین" };
+                  return (
+                    <tr key={`${p.port}-${p.proto}-${i}`}>
+                      <td style={{ fontFamily: "var(--mono)" }}>{p.port}</td>
+                      <td style={{ color: "var(--muted)" }}>{p.proto}</td>
+                      <td dir="ltr" style={{ color: "var(--dim)" }}>{p.process || "—"}</td>
+                      <td style={{ color: p.public ? "var(--warn)" : "var(--muted)" }}>
+                        {p.public ? "اینترنت" : "فقط داخلی"}
+                      </td>
+                      <td>
+                        <span className="fx-pill" style={{ background: "rgba(255,255,255,.04)", color: risk.c }}>
+                          {risk.t}{p.known ? ` · ${p.known}` : ""}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* بخش سنگین */}
+      <div className="fx-card p-5">
+        <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+          <div className="text-[13px] font-semibold text-white flex items-center gap-2">
+            <Package size={15} style={{ color: "var(--accent-2)" }} /> بسته‌ها و امنیت
+          </div>
+          <button onClick={loadHeavy} disabled={heavyBusy}
+            className="fx-btn-g px-3 py-2 text-[11.5px] flex items-center gap-1.5">
+            {heavyBusy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {heavy ? "بررسی دوباره" : "بررسی کن"}
+          </button>
+        </div>
+        <p className="text-[11px] mb-3" style={{ color: "var(--muted)" }}>
+          چند ثانیه طول می‌کشد، پس خودکار تازه نمی‌شود.
+        </p>
+        {heavy ? (
+          <div className="fx-g3 grid grid-cols-2 gap-3">
+            {heavy.metrics.map((m) => <MetricCard key={m.key} m={m} />)}
+          </div>
+        ) : (
+          <EmptyState icon={ShieldCheck} text="برای دیدن به‌روزرسانی‌های در انتظار و وضعیت امنیتی، «بررسی کن» را بزنید" />
+        )}
+      </div>
     </div>
   );
 }
@@ -9366,6 +9719,7 @@ export default function App() {
           {active === "tun-overview" && <TunnelOverview password={password} />}
           {active === "tun-nodes" && <TunnelNodes password={password} />}
           {active === "tun-list" && <TunnelList password={password} />}
+          {active === "monitor" && <MonitorSection password={password} />}
           {active === "tun-health" && <SystemHealth password={password} />}
           {active === "tun-events" && <TunnelEvents password={password} />}
           {active === "bill-settings" && <BillingSettings password={password} />}

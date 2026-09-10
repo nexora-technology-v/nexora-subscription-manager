@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.3.0]
+
+### Added — Server monitoring
+
+A new **مانیتورینگ سرور** page. Until now, knowing what the server was doing meant SSHing
+in and running commands by hand — and even then, a raw number like `load: 3` tells you
+nothing unless you remember how many cores the machine has.
+
+Every metric here arrives with its threshold and an explanation of what it means for a
+VPN server specifically, behind a "چرا مهم است؟" toggle:
+
+- **CPU, load, memory, swap, disk** — with the load explanation dividing by the actual
+  core count, since that is the only way the number means anything
+- **Live throughput** — receive and transmit per second, per interface. This is what your
+  customers are actually consuming
+- **Active connections** — a direct read on how many people are connected right now, plus
+  SYN-flood and TIME-WAIT detection
+- **Xray** — service state and a count of warnings in the last 30 minutes, so a
+  misconfiguration surfaces before customers complain
+- **Open ports** — every port facing the internet, with the listening process and a risk
+  rating. An unrecognised public port is flagged
+- **Heaviest processes** — what is actually eating the machine
+- **Services** — including services that restart repeatedly, which is worse than being
+  down because it looks healthy at a glance
+- **Pending updates** — security updates are treated as critical, because on a box with
+  public ports a published vulnerability is the most urgent risk you carry
+- **Security** — failed SSH logins over 24h with the worst offending IPs, fail2ban, and
+  firewall state
+
+The page refreshes every 5 seconds. Package and security checks take seconds to run, so
+they stay on demand behind a button rather than blocking the live view.
+
+Only read-only commands from a fixed list are used; no user input reaches a shell.
+
+### Fixed — A disabled firewall was reported as enabled
+
+The `ufw` check tested whether the output contained `active` — and `inactive` contains
+`active`. A firewall that was off reported as on, which is precisely the moment the check
+existed to warn about. Found by the new tests, not in production.
+
 ## [1.2.0]
 
 ### Added — Message a customer straight from the panel
