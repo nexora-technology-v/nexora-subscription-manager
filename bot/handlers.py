@@ -125,7 +125,7 @@ def main_menu(ctx, user):
     ]
     # پنل همکار فقط به کسی نشان داده می‌شود که واقعاً همکار است
     try:
-        if ctx.db.affiliate_by_tg(ctx.tid, user["tg_id"]):
+        if DB.affiliate_by_tg(ctx.tid, user["tg_id"]):
             rows.append([("💼 پنل همکاری در فروش", "affiliate")])
     except Exception:
         pass
@@ -161,44 +161,47 @@ def welcome_text(ctx, user):
     coins = user.get("coins", 0)
     balance = user.get("balance", 0)
 
-    lines = [f"سلام {name} 👋", ""]
+    lines = [f"سلام {name} 👋", f"به {brand} خوش آمدید.", ""]
 
     if subs:
         s = subs[0]
         left = core.days_left(s.get("expires_at"))
         if left is None:
-            status = "♾ بدون محدودیت زمانی"
+            status = "بدون محدودیت زمانی"
         elif left <= 0:
-            status = "⛔️ منقضی شده"
+            status = "اعتبارش تمام شده — وقت تمدید است"
+        elif left == 1:
+            status = "فقط <b>امروز</b> اعتبار دارد"
         elif left <= 3:
-            status = f"⚠️ فقط <b>{left} روز</b> باقی مانده"
+            status = f"فقط <b>{core.fa(left)} روز</b> باقی مانده"
         else:
-            status = f"✅ <b>{left} روز</b> باقی مانده"
+            status = f"<b>{core.fa(left)} روز</b> باقی مانده"
 
         lines += [
-            f"📦 <b>{esc(s.get('plan_name') or 'اشتراک شما')}</b>",
-            f"   {status}",
+            "📦 <b>اشتراک فعال شما</b>",
+            esc(s.get("plan_name") or "اشتراک شما"),
+            status,
         ]
         if len(subs) > 1:
-            lines.append(f"   <i>و {len(subs) - 1} اشتراک دیگر</i>")
+            lines.append(f"<i>و {core.fa(len(subs) - 1)} اشتراک دیگر</i>")
     else:
         lines += [
-            "🔍 هنوز اشتراک فعالی ندارید.",
-            "   از دکمه‌ی <b>خرید اشتراک</b> شروع کنید.",
+            "هنوز اشتراکی ندارید.",
+            "با <b>خرید اشتراک</b> شروع کنید — کمتر از یک دقیقه طول می‌کشد.",
         ]
 
-    lines.append("")
     wallet_line = []
+    if balance:
+        wallet_line.append(f"👛 کیف پول <b>{core.toman(balance)}</b> تومان")
     if coins:
         tier = core.tier_for(coins, ctx.s)
         if tier:
-            wallet_line.append(f"💎 {coins} سکه <i>({tier['percent']}٪ تخفیف)</i>")
+            wallet_line.append(
+                f"🪙 <b>{core.fa(coins)}</b> سکه <i>({core.fa(tier['percent'])}٪ تخفیف آماده)</i>")
         else:
-            wallet_line.append(f"💎 {coins} سکه")
-    if balance:
-        wallet_line.append(f"👛 {core.toman(balance)}")
+            wallet_line.append(f"🪙 <b>{core.fa(coins)}</b> سکه")
     if wallet_line:
-        lines.append("   ·   ".join(wallet_line))
+        lines += ["", "  ·  ".join(wallet_line)]
 
     return "\n".join(lines).rstrip()
 
@@ -219,7 +222,7 @@ def cmd_start(ctx, msg, args=None):
         # لینک همکار فروش با پیشوند aff_ می‌آید تا با کد دعوت
         # معمولی قاطی نشود
         if arg.startswith("aff_"):
-            affiliate = ctx.db.affiliate_by_code(ctx.tid, arg[4:])
+            affiliate = DB.affiliate_by_code(ctx.tid, arg[4:])
         elif arg:
             ref = ctx.db.get_user_by_ref(arg)
             if ref and ref["tg_id"] != tg["id"]:
@@ -268,7 +271,8 @@ def show_plans(ctx, user, chat_id, message_id=None):
 
     plans = ctx.db.plans()
     if not plans:
-        text = "در حال حاضر پلنی برای فروش تعریف نشده است."
+        text = ("فعلاً پلنی برای فروش فعال نیست.\n\n"
+                "به‌زودی برمی‌گردند — اگر عجله دارید به پشتیبانی پیام بدهید.")
         return _reply(ctx, chat_id, message_id, text, back_kb())
 
     rows = [[(core.plan_line(p), f"plan:{p['id']}")] for p in plans]
@@ -277,48 +281,58 @@ def show_plans(ctx, user, chat_id, message_id=None):
     prog = core.coin_progress(user["coins"], ctx.s.get("coins"))
     hint = ""
     if prog["current_percent"]:
-        hint = (f"\n\n🪙 شما {prog['coins']} سکه دارید — "
-                f"<b>{prog['current_percent']}٪ تخفیف</b> قابل استفاده است.")
+        hint = (f"\n\n🪙 <b>{core.fa(prog['coins'])}</b> سکه دارید — "
+                f"<b>{core.fa(prog['current_percent'])}٪ تخفیف</b> روی همین خرید.")
     elif prog["next"]:
-        hint = (f"\n\n🪙 با {prog['next']['need']} سکه دیگر، "
-                f"{prog['next']['percent']}٪ تخفیف می‌گیرید.")
+        hint = (f"\n\n🪙 با <b>{core.fa(prog['next']['need'])}</b> سکه‌ی دیگر، "
+                f"{core.fa(prog['next']['percent'])}٪ تخفیف باز می‌شود.")
 
     _reply(ctx, chat_id, message_id,
-           f"<b>پلن مورد نظر را انتخاب کنید:</b>{hint}", kb(rows))
+           "🛒 <b>خرید اشتراک</b>\n\n"
+           "پلن مناسبتان را انتخاب کنید — جزئیات کامل و مبلغ را "
+           f"در صفحه‌ی بعد می‌بینید.{hint}", kb(rows))
 
 
 def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
     p = ctx.db.get_plan(plan_id)
     if not p:
-        return _reply(ctx, chat_id, message_id, "این پلن دیگر موجود نیست.", back_kb("buy"))
+        return _reply(ctx, chat_id, message_id,
+                      "این پلن دیگر در دسترس نیست.\n\n"
+                      "از لیست، یکی از پلن‌های فعال را انتخاب کنید.",
+                      back_kb("buy"))
 
     cs = ctx.s.get("coins")
     pr = core.price_order(p["price"], coins=user["coins"], coin_cfg=cs, use_coins=True)
     has_coin_discount = pr["coin_discount"] > 0
 
+    ips = p["ip_limit"]
+    days = p["days"]
     lines = [
-        f"<b>{esc(p['name'])}</b>",
+        f"📦 <b>{esc(p['name'])}</b>",
         "",
-        f"📦 حجم: {core.fmt_gb(p['gb'])}",
-        f"⏱ مدت: {core.fmt_days(p['days'])}",
-        f"📱 کاربر همزمان: {p['ip_limit'] or 'نامحدود'}",
+        f"{core.fmt_gb(p['gb'])} ترافیک",
+        f"{core.fa(days)} روز اعتبار" if days else "بدون محدودیت زمانی",
+        f"{core.fa(ips) + ' دستگاه هم‌زمان' if ips else 'بدون محدودیت دستگاه'}",
     ]
     if p.get("description"):
         lines += ["", esc(p["description"])]
-    lines += ["", f"💰 قیمت: <b>{core.toman(p['price'])}</b> تومان"]
+    lines += ["", f"قیمت: <b>{core.toman(p['price'])}</b> تومان"]
 
     rows = []
     if has_coin_discount:
-        lines += [
-            f"🪙 با {pr['coins_used']} سکه: <b>{core.toman(pr['final'])}</b> تومان "
-            f"({pr['coin_percent']}٪ تخفیف)"
-        ]
-        rows.append([(f"🪙 خرید با تخفیف سکه — {core.toman(pr['final'])} تومان",
+        lines.append(
+            f"با <b>{core.fa(pr['coins_used'])}</b> سکه‌ی شما: "
+            f"<b>{core.toman(pr['final'])}</b> تومان "
+            f"<i>({core.fa(pr['coin_percent'])}٪ تخفیف)</i>")
+        rows.append([(f"🪙 خرید با تخفیف — {core.toman(pr['final'])} تومان",
                       f"chk:{plan_id}:1")])
     rows.append([(f"💳 خرید — {core.toman(p['price'])} تومان", f"chk:{plan_id}:0")])
 
     if user["balance"] >= p["price"]:
-        rows.append([("👛 پرداخت از کیف پول", f"wpay:{plan_id}")])
+        lines.append("")
+        lines.append("👛 موجودی کیف پولتان برای این خرید کافی است — "
+                     "با پرداخت از کیف پول، اشتراک <b>بدون معطلی</b> تحویل می‌شود.")
+        rows.append([("👛 پرداخت آنی از کیف پول", f"wpay:{plan_id}")])
 
     rows.append([("‹ بازگشت", "buy")])
     _reply(ctx, chat_id, message_id, "\n".join(lines), kb(rows))
@@ -328,7 +342,10 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins):
     """ساخت سفارش و نمایش اطلاعات کارت."""
     p = ctx.db.get_plan(plan_id)
     if not p:
-        return _reply(ctx, chat_id, message_id, "این پلن دیگر موجود نیست.", back_kb("buy"))
+        return _reply(ctx, chat_id, message_id,
+                      "این پلن دیگر در دسترس نیست.\n\n"
+                      "از لیست، یکی از پلن‌های فعال را انتخاب کنید.",
+                      back_kb("buy"))
 
     cs = ctx.s.get("coins")
     pr = core.price_order(p["price"], coins=user["coins"], coin_cfg=cs,
@@ -337,7 +354,8 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins):
     card = core.pick_card(ctx.s.get("cards"))
     if not card:
         return _reply(ctx, chat_id, message_id,
-                      "روش پرداخت هنوز تنظیم نشده است. لطفاً با پشتیبانی تماس بگیرید.",
+                      "راه پرداخت هنوز فعال نشده است.\n\n"
+                      "یک پیام به پشتیبانی بدهید تا دستی برایتان انجام دهیم.",
                       back_kb())
 
     ttl = int(ctx.s.get("order_ttl_minutes") or 30)
@@ -349,30 +367,36 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins):
                 (card.get("number"), ctx.tid, order["id"]))
     ctx.db.set_state(user["tg_id"], "await_receipt", {"order_id": order["id"]})
 
+    holder = esc(card.get("holder") or "—")
+    if card.get("bank"):
+        holder += f" · {esc(card['bank'])}"
+
     lines = [
-        f"🧾 <b>سفارش #{order['id']}</b>",
+        "🧾 <b>سفارش شما</b>",
         "",
-        f"پلن: {esc(p['name'])}",
+        esc(p["name"]),
+        f"{core.fmt_gb(p['gb'])} · {core.fmt_days(p['days'])}",
+        "",
     ]
     if pr["coin_discount"]:
         lines += [
-            f"قیمت اصلی: <s>{core.toman(p['price'])}</s> تومان",
-            f"تخفیف سکه: {pr['coin_percent']}٪ ({pr['coins_used']} سکه)",
+            f"قیمت: <s>{core.toman(p['price'])}</s> تومان",
+            f"تخفیف سکه: {core.fa(pr['coin_percent'])}٪ "
+            f"({core.fa(pr['coins_used'])} سکه)",
         ]
     lines += [
-        f"<b>مبلغ قابل پرداخت: {core.toman(pr['final'])} تومان</b>",
+        f"مبلغ قابل پرداخت: <b>{core.toman(pr['final'])} تومان</b>",
         "",
-        "💳 لطفاً مبلغ را به این کارت واریز کنید:",
+        "مبلغ را دقیقاً به همین کارت واریز کنید:",
         f"<code>{core.fmt_card(card['number'])}</code>",
-        f"به نام: <b>{esc(card.get('holder') or '—')}</b>",
-    ]
-    if card.get("bank"):
-        lines.append(f"بانک: {esc(card['bank'])}")
-    lines += [
+        f"به نام <b>{holder}</b>",
         "",
-        f"⏳ مهلت پرداخت: {ttl} دقیقه",
+        f"⏳ مهلت پرداخت: <b>{core.fa(ttl)} دقیقه</b>",
         "",
-        "بعد از واریز، <b>عکس رسید</b> یا <b>متن پیامک</b> را همین‌جا بفرستید.",
+        "بعد از واریز، <b>عکس رسید</b> یا <b>متن پیامک بانک</b> را "
+        "همین‌جا بفرستید تا بررسی شود.",
+        "",
+        f"<i>شناسه‌ی سفارش:</i> <code>#{order['id']}</code>",
     ]
 
     _reply(ctx, chat_id, message_id, "\n".join(lines),
@@ -383,12 +407,18 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id):
     """پرداخت مستقیم از کیف پول — بدون نیاز به تایید ادمین."""
     p = ctx.db.get_plan(plan_id)
     if not p:
-        return _reply(ctx, chat_id, message_id, "این پلن موجود نیست.", back_kb("buy"))
+        return _reply(ctx, chat_id, message_id,
+                      "این پلن دیگر در دسترس نیست.", back_kb("buy"))
 
     fresh = ctx.db.get_user(user["tg_id"])
     if fresh["balance"] < p["price"]:
+        short = p["price"] - fresh["balance"]
         return _reply(ctx, chat_id, message_id,
-                      "موجودی کیف پول کافی نیست.", back_kb("buy"))
+                      "موجودی کیف پولتان برای این پلن کافی نیست.\n\n"
+                      f"موجودی: <b>{core.toman(fresh['balance'])}</b> تومان\n"
+                      f"کسری: <b>{core.toman(short)}</b> تومان\n\n"
+                      "می‌توانید کیف پول را شارژ کنید یا کارت‌به‌کارت بپردازید.",
+                      back_kb("buy"))
 
     order = ctx.db.create_order(fresh["id"], plan_id, p["price"], p["price"],
                                 paid_from="wallet")
@@ -398,14 +428,18 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id):
     ok, result = provision(ctx, order["id"])
     if ok:
         _reply(ctx, chat_id, message_id,
-               "✅ پرداخت از کیف پول انجام شد.", None)
+               f"✅ <b>{core.toman(p['price'])}</b> تومان از کیف پولتان کم شد.\n\n"
+               "اشتراک آماده است — همین پایین برایتان فرستادیم.", None)
         deliver(ctx, fresh, result)
     else:
         # برگرداندن پول در صورت خطا
         ctx.db.add_balance(fresh["id"], p["price"], "refund",
                            "خطا در ساخت کانفیگ", order["id"])
         _reply(ctx, chat_id, message_id,
-               f"مشکلی پیش آمد و مبلغ به کیف پولتان برگشت.\n\n{esc(result)}",
+               "ساخت اشتراک به مشکل خورد و <b>مبلغ کامل به کیف پولتان برگشت</b>.\n\n"
+               f"<i>{esc(result)}</i>\n\n"
+               "چند دقیقه دیگر دوباره امتحان کنید — اگر باز هم نشد، "
+               "پشتیبانی همین را می‌بیند و پیگیری می‌کند.",
                back_kb())
 
 
@@ -419,7 +453,10 @@ def handle_receipt(ctx, msg, user, state_data):
 
     if not order or order["status"] not in ("pending",):
         ctx.db.clear_state(user["tg_id"])
-        return ctx.bot.send(user["tg_id"], "این سفارش دیگر معتبر نیست.",
+        return ctx.bot.send(user["tg_id"],
+                            "این سفارش دیگر باز نیست — شاید قبلاً بررسی "
+                            "یا لغو شده باشد.\n\n"
+                            "وضعیتش را از «سفارش‌های من» ببینید.",
                             keyboard=main_menu(ctx, user))
 
     # بررسی مهلت
@@ -430,7 +467,10 @@ def handle_receipt(ctx, msg, user, state_data):
                             (ctx.tid, order_id))
                 ctx.db.clear_state(user["tg_id"])
                 return ctx.bot.send(user["tg_id"],
-                                    "مهلت این سفارش تمام شد. لطفاً دوباره سفارش دهید.",
+                                    "⌛️ مهلت این سفارش تمام شد.\n\n"
+                                    "اگر واریز کرده‌اید نگران نباشید — "
+                                    "به پشتیبانی پیام بدهید تا دستی ثبت شود.\n"
+                                    "وگرنه از «خرید اشتراک» یک سفارش تازه بسازید.",
                                     keyboard=main_menu(ctx, user))
         except ValueError:
             pass
@@ -445,7 +485,8 @@ def handle_receipt(ctx, msg, user, state_data):
         rtext = msg["text"]
     else:
         return ctx.bot.send(user["tg_id"],
-                            "لطفاً عکس رسید یا متن پیامک بانک را بفرستید.")
+                            "برای ثبت پرداخت، <b>عکس رسید</b> یا "
+                            "<b>متن پیامک بانک</b> را بفرستید.")
 
     ctx.db.exec(
         """UPDATE orders SET status='awaiting', receipt_type=?, receipt_file=?,
@@ -462,16 +503,20 @@ def handle_receipt(ctx, msg, user, state_data):
     )
 
     # اعلان به گروه مدیریت
+    who = esc(user.get("first_name") or "بدون نام")
+    if user.get("username"):
+        who += f" · @{esc(user['username'])}"
+
     info = (
         f"🧾 <b>رسید جدید — سفارش #{order_id}</b>\n\n"
-        f"👤 {esc(user.get('first_name'))} "
-        f"(@{esc(user.get('username')) if user.get('username') else '—'})\n"
-        f"🆔 <code>{user['tg_id']}</code>\n"
-        f"📦 {esc(plan['name']) if plan else '—'}\n"
-        f"💰 <b>{core.toman(order['amount'])}</b> تومان"
+        f"{who}\n"
+        f"<code>{user['tg_id']}</code>\n\n"
+        f"{esc(plan['name']) if plan else '—'}\n"
+        f"<b>{core.toman(order['amount'])}</b> تومان"
     )
     if order["coins_used"]:
-        info += f"\n🪙 {order['coins_used']} سکه ({order['discount_pct']}٪)"
+        info += (f"\nبا {core.fa(order['coins_used'])} سکه · "
+                 f"{core.fa(order['discount_pct'])}٪ تخفیف")
     if rtext:
         info += f"\n\n<i>{esc(rtext[:400])}</i>"
 
@@ -510,16 +555,16 @@ def _waiting_text(ctx, order_id):
                    .replace("{support}", support))
 
     txt = (
-        f"✅ <b>رسید شما دریافت شد</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🔢 کد پیگیری: <code>#{order_id}</code>\n"
-        f"⏳ در انتظار بررسی\n\n"
-        f"معمولاً کمتر از ۱۵ دقیقه طول می‌کشد.\n"
-        f"به محض تایید، کانفیگتان همین‌جا ارسال می‌شود."
+        "✅ <b>رسیدتان رسید</b>\n\n"
+        "الان در صف بررسی است. معمولاً کمتر از <b>۱۵ دقیقه</b> طول می‌کشد و "
+        "به‌محض تأیید، اشتراک همین‌جا برایتان می‌آید.\n\n"
+        "لازم نیست منتظر بمانید — می‌توانید تلگرام را ببندید، "
+        "پیام به شما می‌رسد.\n\n"
+        f"<i>کد پیگیری:</i> <code>#{order_id}</code>"
     )
     if support:
-        txt += (f"\n\n<i>اگر بیش از یک ساعت طول کشید، با پشتیبانی "
-                f"تماس بگیرید و کد پیگیری را همراه داشته باشید.</i>")
+        txt += ("\n\n<i>اگر بیشتر از یک ساعت طول کشید، همین کد را "
+                "برای پشتیبانی بفرستید.</i>")
     return txt
 
 
@@ -550,15 +595,14 @@ def show_order_status(ctx, user, chat_id, message_id, order_id):
     p = ctx.db.get_plan(o["plan_id"]) if o.get("plan_id") else None
 
     txt = (
-        f"{icon} <b>سفارش #{order_id}</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"وضعیت: <b>{label}</b>\n"
-        f"پلن: {esc(p['name']) if p else '—'}\n"
-        f"مبلغ: {core.toman(o['amount'])}\n"
-        f"زمان ثبت: {str(o.get('created_at',''))[:16]}"
+        f"{icon} <b>وضعیت سفارش: {label}</b>\n\n"
+        f"{esc(p['name']) if p else '—'}\n"
+        f"<b>{core.toman(o['amount'])}</b> تومان\n"
+        f"ثبت شده در {core.fa(str(o.get('created_at', ''))[:16])}\n\n"
+        f"<i>کد پیگیری:</i> <code>#{order_id}</code>"
     )
     if o["status"] == "rejected" and o.get("admin_note"):
-        txt += f"\n\n<b>دلیل:</b> {esc(o['admin_note'])}"
+        txt += f"\n\n<b>دلیل رد شدن:</b>\n{esc(o['admin_note'])}"
 
     return _reply(ctx, chat_id, message_id, txt, _waiting_kb(ctx, order_id))
 
@@ -585,9 +629,10 @@ def approve_order(ctx, order_id, admin_tg_id):
         fresh = ctx.db.get_user_by_id(u["id"])
         ctx.bot.send(
             u["tg_id"],
-            f"✅ <b>کیف پول شارژ شد</b>\n\n"
-            f"مبلغ: {core.toman(order['amount'])} تومان\n"
-            f"موجودی جدید: <b>{core.toman(fresh['balance'])}</b> تومان")
+            "✅ <b>کیف پولتان شارژ شد</b>\n\n"
+            f"واریزی: {core.toman(order['amount'])} تومان\n"
+            f"موجودی جدید: <b>{core.toman(fresh['balance'])}</b> تومان\n\n"
+            "حالا می‌توانید بدون انتظارِ تأیید رسید خرید کنید.")
         ctx.notify_group(
             f"💳 <b>شارژ کیف پول</b>\n"
             f"کاربر: {esc(u.get('first_name') or u['tg_id'])}\n"
@@ -605,21 +650,26 @@ def approve_order(ctx, order_id, admin_tg_id):
     # پورسانت همکار فروش — بعد از ساخت موفق کانفیگ، چون تا وقتی
     # کانفیگ تحویل نشده فروشی اتفاق نیفتاده
     try:
-        paid_amount = order.get("final_price") or order.get("price") or 0
-        res = ctx.db.record_commission(ctx.tid, user["id"], order_id, paid_amount)
+        # جدول orders ستون final_price/price ندارد — مبلغ نهایی در
+        # amount است. قبلاً این‌جا همیشه صفر می‌شد و پورسانت هر
+        # فروش صفر ثبت می‌شد.
+        paid_amount = order["amount"] or 0
+        res = DB.record_commission(ctx.tid, user["id"], order_id, paid_amount)
         if res:
             aff = res["affiliate"]
             ctx.notify_group(
                 f"💼 <b>پورسانت همکار</b>\n"
                 f"همکار: {esc(aff['name'])}\n"
-                f"سفارش #{order_id} — {paid_amount:,} تومان\n"
-                f"پورسانت: {res['commission']:,} تومان ({aff['percent']}٪)")
+                f"سفارش #{order_id} — {core.toman(paid_amount)} تومان\n"
+                f"پورسانت: {core.toman(res['commission'])} تومان "
+                f"({core.fa(aff['percent'])}٪)")
             if aff.get("tg_id"):
                 ctx.bot.send(
                     aff["tg_id"],
-                    f"💼 <b>فروش جدید</b>\n\n"
-                    f"مبلغ خرید: {paid_amount:,} تومان\n"
-                    f"پورسانت شما: <b>{res['commission']:,} تومان</b>")
+                    "💼 <b>یک فروش تازه از لینک شما</b>\n\n"
+                    f"مبلغ خرید: {core.toman(paid_amount)} تومان\n"
+                    f"پورسانت شما: <b>{core.toman(res['commission'])}</b> تومان\n\n"
+                    "<i>مانده‌ی کلتان را از «پنل همکاری در فروش» ببینید.</i>")
     except Exception:
         # نبود پورسانت نباید تحویل سفارش را متوقف کند
         pass
@@ -664,14 +714,16 @@ def _reward_referrer(ctx, user, order_id):
 
     prog = core.coin_progress(ref["coins"] + amount, ctx.s.get("coins"))
     text = (
-        f"🎉 <b>{amount} سکه گرفتید!</b>\n\n"
-        f"یکی از دوستانی که دعوت کرده بودید خرید کرد.\n"
-        f"موجودی شما: <b>{prog['coins']} سکه</b>"
+        f"🎉 <b>{core.fa(amount)} سکه گرفتید</b>\n\n"
+        "یکی از دوستانی که دعوت کرده بودید خرید کرد.\n\n"
+        f"موجودی شما: <b>{core.fa(prog['coins'])} سکه</b>"
     )
     if prog["current_percent"]:
-        text += f" — {prog['current_percent']}٪ تخفیف آماده استفاده"
+        text += (f" — <b>{core.fa(prog['current_percent'])}٪ تخفیف</b> "
+                 "آماده‌ی استفاده")
     if prog["next"]:
-        text += f"\n\nبا {prog['next']['need']} سکه دیگر به {prog['next']['percent']}٪ می‌رسید."
+        text += (f"\n\n<i>با {core.fa(prog['next']['need'])} سکه‌ی دیگر به "
+                 f"{core.fa(prog['next']['percent'])}٪ می‌رسید.</i>")
 
     try:
         ctx.bot.send(ref["tg_id"], text)
@@ -701,8 +753,11 @@ def provision(ctx, order_id):
             subs = ctx.db.user_subs(user["id"])
             if subs:
                 sub = subs[0]
+                # ایمیل را هم می‌دهیم: در 3x-ui نسخه‌ی ۳ شناسه‌ی اصلی
+                # کلاینت ایمیل است و جست‌وجو با آن مطمئن‌تر از uuid است
                 ctx.xui.extend_subscription(sub["inbound_id"], sub["client_uuid"],
-                                            plan["days"], plan["gb"])
+                                            plan["days"], plan["gb"],
+                                            email=sub.get("client_email"))
                 new_exp = _add_days_iso(sub["expires_at"], plan["days"])
                 ctx.db.exec(
                     """UPDATE subscriptions SET expires_at=?, is_active=1,
@@ -761,7 +816,10 @@ def provision(ctx, order_id):
 
         return True, {"id": sid, "client_email": email, "sub_url": res["sub_url"],
                       "expires_at": exp_iso, "gb": plan["gb"],
-                      "plan_name": plan["name"], "renewed": False}
+                      "plan_name": plan["name"], "renewed": False,
+                      # اگر لینک اشتراک ساخته نشد، دست‌کم خود کانفیگ‌ها
+                      # را داریم تا مشتری دست‌خالی نماند
+                      "configs": res.get("configs") or []}
 
     except XUIError as e:
         log.error("خطای ساخت کانفیگ: %s", e)
@@ -819,34 +877,45 @@ def deliver(ctx, user, sub):
         f"✅ <b>اشتراک شما {title}</b>",
         "",
         f"<b>{esc(str(sub.get('plan_name') or 'اشتراک'))}</b>",
-        f"📦 حجم: {core.fmt_gb(sub.get('gb'))}",
+        f"{core.fmt_gb(sub.get('gb'))} ترافیک",
     ]
     if d is not None:
-        lines.append(f"⏱ اعتبار: {d} روز")
+        line = f"<b>{core.fa(d)} روز</b> اعتبار"
         if sub.get("expires_at"):
-            lines.append(f"📅 تا: {str(sub['expires_at'])[:10]}")
+            line += f" — تا {core.fa(str(sub['expires_at'])[:10])}"
+        lines.append(line)
     if sub.get("client_email"):
-        lines.append(f"🏷 نام کانفیگ: <code>{esc(sub['client_email'])}</code>")
+        lines.append(f"نام کانفیگ: <code>{esc(sub['client_email'])}</code>")
 
     if url:
         lines += [
             "",
-            "🔗 <b>لینک اشتراک</b>",
+            "🔗 <b>لینک اشتراک شما</b>",
             f"<code>{esc(url)}</code>",
             "",
-            "<i>روی لینک بزنید تا کپی شود. با دکمه‌های زیر مستقیم "
-            "به برنامه‌تان اضافه می‌شود.</i>",
+            "<i>روی لینک بزنید تا کپی شود — یا با دکمه‌های پایین "
+            "مستقیم به برنامه‌تان اضافه کنید.</i>",
         ]
+    elif sub.get("configs"):
+        # لینک اشتراک نداریم ولی خود کانفیگ‌ها را داریم — همان‌ها را
+        # می‌دهیم تا مشتری دست‌خالی نماند و لازم نباشد پشتیبانی
+        # را برای چیزی که در دسترس است درگیر کند.
+        lines += ["", "🔗 <b>کانفیگ‌های شما</b>"]
+        for cfg in sub["configs"][:5]:
+            lines.append(f"<code>{esc(cfg)}</code>")
+        lines.append("")
+        lines.append("<i>هر کدام را که خواستید کپی کنید و در برنامه‌تان "
+                     "وارد کنید — همه به یک حساب وصل‌اند.</i>")
     else:
         # بدون لینک، کاربر نمی‌داند چه کند — پس صریح می‌گوییم
         lines += [
             "",
-            "⚠️ لینک ساخته نشد. لطفاً به پشتیبانی پیام بدهید "
-            "تا دستی برایتان بفرستیم.",
+            "⚠️ لینک اشتراک ساخته نشد، ولی <b>خریدتان ثبت شده است</b>.\n"
+            "به پشتیبانی پیام بدهید تا همین حالا دستی برایتان بفرستیم.",
         ]
 
-    lines += ["", "💡 هر وقت خواستید، از «اشتراک‌های من» مصرف و "
-              "روزهای باقی‌مانده را ببینید."]
+    lines += ["", "<i>هر وقت خواستید، از «اشتراک‌های من» مصرف و روزهای "
+              "باقی‌مانده را ببینید.</i>"]
 
     ctx.bot.send(user["tg_id"], "\n".join(lines),
                  keyboard=_deliver_kb(ctx, url))
@@ -860,7 +929,10 @@ def show_subs(ctx, user, chat_id, message_id):
     subs = ctx.db.user_subs(user["id"])
     if not subs:
         return _reply(ctx, chat_id, message_id,
-                      "هنوز اشتراکی ندارید.\n\nاز منوی خرید می‌توانید اولین اشتراکتان را بگیرید.",
+                      "📊 <b>اشتراک‌های شما</b>\n\n"
+                      "هنوز اشتراکی اینجا نیست.\n\n"
+                      "اولین اشتراکتان کمتر از یک دقیقه طول می‌کشد — "
+                      "پلن را انتخاب می‌کنید، رسید می‌فرستید، تحویل می‌گیرید.",
                       kb([[("🛒 خرید اشتراک", "buy")], [("‹ بازگشت", "menu")]]))
 
     lines = ["📊 <b>اشتراک‌های شما</b>", ""]
@@ -909,30 +981,30 @@ def show_subs(ctx, user, chat_id, message_id):
         if pct is not None:
             filled = round(pct / 10)
             bar = "█" * filled + "░" * (10 - filled)
-            lines.append(f"   <code>{bar}</code> {pct}٪")
-            lines.append(f"   مصرف: {used_gb} از "
-                         f"{core.fmt_gb(total_gb)} · "
-                         f"باقی: {max(0, round(total_gb - used_gb, 1))} GB")
+            left_gb = max(0, round(total_gb - used_gb, 1))
+            lines.append(f"<code>{bar}</code> {core.fa(pct)}٪")
+            lines.append(f"<b>{core.fa(left_gb)} گیگ</b> باقی مانده "
+                         f"<i>({core.fa(used_gb)} از {core.fmt_gb(total_gb)} مصرف شده)</i>")
         elif used_gb is not None:
-            lines.append(f"   مصرف: {used_gb} GB از حجم نامحدود")
+            lines.append(f"<b>{core.fa(used_gb)} گیگ</b> مصرف شده — حجم نامحدود")
         else:
-            lines.append(f"   حجم: {core.fmt_gb(total_gb)}")
+            lines.append(f"{core.fmt_gb(total_gb)} ترافیک")
 
         if d is None:
-            lines.append("   اعتبار: بدون محدودیت زمانی")
+            lines.append("بدون محدودیت زمانی")
         elif expired:
-            lines.append(f"   ⛔ <b>{abs(d)} روز پیش منقضی شده</b>")
+            lines.append(f"⛔ <b>{core.fa(abs(d))} روز پیش</b> منقضی شده")
         else:
-            lines.append(f"   اعتبار: <b>{d}</b> روز مانده")
+            line = f"<b>{core.fa(d)} روز</b> اعتبار"
             if s.get("expires_at"):
-                lines.append(f"   انقضا: {str(s['expires_at'])[:10]}")
+                line += f" — تا {core.fa(str(s['expires_at'])[:10])}"
+            lines.append(line)
 
         if s.get("client_email"):
-            lines.append(f"   نام کانفیگ: <code>{esc(s['client_email'])}</code>")
+            lines.append(f"<i>نام کانفیگ:</i> <code>{esc(s['client_email'])}</code>")
 
         if s.get("sub_url"):
-            lines.append("")
-            lines.append(f"   🔗 <code>{esc(s['sub_url'])}</code>")
+            lines.append(f"🔗 <code>{esc(s['sub_url'])}</code>")
 
         lines.append("")
 
@@ -940,8 +1012,8 @@ def show_subs(ctx, user, chat_id, message_id):
         rows.append([(f"{label} {s.get('plan_name') or ''}".strip(),
                       f"renew:{s['id']}")])
 
-    lines.append("<i>لینک را کپی کنید و در برنامه‌تان وارد کنید. "
-                 "برای راهنما دکمه‌ی آموزش نصب را بزنید.</i>")
+    lines.append("<i>لینک را بزنید تا کپی شود، بعد در برنامه‌تان وارد کنید. "
+                 "اگر بلد نیستید، «آموزش نصب» را بزنید.</i>")
     rows.append([("📚 آموزش نصب", "help")])
 
     rows.append([("‹ بازگشت", "menu")])
@@ -960,14 +1032,14 @@ def show_wallet(ctx, user, chat_id, message_id):
         f"موجودی: <b>{core.toman(u['balance'])}</b> تومان",
     ]
     if txs:
-        lines += ["", "<b>آخرین تراکنش‌ها:</b>"]
+        lines += ["", "<b>آخرین تراکنش‌ها</b>"]
         for t in txs:
             sign = "+" if t["amount"] > 0 else "−"
-            lines.append(f"{sign} {core.toman(abs(t['amount']))} — "
+            lines.append(f"{sign} {core.toman(abs(t['amount']))} · "
                          f"{esc(t.get('note') or t['kind'])}")
 
-    lines += ["", "با شارژ کیف پول می‌توانید سریع‌تر خرید کنید و "
-              "تمدید خودکار را فعال نگه دارید."]
+    lines += ["", "<i>با کیف پول شارژشده، خرید بعدی‌تان بدون انتظارِ تأیید "
+              "رسید انجام می‌شود و تمدید خودکار هم فعال می‌ماند.</i>"]
 
     return _reply(ctx, chat_id, message_id, "\n".join(lines),
                   kb([[("💳 شارژ کیف پول", "topup")],
@@ -992,8 +1064,9 @@ def wallet_topup(ctx, user, chat_id, message_id):
 
     return _reply(ctx, chat_id, message_id,
                   "💳 <b>شارژ کیف پول</b>\n\n"
-                  "مبلغ را انتخاب کنید. بعد از واریز، رسید را بفرستید "
-                  "تا موجودی‌تان اضافه شود.",
+                  "مبلغ را انتخاب کنید. بعد از واریز و فرستادن رسید، "
+                  "موجودی‌تان اضافه می‌شود و خریدهای بعدی <b>بدون انتظار</b> "
+                  "انجام می‌شوند.",
                   kb(rows))
 
 
@@ -1002,7 +1075,9 @@ def wallet_topup_amount(ctx, user, chat_id, message_id, amount):
     try:
         amount = int(amount)
     except (TypeError, ValueError):
-        return _reply(ctx, chat_id, message_id, "مبلغ نامعتبر است.", back_kb("wallet"))
+        return _reply(ctx, chat_id, message_id,
+                      "این مبلغ خوانده نشد. یکی از مبلغ‌های آماده را انتخاب کنید.",
+                      back_kb("wallet"))
 
     if not (10000 <= amount <= 50000000):
         return _reply(ctx, chat_id, message_id,
@@ -1025,10 +1100,11 @@ def wallet_topup_amount(ctx, user, chat_id, message_id, amount):
     return _reply(ctx, chat_id, message_id,
                   f"💳 <b>شارژ کیف پول</b>\n\n"
                   f"مبلغ: <b>{core.toman(amount)}</b> تومان\n\n"
-                  f"به این کارت واریز کنید:\n"
-                  f"<code>{esc(card['number'])}</code>\n"
-                  f"به نام: {esc(card['holder'])}\n\n"
-                  f"بعد <b>عکس یا متن رسید</b> را همین‌جا بفرستید.",
+                  f"این مبلغ را به کارت زیر واریز کنید:\n"
+                  f"<code>{core.fmt_card(card['number'])}</code>\n"
+                  f"به نام <b>{esc(card['holder'])}</b>\n\n"
+                  f"بعد <b>عکس رسید</b> یا <b>متن پیامک بانک</b> را همین‌جا "
+                  f"بفرستید تا موجودی‌تان اضافه شود.",
                   kb([[("‹ انصراف", "wallet")]]))
 
 
@@ -1040,30 +1116,37 @@ def show_coins(ctx, user, chat_id, message_id):
     lines = [
         "🪙 <b>سکه‌های شما</b>",
         "",
-        f"موجودی: <b>{prog['coins']} سکه</b>",
+        f"موجودی: <b>{core.fa(prog['coins'])} سکه</b>",
     ]
     if prog["current_percent"]:
-        lines.append(f"تخفیف فعلی: <b>{prog['current_percent']}٪</b> "
-                     f"(با مصرف {prog['current_cost']} سکه)")
+        lines.append(f"همین حالا <b>{core.fa(prog['current_percent'])}٪ تخفیف</b> "
+                     f"دارید <i>(با خرج {core.fa(prog['current_cost'])} سکه)</i>")
     if prog["next"]:
-        lines.append(f"با <b>{prog['next']['need']} سکه</b> دیگر → "
-                     f"{prog['next']['percent']}٪ تخفیف")
+        lines.append(f"با <b>{core.fa(prog['next']['need'])} سکه</b> دیگر، "
+                     f"تخفیف {core.fa(prog['next']['percent'])}٪ باز می‌شود")
 
-    lines += ["", "<b>پله‌های تخفیف:</b>"]
+    lines += ["", "<b>پله‌های تخفیف</b>"]
     for t in cs["tiers"]:
         mark = "✅" if u["coins"] >= t["coins"] else "▫️"
-        lines.append(f"{mark} {t['coins']} سکه = {t['percent']}٪ تخفیف")
+        lines.append(f"{mark} {core.fa(t['coins'])} سکه — "
+                     f"{core.fa(t['percent'])}٪ تخفیف")
 
     lines += [
         "",
-        f"💡 هر دوستی که با لینک شما بیاید و <b>خرید کند</b>، "
-        f"{cs['per_referral']} سکه می‌گیرید.",
+        f"هر دوستی که با لینک شما بیاید و <b>خرید کند</b>، "
+        f"<b>{core.fa(cs['per_referral'])} سکه</b> به شما می‌رسد.",
         "",
-        "سکه‌ها منقضی نمی‌شوند — می‌توانید جمع کنید تا به پله‌ی بالاتر برسید."
+        "<i>سکه‌ها تاریخ انقضا ندارند — می‌توانید جمعشان کنید تا "
+        "به پله‌ی بالاتر برسید.</i>"
         if not cs.get("expire_days") else "",
     ]
 
-    _reply(ctx, chat_id, message_id, "\n".join(l for l in lines if l != ""),
+    # فاصله‌های خالی عمدی‌اند (گروه‌بندی بصری) — فقط خط آخر که ممکن
+    # است شرطی خالی بماند حذف می‌شود، نه همه‌ی خالی‌ها
+    while lines and lines[-1] == "":
+        lines.pop()
+
+    _reply(ctx, chat_id, message_id, "\n".join(lines),
            kb([[("🎁 دعوت دوستان", "ref")], [("‹ بازگشت", "menu")]]))
 
 
@@ -1072,7 +1155,7 @@ def show_referral(ctx, user, chat_id, message_id):
     cs = core.coin_settings(ctx.s.get("coins"))
     t = DB.get_tenant(ctx.tid)
     bot_user = t.get("bot_username") or ""
-    link = f"https://t.me/{bot_user}?start={u['ref_code']}" if bot_user else u["ref_code"]
+    link = f"https://t.me/{bot_user}?start={u['ref_code']}" if bot_user else ""
 
     invited = ctx.db.q(
         "SELECT COUNT(*) AS c FROM users WHERE tenant_id=? AND referred_by=?",
@@ -1088,35 +1171,51 @@ def show_referral(ctx, user, chat_id, message_id):
     lines = [
         "🎁 <b>دعوت دوستان</b>",
         "",
-        f"کد شما: <code>{u['ref_code']}</code>",
+        f"هر دوستی که با لینک شما بیاید و خرید کند، "
+        f"<b>{core.fa(cs['per_referral'])} سکه</b> به شما می‌رسد — "
+        "و سکه یعنی تخفیف روی خرید بعدی‌تان.",
         "",
-        "🔗 لینک اختصاصی:",
-        f"<code>{esc(link)}</code>",
+    ]
+    if link:
+        lines += [
+            "🔗 <b>لینک اختصاصی شما</b>",
+            f"<code>{esc(link)}</code>",
+        ]
+    else:
+        lines += [
+            "🔗 <b>کد دعوت شما</b>",
+            f"<code>{u['ref_code']}</code>",
+            "<i>دوستتان بعد از /start این کد را بفرستد.</i>",
+        ]
+    lines += [
         "",
-        f"👥 دعوت‌شده: <b>{(invited or {}).get('c', 0)}</b> نفر",
-        f"✅ خرید کرده: <b>{(bought or {}).get('c', 0)}</b> نفر",
-        f"🪙 سکه شما: <b>{u['coins']}</b>",
-        "",
-        f"هر دوستی که با این لینک بیاید و خرید کند، "
-        f"<b>{cs['per_referral']} سکه</b> می‌گیرید.",
+        f"دعوت‌شده: <b>{core.fa((invited or {}).get('c', 0))}</b> نفر",
+        f"از این‌ها خرید کرده: <b>{core.fa((bought or {}).get('c', 0))}</b> نفر",
+        f"سکه‌ی شما: <b>{core.fa(u['coins'])}</b>",
     ]
 
-    share = (f"https://t.me/share/url?url={link}"
-             f"&text=" + "با این لینک ثبت‌نام کن و اینترنت پرسرعت بگیر")
+    rows = []
+    # بدون یوزرنیم ربات لینکی وجود ندارد و دکمه‌ی اشتراک‌گذاری
+    # به یک آدرس شکسته می‌رسید
+    if link:
+        share = (f"https://t.me/share/url?url={link}"
+                 "&text=با این لینک ثبت‌نام کن و اینترنت پرسرعت بگیر")
+        rows.append([("📤 ارسال به دوستان", share, "url")])
+    rows.append([("🪙 سکه‌های من", "coins")])
+    rows.append([("‹ بازگشت", "menu")])
 
-    _reply(ctx, chat_id, message_id, "\n".join(lines),
-           kb([[("📤 ارسال به دوستان", share, "url")],
-               [("🪙 سکه‌های من", "coins")],
-               [("‹ بازگشت", "menu")]]))
+    _reply(ctx, chat_id, message_id, "\n".join(lines), kb(rows))
 
 
 def show_help(ctx, user, chat_id, message_id):
     txt = ctx.s.get("help_text") or (
-        "<b>راهنمای نصب</b>\n\n"
-        "۱. برنامه مناسب دستگاهتان را نصب کنید\n"
-        "۲. روی دکمه «افزودن» در پیام اشتراک بزنید\n"
-        "۳. کانفیگ خودکار اضافه می‌شود\n\n"
-        "اگر مشکلی داشتید، از بخش پشتیبانی پیام بدهید."
+        "📚 <b>آموزش نصب</b>\n\n"
+        "سه قدم، کمتر از دو دقیقه:\n\n"
+        "<b>۱.</b> برنامه‌ی مناسب دستگاهتان را از دکمه‌های پایین نصب کنید\n"
+        "<b>۲.</b> به «اشتراک‌های من» بروید و روی دکمه‌ی افزودن بزنید\n"
+        "<b>۳.</b> کانفیگ خودش اضافه می‌شود — فقط وصل شوید\n\n"
+        "<i>اگر جایی گیر کردید، از پشتیبانی بپرسید. "
+        "خجالت ندارد، همه اولین بار همین‌طورند.</i>"
     )
     rows = []
     apps = ctx.s.get("apps") or []
@@ -1130,15 +1229,18 @@ def show_help(ctx, user, chat_id, message_id):
 def start_support(ctx, user, chat_id, message_id):
     ctx.db.set_state(user["tg_id"], "await_ticket", {})
     _reply(ctx, chat_id, message_id,
-           "💬 <b>پشتیبانی</b>\n\nمشکل یا سوالتان را در یک پیام بنویسید. "
-           "در اولین فرصت پاسخ می‌دهیم.",
+           "💬 <b>پشتیبانی</b>\n\n"
+           "مشکل یا سوالتان را در یک پیام بنویسید — هرچه دقیق‌تر، "
+           "سریع‌تر حل می‌شود.\n\n"
+           "<i>اگر درباره‌ی سفارش است، کد پیگیری‌اش را هم بنویسید.</i>",
            kb([[("✖️ انصراف", "menu")]]))
 
 
 def handle_ticket(ctx, msg, user):
     text = msg.get("text") or msg.get("caption") or ""
     if not text.strip():
-        return ctx.bot.send(user["tg_id"], "لطفاً پیامتان را بنویسید.")
+        return ctx.bot.send(user["tg_id"],
+                            "پیامتان را به‌صورت متن بنویسید تا ثبت شود.")
 
     tid = ctx.db.exec(
         "INSERT INTO tickets (tenant_id, user_id, message) VALUES (?,?,?)",
@@ -1146,8 +1248,9 @@ def handle_ticket(ctx, msg, user):
     )
     ctx.db.clear_state(user["tg_id"])
     ctx.bot.send(user["tg_id"],
-                 f"✅ پیام شما ثبت شد (شماره پیگیری: <b>{tid}</b>).\n"
-                 "به‌زودی پاسخ می‌دهیم.",
+                 "✅ <b>پیامتان ثبت شد</b>\n\n"
+                 "پاسخ را همین‌جا در تلگرام می‌گیرید — لازم نیست منتظر بمانید.\n\n"
+                 f"<i>شماره پیگیری:</i> <code>#{tid}</code>",
                  keyboard=main_menu(ctx, user))
 
     ctx.notify_group(
@@ -1193,7 +1296,10 @@ def require_membership(ctx, chat_id, message_id, u):
     if allowed:
         return False
     _reply(ctx, chat_id, message_id,
-           "برای استفاده از ربات، ابتدا در کانال ما عضو شوید:", invite)
+           "📢 <b>یک قدم مانده</b>\n\n"
+           "برای ادامه، اول در کانال ما عضو شوید — اطلاع‌رسانی قطعی‌ها و "
+           "تخفیف‌ها همان‌جا منتشر می‌شود.\n\n"
+           "بعد از عضویت، دکمه‌ی «عضو شدم» را بزنید.", invite)
     return True
 
 
@@ -1204,13 +1310,15 @@ def affiliate_panel(ctx, user, chat_id, message_id):
     چیزی که همکار می‌خواهد بداند: لینکش، چند نفر آورده، چقدر
     فروش شده، چقدر پورسانت گرفته و چقدر طلبکار است.
     """
-    aff = ctx.db.affiliate_by_tg(ctx.tid, user["tg_id"])
+    aff = DB.affiliate_by_tg(ctx.tid, user["tg_id"])
     if not aff:
         return _reply(ctx, chat_id, message_id,
-                      "این بخش فقط برای همکاران فروش است.",
+                      "این بخش مخصوص همکاران فروش است.\n\n"
+                      "اگر دوست دارید همکار شوید و از فروشتان پورسانت بگیرید، "
+                      "به پشتیبانی پیام بدهید.",
                       back_kb())
 
-    st = ctx.db.affiliate_stats(ctx.tid, aff["id"])
+    st = DB.affiliate_stats(ctx.tid, aff["id"])
     bot_user = ctx.s.get("bot_username") or ""
     link = (f"https://t.me/{bot_user}?start=aff_{aff['code']}"
             if bot_user else f"کد شما: {aff['code']}")
@@ -1219,17 +1327,17 @@ def affiliate_panel(ctx, user, chat_id, message_id):
         "💼 <b>پنل همکاری در فروش</b>",
         "",
         f"سلام {esc(aff['name'])} 👋",
-        f"درصد پورسانت شما: <b>{aff['percent']}٪</b>",
+        f"پورسانت شما <b>{core.fa(aff['percent'])}٪</b> از هر خرید است.",
         "",
         "📊 <b>عملکرد</b>",
-        f"   کاربران معرفی‌شده: <b>{st['users']}</b>",
-        f"   خریدهای انجام‌شده: <b>{st['orders']}</b>",
-        f"   مجموع فروش: <b>{st['sales']:,}</b> تومان",
+        f"کاربران معرفی‌شده   <b>{core.fa(st['users'])}</b>",
+        f"خریدهای انجام‌شده   <b>{core.fa(st['orders'])}</b>",
+        f"مجموع فروش   <b>{core.toman(st['sales'])}</b> تومان",
         "",
         "💰 <b>پورسانت</b>",
-        f"   کل پورسانت: <b>{st['earned']:,}</b> تومان",
-        f"   دریافت‌شده: {st['payouts']:,} تومان",
-        f"   <b>مانده: {st['balance']:,} تومان</b>",
+        f"کل پورسانت   <b>{core.toman(st['earned'])}</b> تومان",
+        f"دریافت‌شده   {core.toman(st['payouts'])} تومان",
+        f"<b>مانده   {core.toman(st['balance'])} تومان</b>",
         "",
         "🔗 <b>لینک اختصاصی شما</b>",
         f"<code>{esc(link)}</code>",
@@ -1245,7 +1353,7 @@ def affiliate_panel(ctx, user, chat_id, message_id):
 
 def affiliate_list(ctx, user, chat_id, message_id):
     """ریز فروش‌های یک همکار."""
-    aff = ctx.db.affiliate_by_tg(ctx.tid, user["tg_id"])
+    aff = DB.affiliate_by_tg(ctx.tid, user["tg_id"])
     if not aff:
         return _reply(ctx, chat_id, message_id, "دسترسی ندارید.", back_kb())
 
@@ -1259,20 +1367,23 @@ def affiliate_list(ctx, user, chat_id, message_id):
 
     if not rows:
         return _reply(ctx, chat_id, message_id,
-                      "📋 <b>ریز فروش‌ها</b>\n\nهنوز فروشی ثبت نشده.",
+                      "📋 <b>ریز فروش‌ها</b>\n\n"
+                      "هنوز فروشی ثبت نشده.\n\n"
+                      "لینک اختصاصی‌تان را پخش کنید — از اولین خرید، "
+                      "همه‌چیز همین‌جا می‌آید.",
                       kb([[("‹ بازگشت", "affiliate")]]))
 
     lines = ["📋 <b>ریز فروش‌ها</b>", ""]
     for r in rows:
         who = r.get("first_name") or r.get("username") or "کاربر"
-        when = (r.get("created_at") or "")[:10]
+        when = core.fa((r.get("created_at") or "")[:10])
         mark = "✅" if r["status"] == "paid" else "⏳"
         lines.append(f"{mark} {esc(who)} · {when}")
-        lines.append(f"   خرید {r['order_amount']:,} → "
-                     f"پورسانت <b>{r['commission']:,}</b>")
+        lines.append(f"خرید {core.toman(r['order_amount'])} — "
+                     f"پورسانت <b>{core.toman(r['commission'])}</b>")
+        lines.append("")
 
-    lines.append("")
-    lines.append("<i>⏳ در انتظار پرداخت · ✅ پرداخت‌شده</i>")
+    lines.append("<i>⏳ در انتظار پرداخت  ·  ✅ پرداخت‌شده</i>")
 
     return _reply(ctx, chat_id, message_id, "\n".join(lines),
                   kb([[("‹ بازگشت", "affiliate")]]))
@@ -1295,42 +1406,47 @@ def my_orders(ctx, user, chat_id, message_id):
     if not rows:
         return _reply(ctx, chat_id, message_id,
                       "🧾 <b>سفارش‌های من</b>\n\n"
-                      "هنوز سفارشی ثبت نکرده‌اید.\n"
-                      "از دکمه‌ی «خرید اشتراک» شروع کنید.",
+                      "هنوز سفارشی اینجا نیست.\n\n"
+                      "هر خریدی که بکنید، با وضعیتش همین‌جا ثبت می‌شود.",
                       kb([[("🛒 خرید اشتراک", "buy")], [("‹ منو", "menu")]]))
 
     label = {
-        "pending": "⏳ در انتظار بررسی",
+        "pending": "⏳ در انتظار رسید",
+        "awaiting": "⏳ در حال بررسی",
         "approved": "✅ تایید شده",
         "rejected": "❌ رد شده",
         "cancelled": "🚫 لغو شده",
+        "expired": "⌛️ مهلتش تمام شد",
     }
 
     lines = ["🧾 <b>سفارش‌های من</b>", ""]
     for o in rows:
         st = label.get(o["status"], o["status"])
-        when = (o.get("created_at") or "")[:16].replace("T", " ")
+        when = core.fa((o.get("created_at") or "")[:16].replace("T", " "))
         name = o.get("plan_name") or "—"
 
-        lines.append(f"<b>#{o['id']}</b> · {name}")
-        lines.append(f"   {st} · {when}")
+        lines.append(f"{st} · {name}")
 
-        price = o.get("final_price") or o.get("price") or 0
+        # مبلغ نهایی در amount است، نه final_price/price که وجود ندارند
+        price = o.get("amount") or 0
         if price:
-            lines.append(f"   مبلغ: {price:,} تومان")
+            lines.append(f"<b>{core.toman(price)}</b> تومان · {when}")
+        else:
+            lines.append(f"رایگان · {when}")
         if o.get("coins_used"):
-            lines.append(f"   سکه استفاده‌شده: {o['coins_used']}")
+            lines.append(f"با {core.fa(o['coins_used'])} سکه")
 
         # دلیل رد — مهم‌ترین چیزی که کاربر می‌خواهد بداند
         if o["status"] == "rejected" and o.get("admin_note"):
-            lines.append(f"   دلیل: {esc(o['admin_note'][:90])}")
+            lines.append(f"<i>دلیل: {esc(o['admin_note'][:90])}</i>")
 
+        lines.append(f"<i>کد پیگیری:</i> <code>#{o['id']}</code>")
         lines.append("")
 
     buttons = []
-    pending = [o for o in rows if o["status"] == "pending"]
+    pending = [o for o in rows if o["status"] in ("pending", "awaiting")]
     if pending:
-        lines.append(f"<i>{len(pending)} سفارش در انتظار بررسی است.</i>")
+        lines.append(f"<i>{core.fa(len(pending))} سفارش هنوز در جریان است.</i>")
     if any(o["status"] == "rejected" for o in rows):
         buttons.append([("🔄 خرید مجدد", "buy")])
     buttons.append([("‹ منو", "menu")])
@@ -1342,12 +1458,15 @@ def give_trial(ctx, user, chat_id, message_id):
     u = ctx.db.get_user(user["tg_id"])
     if u.get("trial_used"):
         return _reply(ctx, chat_id, message_id,
-                      "شما قبلاً اشتراک تست را دریافت کرده‌اید.", back_kb())
+                      "اشتراک تست رایگان را قبلاً گرفته‌اید — "
+                      "هر حساب فقط یک‌بار می‌تواند.\n\n"
+                      "برای ادامه، یکی از پلن‌ها را انتخاب کنید.",
+                      kb([[("🛒 دیدن پلن‌ها", "buy")], [("‹ بازگشت", "menu")]]))
 
     plan = ctx.db.trial_plan()
     if not plan:
         return _reply(ctx, chat_id, message_id,
-                      "اشتراک تست در حال حاضر فعال نیست.", back_kb())
+                      "اشتراک تست فعلاً فعال نیست.", back_kb())
 
     if require_membership(ctx, chat_id, message_id, user):
         return
@@ -1359,11 +1478,17 @@ def give_trial(ctx, user, chat_id, message_id):
     ok, result = provision(ctx, order["id"])
     if not ok:
         return _reply(ctx, chat_id, message_id,
-                      f"مشکلی پیش آمد: {esc(result)}", back_kb())
+                      "ساخت اشتراک تست به مشکل خورد.\n\n"
+                      f"<i>{esc(result)}</i>\n\n"
+                      "چند دقیقه دیگر دوباره امتحان کنید — "
+                      "تست رایگانتان هنوز محفوظ است.", back_kb())
 
     ctx.db.exec("UPDATE users SET trial_used=1 WHERE tenant_id=? AND id=?",
                 (ctx.tid, u["id"]))
-    _reply(ctx, chat_id, message_id, "🎉 اشتراک تست شما فعال شد!", None)
+    _reply(ctx, chat_id, message_id,
+           "🎉 <b>اشتراک تست رایگان شما فعال شد</b>\n\n"
+           "همین پایین می‌فرستیمش — امتحانش کنید و اگر پسندیدید، "
+           "پلن اصلی را بگیرید.", None)
     deliver(ctx, u, result)
 
     ctx.notify_group(
@@ -1405,9 +1530,9 @@ def ask_phone(ctx, user, chat_id):
     ctx.db.set_state(user["tg_id"], "await_phone", {})
     txt = ctx.s.get("phone_prompt") or (
         "📱 <b>شماره تماس</b>\n\n"
-        "اگر شماره‌تان را ثبت کنید، در صورت بروز مشکل سریع‌تر می‌توانیم "
-        "کمکتان کنیم و اشتراکتان قابل بازیابی می‌شود.\n\n"
-        "<i>اختیاری است — بدون آن هم می‌توانید خرید کنید.</i>"
+        "اگر شماره‌تان را ثبت کنید، وقتی مشکلی پیش بیاید سریع‌تر پیدایتان "
+        "می‌کنیم و اشتراکتان قابل بازیابی می‌ماند.\n\n"
+        "<i>کاملاً اختیاری است — بدون آن هم می‌توانید خرید کنید.</i>"
     )
     ctx.bot.send(chat_id, txt,
                  keyboard=contact_kb("📱 ارسال شماره من", SKIP_PHONE))
@@ -1423,7 +1548,7 @@ def handle_phone(ctx, msg, user):
     # کاربر رد کرد
     if text == SKIP_PHONE or text in ("رد", "بعدا", "بعداً"):
         ctx.db.clear_state(user["tg_id"])
-        ctx.bot.send(chat_id, "باشه، بدون مشکل ادامه می‌دهیم 👍",
+        ctx.bot.send(chat_id, "باشه، بدون شماره ادامه می‌دهیم 👍",
                      keyboard=remove_kb())
         return cmd_start(ctx, msg)
 
@@ -1443,8 +1568,9 @@ def handle_phone(ctx, msg, user):
 
     if not phone:
         ctx.bot.send(chat_id,
-                     "شماره معتبر نبود. از دکمه‌ی زیر استفاده کنید یا شماره را "
-                     "به شکل <code>09121234567</code> بفرستید.",
+                     "این شماره درست به نظر نمی‌رسد.\n\n"
+                     "ساده‌ترین راه دکمه‌ی پایین است — یا شماره را به شکل "
+                     "<code>09121234567</code> بنویسید.",
                      keyboard=contact_kb("📱 ارسال شماره من", SKIP_PHONE))
         return
 
@@ -1469,14 +1595,15 @@ def show_admin(ctx, user, chat_id, message_id=None):
     pending = st.get("pending", 0)
 
     txt = (
-        f"⚙️ <b>پنل مدیریت</b> · {esc(ctx.brand())}\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👥 کاربران   <b>{st.get('users', 0)}</b>\n"
-        f"📦 اشتراک فعال   <b>{st.get('active_subs', 0)}</b>\n"
-        f"💳 رسید در انتظار   <b>{pending}</b>\n"
-        f"🎫 تیکت باز   <b>{st.get('open_tickets', 0)}</b>\n\n"
-        f"💰 فروش کل   <b>{core.toman(st.get('revenue', 0))}</b>"
+        f"⚙️ <b>پنل مدیریت</b> · {esc(ctx.brand())}\n\n"
+        f"کاربران   <b>{core.fa(st.get('users', 0))}</b>\n"
+        f"اشتراک فعال   <b>{core.fa(st.get('active_subs', 0))}</b>\n"
+        f"رسید در انتظار   <b>{core.fa(pending)}</b>\n"
+        f"تیکت باز   <b>{core.fa(st.get('open_tickets', 0))}</b>\n\n"
+        f"فروش کل   <b>{core.toman(st.get('revenue_total', 0))}</b> تومان"
     )
+    if pending:
+        txt += f"\n\n⏳ <b>{core.fa(pending)}</b> رسید منتظر بررسی شماست."
 
     rows = []
     rows.append([(f"💳 رسیدها ({pending})" if pending else "💳 رسیدها", "adm:orders")])
@@ -1496,7 +1623,8 @@ def admin_orders(ctx, user, chat_id, message_id=None):
     orders = ctx.db.pending_orders()
     if not orders:
         return _reply(ctx, chat_id, message_id,
-                      "✅ رسیدی در انتظار بررسی نیست.", back_kb("admin"))
+                      "✅ صف رسیدها خالی است — همه بررسی شده‌اند.",
+                      back_kb("admin"))
 
     rows = []
     for o in orders[:10]:
@@ -1505,8 +1633,8 @@ def admin_orders(ctx, user, chat_id, message_id=None):
     rows.append([("‹ بازگشت", "admin")])
 
     return _reply(ctx, chat_id, message_id,
-                  f"💳 <b>رسیدهای در انتظار</b> ({len(orders)})\n\n"
-                  "روی هر مورد بزنید تا جزئیاتش را ببینید.", kb(rows))
+                  f"💳 <b>رسیدهای در انتظار</b> · {core.fa(len(orders))}\n\n"
+                  "روی هرکدام بزنید تا جزئیات و رسیدش را ببینید.", kb(rows))
 
 
 def admin_order_detail(ctx, user, chat_id, message_id, order_id):
@@ -1522,17 +1650,17 @@ def admin_order_detail(ctx, user, chat_id, message_id, order_id):
     p = ctx.db.get_plan(o["plan_id"]) if o.get("plan_id") else None
 
     txt = (
-        f"🧾 <b>سفارش #{o['id']}</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👤 {esc(u.get('first_name') or 'بدون نام')}"
+        f"🧾 <b>سفارش #{o['id']}</b>\n\n"
+        f"{esc(u.get('first_name') or 'بدون نام')}"
         + (f" · @{esc(u['username'])}" if u.get("username") else "") + "\n"
-        f"🆔 <code>{u.get('tg_id', '?')}</code>\n\n"
-        f"📦 {esc(p['name']) if p else 'نامشخص'}\n"
-        f"💰 <b>{core.toman(o['amount'])}</b>\n"
+        f"<code>{u.get('tg_id', '?')}</code>\n\n"
+        f"{esc(p['name']) if p else 'نامشخص'}\n"
+        f"<b>{core.toman(o['amount'])}</b> تومان\n"
     )
     if o.get("coins_used"):
-        txt += f"💎 {o['coins_used']} سکه · {o.get('discount_pct', 0)}٪ تخفیف\n"
-    txt += f"🕐 {str(o.get('created_at', ''))[:16]}"
+        txt += (f"با {core.fa(o['coins_used'])} سکه · "
+                f"{core.fa(o.get('discount_pct', 0))}٪ تخفیف\n")
+    txt += f"{core.fa(str(o.get('created_at', ''))[:16])}"
 
     if o.get("receipt_text"):
         txt += f"\n\n📝 <i>{esc(str(o['receipt_text'])[:180])}</i>"
@@ -1566,14 +1694,16 @@ def admin_users(ctx, user, chat_id, message_id=None):
         "SELECT * FROM users WHERE tenant_id=? ORDER BY created_at DESC LIMIT 10",
         (ctx.tid,))
     if not rows_db:
-        return _reply(ctx, chat_id, message_id, "کاربری نیست.", back_kb("admin"))
+        return _reply(ctx, chat_id, message_id,
+                      "هنوز کاربری ثبت نشده است.", back_kb("admin"))
 
-    lines = ["👥 <b>آخرین کاربران</b>\n"]
+    lines = ["👥 <b>آخرین کاربران</b>", ""]
     rows = []
     for u in rows_db:
         nm = esc((u.get("first_name") or "بدون نام")[:16])
         un = f" @{esc(u['username'])}" if u.get("username") else ""
-        lines.append(f"• {nm}{un} — 💎{u.get('coins', 0)} · 👛{core.toman(u.get('balance', 0))}")
+        lines.append(f"{nm}{un} — {core.fa(u.get('coins', 0))} سکه · "
+                     f"{core.toman(u.get('balance', 0))} تومان")
         rows.append([(f"{nm} · {u['tg_id']}", f"adm:u:{u['tg_id']}")])
 
     rows.append([("🔎 جستجو", "adm:find")])
@@ -1596,16 +1726,15 @@ def admin_user_detail(ctx, user, chat_id, message_id, target_id):
     txt = (
         f"👤 <b>{esc(u.get('first_name') or 'بدون نام')}</b>"
         + (f" · @{esc(u['username'])}" if u.get("username") else "") + "\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🆔 <code>{u['tg_id']}</code>\n"
-        f"💎 سکه   <b>{u.get('coins', 0)}</b>\n"
-        f"👛 کیف پول   <b>{core.toman(u.get('balance', 0))}</b>\n"
-        f"🔗 کد دعوت   <code>{u.get('ref_code', '—')}</code>\n"
-        f"📦 اشتراک فعال   <b>{len(active)}</b>\n"
-        f"📅 عضویت   {str(u.get('created_at', ''))[:10]}"
+        f"<code>{u['tg_id']}</code>\n\n"
+        f"سکه   <b>{core.fa(u.get('coins', 0))}</b>\n"
+        f"کیف پول   <b>{core.toman(u.get('balance', 0))}</b> تومان\n"
+        f"اشتراک فعال   <b>{core.fa(len(active))}</b>\n"
+        f"عضویت   {core.fa(str(u.get('created_at', ''))[:10])}\n\n"
+        f"کد دعوت   <code>{u.get('ref_code', '—')}</code>"
     )
     if u.get("is_blocked"):
-        txt += "\n\n🚫 <b>مسدود است</b>"
+        txt += "\n\n🚫 <b>این کاربر مسدود است</b>"
 
     rows = [
         [("💎 سکه", f"adm:coin:{u['tg_id']}"), ("👛 کیف پول", f"adm:bal:{u['tg_id']}")],
@@ -1623,13 +1752,12 @@ def admin_stats(ctx, user, chat_id, message_id=None):
 
     st = ctx.db.stats()
     txt = (
-        f"📊 <b>آمار</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👥 کاربران   <b>{st.get('users', 0)}</b>\n"
-        f"📦 اشتراک فعال   <b>{st.get('active_subs', 0)}</b>\n"
-        f"💳 رسید در انتظار   <b>{st.get('pending', 0)}</b>\n"
-        f"🎫 تیکت باز   <b>{st.get('open_tickets', 0)}</b>\n\n"
-        f"💰 فروش کل   <b>{core.toman(st.get('revenue', 0))}</b>"
+        f"📊 <b>آمار</b>\n\n"
+        f"کاربران   <b>{core.fa(st.get('users', 0))}</b>\n"
+        f"اشتراک فعال   <b>{core.fa(st.get('active_subs', 0))}</b>\n"
+        f"رسید در انتظار   <b>{core.fa(st.get('pending', 0))}</b>\n"
+        f"تیکت باز   <b>{core.fa(st.get('open_tickets', 0))}</b>\n\n"
+        f"فروش کل   <b>{core.toman(st.get('revenue_total', 0))}</b> تومان"
     )
     return _reply(ctx, chat_id, message_id, txt,
                   kb([[("🔄 تازه‌سازی", "adm:stats")], [("‹ بازگشت", "admin")]]))
@@ -1643,9 +1771,11 @@ def admin_plans(ctx, user, chat_id, message_id=None):
     plans = ctx.db.plans(active_only=False, include_trial=True)
     if not plans:
         return _reply(ctx, chat_id, message_id,
-                      "پلنی تعریف نشده.\n\n<i>از پنل وب پلن بسازید.</i>", back_kb("admin"))
+                      "هنوز پلنی ساخته نشده.\n\n"
+                      "<i>ساخت و ویرایش پلن‌ها از پنل وب انجام می‌شود.</i>",
+                      back_kb("admin"))
 
-    lines = ["📦 <b>پلن‌ها</b>\n"]
+    lines = ["📦 <b>پلن‌ها</b>", ""]
     for p in plans:
         mark = "🟢" if p.get("is_active") else "⚪️"
         trial = " 🎁" if p.get("is_trial") else ""
@@ -1662,15 +1792,23 @@ def admin_ask_input(ctx, user, chat_id, message_id, kind, target=None):
         return
 
     prompts = {
-        "bc": "📢 متن پیام همگانی را بفرستید.\n\n<i>برای همه‌ی کاربران ارسال می‌شود.</i>",
-        "coin": "💎 چند سکه؟\n\n<i>عدد منفی برای کسر.</i>",
-        "bal": "👛 چه مبلغی (تومان)؟\n\n<i>عدد منفی برای کسر.</i>",
-        "msg": "💬 متن پیام را بفرستید.",
-        "ask": "💬 سوالتان از مشتری را بفرستید.",
-        "find": "🔎 نام، یوزرنیم یا آیدی عددی را بفرستید.",
+        "bc": "📢 <b>پیام همگانی</b>\n\n"
+              "متن را بفرستید تا برای <b>همه‌ی کاربران</b> ارسال شود.\n\n"
+              "<i>قبل از ارسال دوباره بخوانیدش — برگشتی ندارد.</i>",
+        "coin": "🪙 <b>تغییر سکه</b>\n\n"
+                "چند سکه اضافه شود؟\n\n"
+                "<i>برای کسر، عدد را با منها بنویسید — مثلاً</i> <code>-10</code>",
+        "bal": "👛 <b>تغییر موجودی</b>\n\n"
+               "چه مبلغی (تومان) اضافه شود؟\n\n"
+               "<i>برای کسر، عدد را با منها بنویسید — مثلاً</i> <code>-50000</code>",
+        "msg": "💬 <b>پیام به کاربر</b>\n\n"
+               "متن پیام را بفرستید تا مستقیم برایش ارسال شود.",
+        "ask": "💬 سوالتان از این مشتری را بفرستید.",
+        "find": "🔎 نام، یوزرنیم یا آیدی عددی کاربر را بفرستید.",
     }
     ctx.db.set_state(user["tg_id"], f"adm_{kind}", {"t": target})
-    return _reply(ctx, chat_id, message_id, prompts.get(kind, "مقدار را بفرستید:"),
+    return _reply(ctx, chat_id, message_id,
+                  prompts.get(kind, "مقدار را بفرستید:"),
                   kb([[("انصراف", "admin")]]))
 
 
@@ -1694,7 +1832,8 @@ def admin_input(ctx, user, chat_id, text, state, data):
 
         # پیام پیشرفت، چون ارسال به صدها نفر طول می‌کشد و بدون آن
         # کاربر فکر می‌کند چیزی کار نمی‌کند
-        progress = ctx.bot.send(chat_id, f"📢 در حال ارسال به {len(ids)} کاربر…")
+        progress = ctx.bot.send(
+            chat_id, f"📢 در حال ارسال به {core.fa(len(ids))} کاربر…")
         pid = (progress or {}).get("message_id") if isinstance(progress, dict) else None
 
         sent = failed = blocked = 0
@@ -1724,19 +1863,20 @@ def admin_input(ctx, user, chat_id, text, state, data):
                 if pid:
                     try:
                         ctx.bot.edit(chat_id, pid,
-                                     f"📢 ارسال… {i} از {len(ids)}")
+                                     f"📢 ارسال… {core.fa(i)} از {core.fa(len(ids))}")
                     except Exception:
                         pass
 
         report = [
             "📢 <b>پیام همگانی ارسال شد</b>", "",
-            f"✅ رسید به: <b>{sent}</b>",
+            f"رسید به   <b>{core.fa(sent)}</b> نفر",
         ]
         if blocked:
-            report.append(f"🚫 ربات را بلاک کرده‌اند: {blocked}")
-            report.append("<i>این کاربران خودکار غیرفعال شدند.</i>")
+            report.append(f"ربات را بلاک کرده‌اند   {core.fa(blocked)}")
+            report.append("<i>این‌ها خودکار غیرفعال شدند تا دفعه‌ی بعد "
+                          "وقت تلف نشود.</i>")
         if failed:
-            report.append(f"❌ ناموفق: {failed}")
+            report.append(f"ناموفق   {core.fa(failed)}")
 
         if pid:
             try:
@@ -1753,30 +1893,48 @@ def admin_input(ctx, user, chat_id, text, state, data):
             "SELECT * FROM users WHERE tenant_id=? AND (first_name LIKE ? OR username LIKE ? "
             "OR CAST(tg_id AS TEXT) LIKE ?) LIMIT 8", (ctx.tid, like, like, like))
         if not found:
-            return _reply(ctx, chat_id, None, "کاربری یافت نشد.", back_kb("adm:users"))
+            return _reply(ctx, chat_id, None,
+                          "کسی با این مشخصات یافت نشد.\n\n"
+                          "<i>با آیدی عددی مطمئن‌تر است.</i>",
+                          back_kb("adm:users"))
         rows = [[(f"{(u.get('first_name') or '?')[:18]} · {u['tg_id']}", f"adm:u:{u['tg_id']}")]
                 for u in found]
         rows.append([("‹ بازگشت", "adm:users")])
-        return _reply(ctx, chat_id, None, f"🔎 {len(found)} نتیجه:", kb(rows))
+        return _reply(ctx, chat_id, None,
+                      f"🔎 <b>{core.fa(len(found))}</b> نتیجه", kb(rows))
 
     if kind in ("coin", "bal") and target:
         try:
             amt = int(txt.replace(",", "").replace("،", ""))
         except ValueError:
-            return _reply(ctx, chat_id, None, "عدد معتبر نبود.", back_kb("admin"))
+            return _reply(ctx, chat_id, None,
+                          "عدد معتبر نبود. فقط رقم بنویسید — "
+                          "مثلاً <code>50</code> یا <code>-10</code>",
+                          back_kb("admin"))
 
         u = ctx.db.get_user(int(target))
         if not u:
-            return _reply(ctx, chat_id, None, "کاربر پیدا نشد.", back_kb("adm:users"))
+            return _reply(ctx, chat_id, None,
+                          "این کاربر پیدا نشد.", back_kb("adm:users"))
 
         if kind == "coin":
             ctx.db.add_coins(u["id"], amt, "admin", "تنظیم دستی ادمین")
-            note = f"💎 {abs(amt)} سکه {'اضافه' if amt > 0 else 'کسر'} شد."
-            user_msg = f"💎 موجودی سکه شما {'افزایش' if amt > 0 else 'کاهش'} یافت: {abs(amt)} سکه"
+            fresh = ctx.db.get_user(u["tg_id"])
+            note = (f"🪙 {core.fa(abs(amt))} سکه "
+                    f"{'اضافه' if amt > 0 else 'کسر'} شد.")
+            user_msg = (
+                f"🪙 <b>{core.fa(abs(amt))} سکه</b> به حسابتان "
+                f"{'اضافه شد' if amt > 0 else 'کم شد'}.\n\n"
+                f"موجودی فعلی: <b>{core.fa(fresh.get('coins', 0))}</b> سکه")
         else:
             ctx.db.add_balance(u["id"], amt, "admin", "تنظیم دستی ادمین")
-            note = f"👛 {core.toman(abs(amt))} {'اضافه' if amt > 0 else 'کسر'} شد."
-            user_msg = f"👛 کیف پول شما {'شارژ' if amt > 0 else 'کسر'} شد: {core.toman(abs(amt))}"
+            fresh = ctx.db.get_user(u["tg_id"])
+            note = (f"👛 {core.toman(abs(amt))} تومان "
+                    f"{'اضافه' if amt > 0 else 'کسر'} شد.")
+            user_msg = (
+                f"👛 کیف پولتان <b>{core.toman(abs(amt))}</b> تومان "
+                f"{'شارژ شد' if amt > 0 else 'کم شد'}.\n\n"
+                f"موجودی فعلی: <b>{core.toman(fresh.get('balance', 0))}</b> تومان")
 
         try:
             ctx.bot.send(u["tg_id"], user_msg)
@@ -1790,16 +1948,17 @@ def admin_input(ctx, user, chat_id, text, state, data):
         if u:
             try:
                 ctx.bot.send(u["tg_id"], f"💬 <b>پیام از پشتیبانی</b>\n\n{esc(txt)}")
-                return _reply(ctx, chat_id, None, "✅ ارسال شد.",
+                return _reply(ctx, chat_id, None, "✅ پیام رسید.",
                               kb([[("‹ بازگشت", f"adm:u:{target}")]]))
             except TelegramError:
                 return _reply(ctx, chat_id, None,
-                              "❌ ارسال نشد — شاید کاربر ربات را بلاک کرده.", back_kb("adm:users"))
+                              "❌ نرسید — احتمالاً کاربر ربات را بلاک کرده.",
+                              back_kb("adm:users"))
 
     if kind == "reject" and target:
-        do_reject(ctx, int(target), user["tg_id"], txt or "رسید تایید نشد.")
+        do_reject(ctx, int(target), user["tg_id"], txt or "رسید تأیید نشد.")
         return _reply(ctx, chat_id, None,
-                      f"❌ سفارش #{target} رد شد و به مشتری اطلاع داده شد.",
+                      f"❌ سفارش #{target} رد شد و دلیلش به مشتری رسید.",
                       back_kb("adm:orders"))
 
     if kind == "ask" and target:
@@ -1810,13 +1969,17 @@ def admin_input(ctx, user, chat_id, text, state, data):
                 try:
                     ctx.bot.send(u["tg_id"],
                                      f"💬 <b>درباره سفارش #{o['id']}</b>\n\n{esc(txt)}")
-                    return _reply(ctx, chat_id, None, "✅ ارسال شد.",
+                    return _reply(ctx, chat_id, None, "✅ پیام رسید.",
                                   kb([[("‹ بازگشت", f"adm:o:{target}")]]))
                 except TelegramError:
                     pass
-        return _reply(ctx, chat_id, None, "❌ ارسال نشد.", back_kb("adm:orders"))
+        return _reply(ctx, chat_id, None,
+                      "❌ نرسید — احتمالاً کاربر ربات را بلاک کرده.",
+                      back_kb("adm:orders"))
 
-    return _reply(ctx, chat_id, None, "دستور شناخته نشد.", back_kb("admin"))
+    return _reply(ctx, chat_id, None,
+                  "این ورودی شناخته نشد. از منو دوباره شروع کنید.",
+                  back_kb("admin"))
 
 
 def admin_toggle_block(ctx, user, chat_id, message_id, target_id):
@@ -1868,18 +2031,34 @@ def _get_or_create(ctx, tg_user, ref=None):
     if u:
         ctx.db.touch_user(tg_user["id"])
         return u
+
+    # کاربر این‌جا ساخته می‌شود، پس همین‌جا هم باید تصمیم بگیریم
+    # لینک از کدام نوع بوده. قبلاً پیشوند aff_ فقط در cmd_start
+    # دیده می‌شد — که هیچ‌وقت به آن نمی‌رسید، چون تا آن لحظه کاربر
+    # ساخته شده بود و شرط «کاربر جدید» رد می‌شد. نتیجه: هیچ لینک
+    # همکاری هرگز به همکارش وصل نمی‌شد.
     referred_by = None
-    if ref:
-        inviter = ctx.db.get_user_by_ref(ref)
+    affiliate = None
+    arg = (ref or "").strip()
+    if arg.startswith("aff_"):
+        affiliate = DB.affiliate_by_code(ctx.tid, arg[4:])
+    elif arg:
+        inviter = ctx.db.get_user_by_ref(arg)
         # کاربر نمی‌تواند خودش را دعوت کند
         if inviter and inviter["tg_id"] != tg_user["id"]:
             referred_by = inviter["id"]
-    return ctx.db.create_user(
+
+    u = ctx.db.create_user(
         tg_user["id"],
         username=tg_user.get("username"),
         first_name=tg_user.get("first_name"),
         referred_by=referred_by,
     )
+    if affiliate:
+        ctx.db.exec("UPDATE users SET affiliate_id=? WHERE tenant_id=? AND id=?",
+                    (affiliate["id"], ctx.tid, u["id"]))
+        u["affiliate_id"] = affiliate["id"]
+    return u
 
 
 def _on_message(ctx, msg):
@@ -1995,7 +2174,9 @@ def _on_callback(ctx, cq):
             ctx.db.exec("UPDATE orders SET status='expired' WHERE tenant_id=? AND id=?",
                         (ctx.tid, int(arg)))
             ctx.db.clear_state(user["tg_id"])
-            return _reply(ctx, chat_id, mid, "سفارش لغو شد.", main_menu(ctx, user))
+            return _reply(ctx, chat_id, mid,
+                          "سفارش لغو شد. هر وقت خواستید دوباره اقدام کنید 👍",
+                          main_menu(ctx, user))
 
         if action == "ost":
             return show_order_status(ctx, user, chat_id, mid, int(arg))
@@ -2066,13 +2247,17 @@ def _on_callback(ctx, cq):
                 return ctx.bot.answer_cb(cq["id"], "دسترسی ندارید", alert=True)
             oid, _, code = arg.partition(":")
             reasons = {
-                "amount": "مبلغ واریزی با مبلغ سفارش مطابقت ندارد.",
-                "unclear": "تصویر رسید خوانا نبود.",
-                "dup": "این رسید قبلاً استفاده شده است.",
-                "invalid": "رسید معتبر تشخیص داده نشد.",
+                "amount": "مبلغ واریزی با مبلغ سفارش یکی نبود. "
+                          "لطفاً دقیقاً همان مبلغ را واریز کنید.",
+                "unclear": "تصویر رسید خوانا نبود. "
+                           "یک عکس واضح‌تر یا متن پیامک بانک بفرستید.",
+                "dup": "این رسید قبلاً برای سفارش دیگری استفاده شده است.",
+                "invalid": "این رسید تأیید نشد. "
+                           "اگر مطمئنید واریز کرده‌اید، به پشتیبانی پیام بدهید.",
             }
             ctx.db.clear_state(frm["id"])
-            do_reject(ctx, int(oid), frm["id"], reasons.get(code, "رسید تایید نشد."))
+            do_reject(ctx, int(oid), frm["id"],
+                      reasons.get(code, "رسید تأیید نشد."))
             return ctx.bot.edit_markup(chat_id, mid, None)
 
     except (ValueError, TypeError):
@@ -2113,14 +2298,14 @@ def do_reject(ctx, order_id, admin_tg_id, reason):
                   .replace("{support}", support))
     else:
         txt = (
-            f"❌ <b>رسید شما تایید نشد</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🔢 کد پیگیری: <code>#{order_id}</code>\n\n"
+            "❌ <b>رسیدتان تأیید نشد</b>\n\n"
             f"<b>دلیل:</b>\n{esc(reason)}\n\n"
         )
         if o.get("coins_used"):
-            txt += f"💎 {o['coins_used']} سکه‌ی شما برگردانده شد.\n\n"
-        txt += "می‌توانید رسید درست را دوباره بفرستید."
+            txt += (f"🪙 <b>{core.fa(o['coins_used'])}</b> سکه‌ای که خرج شده بود "
+                    "به حسابتان برگشت.\n\n")
+        txt += ("نگران نباشید — رسید درست را دوباره بفرستید تا سریع بررسی شود.\n\n"
+                f"<i>کد پیگیری:</i> <code>#{order_id}</code>")
 
     rows = [[("🔄 ارسال مجدد رسید", f"retry:{order_id}")]]
     if support:
@@ -2142,11 +2327,11 @@ def send_expiry_notice(tenant, bot, sub, days_left):
     """یادآوری نزدیک‌شدن انقضا با دکمه‌ی تمدید."""
     ctx = Ctx(bot, tenant)
     if days_left <= 0:
-        head = "⛔️ اشتراک شما امروز منقضی می‌شود"
+        head = "⛔️ <b>اشتراکتان امروز تمام می‌شود</b>"
     elif days_left == 1:
-        head = "⏰ فقط ۱ روز تا پایان اشتراک"
+        head = "⏰ <b>فقط یک روز تا پایان اشتراک</b>"
     else:
-        head = f"⏰ {days_left} روز تا پایان اشتراک"
+        head = f"⏰ <b>{core.fa(days_left)} روز تا پایان اشتراک</b>"
 
     tpl = ctx.s.get("expiry_text")
     if tpl:
@@ -2156,8 +2341,14 @@ def send_expiry_notice(tenant, bot, sub, days_left):
             sub["tg_id"] if "tg_id" in sub.keys() else sub.get("tg_id"),
             txt, keyboard=kb([[("♻️ تمدید اشتراک", "buy")], [("‹ منو", "menu")]]))
 
-    txt = (f"{head}\n\n"
-           f"برای قطع نشدن سرویس، همین حالا تمدید کنید.")
+    # sub گاهی sqlite3.Row است و .get ندارد — پس با keys() چک می‌کنیم
+    plan_name = esc(str(sub["plan_name"] or "")) if "plan_name" in sub.keys() else ""
+    txt = head + "\n\n"
+    if plan_name:
+        txt += f"{plan_name}\n\n"
+    txt += ("اگر تمدید نکنید، اتصالتان قطع می‌شود.\n"
+            "تمدید یک دکمه است و کانفیگ فعلی‌تان <b>همان می‌ماند</b> — "
+            "لازم نیست چیزی را دوباره اضافه کنید.")
     try:
         bot.send(sub["tg_id"], txt,
                  keyboard=kb([[("🔄 تمدید اشتراک", "buy")],
@@ -2184,11 +2375,15 @@ def auto_renew_subscription(tenant, bot, sub):
 
     if user["balance"] < plan["price"]:
         try:
+            short = plan["price"] - user["balance"]
             bot.send(user["tg_id"],
-                     f"⚠️ تمدید خودکار انجام نشد\n\n"
-                     f"موجودی کیف پول شما کافی نیست.\n"
-                     f"لازم: {core.toman(plan['price'])} تومان\n"
-                     f"موجودی: {core.toman(user['balance'])} تومان",
+                     "⚠️ <b>تمدید خودکار انجام نشد</b>\n\n"
+                     "موجودی کیف پولتان کافی نبود.\n\n"
+                     f"لازم: <b>{core.toman(plan['price'])}</b> تومان\n"
+                     f"موجودی: {core.toman(user['balance'])} تومان\n"
+                     f"کسری: <b>{core.toman(short)}</b> تومان\n\n"
+                     "کیف پول را شارژ کنید تا دفعه‌ی بعد خودکار انجام شود — "
+                     "تمدید خودکارتان هنوز روشن است.",
                      keyboard=kb([[("👛 شارژ کیف پول", "wallet")]]))
         except TelegramError:
             pass
@@ -2213,8 +2408,10 @@ def auto_renew_subscription(tenant, bot, sub):
         )
         try:
             bot.send(user["tg_id"],
-                     f"✅ اشتراک شما خودکار تمدید شد\n\n"
-                     f"مبلغ {core.toman(plan['price'])} تومان از کیف پول کسر شد.")
+                     "✅ <b>اشتراکتان خودکار تمدید شد</b>\n\n"
+                     f"<b>{core.toman(plan['price'])}</b> تومان از کیف پول کم شد.\n\n"
+                     "کاری لازم نیست بکنید — کانفیگ فعلی‌تان همان است و "
+                     "وصل می‌ماند.")
         except TelegramError:
             pass
         ctx.notify_group(f"🔁 تمدید خودکار\n👤 <code>{user['tg_id']}</code>\n"
@@ -2244,10 +2441,10 @@ def send_daily_report(tenant):
     )
 
     txt = (f"📊 <b>گزارش امروز</b>\n\n"
-           f"🛒 فروش: {today['c']} سفارش\n"
-           f"💰 درآمد: {core.toman(today['sum'])} تومان\n"
-           f"👥 کاربر جدید: {new_users['c']}\n\n"
-           f"— مجموع —\n"
-           f"👥 کاربران: {s.get('users', 0)}\n"
-           f"📦 اشتراک فعال: {s.get('active_subs', 0)}")
+           f"فروش   <b>{core.fa(today['c'])}</b> سفارش\n"
+           f"درآمد   <b>{core.toman(today['sum'])}</b> تومان\n"
+           f"کاربر جدید   <b>{core.fa(new_users['c'])}</b>\n\n"
+           f"<b>در مجموع</b>\n"
+           f"کاربران   {core.fa(s.get('users', 0))}\n"
+           f"اشتراک فعال   {core.fa(s.get('active_subs', 0))}")
     ctx.notify_group(txt, topic="stats")

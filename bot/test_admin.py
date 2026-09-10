@@ -194,6 +194,30 @@ def main():
     r = send("وجودندارد۱۲۳")
     check("بدون نتیجه هم مدیریت می‌شود", bool(r) and "یافت نشد" in r)
 
+    # ── آمار پنل مدیریت ──
+    # رگرسیون: stats() کلید revenue و open_tickets نداشت، پس
+    # «فروش کل» و «تیکت باز» همیشه صفر نشان داده می‌شدند.
+    section("آمار پنل مدیریت")
+
+    st = D.stats()
+    check("stats کلید فروش کل دارد", "revenue_total" in st, str(sorted(st)[:3]))
+    check("stats کلید تیکت باز دارد", "open_tickets" in st)
+
+    D.exec("INSERT INTO tickets (tenant_id,user_id,message,status) "
+           "VALUES (?,?,?,'open')", (tid, D.get_user(777)["id"], "تست"))
+    check("تیکت باز شمرده می‌شود", D.stats()["open_tickets"] == 1,
+          str(D.stats()["open_tickets"]))
+
+    D.exec("INSERT INTO orders (tenant_id,user_id,plan_id,amount,base_amount,status) "
+           "VALUES (?,?,?,?,?,'approved')", (tid, 2, 1, 250000, 250000))
+    check("فروش کل جمع می‌شود", D.stats()["revenue_total"] == 250000,
+          str(D.stats()["revenue_total"]))
+
+    r = click("adm:stats")
+    check("صفحه آمار مبلغ واقعی را نشان می‌دهد",
+          bool(r) and "۲۵۰،۰۰۰" in r,
+          (r or "").replace("\n", " ")[-32:])
+
     # ── مسدودسازی ──
     section("مسدودسازی")
     click("adm:blk:777")

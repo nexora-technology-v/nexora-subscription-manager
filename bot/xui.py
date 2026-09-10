@@ -43,6 +43,7 @@ class XUI:
         self.default_flow = default_flow
         self._used_shape_attaches = False
         self._api_mode = None
+        self._settings = None
 
     # ---------- احراز هویت ----------
     def _headers(self):
@@ -195,6 +196,25 @@ class XUI:
             seen += 1
 
         return schema if isinstance(schema, dict) else None
+
+    @staticmethod
+    def _client_uuid(rec):
+        """
+        uuid واقعی کلاینت از رکورد پنل.
+
+        در نسخه‌ی ۳ کلید id عدد است (ردیف دیتابیس) و uuid رشته‌ی
+        واقعی. در نسخه‌های قدیمی برعکس، id همان uuid بود. پس هر دو
+        را نگاه می‌کنیم و فقط چیزی را می‌پذیریم که شکل uuid داشته
+        باشد — وگرنه یک عدد را به‌جای uuid ذخیره می‌کنیم.
+        """
+        if not isinstance(rec, dict):
+            return None
+        for key in ("uuid", "id"):
+            v = rec.get(key)
+            if isinstance(v, str) and re.fullmatch(
+                    r"[0-9a-fA-F-]{32,40}", v.strip()):
+                return v.strip()
+        return None
 
     def _try_paths(self, candidates, label):
         """
@@ -381,10 +401,10 @@ class XUI:
                 {"inboundIds": [inbound_id], **base},
             ]
 
-            # ۳x-ui تاریخاً form-urlencoded می‌خواند، نه JSON. مسیر
-            # قدیمی addClient هم همیشه با data= کار می‌کرد. پس هر
-            # شکل را با هر دو قالب می‌فرستیم — وگرنه پنل بدنه را
-            # اصلاً نمی‌خواند و می‌گوید فیلد نیست، در حالی که هست.
+            # ترتیب مهم است: مشخصات رسمی نسخه‌ی ۳ صریح می‌گوید
+            # «Body is JSON»، پس اول JSON می‌فرستیم. form فقط برای
+            # نسخه‌های قدیمی‌تر نگه داشته شده که مسیر addClient را
+            # با data= می‌خواندند.
             last_err = None
             done = False
 
@@ -392,7 +412,6 @@ class XUI:
                 if done:
                     break
 
-                # form اول، چون احتمالش بیشتر است
                 form = {}
                 for k, v in shape.items():
                     if isinstance(v, (dict, list)):
@@ -402,8 +421,8 @@ class XUI:
                     elif v is not None:
                         form[k] = str(v)
 
-                for kind, kwargs in (("form", {"data": form}),
-                                     ("json", {"json": shape})):
+                for kind, kwargs in (("json", {"json": shape}),
+                                     ("form", {"data": form})):
                     try:
                         self._req("POST", create_path, **kwargs)
                         self._body_style = kind
@@ -438,14 +457,26 @@ class XUI:
                 # شکل رسمی خودش وصل می‌کند
                 if self._body_style and self._used_shape_attaches:
                     self._path_cache["افزودن کلاینت"] = create_path
-                    # پنل خودش uuid می‌سازد؛ همان را برمی‌داریم وگرنه
-                    # حذف و به‌روزرسانی بعدی روی شناسه‌ی اشتباه می‌روند
-                    try:
-                        made = self._req("GET", f"/panel/api/clients/{email}")
-                        if made and made.get("id"):
-                            client["id"] = made["id"]
-                    except XUIError:
-                        pass
+                    # پنل خودش uuid می‌سازد و ما آن را نفرستادیم، پس
+                    # باید بخوانیمش. دو نکته که قبلاً اشتباه بود:
+                    #
+                    #   ۱. مسیر خواندن /panel/api/clients/get/{email} است،
+                    #      نه /panel/api/clients/{email} — آن یکی اصلاً
+                    #      وجود ندارد و بی‌صدا ۴۰۴ می‌داد.
+                    #   ۲. در ClientRecord نسخه‌ی ۳، کلید id یک عددِ
+                    #      ردیف دیتابیس است و uuid واقعی در کلید uuid
+                    #      می‌آید. برداشتن id یعنی ذخیره‌ی یک عدد
+                    #      به‌جای uuid.
+                    #
+                    # بدون این، هر تمدید یا غیرفعال‌کردن بعدی روی
+                    # شناسه‌ی اشتباه می‌رود و «کلاینت پیدا نشد» می‌دهد.
+                    made = self.find_client(inbound_id, email=email)
+                    real = self._client_uuid(made)
+                    if real:
+                        client["id"] = real
+                    else:
+                        log.warning("uuid واقعی کلاینت %s از پنل خوانده نشد؛ "
+                                    "عملیات بعدی با ایمیل انجام می‌شود", email)
                     return client
 
                 attached = False
@@ -490,12 +521,28 @@ class XUI:
         ], "افزودن کلاینت")
         return client
 
-    def update_client(self, inbound_id, client_uuid, **changes):
+    # فیلدهایی که مسیر به‌روزرسانی نسخه‌ی ۳ می‌پذیرد. پنل ردیف را
+    # *جایگزین* می‌کند نه patch، پس هر چیزی که نفرستیم پاک می‌شود —
+    # برای همین از رکورد فعلی پرش می‌کنیم.
+    _UPDATE_FIELDS = ("email", "totalGB", "expiryTime", "limitIp", "limitHwid",
+                      "tgId", "enable", "subId", "flow", "group", "comment")
+
+    def update_client(self, inbound_id, client_uuid=None, email=None, **changes):
         """
-        به‌روزرسانی کلاینت. باید کل آبجکت کلاینت فرستاده شود،
-        پس اول وضعیت فعلی را می‌خوانیم و تغییرات را رویش اعمال می‌کنیم.
+        به‌روزرسانی کلاینت.
+
+        در نسخه‌ی ۳ مسیر درست POST /panel/api/clients/update/{email} است.
+        مسیر قدیمی inbounds/updateClient اصلاً وجود ندارد — تا وقتی
+        همان را صدا می‌زدیم، تمدید و مسدودکردن هیچ‌وقت کار نمی‌کرد.
+
+        شناسه‌ی اصلی در این نسخه ایمیل است نه uuid، پس اگر ایمیل
+        داشته باشیم مستقیم از آن استفاده می‌کنیم.
         """
-        current = self.find_client(inbound_id, client_uuid=client_uuid)
+        current = None
+        if email:
+            current = self.find_client(inbound_id, email=email)
+        if current is None and client_uuid:
+            current = self.find_client(inbound_id, client_uuid=client_uuid)
         if not current:
             raise XUIError("کلاینت پیدا نشد")
 
@@ -503,15 +550,34 @@ class XUI:
         for k, v in changes.items():
             client[k] = v
 
+        target = client.get("email") or email
+        upd_path = f"/panel/api/clients/update/{target}"
+        if target and self.has_route(upd_path, "POST") is not False:
+            body = {k: client[k] for k in self._UPDATE_FIELDS if k in client}
+            # پنل این‌ها را عدد می‌خواهد؛ رشته را رد می‌کند
+            for k in ("totalGB", "expiryTime", "limitIp", "limitHwid", "tgId"):
+                if k in body:
+                    try:
+                        body[k] = int(body[k] or 0)
+                    except (TypeError, ValueError):
+                        body[k] = 0
+            if "enable" in body:
+                body["enable"] = bool(body["enable"])
+            self._req("POST", upd_path, json=body)
+            self._path_cache["به‌روزرسانی کلاینت"] = upd_path
+            return client
+
+        # ── نسخه‌های قدیمی‌تر ──
         settings = json.dumps({"clients": [client]})
+        uid = client_uuid or self._client_uuid(client)
         self._try_paths([
-            ("POST", f"/panel/api/inbounds/updateClient/{client_uuid}",
+            ("POST", f"/panel/api/inbounds/updateClient/{uid}",
              {"data": {"id": inbound_id, "settings": settings}}),
-            ("POST", f"/panel/api/inbounds/updateClient/{client_uuid}",
+            ("POST", f"/panel/api/inbounds/updateClient/{uid}",
              {"json": {"id": inbound_id, "settings": settings}}),
-            ("POST", f"/panel/api/clients/{client_uuid}",
+            ("POST", f"/panel/api/clients/{uid}",
              {"json": {"inboundId": inbound_id, **client}}),
-            ("PUT", f"/panel/api/clients/{client_uuid}",
+            ("PUT", f"/panel/api/clients/{uid}",
              {"json": {"inboundId": inbound_id, **client}}),
         ], "به‌روزرسانی کلاینت")
         return client
@@ -580,6 +646,29 @@ class XUI:
                         for r in rows:
                             flat = _unwrap(r)
                             if isinstance(flat, dict) and flat.get("email") == email:
+                                return flat
+                except (XUIError, TypeError, ValueError):
+                    continue
+
+        # جست‌وجو با uuid.
+        #
+        # در نسخه‌ی ۳ کلاینت‌ها داخل JSON اینباند نیستند، پس حلقه‌ی
+        # پایین (که settings اینباند را می‌خواند) همیشه خالی برمی‌گشت
+        # و هر تمدید/غیرفعال‌کردنی «کلاینت پیدا نشد» می‌داد. اینجا از
+        # فهرست واقعی کلاینت‌ها می‌گردیم.
+        if client_uuid and not email:
+            for p in ("/panel/api/clients/list", "/panel/api/clients"):
+                if self.has_route(p, "GET") is False:
+                    continue
+                try:
+                    rows = self._req("GET", p)
+                    if isinstance(rows, dict):
+                        rows = (rows.get("clients") or rows.get("data")
+                                or rows.get("items") or [])
+                    if isinstance(rows, list):
+                        for r in rows:
+                            flat = _unwrap(r)
+                            if self._client_uuid(flat) == client_uuid:
                                 return flat
                 except (XUIError, TypeError, ValueError):
                     continue
@@ -665,6 +754,55 @@ class XUI:
         raise XUIError("مسیر ریست ترافیک در این نسخه‌ی پنل پیدا نشد")
 
     # ---------- عملیات سطح بالا ----------
+    def panel_settings(self):
+        """تنظیمات پنل — یک‌بار خوانده و کش می‌شود."""
+        if self._settings is not None:
+            return self._settings
+        self._settings = {}
+        if self.has_route("/panel/api/setting/all", "POST") is not False:
+            try:
+                got = self._req("POST", "/panel/api/setting/all")
+                if isinstance(got, dict):
+                    self._settings = got
+            except XUIError:
+                pass
+        return self._settings
+
+    def panel_sub_base(self):
+        """
+        آدرس پایه‌ی اشتراک از دید خود پنل.
+
+        وقتی مدیر دامنه‌ی سفارشی نداده، تنها راه ساختن یک لینک
+        اشتراکِ درست همین است — سرویس subscription روی پورت و مسیر
+        جدا از پنل اجرا می‌شود، پس آدرس پنل به‌تنهایی جواب نمی‌دهد.
+        بدون این، مشتری هیچ لینکی نمی‌گرفت.
+        """
+        s = self.panel_settings()
+        if not s or s.get("subEnable") is False:
+            return None
+
+        uri = str(s.get("subURI") or "").strip()
+        if uri.startswith("http"):
+            return uri.rstrip("/")
+
+        host = str(s.get("subDomain") or "").strip()
+        if not host:
+            m = re.match(r"https?://([^:/]+)", self.base)
+            host = m.group(1) if m else ""
+        if not host:
+            return None
+
+        port = s.get("subPort")
+        path = str(s.get("subPath") or "/sub/").strip()
+        if not path.startswith("/"):
+            path = "/" + path
+        scheme = "https" if (s.get("subCertFile") or self.base.startswith("https")) else "http"
+
+        netloc = host
+        if port and int(port) not in (80, 443):
+            netloc = f"{host}:{int(port)}"
+        return f"{scheme}://{netloc}{path}".rstrip("/")
+
     def _target_inbounds(self, inbound_id, only=None):
         """
         اینباندهایی که کلاینت به آن‌ها وصل می‌شود.
@@ -717,6 +855,15 @@ class XUI:
         # ممکن است پورت غیراستاندارد یا مسیر مخفی داشته باشد.
         if sub_base_url:
             sub_url = f"{sub_base_url.rstrip('/')}/{sub_id}"
+        else:
+            # مدیر دامنه نداده — از تنظیمات خود پنل می‌سازیم.
+            # قبلاً اینجا خالی می‌ماند و مشتری هیچ لینکی نمی‌گرفت.
+            try:
+                pb = self.panel_sub_base()
+            except Exception:
+                pb = None
+            if pb:
+                sub_url = f"{pb}/{sub_id}"
 
         # کانفیگ‌های تکی را همیشه از پنل می‌گیریم، چون از پیکربندی
         # واقعی اینباند ساخته می‌شوند
@@ -755,12 +902,19 @@ class XUI:
         }
 
     def extend_subscription(self, inbound_id, client_uuid, add_days, add_gb=None,
-                            reset_traffic=False):
+                            reset_traffic=False, email=None):
         """
         تمدید: روز اضافه می‌شود. اگر اشتراک منقضی شده باشد، از امروز
         حساب می‌شود؛ وگرنه به تاریخ فعلی اضافه می‌شود.
+
+        ایمیل شناسه‌ی مطمئن‌تری از uuid است — در نسخه‌ی ۳ کلید اصلی
+        همان است — پس اگر داشته باشیم اول با آن می‌گردیم.
         """
-        current = self.find_client(inbound_id, client_uuid=client_uuid)
+        current = None
+        if email:
+            current = self.find_client(inbound_id, email=email)
+        if current is None:
+            current = self.find_client(inbound_id, client_uuid=client_uuid)
         if not current:
             raise XUIError("کلاینت پیدا نشد")
 
@@ -774,7 +928,8 @@ class XUI:
             cur_gb = int(current.get("totalGB") or 0)
             changes["totalGB"] = cur_gb + int(add_gb * 1024 ** 3) if add_gb else 0
 
-        self.update_client(inbound_id, client_uuid, **changes)
+        self.update_client(inbound_id, client_uuid,
+                           email=email or current.get("email"), **changes)
 
         if reset_traffic:
             try:
@@ -784,8 +939,9 @@ class XUI:
 
         return {"expiry_ms": new_exp}
 
-    def set_enabled(self, inbound_id, client_uuid, enabled: bool):
-        return self.update_client(inbound_id, client_uuid, enable=bool(enabled))
+    def set_enabled(self, inbound_id, client_uuid, enabled: bool, email=None):
+        return self.update_client(inbound_id, client_uuid, email=email,
+                                  enable=bool(enabled))
 
     def detect_api(self):
         """

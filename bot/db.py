@@ -624,6 +624,11 @@ class TenantDB:
                 """SELECT COALESCE(SUM(amount),0) FROM orders
                    WHERE tenant_id=? AND status='approved'""",
                 (self.tid,)),
+            # پنل مدیریت ربات این را می‌خواند؛ نبودنش باعث می‌شد
+            # «تیکت باز» همیشه صفر نشان داده شود
+            "open_tickets": one(
+                "SELECT COUNT(*) FROM tickets WHERE tenant_id=? AND status='open'",
+                (self.tid,)),
         }
 
     def log(self, kind, user_id=None, data=None):

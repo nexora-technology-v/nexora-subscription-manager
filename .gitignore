@@ -1,0 +1,22 @@
+# Build output
+frontend/dist/
+frontend/node_modules/
+frontend/.env
+frontend/package-lock.json
+
+# Python
+backend/venv/
+__pycache__/
+*.pyc
+
+# Runtime data — never commit these
+data/auth.json
+data/bot.db
+data/bot.db-*
+data/*.backup*
+.github
+
+# Logs and temporary files
+*.log
+*.bak
+dist.prev/

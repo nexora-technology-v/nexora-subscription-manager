@@ -236,6 +236,20 @@ try:
     if found:
         ok("Config exists in the panel")
         info(f"  fields: {', '.join(list(found.keys())[:10])}")
+
+        # The uuid we keep must be the uuid the panel issued. When it is
+        # not, the config still works for the customer but every later
+        # renew / disable / delete looks up a uuid that does not exist.
+        panel_uuid = client._client_uuid(found)
+        ours = (created or {}).get("id")
+        if panel_uuid and ours == panel_uuid:
+            ok(f"uuid matches the panel  ({panel_uuid})")
+        elif panel_uuid:
+            bad("uuid MISMATCH — renewals and blocking will fail")
+            info(f"  we stored : {ours}")
+            info(f"  panel has : {panel_uuid}")
+        else:
+            info(f"  panel returned no uuid-shaped field; ours: {ours}")
     else:
         bad("Panel accepted the request but the config could not be read")
         info("Every GET route above was tried. If one of them is the right")

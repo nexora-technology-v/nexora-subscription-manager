@@ -241,10 +241,18 @@ check("پله‌های سفارشی مرتب می‌شوند", custom["tiers"][0
 section("ابزارهای نمایش")
 
 check("قالب‌بندی تومان", len(core.toman(1234567)) > 7, core.toman(1234567))
-check("قالب‌بندی حجم", "30" in core.fmt_gb(30), core.fmt_gb(30))
+check("قالب‌بندی حجم", "۳۰" in core.fmt_gb(30), core.fmt_gb(30))
 check("حجم نامحدود", "نامحدود" in core.fmt_gb(0), core.fmt_gb(0))
 check("مدت نامحدود", "محدودیت" in core.fmt_days(0) or "نامحدود" in core.fmt_days(0),
       core.fmt_days(0))
+
+# ارقامی که کاربر می‌خواند فارسی‌اند، ولی چیزهای قابل‌کپی نه —
+# رقم فارسی داخل شماره‌ی کارت یعنی مشتری نمی‌تواند پیست کند.
+check("ارقام خواندنی فارسی‌اند", not any(c.isdigit() and c.isascii()
+                                        for c in core.toman(190000)),
+      core.toman(190000))
+check("شماره کارت لاتین می‌ماند", "6037" in core.fmt_card("6037997512345678"),
+      core.fmt_card("6037997512345678"))
 
 email = core.make_email("nexora", 555, 1)
 check("ساخت ایمیل کلاینت", "nexora" in email, email)

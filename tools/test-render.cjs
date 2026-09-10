@@ -82,12 +82,19 @@ const utils = [
   ["rounded-xl", "borderRadius", "0.75rem"],
   ["truncate", "overflow", "hidden"],
 ];
+// «0.75rem» و «.75rem» یک مقدارند — Tailwind در خروجی minify صفر
+// ابتدایی را حذف می‌کند. مقایسه‌ی رشته‌ای خام اینجا الکی قرمز می‌شد.
+const sameCss = (a, b) => {
+  if (a === b) return true;
+  const n = (v) => String(v).trim().replace(/(^|[\s(,])(\.\d)/g, "$10$2");
+  return n(a) === n(b);
+};
 for (const [cls, prop, want] of utils) {
   const el = d.createElement("div");
   el.className = cls;
   d.body.appendChild(el);
   const got = w.getComputedStyle(el)[prop];
-  chk(`.${cls}`, got === want, got || "خالی");
+  chk(`.${cls}`, sameCss(got, want), got || "خالی");
 }
 
 // ── ۳. متغیرهای رنگ ──

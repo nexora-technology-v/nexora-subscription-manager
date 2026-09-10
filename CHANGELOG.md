@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.1.6]
+
+### Fixed — Renewals and blocking never worked against 3x-ui 3.x
+Checked against the panel's own OpenAPI spec (183 routes), four assumptions in the
+client were wrong:
+
+- The config read-back used `GET /panel/api/clients/{email}`, a route that does not
+  exist. It 404'd silently, so the uuid we stored was one we had invented locally
+  rather than the one the panel issued. The customer's config worked, but every later
+  lookup searched for a uuid the panel had never heard of
+- Even on the right route, the code took the `id` field — in a v3 `ClientRecord` that
+  is a numeric database row id. The real uuid lives in `uuid`
+- Updates went to `POST /panel/api/inbounds/updateClient/{uuid}`, which this panel does
+  not have. The v3 route is `POST /panel/api/clients/update/{email}`. Until now,
+  renewals, auto-renewals and blocking a user always failed with "client not found"
+- Lookup by uuid only searched the inbound's settings JSON, where v3 keeps no clients
+
+The client now reads the uuid back from the correct route, accepts only uuid-shaped
+values, updates through the v3 route, and prefers the email — which is the real
+identifier in v3 — wherever one is available.
+
+### Fixed — Customers could be delivered an empty message
+When no custom subscription domain was set, the subscription URL stayed empty and the
+delivery message said the link could not be generated. The panel's own subscription
+service runs on a separate port and path, so the panel address alone is not enough;
+those settings are now read from `POST /panel/api/setting/all` and the link is built
+from them. A custom domain still takes precedence. If there is still no link, the raw
+config URLs are sent rather than nothing.
+
+### Fixed — The panel's own connection test lied
+`find_client` was called with the probe email in the inbound argument, so the "read the
+config back" step reported failure even when everything had worked. Cleanup passed the
+email where a uuid was expected, which left test clients behind in the panel.
+
+### Added — Inbound selection page
+The endpoint existed since 1.1.5 but had no interface. The bot workspace now has an
+Inbounds page: every inbound by name with its protocol, port and enabled state, and the
+three modes as a choice — every enabled inbound, the default one only, or a manual
+selection.
+
+### Added — Regression test for the 3x-ui client
+`bot/test_xui.py` runs the client against a simulated v3 panel that mirrors the real
+API contract: JSON-only bodies, a server-minted uuid alongside a numeric row id, the
+nested read response, and an empty 204 on delete. Each of those was a real bug once.
+
+### Changed — Bot message rewrite
+Warmer wording with the structure of a real storefront. Decorative `━━━` rules are gone
+— they wrap badly on phones. Numbers a customer reads are now in Persian digits, while
+anything meant to be copied — card numbers, links, referral codes, order ids — stays in
+Latin so it can still be pasted and searched.
+
 ## [1.1.5]
 
 ### Fixed — Broadcast never sent anything

@@ -1325,7 +1325,7 @@ def bot_xui_trace(x_admin_password: str = Header(...)):
 
     try:
         if created and created.get("id"):
-            client.delete_client(int(target), created["id"])
+            client.delete_client(int(target), created["id"], email=email)
             step("پاکسازی", True, "کانفیگ آزمایشی حذف شد")
     except Exception as e:
         step("پاکسازی", False, f"{str(e)[:120]} — {email} را دستی حذف کنید")
@@ -2624,7 +2624,10 @@ def bot_test_connection(payload: dict, x_admin_password: str = Header(...)):
 
     # ۶ — خواندن کلاینت ساخته‌شده
     try:
-        found = client.find_client(probe)
+        # آرگومان اول inbound است نه ایمیل — قبلاً ایمیل به‌جای
+        # inbound می‌رفت و این مرحله همیشه «خوانده نشد» می‌داد،
+        # حتی وقتی کلاینت درست ساخته شده بود.
+        found = client.find_client(target, email=probe)
         step("verify", "بازخوانی کانفیگ", bool(found),
              "کلاینت در پنل پیدا شد" if found else "ساخته شد ولی خوانده نشد",
              "" if found else "ممکن است پنل هنوز همگام نشده باشد.")
@@ -2634,7 +2637,10 @@ def bot_test_connection(payload: dict, x_admin_password: str = Header(...)):
     # ۷ — پاکسازی (مهم: نباید کلاینت آشغال بماند)
     if created:
         try:
-            client.delete_client(target, probe)
+            # در نسخه‌ی ۳ حذف با ایمیل انجام می‌شود؛ اگر ایمیل را
+            # به‌جای uuid بفرستیم مسیرهای درست اصلاً امتحان نمی‌شوند
+            # و کلاینت آزمایشی در پنل باقی می‌ماند.
+            client.delete_client(target, None, email=probe)
             step("cleanup", "پاکسازی", True, "کلاینت آزمایشی حذف شد")
         except Exception as e:
             step("cleanup", "پاکسازی", False, str(e)[:180],

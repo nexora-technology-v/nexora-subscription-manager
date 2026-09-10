@@ -200,24 +200,39 @@ def fmt_card(number):
 #  کمکی‌های نمایش
 # ═══════════════════════════════════════════════════════════
 
+_FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
+
+def fa(v):
+    """
+    فارسی‌کردن ارقام یک متن.
+
+    فقط برای چیزهایی که کاربر *می‌خواند* — نه چیزهایی که کپی می‌کند.
+    شماره‌ی کارت، لینک اشتراک، کد دعوت و شناسه‌ی سفارش عمداً لاتین
+    می‌مانند، چون با رقم فارسی نه در تلگرام قابل جست‌وجو می‌شوند و نه
+    در اپ‌ها و درگاه‌ها درست پیست می‌شوند.
+    """
+    return str(v).translate(_FA_DIGITS)
+
+
 def toman(n):
     """قالب‌بندی مبلغ با جداکننده‌ی هزارگان."""
     try:
-        return f"{int(n):,}".replace(",", "،")
+        return fa(f"{int(n):,}".replace(",", "،"))
     except (TypeError, ValueError):
         return str(n)
 
 
 def fmt_gb(gb):
-    return "نامحدود" if not gb else f"{gb} گیگابایت"
+    return "نامحدود" if not gb else f"{fa(gb)} گیگابایت"
 
 
 def fmt_days(days):
     if not days:
         return "بدون محدودیت زمانی"
     if days % 30 == 0:
-        return f"{days // 30} ماهه"
-    return f"{days} روزه"
+        return f"{fa(days // 30)} ماهه"
+    return f"{fa(days)} روزه"
 
 
 def plan_line(p):

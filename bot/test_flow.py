@@ -101,8 +101,10 @@ class FakeXUI:
         }
 
     def extend_subscription(self, inbound_id, client_uuid, add_days,
-                            add_gb=None, reset_traffic=False):
-        self.extended.append(client_uuid)
+                            add_gb=None, reset_traffic=False, email=None):
+        # امضا باید عیناً با XUI واقعی بخواند، وگرنه تستِ سبز
+        # چیزی را تضمین نمی‌کند که در عمل TypeError می‌دهد
+        self.extended.append(email or client_uuid)
         return {"ok": True, "expiry_ms": 1800000000000}
 
     def client_traffic(self, email):
@@ -272,7 +274,7 @@ section("کیف پول و تمدید خودکار")
 D.add_balance(inviter["id"], 500_000, "topup", "شارژ تست")
 SENT.clear()
 H.dispatch(tenant, bot, up_cb(555, "wallet"))
-check("نمایش کیف پول", "500" in last().replace("،", "").replace(",", ""),
+check("نمایش کیف پول", "۵۰۰" in last().replace("،", "").replace(",", ""),
       "موجودی نمایش داده شد")
 
 D.exec("UPDATE subscriptions SET auto_renew=1, expires_at=datetime('now','+1 day') "
@@ -334,6 +336,63 @@ D.exec("UPDATE users SET is_blocked=1 WHERE tenant_id=? AND tg_id=?", (tid, 777)
 SENT.clear()
 H.dispatch(tenant, bot, up_msg(777, "/start"))
 check("کاربر مسدود پاسخی نمی‌گیرد", len(SENT) == 0)
+
+# ═══════════════ پورسانت همکار فروش ═══════════════
+# رگرسیون: مبلغ سفارش در ستون amount است، نه final_price/price.
+# وقتی این‌جا از نام اشتباه خوانده می‌شد، مبلغ صفر می‌شد و
+# record_commission بی‌صدا None برمی‌گرداند — یعنی هیچ پورسانتی
+# برای هیچ فروشی ثبت نمی‌شد.
+section("پورسانت همکار فروش")
+
+D.exec("INSERT INTO affiliates (tenant_id,name,code,tg_id,percent) "
+       "VALUES (?,?,?,?,?)", (tid, "همکار تست", "AFFX", 888, 20))
+aff_row = D.q("SELECT * FROM affiliates WHERE tenant_id=? AND code='AFFX'",
+              (tid,), one=True)
+
+D.create_user(444, "buyer", "خریدار")
+buyer = D.get_user(444)
+D.exec("UPDATE users SET affiliate_id=? WHERE tenant_id=? AND id=?",
+       (aff_row["id"], tid, buyer["id"]))
+
+aff_order = D.create_order(buyer["id"], plan["id"], plan["price"], plan["price"])
+D.exec("UPDATE orders SET status='awaiting' WHERE tenant_id=? AND id=?",
+       (tid, aff_order["id"]))
+
+SENT.clear()
+ok_aff, _ = H.approve_order(H.Ctx(bot, tenant), aff_order["id"], 999)
+comm = D.q("SELECT * FROM affiliate_commissions WHERE tenant_id=? AND order_id=?",
+           (tid, aff_order["id"]), one=True)
+check("سفارش همکار تایید شد", ok_aff)
+check("پورسانت ثبت شد", bool(comm),
+      "هیچ ردیفی ثبت نشد" if not comm else "ثبت شد")
+check("مبلغ فروش درست خوانده شد",
+      bool(comm) and comm["order_amount"] == plan["price"],
+      f"{(comm or {}).get('order_amount')} به‌جای {plan['price']}")
+check("پورسانت ۲۰٪ درست حساب شد",
+      bool(comm) and comm["commission"] == round(plan["price"] * 0.2),
+      f"{(comm or {}).get('commission')}")
+check("همکار مطلع شد", any(s["to"] == 888 for s in SENT))
+
+# توابع همکار در ماژول db هستند نه روی TenantDB. وقتی از روی
+# ctx.db صدا زده می‌شدند AttributeError می‌گرفتند و این صفحه‌ها
+# اصلاً باز نمی‌شدند.
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(888, "affiliate"))
+check("پنل همکار باز می‌شود", bool(last()) and "همکاری در فروش" in last(),
+      (last() or "پاسخی نیامد")[:34])
+check("مانده‌ی همکار نمایش داده شد", "مانده" in (last() or ""))
+
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(888, "aff_list"))
+check("ریز فروش‌های همکار باز می‌شود", "ریز فروش‌ها" in (last() or ""),
+      (last() or "پاسخی نیامد")[:34])
+
+SENT.clear()
+H.dispatch(tenant, bot, up_msg(333, f"/start aff_{aff_row['code']}"))
+newcomer = D.get_user(333)
+check("ورود با لینک همکار ثبت می‌شود",
+      bool(newcomer) and newcomer["affiliate_id"] == aff_row["id"],
+      f"affiliate_id={(newcomer or {}).get('affiliate_id')}")
 
 # ═══════════════ گزارش ═══════════════
 section("گزارش روزانه")
