@@ -2,7 +2,7 @@
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:06090F,45:2B7FD6,100:5AA9E6&height=170&section=header&text=NEXORA&fontSize=68&fontColor=ffffff&fontAlignY=34&desc=Subscription%20Manager%20for%203x-ui&descSize=16&descAlignY=54" width="100%" alt="Nexora">
 
-<img src="https://img.shields.io/badge/version-1.3.0-2B7FD6?style=for-the-badge&labelColor=06090F" alt="version">
+<img src="https://img.shields.io/badge/version-1.4.0-2B7FD6?style=for-the-badge&labelColor=06090F" alt="version">
 <img src="https://img.shields.io/badge/tests-186%20passing-34D399?style=for-the-badge&labelColor=06090F" alt="tests">
 <img src="https://img.shields.io/badge/3x--ui-3.5%2B-5AA9E6?style=for-the-badge&labelColor=06090F" alt="3x-ui">
 <img src="https://img.shields.io/badge/license-MIT-A78BFA?style=for-the-badge&labelColor=06090F" alt="license">

@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.4.0]
+
+### Added — Active connections
+
+Open ports tell you which doors exist. This tells you who came through them. When the
+server feels slow, the first question is which IP is taking the largest share, and the
+panel could not answer it.
+
+Reads established connections and reports the total, unique IPs, the heaviest IPs with a
+share bar, and the busiest local ports. An IP holding 15% or more of all connections
+while having at least 20 of them is flagged — below that it is normal variance and
+alerting would just be noise. Loopback is excluded, since the server talking to itself
+is not customer usage.
+
+The flag comes with the two things that actually cause it: one subscription shared
+between several people (lower the plan's concurrent IP limit) or someone scanning
+(`ss -tunp | grep <ip>`).
+
+### Added — Scheduled maintenance
+
+Restarts Xray in a low-traffic window so memory leaks and dead sessions do not
+accumulate. Defaults to 05:00 server time — the trough for Iranian VPN traffic, after
+the night users sleep and before the morning ones wake.
+
+Restarting Xray costs about a second of downtime; a full server reboot costs one to two
+minutes. The two are deliberately not equal in the interface: automatic reboot is
+refused by the API unless `confirmedReboot` is explicitly set, and the save button stays
+disabled until the warning has been acknowledged. A mis-click should not be able to take
+the sales server down overnight.
+
+If more than a configurable number of connections are active when the window arrives,
+the run is skipped and the reason is recorded rather than restarting mid-peak.
+
+### Changed — Open ports no longer bury the page
+
+A real server lists dozens of ports, and the full table pushed everything below it off
+screen. The card now leads with counts by risk and shows only what needs attention —
+high and medium risk, capped at six — with the rest behind one button.
+
+### Changed — Type scale raised across the panel
+
+Body text below 12px fails the readability floor, and 334 of the panel's 653 font-size
+declarations were under it, some as small as 7px. Every size moved up one step: the
+smallest body text is now 12px, headings gained a point, and the phone-preview mockup
+keeps its deliberately small type.
+
+### Added
+
+- `tools/test-maintenance.py` — 24 tests covering the schedule window, both safety
+  gates, and connection counting
+
 ## [1.3.0]
 
 ### Added — Server monitoring

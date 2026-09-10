@@ -369,6 +369,76 @@ def listening():
     return rows
 
 
+def connections(top=8):
+    """
+    اتصال‌های برقرار — چه کسی دارد از سرور استفاده می‌کند.
+
+    پورت باز می‌گوید «چه دری باز است»؛ این می‌گوید «الان چه کسی از
+    آن در تو آمده». برای فروشنده‌ی VPN مهم‌ترین سؤال همین است: وقتی
+    سرور کند می‌شود، کدام IP بیشترین سهم را دارد.
+
+    خروجی:
+      total      کل اتصال‌های برقرار
+      uniqueIps  چند IP یکتا
+      byIp       پرمصرف‌ترین IPها با تعداد اتصال
+      byPort     پرترافیک‌ترین پورت‌های محلی
+      heavy      IPهایی که سهمشان غیرعادی است
+    """
+    if not _has("ss"):
+        return {}
+
+    ok, out = _run(["ss", "-tunH", "state", "established"], timeout=10)
+    if not ok:
+        return {}
+
+    by_ip, by_port = {}, {}
+    total = 0
+    for line in out.strip().split("\n"):
+        f = line.split()
+        # ss: netid recv send local:port peer:port
+        if len(f) < 5:
+            continue
+        local, peer = f[3], f[4]
+
+        lm = re.search(r":(\d+)$", local)
+        pm = re.search(r"^(.*):(\d+)$", peer)
+        if not lm or not pm:
+            continue
+
+        ip = pm.group(1).strip("[]")
+        # اتصال‌های داخلی خودِ سرور، مصرف مشتری نیستند
+        if ip in ("127.0.0.1", "::1", "*", "0.0.0.0"):
+            continue
+
+        total += 1
+        by_ip[ip] = by_ip.get(ip, 0) + 1
+        lp = int(lm.group(1))
+        by_port[lp] = by_port.get(lp, 0) + 1
+
+    if not total:
+        return {"total": 0, "uniqueIps": 0, "byIp": [], "byPort": [], "heavy": []}
+
+    ranked = sorted(by_ip.items(), key=lambda kv: kv[1], reverse=True)
+
+    # «غیرعادی» یعنی یک IP بیش از ۱۵٪ کل اتصال‌ها را گرفته و دست‌کم
+    # ۲۰ اتصال دارد. زیر این حد، نوسان طبیعی است و هشدار دادنش فقط
+    # نویز می‌سازد.
+    heavy = [{"ip": ip, "count": n, "pct": round(n * 100.0 / total, 1)}
+             for ip, n in ranked
+             if n >= 20 and n * 100.0 / total >= 15]
+
+    return {
+        "total": total,
+        "uniqueIps": len(by_ip),
+        "byIp": [{"ip": ip, "count": n, "pct": round(n * 100.0 / total, 1)}
+                 for ip, n in ranked[:top]],
+        "byPort": [{"port": p, "count": n}
+                   for p, n in sorted(by_port.items(),
+                                      key=lambda kv: kv[1], reverse=True)[:top]],
+        "heavy": heavy,
+    }
+
+
 # ═══════════════════════════════════════════════════════════
 #  Xray و سرویس‌ها
 # ═══════════════════════════════════════════════════════════
@@ -542,7 +612,7 @@ def snapshot(include=None):
     """
     want = set(include or ["cpu", "memory", "disk", "network", "xray",
                            "services", "ports", "packages", "security",
-                           "processes"])
+                           "processes", "connections"])
     metrics, sections = [], {}
 
     def add(name, fn, into_metrics=True):
@@ -569,6 +639,18 @@ def snapshot(include=None):
     add("services", services, into_metrics=False)
     add("ports", listening, into_metrics=False)
     add("processes", top_processes, into_metrics=False)
+    add("connections", connections, into_metrics=False)
+
+    # یک IP که سهم غیرعادی از اتصال‌ها گرفته، معمولاً یا اشتراک‌گذاری
+    # حساب است یا اسکن. هر دو باید به چشم ادمین بیاید.
+    for h in (sections.get("connections") or {}).get("heavy", []):
+        metrics.append(_metric(
+            f"conn:{h['ip']}", f"اتصال زیاد از {h['ip']}",
+            h["count"], "اتصال", WARN,
+            f"{_fa(h['pct'])}٪ از کل اتصال‌های سرور",
+            "یک IP با این سهم یعنی یا یک حساب بین چند نفر پخش شده "
+            "یا کسی دارد سرور را اسکن می‌کند.",
+            f"ss -tunp | grep {h['ip']}"))
 
     for s in sections.get("services", []):
         if s["level"] == CRIT:

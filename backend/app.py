@@ -1993,6 +1993,211 @@ def _selfheal_backup_cron():
         return None
 
 
+#: پیش‌فرض زمان‌بندی نگهداری.
+#
+# ۰۵:۰۰ به وقت سرور انتخاب شده چون کم‌ترین مصرف VPN ایرانی همان‌جاست:
+# شب‌روها خوابیده‌اند و صبح‌کارها هنوز بیدار نشده‌اند. عمل پیش‌فرض هم
+# ری‌استارت Xray است نه ریبوت سرور — یکی حدود یک ثانیه قطعی دارد،
+# دیگری یک تا دو دقیقه.
+MAINT_DEFAULT = {
+    "enabled": False,
+    "action": "xray",          # xray | reboot
+    "hour": 5,
+    "minute": 0,
+    "days": [],                # خالی یعنی هر روز
+    "skipIfBusy": True,
+    "busyThreshold": 20,
+    "confirmedReboot": False,  # ریبوت تا تایید صریح مدیر اجرا نمی‌شود
+    "lastRun": None,
+    "lastResult": None,
+}
+
+
+def _maint_conf():
+    cfg = load_config()
+    m = dict(MAINT_DEFAULT)
+    got = cfg.get("maintenance")
+    if isinstance(got, dict):
+        m.update({k: v for k, v in got.items() if k in MAINT_DEFAULT})
+    return m
+
+
+def _maint_save(m):
+    cfg = load_config()
+    cfg["maintenance"] = m
+    save_config(cfg)
+
+
+def _maint_busy():
+    """آیا سرور الان شلوغ است؟ برای اینکه وسط پیک ری‌استارت نکنیم."""
+    if not MONITOR:
+        return False, 0
+    try:
+        c = MONITOR.connections() or {}
+        n = int(c.get("total") or 0)
+        return n, n
+    except Exception:
+        return 0, 0
+
+
+def _maint_run(action):
+    """اجرای واقعی نگهداری. خروجی: (موفق، توضیح)"""
+    import subprocess
+    if action == "reboot":
+        try:
+            subprocess.Popen(["shutdown", "-r", "+1"],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            return True, "ریبوت سرور تا یک دقیقه‌ی دیگر"
+        except Exception as e:
+            return False, f"ریبوت ناموفق: {e}"
+
+    for svc in ("x-ui", "xray"):
+        try:
+            r = subprocess.run(["systemctl", "restart", svc],
+                               capture_output=True, text=True, timeout=60)
+            if r.returncode == 0:
+                return True, f"سرویس {svc} ری‌استارت شد"
+        except Exception:
+            continue
+    return False, "هیچ‌کدام از سرویس‌های x-ui/xray ری‌استارت نشدند"
+
+
+def _maint_tick():
+    """
+    یک‌بار بررسی پنجره‌ی نگهداری. از حلقه‌ی سلامت (هر ۵ دقیقه) صدا زده
+    می‌شود، پس پنجره را ۵ دقیقه‌ای می‌گیریم تا جا نیفتد.
+    """
+    m = _maint_conf()
+    if not m.get("enabled"):
+        return
+    if m.get("action") == "reboot" and not m.get("confirmedReboot"):
+        return
+
+    now = datetime.now()
+    if m.get("days") and now.weekday() not in [int(d) for d in m["days"]]:
+        return
+
+    target = now.replace(hour=int(m.get("hour", 5)),
+                         minute=int(m.get("minute", 0)),
+                         second=0, microsecond=0)
+    delta = (now - target).total_seconds()
+    if not (0 <= delta < 300):
+        return
+
+    today = now.strftime("%Y-%m-%d")
+    if str(m.get("lastRun") or "")[:10] == today:
+        return
+
+    if m.get("skipIfBusy"):
+        busy, n = _maint_busy()
+        if busy and n >= int(m.get("busyThreshold") or 20):
+            m["lastRun"] = now.isoformat(timespec="seconds")
+            m["lastResult"] = f"رد شد — {n} اتصال فعال بود"
+            _maint_save(m)
+            return
+
+    ok, note = _maint_run(m.get("action") or "xray")
+    m["lastRun"] = now.isoformat(timespec="seconds")
+    m["lastResult"] = ("انجام شد — " if ok else "ناموفق — ") + note
+    _maint_save(m)
+
+
+@app.get("/api/admin/maintenance")
+def maintenance_get(x_admin_password: str = Header(...)):
+    """زمان‌بندی نگهداری خودکار."""
+    check_auth(x_admin_password)
+    m = _maint_conf()
+
+    from datetime import timedelta
+
+    nxt = None
+    if m.get("enabled"):
+        now = datetime.now()
+        cand = now.replace(hour=int(m["hour"]), minute=int(m["minute"]),
+                           second=0, microsecond=0)
+        if cand <= now:
+            cand += timedelta(days=1)
+        for _ in range(8):
+            if not m.get("days") or cand.weekday() in [int(d) for d in m["days"]]:
+                break
+            cand += timedelta(days=1)
+        nxt = cand.isoformat(timespec="minutes")
+
+    busy, n = _maint_busy()
+    m["nextRun"] = nxt
+    m["activeConnections"] = n
+    return m
+
+
+@app.put("/api/admin/maintenance")
+def maintenance_set(payload: dict, x_admin_password: str = Header(...)):
+    """
+    تنظیم زمان‌بندی.
+
+    ریبوت سرور عمداً سخت‌تر از ری‌استارت سرویس است: تا وقتی
+    confirmedReboot صریحاً true نشود، اجرا نمی‌شود. یک تیک اشتباهی
+    نباید بتواند سرور فروش را وسط شب بخواباند.
+    """
+    check_auth(x_admin_password)
+    m = _maint_conf()
+
+    action = (payload or {}).get("action") or m["action"]
+    if action not in ("xray", "reboot"):
+        raise HTTPException(status_code=400, detail="عمل نامعتبر")
+
+    try:
+        hour = int(payload.get("hour", m["hour"]))
+        minute = int(payload.get("minute", m["minute"]))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="ساعت نامعتبر")
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise HTTPException(status_code=400, detail="ساعت باید بین ۰ تا ۲۳ باشد")
+
+    days = payload.get("days", m["days"]) or []
+    days = [int(d) for d in days if str(d).isdigit() and 0 <= int(d) <= 6]
+
+    confirmed = bool(payload.get("confirmedReboot", m["confirmedReboot"]))
+    enabled = bool(payload.get("enabled", m["enabled"]))
+    if enabled and action == "reboot" and not confirmed:
+        raise HTTPException(
+            status_code=400,
+            detail="ریبوت خودکار سرور نیاز به تایید صریح دارد")
+
+    m.update({
+        "enabled": enabled,
+        "action": action,
+        "hour": hour,
+        "minute": minute,
+        "days": days,
+        "skipIfBusy": bool(payload.get("skipIfBusy", m["skipIfBusy"])),
+        "busyThreshold": max(1, int(payload.get("busyThreshold",
+                                                m["busyThreshold"]) or 20)),
+        "confirmedReboot": confirmed,
+    })
+    _maint_save(m)
+    return {"ok": True, **m}
+
+
+@app.post("/api/admin/maintenance/run-now")
+def maintenance_run_now(payload: dict = None, x_admin_password: str = Header(...)):
+    """اجرای دستی — برای وقتی مدیر همین حالا می‌خواهد."""
+    check_auth(x_admin_password)
+    action = ((payload or {}).get("action") or "xray")
+    if action not in ("xray", "reboot"):
+        raise HTTPException(status_code=400, detail="عمل نامعتبر")
+    if action == "reboot" and not (payload or {}).get("confirm"):
+        raise HTTPException(status_code=400,
+                            detail="برای ریبوت باید confirm بفرستید")
+
+    ok, note = _maint_run(action)
+    m = _maint_conf()
+    m["lastRun"] = datetime.now().isoformat(timespec="seconds")
+    m["lastResult"] = ("دستی — " if ok else "دستی، ناموفق — ") + note
+    _maint_save(m)
+    return {"ok": ok, "note": note}
+
+
 def _start_health_loop():
     """
     بررسی خودکار سلامت هر ۵ دقیقه.
@@ -2024,6 +2229,14 @@ def _start_health_loop():
                         pass
             except Exception:
                 pass
+
+            # پنجره‌ی نگهداری هم همین‌جا بررسی می‌شود — نخ جدا لازم
+            # ندارد و هر دو با سرویس بالا و پایین می‌روند
+            try:
+                _maint_tick()
+            except Exception:
+                pass
+
             time.sleep(300)
 
     try:
