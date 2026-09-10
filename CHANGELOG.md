@@ -1,5 +1,53 @@
 # Changelog
 
+## [1.7.0]
+
+### Added — QR code with every config
+
+Long subscription links are awkward to copy on a phone, especially when Telegram and the
+VPN app are on the same device. The delivery message is now followed by a QR of the same
+link.
+
+It is generated **on your own server**. A subscription link is effectively the customer's
+password; handing it to a third-party QR service would hand that service the account.
+`segno` is a pure-Python dependency with no native build, and if it is missing the config
+still goes out — an extra should never be able to break the sales path.
+
+### Added — Telegram formatting the bot was not using
+
+Side notes now sit in `blockquote` instead of italics, so the main instruction and the
+aside are visually separate. A typing indicator appears while a config is being built,
+which takes a few seconds — until now the customer watched silence and assumed the bot
+had frozen.
+
+### Fixed — Small text in the stylesheet
+
+The earlier type pass only covered `App.jsx`. `index.css` still had table headers at
+10.5px, pills and badges at 10.5px, and sidebar labels at 10px. Sixteen declarations moved
+onto the same scale, so the panel now has one type system rather than two.
+
+### Fixed — Long identifiers pushed cards out of shape
+
+Subscription links, uuids and config emails are long unbroken strings with nowhere to
+wrap, so they extended past the card edge — measured at 346px inside a 342px card. `code`
+elements now wrap with `overflow-wrap: anywhere`, which breaks only where it must.
+
+### Changed — Glassmorphic surfaces
+
+Cards are translucent with a backdrop blur and a light reflection along the top edge, over
+a faint fixed background glow. The glow exists because blur over a flat background renders
+nothing and only costs GPU — glass needs something behind it to be glass.
+
+Contrast was re-measured afterwards rather than assumed: against the card's effective
+background, body text is 16.23:1, secondary 6.23:1 and helper 7.12:1, all above the 4.5:1
+floor. Browsers without `backdrop-filter` get an opaque card.
+
+### Changed — Empty states explain themselves
+
+They said what was missing but not why it mattered or what to do. Seven now carry a line
+of context — an empty apps list explains that customers will see no install button until
+one is added.
+
 ## [1.6.0]
 
 ### Fixed — Helper text failed the contrast floor

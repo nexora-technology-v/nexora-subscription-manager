@@ -15,6 +15,7 @@ from tg import (kb, esc, TelegramError, Bot, contact_kb, remove_kb,
 import core
 import db as DB
 from xui import XUI, XUIError
+import qr
 
 log = logging.getLogger("nexora.bot")
 
@@ -560,7 +561,7 @@ def _waiting_text(ctx, order_id):
         "✅ <b>رسیدتان رسید</b>\n\n"
         "⏳ الان در صف بررسی است — معمولاً کمتر از <b>۱۵ دقیقه</b>.\n"
         "📩 به‌محض تأیید، اشتراک همین‌جا برایتان می‌آید.\n\n"
-        "<i>لازم نیست منتظر بمانید؛ می‌توانید تلگرام را ببندید.</i>\n\n"
+        "<blockquote>لازم نیست منتظر بمانید؛ می‌توانید تلگرام را ببندید.</blockquote>\n\n"
         f"<i>کد پیگیری:</i> <code>#{order_id}</code>"
     )
     if support:
@@ -661,6 +662,14 @@ def approve_order(ctx, order_id, admin_tg_id):
         buyer = ctx.db.get_user_by_id(order["user_id"])
         if buyer:
             ctx.bot.action(buyer["tg_id"], "typing")
+    except Exception:
+        pass
+
+    # ساخت کانفیگ چند ثانیه طول می‌کشد؛ بدون این، مشتری سکوت می‌بیند
+    try:
+        u0 = ctx.db.get_user_by_id(order["user_id"])
+        if u0:
+            ctx.bot.action(u0["tg_id"], "typing")
     except Exception:
         pass
 
@@ -984,8 +993,8 @@ def deliver(ctx, user, sub):
             "به پشتیبانی پیام بدهید تا همین حالا دستی برایتان بفرستیم.",
         ]
 
-    lines += ["", "<i>هر وقت خواستید، از «اشتراک‌های من» مصرف و روزهای "
-              "باقی‌مانده را ببینید.</i>"]
+    lines += ["", "<blockquote>هر وقت خواستید، از «اشتراک‌های من» مصرف و "
+              "روزهای باقی‌مانده را ببینید.</blockquote>"]
 
     _send_delivery(ctx, user, "\n".join(lines), url)
 
@@ -1000,12 +1009,30 @@ def _send_delivery(ctx, user, text, url):
     بدون دکمه دوباره می‌فرستیم. متن مهم است، دکمه تزئین.
     """
     try:
-        return ctx.bot.send(user["tg_id"], text,
+        sent = ctx.bot.send(user["tg_id"], text,
                             keyboard=_deliver_kb(ctx, url))
     except TelegramError as e:
         log.warning("ارسال تحویل با صفحه‌کلید ناموفق (%s) — بدون دکمه "
                     "دوباره تلاش می‌شود", e)
-    return ctx.bot.send(user["tg_id"], text)
+        sent = ctx.bot.send(user["tg_id"], text)
+
+    # کیوآر لینک — روی گوشی خیلی راحت‌تر از کپی‌کردن یک لینک بلند است،
+    # مخصوصاً وقتی مشتری روی همان گوشی هم تلگرام دارد هم اپ VPN.
+    # اگر ساخته نشد، تحویل که رسیده است؛ این فقط اضافه است.
+    if url:
+        try:
+            png = qr.make(url)
+            if png:
+                ctx.bot.send_photo_bytes(
+                    user["tg_id"], png, filename="nexora-sub.png",
+                    caption="📷 <b>کیوآر همین لینک</b>\n\n"
+                            "<blockquote>در اپ VPN گزینه‌ی افزودن با اسکن را "
+                            "بزنید و این را نشان دوربین بدهید — نیازی به کپی "
+                            "کردن لینک نیست.</blockquote>")
+        except Exception as e:
+            log.warning("ارسال کیوآر ناموفق: %s", e)
+
+    return sent
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1301,8 +1328,8 @@ def show_help(ctx, user, chat_id, message_id):
         "<b>۱.</b> برنامه‌ی مناسب دستگاهتان را از دکمه‌های پایین نصب کنید\n"
         "<b>۲.</b> به «اشتراک‌های من» بروید و روی دکمه‌ی افزودن بزنید\n"
         "<b>۳.</b> کانفیگ خودش اضافه می‌شود — فقط وصل شوید\n\n"
-        "<i>اگر جایی گیر کردید، از پشتیبانی بپرسید. "
-        "خجالت ندارد، همه اولین بار همین‌طورند.</i>"
+        "<blockquote>اگر جایی گیر کردید، از پشتیبانی بپرسید. "
+        "خجالت ندارد، همه اولین بار همین‌طورند.</blockquote>"
     )
     rows = []
     apps = ctx.s.get("apps") or []

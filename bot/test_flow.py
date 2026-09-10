@@ -23,6 +23,7 @@ import bot.xui as xuimod          # noqa: E402
 
 PASS = FAIL = 0
 SENT = []
+ACTIONS = []
 
 
 def check(name, cond, detail=""):
@@ -63,6 +64,18 @@ class FakeBot:
         SENT.append({"to": chat_id, "text": caption or "[عکس]", "photo": True,
                      "topic": topic_id})
         return {"message_id": len(SENT)}
+
+    def send_photo_bytes(self, chat_id, data, filename="qr.png", caption=None,
+                         keyboard=None):
+        # امضای واقعی؛ اگر عوض شود این تست باید بشکند نه اینکه بی‌صدا
+        # از کنارش رد شود
+        SENT.append({"to": chat_id, "text": caption or "[تصویر]",
+                     "photoBytes": bytes(data), "file": filename})
+        return {"message_id": len(SENT)}
+
+    def action(self, chat_id, kind="typing"):
+        ACTIONS.append({"to": chat_id, "kind": kind})
+        return True
 
     def copy(self, chat_id, from_chat_id, message_id, caption=None, **kw):
         SENT.append({"to": chat_id, "text": caption or "[کپی]", "topic": kw.get("topic_id")})
@@ -407,6 +420,44 @@ H.send_daily_report(tenant)
 rep = [s for s in SENT if s["to"] == -100123]
 check("گزارش به گروه رفت", len(rep) > 0)
 check("در تاپیک آمار", any(s.get("topic") == 4 for s in rep))
+
+# ═══════════════ کیوآر و حالت تایپ ═══════════════
+section("کیوآر و حالت تایپ")
+
+import qr as _qr   # noqa: E402
+
+_png = _qr.make("https://sub.example.ir/sub/nexora_555_1")
+check("segno نصب است", _qr.available())
+check("کیوآر ساخته می‌شود", bool(_png) and _png[:8] == b"\x89PNG\r\n\x1a\n",
+      f"{len(_png or b'')} بایت")
+check("بدون داده کیوآر نمی‌سازد", _qr.make("") is None)
+
+SENT.clear()
+H._send_delivery(H.Ctx(bot, tenant), D.get_user(555),
+                 "متن کانفیگ", "https://sub.example.ir/sub/nexora_555_1")
+_photos = [s for s in SENT if s.get("photoBytes")]
+check("کیوآر همراه کانفیگ فرستاده می‌شود", len(_photos) == 1,
+      f"{len(_photos)} تصویر")
+check("تصویر واقعاً PNG است",
+      bool(_photos) and _photos[0]["photoBytes"][:8] == b"\x89PNG\r\n\x1a\n")
+check("متن کانفیگ هم جدا رسیده",
+      any("متن کانفیگ" in s["text"] for s in SENT))
+
+# بدون لینک، کیوآری در کار نیست
+SENT.clear()
+H._send_delivery(H.Ctx(bot, tenant), D.get_user(555), "بدون لینک", None)
+check("بدون لینک کیوآر فرستاده نمی‌شود",
+      not any(s.get("photoBytes") for s in SENT))
+
+check("پیام‌ها از blockquote استفاده می‌کنند",
+      "<blockquote>" in H._waiting_text(H.Ctx(bot, tenant), 1),
+      "متن انتظار")
+
+# حالت تایپ باید در مسیر واقعی تایید رسید زده شده باشد — ACTIONS از
+# ابتدای اجرا جمع شده است
+check("هنگام تایید رسید، «در حال تایپ» نشان داده می‌شود",
+      any(a["kind"] == "typing" for a in ACTIONS),
+      f"{len(ACTIONS)} بار")
 
 # ═══════════════ دکمه‌ی url نامعتبر ═══════════════
 section("دکمه‌ی url نامعتبر")

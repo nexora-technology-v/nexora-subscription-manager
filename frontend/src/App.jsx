@@ -245,11 +245,23 @@ function Tabs({ items, active, onChange, counts }) {
   );
 }
 
-function EmptyState({ icon: Icon, text }) {
+/**
+ * حالت خالی.
+ *
+ * صفحه‌ی خالی بدون راهنما، کاربر را سر دوراهی رها می‌کند. پس علاوه بر
+ * متن، می‌شود یک قدم بعدی هم داد: `hint` توضیح می‌دهد چرا خالی است و
+ * `action` کاری که باید کرد.
+ */
+function EmptyState({ icon: Icon, text, hint, action }) {
   return (
-    <div className="fx-card py-12 text-center fx-fade" style={{ borderStyle: "dashed" }}>
+    <div className="fx-card py-12 px-5 text-center fx-fade" style={{ borderStyle: "dashed" }}>
       <Icon size={24} className="mx-auto mb-3" style={{ color: "#2A3444" }} />
-      <p className="text-[13px]" style={{ color: "var(--muted)" }}>{text}</p>
+      <p className="text-[13px]" style={{ color: "var(--dim)" }}>{text}</p>
+      {hint && (
+        <p className="text-[12px] mt-2 mx-auto leading-relaxed"
+          style={{ color: "var(--muted)", maxWidth: "42ch" }}>{hint}</p>
+      )}
+      {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>
   );
 }
@@ -590,7 +602,8 @@ function AppsSection({ config, setConfig, requestDelete }) {
         <SectionHead title="اپلیکیشن‌های دانلود" desc="برای هر پلتفرم، اپ‌های قابل‌دانلود و اپ پیشنهادی را مدیریت کنید." />
         <Tabs items={OS_TABS} active={osTab} onChange={setOsTab} counts={counts} />
         <div className="flex flex-col gap-3">
-          {list.length === 0 && <EmptyState icon={Smartphone} text="هنوز اپی برای این پلتفرم اضافه نشده" />}
+          {list.length === 0 && <EmptyState icon={Smartphone} text="هنوز اپی برای این پلتفرم اضافه نشده"
+            hint="مشتری در صفحه‌ی اشتراک هیچ دکمه‌ی نصبی نمی‌بیند تا اینجا حداقل یک اپ اضافه کنید." />}
           {list.map((app, i) => {
             const Icon = SCHEME_ICON[app.scheme] || Package;
             return (
@@ -658,7 +671,8 @@ function VideosSection({ config, setConfig, requestDelete }) {
         </InfoBox>
       </div>
       <div className="flex flex-col gap-3">
-        {videos.length === 0 && <EmptyState icon={Video} text="هنوز ویدیویی اضافه نشده" />}
+        {videos.length === 0 && <EmptyState icon={Video} text="هنوز ویدیویی اضافه نشده"
+          hint="ویدیوی آموزش نصب، بیشترین سؤال پشتیبانی را کم می‌کند." />}
         {videos.map((v, i) => (
           <div key={v.id || i} className="fx-card p-4">
             <div className="flex items-center justify-between gap-2 mb-3">
@@ -705,7 +719,8 @@ function FaqSection({ config, setConfig, requestDelete }) {
       <SectionHead title="سوالات متداول" desc="این سوال‌ها به‌صورت آکاردئون در پایین صفحه‌ی اشتراک نمایش داده می‌شوند." />
       <Tabs items={LANG_TABS} active={lang} onChange={setLang} counts={counts} />
       <div className="flex flex-col gap-3">
-        {list.length === 0 && <EmptyState icon={HelpCircle} text="هنوز سوالی برای این زبان اضافه نشده" />}
+        {list.length === 0 && <EmptyState icon={HelpCircle} text="هنوز سوالی برای این زبان اضافه نشده"
+          hint="سوال‌های متداول در همان صفحه جواب می‌دهند و بار پشتیبانی را کم می‌کنند." />}
         {list.map((item, i) => (
           <div key={i} className="fx-card p-4">
             <div className="flex items-start justify-between mb-2.5">
@@ -1154,7 +1169,8 @@ function ResellersSection({ config, setConfig, requestDelete, password }) {
       </div>
 
       <div className="flex flex-col gap-3">
-        {resellers.length === 0 && <EmptyState icon={Users} text="هنوز واسطه‌ای اضافه نشده" />}
+        {resellers.length === 0 && <EmptyState icon={Users} text="هنوز واسطه‌ای اضافه نشده"
+          hint="واسطه یعنی کسی که با برند خودش می‌فروشد و شما فقط صورتحسابش را می‌گیرید." />}
 
         {resellers.map((r, i) => {
           const isOpen = expanded === i;
@@ -4503,7 +4519,8 @@ function BotInboundsSection({ password }) {
               </p>
 
               {inbounds.length === 0 ? (
-                <EmptyState icon={Network} text="پنل هیچ اینباندی ندارد" />
+                <EmptyState icon={Network} text="پنل هیچ اینباندی ندارد"
+                  hint="تا وقتی در 3x-ui حداقل یک اینباند نسازید، ربات نمی‌تواند کانفیگ بسازد." />
               ) : (
                 inbounds.map((i) => (
                   <InboundRow key={i.id} inb={i} checked={sel.includes(i.id)} onToggle={toggle} />
@@ -4552,7 +4569,8 @@ function BotInboundsSection({ password }) {
               })}
             </div>
           ) : (
-            <EmptyState icon={Network} text="پنل هیچ اینباندی ندارد" />
+            <EmptyState icon={Network} text="پنل هیچ اینباندی ندارد"
+                  hint="تا وقتی در 3x-ui حداقل یک اینباند نسازید، ربات نمی‌تواند کانفیگ بسازد." />
           )}
         </>
       )}
@@ -5098,7 +5116,8 @@ function TopClientsCard({ password }) {
       </p>
 
       {!list.length ? (
-        <EmptyState icon={Users} text="هنوز مصرفی ثبت نشده" />
+        <EmptyState icon={Users} text="هنوز مصرفی ثبت نشده"
+          hint="کانفیگ‌ها ساخته شده‌اند ولی هنوز ترافیکی از آن‌ها عبور نکرده." />
       ) : list.map((c) => (
         <div key={c.email} className="py-2">
           <div className="flex items-baseline justify-between gap-2 mb-1 flex-wrap">

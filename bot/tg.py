@@ -137,6 +137,34 @@ class Bot:
                          caption=caption, parse_mode="HTML",
                          reply_markup=keyboard, message_thread_id=topic_id)
 
+    def send_photo_bytes(self, chat_id, data, filename="qr.png", caption=None,
+                         keyboard=None):
+        """
+        ارسال تصویری که همین‌جا ساخته شده — مثل کیوآر لینک اشتراک.
+
+        فایل مستقیم آپلود می‌شود و هیچ‌جای بیرون نمی‌رود؛ لینک اشتراک
+        رمز مشتری است و نباید به سرویس کیوآرساز شخص ثالث برود.
+        """
+        # بایت خام می‌فرستیم نه BytesIO: اگر تلاش مجدد لازم شود،
+        # جریانِ یک‌بار خوانده‌شده خالی است ولی بایت‌ها دوباره خوانده
+        # می‌شوند.
+        return self.call("sendPhoto", chat_id=chat_id, caption=caption,
+                         parse_mode="HTML", reply_markup=keyboard,
+                         _files={"photo": (filename, bytes(data), "image/png")})
+
+    def action(self, chat_id, kind="typing"):
+        """
+        نشان‌دادن «در حال تایپ».
+
+        ساخت کانفیگ چند ثانیه طول می‌کشد و در آن مدت مشتری فقط یک
+        صفحه‌ی ساکت می‌بیند و فکر می‌کند ربات گیر کرده. این حالت
+        خودش بعد از ۵ ثانیه پاک می‌شود، پس نیازی به لغو ندارد.
+        """
+        try:
+            return self.call("sendChatAction", chat_id=chat_id, action=kind)
+        except TelegramError:
+            return None
+
     def send_doc(self, chat_id, path, caption=None, topic_id=None):
         with open(path, "rb") as f:
             return self.call("sendDocument", chat_id=chat_id, caption=caption,

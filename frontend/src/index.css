@@ -62,6 +62,18 @@ body {
   overscroll-behavior-y: none;
 }
 
+/* هاله‌ی پس‌زمینه.
+   بسیار ملایم و ثابت — کارش این است که کارت‌های شیشه‌ای چیزی برای
+   بازتاب داشته باشند، نه اینکه خودش دیده شود. روی لایه‌ی جدا و
+   پشت همه‌چیز، تا هیچ متنی را کدر نکند. */
+body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(900px 600px at 82% -8%, rgba(43,127,214,.10), transparent 60%),
+    radial-gradient(760px 520px at 8% 108%, rgba(90,169,230,.07), transparent 62%);
+}
+
 /* فقط فونت — عناصر فرم آن را از body ارث نمی‌برند.
    هیچ خصوصیت دیگری اینجا نیاید؛ رنگ و ابعاد دکمه‌ها از کلاس
    خودشان می‌آید و بازنویسی‌شان ظاهر همه را به هم می‌ریزد. */
@@ -112,7 +124,7 @@ input, select, textarea, button, optgroup {
 .fx-side::-webkit-scrollbar-thumb { background: rgba(255,255,255,.1); border-radius: 4px; }
 .fx-side::-webkit-scrollbar-track { background: transparent; }
 .fx-side-label {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
   padding: 0 10px;
   margin: 18px 0 8px;
@@ -144,29 +156,63 @@ input, select, textarea, button, optgroup {
   border-radius: 11px; padding: 9px 13px; width: 260px; transition: all .18s;
 }
 .fx-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(43,127,214,.13); }
-.fx-search input { background: transparent; border: none; outline: none; color: var(--text); font-size: 12.5px; width: 100%; font-family: inherit; }
+.fx-search input { background: transparent; border: none; outline: none; color: var(--text); font-size: 13px; width: 100%; font-family: inherit; }
 .fx-search input::placeholder { color: var(--muted); }
 
-/* ===== کارت ===== */
-.fx-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; transition: all .22s ease; }
+/* ===== کارت =====
+   شیشه‌ای، ولی نه به‌شکل تزئینی.
+
+   بلور فقط وقتی دیده می‌شود که پشتش چیزی باشد؛ روی یک پس‌زمینه‌ی
+   کاملاً تخت، backdrop-filter هیچ اثری ندارد و فقط GPU مصرف می‌کند.
+   برای همین اول به body یک هاله‌ی بسیار ملایم داده‌ایم (پایین‌تر)
+   تا کارت‌ها چیزی برای گرفتن داشته باشند.
+
+   رنگ متن عوض نشده: کف کارت هنوز تقریباً همان --surface درمی‌آید،
+   پس نسبت کنتراست ۴٫۵:۱ که تازه درستش کردیم دست‌نخورده می‌ماند. */
+.fx-card {
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  transition: all .22s ease;
+  position: relative;
+}
+
+/* بازتاب نور روی لبه‌ی بالا — همان «light reflection» که سبک شیشه‌ای
+   را از یک مستطیل نیمه‌شفاف ساده جدا می‌کند. */
+.fx-card::before {
+  content: "";
+  position: absolute; inset: 0 0 auto 0; height: 1px;
+  border-radius: 16px 16px 0 0;
+  background: linear-gradient(90deg, transparent,
+              rgba(255,255,255,.16) 22%, rgba(255,255,255,.16) 78%, transparent);
+  pointer-events: none;
+}
+
 .fx-card-i:hover { border-color: rgba(90,169,230,.28); transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,.3); }
 .fx-card-hl { border-color: rgba(90,169,230,.4); box-shadow: 0 0 26px rgba(43,127,214,.1); }
 
+/* مرورگرهای بدون پشتیبانی بلور، کارت مات می‌گیرند نه شفافِ ناخوانا */
+@supports not (backdrop-filter: blur(4px)) {
+  .fx-card { background: var(--surface); }
+}
+
 /* ===== آمار ===== */
-.fx-stat-num { font-family: var(--mono); font-size: 30px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
-.fx-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 600; padding: 3px 7px; border-radius: 6px; }
+.fx-stat-num { font-family: var(--mono); font-size: 32px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
+.fx-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; padding: 3px 7px; border-radius: 6px; }
 .fx-badge.up { background: rgba(52,211,153,.12); color: var(--ok); }
 .fx-badge.down { background: rgba(248,113,113,.12); color: var(--danger); }
 
 /* ===== جدول ===== */
 .fx-table { width: 100%; border-collapse: collapse; }
-.fx-table th { font-size: 10.5px; color: var(--muted); font-weight: 500; text-align: right; padding: 11px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.fx-table td { padding: 13px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+.fx-table th { font-size: 12px; color: var(--muted); font-weight: 500; text-align: right; padding: 11px 14px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.fx-table td { padding: 13px 14px; border-bottom: 1px solid var(--border); font-size: 13px; }
 .fx-table tbody tr { transition: background .15s; }
 .fx-table tbody tr:hover { background: rgba(255,255,255,.015); }
 .fx-table tbody tr:last-child td { border-bottom: none; }
 
-.fx-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
+.fx-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
 
 /* ===== دکمه ===== */
 .fx-btn {
@@ -194,7 +240,7 @@ input, select, textarea, button, optgroup {
 /* ===== فرم ===== */
 .fx-input {
   width: 100%; background: var(--surface-3); border: 1px solid var(--border-2);
-  border-radius: 11px; padding: 10px 13px; font-size: 12.5px; color: var(--text);
+  border-radius: 11px; padding: 10px 13px; font-size: 13px; color: var(--text);
   outline: none; transition: border-color .18s, box-shadow .18s;
 }
 .fx-input::placeholder { color: var(--muted); }
@@ -227,20 +273,20 @@ select.fx-input {
 .fx-stepper-btn:disabled { opacity: .3; cursor: not-allowed; }
 .fx-stepper-val {
   flex: 1; text-align: center; border: none; background: transparent; color: var(--text);
-  font-size: 17px; font-weight: 700; font-family: var(--mono);
+  font-size: 18px; font-weight: 700; font-family: var(--mono);
   outline: none; padding: 0 4px; min-width: 0; -moz-appearance: textfield;
 }
 .fx-stepper-val::-webkit-outer-spin-button, .fx-stepper-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .fx-stepper-unit {
-  font-size: 11px; color: var(--muted);
+  font-size: 12px; color: var(--muted);
   padding-left: 10px; flex-shrink: 0; white-space: nowrap;
 }
 
 /* استپر در صفحه‌های باریک: دکمه‌ها و فونت کوچک‌تر تا از کارت بیرون نزند */
 @media (max-width: 480px) {
   .fx-stepper-btn { width: 36px; min-width: 34px; height: 42px; }
-  .fx-stepper-val { font-size: 15px; }
-  .fx-stepper-unit { font-size: 10px; padding-left: 7px; }
+  .fx-stepper-val { font-size: 16px; }
+  .fx-stepper-unit { font-size: 12px; padding-left: 7px; }
 }
 
 .fx-range { width: 100%; height: 4px; border-radius: 999px; background: rgba(255,255,255,.08); appearance: none; outline: none; margin-top: 14px; }
@@ -256,7 +302,7 @@ select.fx-input {
 }
 
 /* ===== وضعیت ===== */
-.fx-status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 11px; font-weight: 500; white-space: nowrap; transition: all .2s; }
+.fx-status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; transition: all .2s; }
 .fx-status-dirty { background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
 .fx-status-saved { background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.25); color: var(--ok); }
 
@@ -340,7 +386,7 @@ select.fx-input {
   gap: 6px;
   padding: 8px 6px;
   border-radius: 9px;
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--muted);
   transition: all .18s ease;
@@ -379,6 +425,16 @@ select.fx-input {
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--accent-2); outline-offset: 2px;
 }
+
+/* لینک اشتراک، uuid و ایمیل کانفیگ رشته‌های بلندِ بدون فاصله‌اند و
+   جایی برای شکستن ندارند، پس از عرض کارت بیرون می‌زدند. anywhere
+   فقط وقتی می‌شکند که لازم باشد — برخلاف break-all که وسط کلمه‌های
+   عادی هم می‌شکند. */
+code, kbd, samp, pre { overflow-wrap: anywhere; }
+
+/* فرزند متنی داخل flex به‌طور پیش‌فرض کوچک‌تر از محتوایش نمی‌شود؛
+   بدون این، truncate و شکستن خط داخل ردیف‌ها کار نمی‌کند. */
+.fx-card .min-w-0 { min-width: 0; }
 
 /* ===== موبایل ===== */
 .fx-burger { display: none; }
@@ -428,7 +484,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 @media (max-width: 639.98px) {
   .fx-g4 { grid-template-columns: 1fr !important; }
-  .fx-stat-num { font-size: 26px; }
+  .fx-stat-num { font-size: 28px; }
   .fx-search { display: none; }
 }
 
@@ -457,7 +513,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   border: none; border-radius: 9px;
   background: rgba(255, 255, 255, .04);
   color: var(--dim);
-  font-size: 17px; font-weight: 700; line-height: 1;
+  font-size: 18px; font-weight: 700; line-height: 1;
   cursor: pointer;
   transition: background .16s, color .16s;
 }
