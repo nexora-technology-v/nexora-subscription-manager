@@ -217,6 +217,127 @@ def delete_rule(num, confirm_critical=False):
     return ok, (out.strip()[:200] or ("حذف شد" if ok else "ناموفق"))
 
 
+def suggest(listening_ports=None):
+    """
+    پیشنهاد قواعد، بر اساس چیزی که واقعاً روی سرور گوش می‌دهد.
+
+    مدیر نباید از حفظ بداند کدام پورت‌ها لازم‌اند. این تابع سرویس‌های
+    در حال اجرا را می‌بیند و برای هر کدام می‌گوید باید باز بماند یا
+    بسته شود — و *چرا*. تصمیم نهایی با مدیر است؛ این‌جا فقط پیشنهاد
+    ساخته می‌شود، هیچ قاعده‌ای اعمال نمی‌شود.
+
+    listening_ports: خروجی monitor.listening()؛ اگر داده نشود خودمان
+    می‌خوانیم.
+    """
+    if listening_ports is None:
+        listening_ports = _read_listening()
+
+    st = status()
+    existing = {}
+    for r in st.get("rules") or []:
+        if r.get("port"):
+            existing[int(r["port"])] = r["action"]
+
+    keep, close, already = [], [], []
+    seen = set()
+
+    for p in listening_ports or []:
+        try:
+            port = int(p.get("port"))
+        except (TypeError, ValueError):
+            continue
+        if port in seen:
+            continue
+        seen.add(port)
+
+        proc = (p.get("process") or "").lower()
+        known = p.get("known") or ""
+        public = bool(p.get("public"))
+
+        if port in existing:
+            already.append({"port": port, "proto": p.get("proto") or "tcp",
+                            "process": p.get("process") or "",
+                            "action": existing[port], "why": known or "قاعده دارد"})
+            continue
+
+        if not public:
+            # فقط روی لوپ‌بک گوش می‌دهد — از بیرون قابل دسترسی نیست
+            continue
+
+        if port in CRITICAL_PORTS:
+            keep.append({"port": port, "proto": p.get("proto") or "tcp",
+                         "process": p.get("process") or "",
+                         "action": "allow",
+                         "why": CRITICAL_PORTS[port]})
+        elif known:
+            keep.append({"port": port, "proto": p.get("proto") or "tcp",
+                         "process": p.get("process") or "",
+                         "action": "allow",
+                         "why": f"{known} — سرویس شناخته‌شده‌ی این پنل"})
+        elif any(s in proc for s in ("xray", "x-ui", "nginx", "sing-box",
+                                     "hysteria", "wireguard")):
+            keep.append({"port": port, "proto": p.get("proto") or "tcp",
+                         "process": p.get("process") or "",
+                         "action": "allow",
+                         "why": f"پردازه‌ی {p.get('process')} — بخشی از سرویس شماست"})
+        else:
+            close.append({"port": port, "proto": p.get("proto") or "tcp",
+                          "process": p.get("process") or "",
+                          "action": "deny",
+                          "why": ("رو به اینترنت باز است و به سرویس شما ربطی "
+                                  "ندارد" + (f" — پردازه: {p.get('process')}"
+                                             if p.get("process") else ""))})
+
+    return {
+        "ready": st.get("ready", False),
+        "installed": st.get("installed", False),
+        "active": st.get("active", False),
+        "keep": keep,
+        "close": close,
+        "already": already,
+        "sshCovered": st.get("sshProtected", False),
+    }
+
+
+def _read_listening():
+    """پورت‌های در حال گوش‌دادن، از ماژول مانیتورینگ."""
+    try:
+        import importlib.util
+        import pathlib
+        p = pathlib.Path(__file__).resolve().parent / "monitor.py"
+        spec = importlib.util.spec_from_file_location("_fw_monitor", p)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        return m.listening() or []
+    except Exception:
+        return []
+
+
+def apply_plan(rules, confirm=False):
+    """
+    اعمال دسته‌ای قواعد پیشنهادی — فقط با تایید صریح.
+
+    خروجی می‌گوید هرکدام چه شد، چون اعمال نیمه‌کاره بدتر از اعمال
+    نشدن است: مدیر باید بداند کدام قاعده ننشست.
+    """
+    if not confirm:
+        return False, "برای اعمال قواعد باید confirm بفرستید", []
+    if not available():
+        return False, "ufw نصب نیست", []
+
+    results = []
+    for r in rules or []:
+        port = r.get("port")
+        action = r.get("action") or "allow"
+        proto = r.get("proto") or "tcp"
+        ok, note = add_rule(port, proto=proto, action=action,
+                            comment="پیشنهاد پنل نکسورا")
+        results.append({"port": port, "action": action, "ok": ok, "note": note})
+
+    good = sum(1 for x in results if x["ok"])
+    return True, f"{good} از {len(results)} قاعده اعمال شد", results
+
+
 def block_ip(ip, comment=None):
     """بستن کامل یک آی‌پی — برای وقتی یک مبدأ دارد سرور را می‌خورد."""
     if not re.match(r"^[0-9a-fA-F:.]+(/\d{1,3})?$", str(ip or "")):

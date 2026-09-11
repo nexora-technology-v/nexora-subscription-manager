@@ -212,50 +212,16 @@ def welcome_text(ctx, user):
 # ═══════════════════════════════════════════════════════════
 
 def cmd_start(ctx, msg, args=None):
+    """
+    نمایش منوی اصلی.
+
+    ساختِ کاربر و کارهای ثبت‌نام (پاداش خوش‌آمد، اطلاع به معرف، خبر
+    به گروه) این‌جا نیست — در _get_or_create است، چون کاربر همان‌جا
+    ساخته می‌شود. یک نسخه‌ی تکراری از آن منطق قبلاً این‌جا بود که
+    هیچ‌وقت اجرا نمی‌شد و فقط توهم کارکردن می‌داد.
+    """
     tg = msg["from"]
-    user = ctx.db.get_user(tg["id"])
-
-    if not user:
-        referrer = None
-        affiliate = None
-        arg = (args or "").strip()
-
-        # لینک همکار فروش با پیشوند aff_ می‌آید تا با کد دعوت
-        # معمولی قاطی نشود
-        if arg.startswith("aff_"):
-            affiliate = DB.affiliate_by_code(ctx.tid, arg[4:])
-        elif arg:
-            ref = ctx.db.get_user_by_ref(arg)
-            if ref and ref["tg_id"] != tg["id"]:
-                referrer = ref["id"]
-
-        user = ctx.db.create_user(
-            tg["id"], tg.get("username"), tg.get("first_name"),
-            referred_by=referrer
-        )
-
-        if affiliate:
-            ctx.db.exec("UPDATE users SET affiliate_id=? WHERE id=?",
-                        (affiliate["id"], user["id"]))
-            user["affiliate_id"] = affiliate["id"]
-        ctx.db.log("signup", user["id"], {"ref": bool(referrer)})
-
-        # پاداش خوش‌آمد به دعوت‌شده (اگر تنظیم شده باشد)
-        cs = core.coin_settings(ctx.s.get("coins"))
-        if referrer and cs.get("welcome_bonus"):
-            ctx.db.add_coins(user["id"], int(cs["welcome_bonus"]),
-                             "bonus", "هدیه ورود با لینک دعوت")
-
-        ctx.notify_group(
-            f"👤 <b>کاربر جدید</b>\n"
-            f"نام: {esc(tg.get('first_name'))}\n"
-            f"آیدی: <code>{tg['id']}</code>\n"
-            f"یوزرنیم: @{esc(tg.get('username')) if tg.get('username') else '—'}\n"
-            f"{'📎 با لینک دعوت' if referrer else ''}",
-            topic="users"
-        )
-    else:
-        ctx.db.touch_user(tg["id"])
+    user = _get_or_create(ctx, tg, args)
 
     ctx.db.clear_state(tg["id"])
     ctx.bot.send(tg["id"], welcome_text(ctx, user), keyboard=main_menu(ctx, user))
@@ -446,8 +412,9 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id):
         _reply(ctx, chat_id, message_id,
                "ساخت اشتراک به مشکل خورد و <b>مبلغ کامل به کیف پولتان برگشت</b>.\n\n"
                f"<i>{esc(result)}</i>\n\n"
-               "چند دقیقه دیگر دوباره امتحان کنید — اگر باز هم نشد، "
-               "پشتیبانی همین را می‌بیند و پیگیری می‌کند.",
+               "<blockquote>چند دقیقه دیگر دوباره امتحان کنید — اگر باز هم "
+               "نشد، پشتیبانی همین را می‌بیند و پیگیری می‌کند."
+               "</blockquote>",
                back_kb())
 
 
@@ -709,7 +676,7 @@ def approve_order(ctx, order_id, admin_tg_id):
                     "💼 <b>یک فروش تازه از لینک شما</b>\n\n"
                     f"مبلغ خرید: {core.toman(paid_amount)} تومان\n"
                     f"پورسانت شما: <b>{core.toman(res['commission'])}</b> تومان\n\n"
-                    "<i>مانده‌ی کلتان را از «پنل همکاری در فروش» ببینید.</i>")
+                    "<blockquote>مانده‌ی کلتان را از «پنل همکاری در فروش» ببینید.</blockquote>")
     except Exception:
         # نبود پورسانت نباید تحویل سفارش را متوقف کند
         pass
@@ -741,6 +708,49 @@ def approve_order(ctx, order_id, admin_tg_id):
         return True, result
 
     return True, result
+
+
+def _notify_referrer_joined(ctx, referrer_id, tg_user):
+    """
+    به معرف می‌گوید یک نفر با لینکش آمد.
+
+    عمداً می‌گوید سکه *بعد از خرید* می‌آید، نه همین حالا — وگرنه
+    معرف منتظر سکه‌ای می‌ماند که نمی‌آید و فکر می‌کند سیستم خراب است.
+    """
+    # get_user_by_id یک sqlite3.Row می‌دهد، نه dict — و Row متد get
+    # ندارد. اولین نسخه‌ی این تابع .get() صدا می‌زد، استثنا می‌گرفت،
+    # و dispatch بی‌صدا قورتش می‌داد: معرف هیچ‌وقت پیامی نمی‌گرفت و
+    # هیچ ردی هم در لاگ نبود.
+    ref = ctx.db.get_user_by_id(referrer_id)
+    if not ref or not ref["tg_id"]:
+        return
+
+    cs = core.coin_settings(ctx.s.get("coins"))
+    amount = int(cs.get("per_referral") or 0)
+
+    total = ctx.db.q(
+        "SELECT COUNT(*) AS c FROM users WHERE tenant_id=? AND referred_by=?",
+        (ctx.tid, referrer_id), one=True
+    )
+    n = (total or {}).get("c", 0)
+
+    name = esc(tg_user.get("first_name") or "یک نفر")
+    text = (
+        f"🎉 <b>{name} با لینک شما آمد</b>\n\n"
+        f"تا حالا <b>{core.fa(n)}</b> نفر را دعوت کرده‌اید.\n\n"
+    )
+    if amount > 0:
+        text += ("<blockquote>به‌محض اینکه اولین خریدش را انجام دهد، "
+                 f"<b>{core.fa(amount)} سکه</b> به شما می‌رسد.</blockquote>")
+    else:
+        text += "<blockquote>دعوتتان ثبت شد.</blockquote>"
+
+    try:
+        ctx.bot.send(ref["tg_id"], text,
+                     keyboard=kb([[("🎁 دعوت دوستان", "ref")],
+                                  [("‹ منوی اصلی", "menu")]]))
+    except TelegramError:
+        pass
 
 
 def _reward_referrer(ctx, user, order_id):
@@ -1137,6 +1147,61 @@ def show_subs(ctx, user, chat_id, message_id):
 
     rows.append([("‹ بازگشت", "menu")])
     _reply(ctx, chat_id, message_id, "\n".join(lines), kb(rows))
+
+
+def show_renew(ctx, user, chat_id, message_id, sub_id):
+    """
+    تمدید یک اشتراک مشخص.
+
+    نام پلن همه‌جا می‌آید: کسی که سه اشتراک دارد باید بداند دارد
+    کدامش را تمدید می‌کند، وگرنه پول می‌دهد و اشتباه تمدید می‌شود.
+    """
+    sub = ctx.db.q(
+        "SELECT * FROM subscriptions WHERE tenant_id=? AND id=? AND user_id=?",
+        (ctx.tid, sub_id, user["id"]), one=True
+    )
+    if not sub:
+        return _reply(ctx, chat_id, message_id,
+                      "این اشتراک پیدا نشد.", back_kb("mysubs"))
+
+    plan = ctx.db.get_plan(sub["plan_id"]) if sub.get("plan_id") else None
+    left = core.days_left(sub.get("expires_at"))
+
+    lines = ["🔄 <b>تمدید اشتراک</b>", ""]
+    if plan:
+        lines += [f"📦 <b>{esc(plan['name'])}</b>",
+                  f"{core.fmt_gb(plan['gb'])} · {core.fmt_days(plan['days'])}"]
+    else:
+        lines.append(f"📦 <b>{esc(sub.get('plan_name') or 'اشتراک شما')}</b>")
+
+    if left is None:
+        lines.append("بدون محدودیت زمانی")
+    elif left <= 0:
+        lines.append("⛔ اعتبارش تمام شده")
+    else:
+        lines.append(f"<b>{core.fa(left)} روز</b> باقی مانده")
+
+    if sub.get("client_email"):
+        lines.append(f"<i>نام کانفیگ:</i> <code>{esc(sub['client_email'])}</code>")
+
+    rows = []
+    if plan:
+        lines += ["", f"مبلغ تمدید: <b>{core.toman(plan['price'])}</b> تومان"]
+        lines.append("")
+        lines.append("<blockquote>بعد از تمدید، همین کانفیگ ادامه پیدا "
+                     "می‌کند — لازم نیست چیزی را در برنامه‌تان عوض کنید."
+                     "</blockquote>")
+        if user["balance"] >= plan["price"]:
+            rows.append([("👛 تمدید آنی از کیف پول", f"wpay:{plan['id']}")])
+        rows.append([(f"💳 تمدید — {core.toman(plan['price'])} تومان",
+                      f"chk:{plan['id']}:0")])
+    else:
+        lines += ["", "پلن این اشتراک دیگر موجود نیست — از فهرست پلن‌ها "
+                  "یکی انتخاب کنید."]
+        rows.append([("🛒 دیدن پلن‌ها", "buy")])
+
+    rows.append([("‹ اشتراک‌های من", "mysubs")])
+    return _reply(ctx, chat_id, message_id, "\n".join(lines), kb(rows))
 
 
 def show_wallet(ctx, user, chat_id, message_id):
@@ -2197,6 +2262,36 @@ def _get_or_create(ctx, tg_user, ref=None):
         ctx.db.exec("UPDATE users SET affiliate_id=? WHERE tenant_id=? AND id=?",
                     (affiliate["id"], ctx.tid, u["id"]))
         u["affiliate_id"] = affiliate["id"]
+
+    # ── همه‌ی کارهای «کاربر تازه آمد» این‌جا انجام می‌شوند ──
+    #
+    # قبلاً در cmd_start بودند، و همان‌جا هم نمی‌رسیدند: تا وقتی
+    # cmd_start صدا زده شود، کاربر توسط همین تابع ساخته شده بود و
+    # شرط «کاربر جدید» رد می‌شد. اگر گیت شماره هم فعال باشد،
+    # cmd_start اصلاً در اولین تماس اجرا نمی‌شود.
+    #
+    # نتیجه‌اش این بود: معرف هیچ خبری نمی‌گرفت، پاداش خوش‌آمد داده
+    # نمی‌شد، و گروه مدیریت کاربر جدید را نمی‌دید.
+    ctx.db.log("signup", u["id"], {"ref": bool(referred_by)})
+
+    cs = core.coin_settings(ctx.s.get("coins"))
+    if referred_by and cs.get("welcome_bonus"):
+        ctx.db.add_coins(u["id"], int(cs["welcome_bonus"]),
+                         "bonus", "هدیه ورود با لینک دعوت")
+
+    uname = tg_user.get("username")
+    ctx.notify_group(
+        f"👤 <b>کاربر جدید</b>\n"
+        f"نام: {esc(tg_user.get('first_name'))}\n"
+        f"آیدی: <code>{tg_user['id']}</code>\n"
+        f"یوزرنیم: @{esc(uname) if uname else '—'}"
+        + ("\n📎 با لینک دعوت" if referred_by else ""),
+        topic="users"
+    )
+
+    if referred_by:
+        _notify_referrer_joined(ctx, referred_by, tg_user)
+
     return u
 
 
@@ -2316,6 +2411,14 @@ def _on_callback(ctx, cq):
             return _reply(ctx, chat_id, mid,
                           "سفارش لغو شد. هر وقت خواستید دوباره اقدام کنید 👍",
                           main_menu(ctx, user))
+
+        # دکمه‌ی «تمدید» در اشتراک‌های من.
+        #
+        # این شاخه وجود نداشت: دکمه ساخته می‌شد، کاربر می‌زد و هیچ
+        # اتفاقی نمی‌افتاد. هیچ خطایی هم در لاگ نبود چون callback
+        # بی‌صدا به انتهای تابع می‌رسید و None برمی‌گرداند.
+        if action == "renew":
+            return show_renew(ctx, user, chat_id, mid, int(arg))
 
         if action == "ost":
             return show_order_status(ctx, user, chat_id, mid, int(arg))
@@ -2539,15 +2642,21 @@ def auto_renew_subscription(tenant, bot, sub):
     if user["balance"] < plan["price"]:
         try:
             short = plan["price"] - user["balance"]
+            # نام پلن باید بیاید: کاربری که چند اشتراک دارد وگرنه
+            # نمی‌داند کدامشان تمدید نشده و دنبال کدام باید بگردد
             bot.send(user["tg_id"],
                      "⚠️ <b>تمدید خودکار انجام نشد</b>\n\n"
+                     f"📦 {esc(plan['name'])}\n"
+                     f"<i>{core.fmt_gb(plan['gb'])} · "
+                     f"{core.fmt_days(plan['days'])}</i>\n\n"
                      "موجودی کیف پولتان کافی نبود.\n\n"
                      f"لازم: <b>{core.toman(plan['price'])}</b> تومان\n"
                      f"موجودی: {core.toman(user['balance'])} تومان\n"
                      f"کسری: <b>{core.toman(short)}</b> تومان\n\n"
-                     "کیف پول را شارژ کنید تا دفعه‌ی بعد خودکار انجام شود — "
-                     "تمدید خودکارتان هنوز روشن است.",
-                     keyboard=kb([[("👛 شارژ کیف پول", "wallet")]]))
+                     "<blockquote>کیف پول را شارژ کنید تا دفعه‌ی بعد خودکار "
+                     "انجام شود — تمدید خودکارتان هنوز روشن است.</blockquote>",
+                     keyboard=kb([[("👛 شارژ کیف پول", "wallet")],
+                                  [("📊 اشتراک‌های من", "mysubs")]]))
         except TelegramError:
             pass
         return
@@ -2572,9 +2681,13 @@ def auto_renew_subscription(tenant, bot, sub):
         try:
             bot.send(user["tg_id"],
                      "✅ <b>اشتراکتان خودکار تمدید شد</b>\n\n"
+                     f"📦 {esc(plan['name'])}\n"
+                     f"<i>{core.fmt_gb(plan['gb'])} · "
+                     f"{core.fmt_days(plan['days'])}</i>\n\n"
                      f"<b>{core.toman(plan['price'])}</b> تومان از کیف پول کم شد.\n\n"
-                     "کاری لازم نیست بکنید — کانفیگ فعلی‌تان همان است و "
-                     "وصل می‌ماند.")
+                     "<blockquote>کاری لازم نیست بکنید — کانفیگ فعلی‌تان "
+                     "همان است و وصل می‌ماند.</blockquote>",
+                     keyboard=kb([[("📊 اشتراک‌های من", "mysubs")]]))
         except TelegramError:
             pass
         ctx.notify_group(f"🔁 تمدید خودکار\n👤 <code>{user['tg_id']}</code>\n"

@@ -92,6 +92,46 @@ for label, (ok, note), expect in cases:
 ok, note = F.block_ip("نه‌آی‌پی")
 check("بستن آدرس نامعتبر رد می‌شود", (not ok) and "نامعتبر" in note, note[:40])
 
+head("پیشنهاد قواعد")
+
+_avail, _status = F.available, F.status
+F.available = lambda: True
+F.status = lambda: {"ready": True, "installed": True, "active": True,
+                    "sshProtected": True,
+                    "rules": [{"port": 443, "action": "ALLOW"}]}
+
+PORTS = [
+    {"port": 22, "proto": "tcp", "process": "sshd", "public": True, "known": "SSH"},
+    {"port": 443, "proto": "tcp", "process": "nginx", "public": True, "known": "HTTPS"},
+    {"port": 8443, "proto": "tcp", "process": "xray", "public": True, "known": "Xray"},
+    {"port": 23, "proto": "tcp", "process": "telnetd", "public": True, "known": ""},
+    {"port": 3306, "proto": "tcp", "process": "mysqld", "public": True, "known": ""},
+    {"port": 5432, "proto": "tcp", "process": "postgres", "public": False, "known": ""},
+]
+s = F.suggest(PORTS)
+
+keep_ports = {k["port"] for k in s["keep"]}
+close_ports = {k["port"] for k in s["close"]}
+already = {a["port"] for a in s["already"]}
+
+check("SSH در فهرست باز ماندن است", 22 in keep_ports, str(sorted(keep_ports)))
+check("Xray باز می‌ماند", 8443 in keep_ports)
+check("telnet بسته پیشنهاد می‌شود", 23 in close_ports, str(sorted(close_ports)))
+check("mysql بسته پیشنهاد می‌شود", 3306 in close_ports)
+check("پورت فقط داخلی اصلاً پیشنهاد نمی‌شود",
+      5432 not in keep_ports and 5432 not in close_ports)
+check("پورتی که از قبل قاعده دارد دوباره پیشنهاد نمی‌شود",
+      443 in already and 443 not in keep_ports and 443 not in close_ports)
+check("هر پیشنهاد دلیل دارد",
+      all(x.get("why") for x in s["keep"] + s["close"]))
+check("SSH دلیلش را توضیح می‌دهد",
+      any("SSH" in k["why"] for k in s["keep"] if k["port"] == 22))
+
+ok, note, res = F.apply_plan(s["close"], confirm=False)
+check("اعمال بدون تایید رد می‌شود", (not ok) and "confirm" in note, note[:44])
+
+F.available, F.status = _avail, _status
+
 head("رفتار بدون ufw")
 _real = F.available
 F.available = lambda: False

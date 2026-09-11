@@ -4929,8 +4929,36 @@ function ConnectionsCard({ conn, onBlock }) {
         <div className="flex items-center gap-1.5 flex-wrap">
           <CountChip label="اتصال" n={conn.total} color="var(--accent-2)" />
           <CountChip label="آی‌پی یکتا" n={conn.uniqueIps} color="var(--ok)" />
+          {conn.tunnelConns > 0 && (
+            <CountChip label="از تانل" n={conn.tunnelConns} color="var(--purple)" />
+          )}
         </div>
       </div>
+
+      {/* تانل‌ها جدا و *قبل* از هشدارها.
+          سرور ایرانِ خودتان ذاتاً صدها اتصال دارد؛ اگر کنار بقیه
+          بنشیند مدام شبیه سوءاستفاده به نظر می‌رسد. این‌جا صریح
+          می‌گوید کدام‌ها زیرساخت خودتان‌اند. */}
+      {conn.tunnels?.length > 0 && (
+        <div className="rounded-xl p-3.5 mb-3"
+          style={{ background: "rgba(167,139,250,.07)",
+                   border: "1px solid rgba(167,139,250,.22)" }}>
+          <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--purple)" }}>
+            {faNum(conn.tunnels.length)} اتصال از تانل‌های خودتان
+          </div>
+          {conn.tunnels.map((t) => (
+            <div key={t.ip} className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
+              <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{t.ip}</span>
+              {" — "}{esc0(t.name)}{" · "}<b>{faNum(t.count)}</b> اتصال
+              {" "}<span style={{ color: "var(--muted)" }}>({faNum(t.pct)}٪)</span>
+            </div>
+          ))}
+          <div className="text-[12px] mt-2 leading-relaxed" style={{ color: "var(--muted)" }}>
+            این‌ها ترافیک مشتری‌های شما هستند که از سرور ایران رد می‌شوند —
+            طبیعی است و در هشدارهای «مصرف غیرعادی» حساب نمی‌شوند.
+          </div>
+        </div>
+      )}
 
       {conn.heavy?.length > 0 && (
         <div className="rounded-xl p-3.5 mb-3"
@@ -5178,7 +5206,8 @@ function UsageHistoryCard({ password }) {
             {d.quietestHour !== null && d.quietestHour !== undefined && (
               <InfoBox>
                 بر اساس همین داده، ساعت <b>{faNum(d.quietestHour)}</b> کم‌مصرف‌ترین
-                زمان سرور شماست — اگر نگهداری خودکار را روشن کردید، همان را انتخاب کنید.
+                زمان سرور شماست — اگر «تازه‌سازی خودکار سرویس» را روشن کردید،
+                همین ساعت را بگذارید تا کسی قطعی را حس نکند.
               </InfoBox>
             )}
           </div>
@@ -5349,14 +5378,22 @@ function MaintenanceCard({ password }) {
     <div className="fx-card p-5 mb-4">
       <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
         <div className="text-[14px] font-semibold text-white flex items-center gap-2">
-          <RefreshCw size={15} style={{ color: "var(--accent-2)" }} /> نگهداری خودکار
+          <RefreshCw size={15} style={{ color: "var(--accent-2)" }} /> تازه‌سازی خودکار سرویس
         </div>
         <Toggle checked={!!m.enabled} onChange={(v) => up({ enabled: v })}
           label={m.enabled ? "روشن" : "خاموش"} />
       </div>
-      <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>
-        در ساعت کم‌مصرف، سرویس را تازه می‌کند تا نشتی حافظه و نشست‌های
-        مرده جمع نشوند.
+
+      {/* توضیح باید به سؤال واقعی مدیر جواب بدهد — «این به چه دردم
+          می‌خورد؟» — نه اینکه فقط بگوید چه کاری انجام می‌دهد. */}
+      <p className="text-[13px] mb-3 leading-relaxed" style={{ color: "var(--dim)" }}>
+        Xray هرچه بیشتر کار کند، حافظه‌ی بیشتری نگه می‌دارد و نشست‌های
+        قطع‌شده در آن جمع می‌شوند. بعد از چند هفته، همین باعث می‌شود
+        اتصال‌ها کند و بی‌دلیل قطع شوند.
+      </p>
+      <p className="text-[13px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+        یک ری‌استارت کوتاه در ساعتی که کسی آنلاین نیست، این را پاک
+        می‌کند. <b>اگر سرورتان مشکلی ندارد، لازم نیست روشنش کنید.</b>
       </p>
 
       <Msg msg={msg} />

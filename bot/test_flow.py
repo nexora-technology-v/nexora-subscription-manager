@@ -459,6 +459,55 @@ check("هنگام تایید رسید، «در حال تایپ» نشان داد
       any(a["kind"] == "typing" for a in ACTIONS),
       f"{len(ACTIONS)} بار")
 
+# ═══════════════ اطلاع به معرف ═══════════════
+section("اطلاع به معرف")
+
+# معرف باید *همان لحظه‌ی ثبت‌نام* خبردار شود. قبلاً فقط گروه مدیریت
+# خبر می‌گرفت و خود معرف هیچ سیگنالی نداشت — از دیدش لینک دعوت کار
+# نمی‌کرد، چون سکه هم فقط بعد از خرید می‌آمد و گاهی روزها سکوت بود.
+inviter = D.get_user(555)
+SENT.clear()
+H.dispatch(tenant, bot, up_msg(7788, f"/start {inviter['ref_code']}", "مهمان"))
+
+to_inviter = [s for s in SENT if s["to"] == 555]
+check("معرف همان لحظه خبردار شد", len(to_inviter) > 0, f"{len(to_inviter)} پیام")
+if to_inviter:
+    t = to_inviter[0]["text"]
+    check("نام دعوت‌شده آمده", "مهمان" in t)
+    check("تعداد کل دعوت‌ها آمده", "نفر را دعوت" in t)
+    check("می‌گوید سکه بعد از خرید می‌آید", "خرید" in t and "سکه" in t, t[:60])
+    check("از blockquote استفاده شده", "<blockquote>" in t)
+
+newbie = D.get_user(7788)
+check("رابطه‌ی معرف ثبت شد", newbie and newbie["referred_by"] == inviter["id"])
+
+# خوددعوتی نباید پیام بسازد
+SENT.clear()
+H.dispatch(tenant, bot, up_msg(4242, f"/start {inviter['ref_code']}"))
+D.exec("DELETE FROM users WHERE tenant_id=? AND tg_id=?", (tid, 4242))
+
+# ═══════════════ دکمه‌ی تمدید ═══════════════
+section("دکمه‌ی تمدید")
+
+# این دکمه در «اشتراک‌های من» ساخته می‌شد ولی هیچ شاخه‌ای در
+# dispatch نداشت: کاربر می‌زد، هیچ اتفاقی نمی‌افتاد، و چون callback
+# بی‌صدا None برمی‌گرداند حتی خطایی در لاگ نبود.
+mysub = D.q("SELECT * FROM subscriptions WHERE tenant_id=? AND user_id=? LIMIT 1",
+            (tid, inviter["id"]), one=True)
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(555, f"renew:{mysub['id']}"))
+check("دکمه‌ی تمدید پاسخ می‌دهد", len(SENT) > 0, f"{len(SENT)} پیام")
+if SENT:
+    rt = SENT[-1]["text"]
+    check("نام پلن نشان داده می‌شود", plan["name"] in rt, rt[:70])
+    check("مبلغ تمدید آمده", "مبلغ تمدید" in rt)
+    check("blockquote توضیحی دارد", "<blockquote>" in rt)
+
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(555, "renew:99999"))
+check("اشتراک ناموجود خطای تمیز می‌دهد",
+      SENT and "پیدا نشد" in SENT[-1]["text"], SENT[-1]["text"][:40] if SENT else "—")
+
 # ═══════════════ دکمه‌ی کپی ═══════════════
 section("دکمه‌ی کپی")
 

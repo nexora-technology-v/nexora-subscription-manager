@@ -369,6 +369,64 @@ def listening():
     return rows
 
 
+def _tunnel_peers():
+    """
+    آی‌پی‌هایی که خودِ ما به آن‌ها تانل داریم.
+
+    این‌ها ذاتاً اتصال زیاد دارند — کل ترافیک مشتری‌های ایران از
+    همین‌ها رد می‌شود. بدون شناختنشان، همیشه بالای فهرست «مصرف
+    غیرعادی» می‌نشینند و مدیر را دنبال نخود سیاه می‌فرستند.
+
+    منبع: دیتابیس تانل پنل، به‌علاوه‌ی هر پیری که پردازه‌اش یکی از
+    موتورهای شناخته‌شده‌ی تانل باشد.
+    """
+    peers = {}
+
+    # ۱) از دیتابیس تانل
+    for p in ("/opt/nexora/data/tunnels.db", "/opt/nexora-panel/data/tunnels.db"):
+        if not os.path.exists(p):
+            continue
+        try:
+            import sqlite3
+            con = sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=3)
+            con.row_factory = sqlite3.Row
+            try:
+                rows = con.execute(
+                    "SELECT host, name FROM nodes WHERE host IS NOT NULL").fetchall()
+                for r in rows:
+                    h = (r["host"] or "").strip()
+                    if h:
+                        peers[h] = r["name"] or "نود تانل"
+            except Exception:
+                pass
+            con.close()
+        except Exception:
+            pass
+        break
+
+    # ۲) از روی پردازه‌های موتور تانل که اتصال باز دارند
+    if _has("ss"):
+        ok, out = _run(["ss", "-tunpH", "state", "established"], timeout=10)
+        if ok:
+            for line in out.splitlines():
+                low = line.lower()
+                if not any(e in low for e in TUNNEL_ENGINES):
+                    continue
+                f = line.split()
+                if len(f) < 5:
+                    continue
+                m = re.match(r"^(.*):(\d+)$", f[4])
+                if m:
+                    peers.setdefault(m.group(1).strip("[]"), "موتور تانل")
+
+    return peers
+
+
+#: نام پردازه‌ی موتورهای تانلی که پنل نصب می‌کند
+TUNNEL_ENGINES = ("backhaul", "chisel", "rathole", "gost", "frpc", "frps",
+                  "wireguard", "wg-quick")
+
+
 def connections(top=8):
     """
     اتصال‌های برقرار — چه کسی دارد از سرور استفاده می‌کند.
@@ -377,12 +435,17 @@ def connections(top=8):
     آن در تو آمده». برای فروشنده‌ی VPN مهم‌ترین سؤال همین است: وقتی
     سرور کند می‌شود، کدام IP بیشترین سهم را دارد.
 
+    تانل‌ها جدا حساب می‌شوند: سرور ایرانِ خودتان ذاتاً صدها اتصال
+    دارد و اگر کنار مشتری‌ها بنشیند، همیشه «غیرعادی» به نظر می‌رسد
+    و هشدار واقعی را زیر نویز دفن می‌کند.
+
     خروجی:
       total      کل اتصال‌های برقرار
       uniqueIps  چند IP یکتا
       byIp       پرمصرف‌ترین IPها با تعداد اتصال
       byPort     پرترافیک‌ترین پورت‌های محلی
-      heavy      IPهایی که سهمشان غیرعادی است
+      heavy      IPهایی که سهمشان غیرعادی است (بدون تانل‌ها)
+      tunnels    اتصال‌های تانل، جدا
     """
     if not _has("ss"):
         return {}
@@ -420,22 +483,38 @@ def connections(top=8):
 
     ranked = sorted(by_ip.items(), key=lambda kv: kv[1], reverse=True)
 
+    try:
+        peers = _tunnel_peers()
+    except Exception:
+        peers = {}
+
+    tunnels = [{"ip": ip, "name": peers[ip], "count": n,
+                "pct": round(n * 100.0 / total, 1)}
+               for ip, n in ranked if ip in peers]
+
     # «غیرعادی» یعنی یک IP بیش از ۱۵٪ کل اتصال‌ها را گرفته و دست‌کم
     # ۲۰ اتصال دارد. زیر این حد، نوسان طبیعی است و هشدار دادنش فقط
     # نویز می‌سازد.
+    #
+    # تانل‌های خودمان از این حساب بیرون‌اند: کل ترافیک مشتری‌های
+    # ایران از آن‌ها رد می‌شود، پس همیشه بالای فهرست می‌نشستند و
+    # هشدار واقعی را دفن می‌کردند.
     heavy = [{"ip": ip, "count": n, "pct": round(n * 100.0 / total, 1)}
              for ip, n in ranked
-             if n >= 20 and n * 100.0 / total >= 15]
+             if ip not in peers and n >= 20 and n * 100.0 / total >= 15]
 
     return {
         "total": total,
         "uniqueIps": len(by_ip),
-        "byIp": [{"ip": ip, "count": n, "pct": round(n * 100.0 / total, 1)}
+        "byIp": [{"ip": ip, "count": n, "pct": round(n * 100.0 / total, 1),
+                  "tunnel": peers.get(ip) or ""}
                  for ip, n in ranked[:top]],
         "byPort": [{"port": p, "count": n}
                    for p, n in sorted(by_port.items(),
                                       key=lambda kv: kv[1], reverse=True)[:top]],
         "heavy": heavy,
+        "tunnels": tunnels,
+        "tunnelConns": sum(t["count"] for t in tunnels),
     }
 
 

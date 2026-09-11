@@ -2374,6 +2374,33 @@ def firewall_delete_rule(num: int, confirm: int = 0,
     return {"ok": True, "note": note, **fw.status()}
 
 
+@app.get("/api/admin/firewall/suggest")
+def firewall_suggest(x_admin_password: str = Header(...)):
+    """
+    پیشنهاد قواعد بر اساس سرویس‌هایی که واقعاً روی سرور اجرا می‌شوند.
+
+    هیچ‌چیز اعمال نمی‌شود — فقط می‌گوید چه چیزی باید باز بماند و چه
+    چیزی مشکوک است، با دلیل هرکدام.
+    """
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    ports = MONITOR.listening() if MONITOR else []
+    return fw.suggest(ports)
+
+
+@app.post("/api/admin/firewall/apply-plan")
+def firewall_apply_plan(payload: dict, x_admin_password: str = Header(...)):
+    """اعمال دسته‌ای قواعد پیشنهادی، با تایید صریح مدیر."""
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    p = payload or {}
+    ok, note, results = fw.apply_plan(p.get("rules") or [],
+                                      confirm=bool(p.get("confirm")))
+    if not ok:
+        raise HTTPException(status_code=400, detail=note)
+    return {"ok": True, "note": note, "results": results, **fw.status()}
+
+
 @app.post("/api/admin/firewall/block-ip")
 def firewall_block_ip(payload: dict, x_admin_password: str = Header(...)):
     """
