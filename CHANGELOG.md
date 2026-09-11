@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.1.0]
+
+### Fixed — The referral link never told anyone anything
+
+Every signup action — welcome bonus, admin group notice, telling the referrer — lived in
+`cmd_start` behind an "if this user is new" check. But `_on_message` calls
+`_get_or_create` first, so the user already existed by the time `cmd_start` ran and the
+whole block was skipped. With the phone gate enabled, `cmd_start` does not run on first
+contact at all. The code had been dead for a long time while looking entirely reasonable.
+
+It now lives where the user is actually created. The referrer hears the moment someone
+joins with their link, sees how many people they have invited, and is told the coin
+arrives after that person's first purchase — rather than waiting for a reward that was
+never coming yet.
+
+### Fixed — The renew button did nothing
+
+It was rendered in "my subscriptions", but no branch in the callback dispatcher handled
+it. The callback fell through and returned `None`, so pressing it produced no reply and
+no log line.
+
+Renewal now opens a page naming the plan, its volume and duration, days remaining and the
+config name. Someone holding three subscriptions could not otherwise tell which one they
+were about to pay for. Auto-renewal messages name the plan for the same reason.
+
+### Fixed — Tunnels counted as suspicious traffic
+
+The Iranian node carries every customer's traffic, so it always topped "unusual usage"
+and buried real warnings underneath itself. Tunnel peers are now identified from the
+tunnel database and from processes belonging to known engines, shown separately as your
+own infrastructure, and excluded from the heavy-usage check.
+
+### Added — The firewall proposes rules
+
+Reads what is actually listening and suggests what to do with each port: keep SSH and the
+panel's own services, with the reason attached to each; close anything public that
+belongs to neither; ignore loopback-only ports; skip ports that already have a rule.
+Nothing is applied without an explicit confirmation.
+
+### Changed
+
+- Maintenance renamed to "تازه‌سازی خودکار سرویس", with a description that explains why
+  an admin would want it and says plainly that a healthy server does not need it
+- More guidance text moved into blockquotes, which Telegram renders with a side rule so
+  an explanation reads as an explanation rather than another instruction
+
 ## [1.0.0] — First release
 
 Nexora is a subscription manager for 3x-ui: a customer-facing subscription page, a
