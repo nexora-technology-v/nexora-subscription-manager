@@ -261,6 +261,25 @@ def _connect():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(DB_PATH), timeout=20)
     con.row_factory = sqlite3.Row
+
+    # WAL: خواندن و نوشتن هم‌زمان همدیگر را قفل نمی‌کنند.
+    #
+    # در حالت پیش‌فرض (journal=delete) هر نوشتن کل دیتابیس را قفل
+    # می‌کند و هر خواننده‌ای باید منتظر بماند. تا وقتی آپدیت‌ها
+    # یکی‌یکی پردازش می‌شدند این دیده نمی‌شد، ولی حالا که هشت نخ
+    # هم‌زمان کار می‌کنند، دقیقاً همان‌جایی است که به گلوگاه می‌خورد.
+    #
+    # synchronous=NORMAL در کنار WAL امن است: در برق‌رفتن، آخرین
+    # تراکنش‌های commit‌شده سالم می‌مانند.
+    try:
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("PRAGMA synchronous=NORMAL")
+        con.execute("PRAGMA busy_timeout=20000")
+    except sqlite3.Error:
+        # روی فایل‌سیستم شبکه‌ای WAL پشتیبانی نمی‌شود — همان حالت
+        # پیش‌فرض کار می‌کند، فقط کندتر
+        pass
+
     return con
 
 

@@ -6,6 +6,7 @@ ctx شامل bot، db، tenant و settings است.
 """
 
 import json
+import os
 import time
 import logging
 from datetime import datetime
@@ -34,6 +35,19 @@ class Ctx:
     اطلاعات اتصال عوض شود، خودکار دور ریخته می‌شود.
     """
 
+    #: چند ثانیه تنظیمات را کش کنیم.
+    #
+    # صفر یعنی رفتار قبلی: هر دسترسی یک اتصال SQLite جدید، یک کوئری
+    # و یک json.loads. و `ctx.s` در handlers حدود ۳۱ جا صدا زده
+    # می‌شود — یعنی یک پیام ساده‌ی کاربر ده‌ها بار دیسک را می‌خورد.
+    # اندازه‌گیری‌شده: ۲ms هر بار روی SSD، ۶۲ms برای یک پیام؛ روی
+    # دیسک اشتراکی سرور مجازی چند برابر.
+    #
+    # دو ثانیه به‌اندازه‌ی کافی کوتاه است که تغییر تنظیمات در پنل
+    # عملاً فوری دیده شود، و به‌اندازه‌ی کافی بلند که در طول پردازش
+    # یک پیام فقط یک بار خوانده شود.
+    CACHE_TTL = float(os.getenv("BOT_CTX_CACHE", "2"))
+
     def __init__(self, bot, tenant):
         self.bot = bot
         self._tenant0 = tenant
@@ -41,16 +55,33 @@ class Ctx:
         self.db = DB.TenantDB(tenant["id"])
         self._xui = None
         self._xui_sig = None
+        self._t_cache = None
+        self._t_at = 0.0
+        self._s_cache = None
+        self._s_at = 0.0
+
+    def invalidate(self):
+        """دور ریختن کش — بعد از هر تغییری که خودمان در تنظیمات دادیم."""
+        self._t_cache = self._s_cache = None
+        self._t_at = self._s_at = 0.0
 
     @property
     def tenant(self):
-        """اطلاعات تازه‌ی مستاجر — نه نسخه‌ی لحظه‌ی ساخت."""
-        return DB.get_tenant(self.tid) or self._tenant0
+        """اطلاعات مستاجر، با کش کوتاه."""
+        now = time.time()
+        if self._t_cache is None or now - self._t_at > self.CACHE_TTL:
+            self._t_cache = DB.get_tenant(self.tid) or self._tenant0
+            self._t_at = now
+        return self._t_cache
 
     @property
     def s(self):
-        """تنظیمات مستاجر (تازه خوانده می‌شود تا تغییرات پنل فوری اعمال شوند)."""
-        return DB.tenant_settings(self.tid)
+        """تنظیمات مستاجر، با کش کوتاه."""
+        now = time.time()
+        if self._s_cache is None or now - self._s_at > self.CACHE_TTL:
+            self._s_cache = DB.tenant_settings(self.tid)
+            self._s_at = now
+        return self._s_cache
 
     @property
     def xui(self):

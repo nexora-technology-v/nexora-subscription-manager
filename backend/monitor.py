@@ -369,6 +369,13 @@ def listening():
     return rows
 
 
+#: کش پیرهای تانل. نودها ماه‌ها ثابت‌اند، ولی بدون کش هر بار
+#: نمونه‌گیری یک `ss` اضافه اجرا می‌شد — روی صفحه‌ای که هر ۸ ثانیه
+#: تازه می‌شود، همان یکی هم بار بی‌دلیل است.
+_PEERS_CACHE = {"at": 0.0, "data": {}}
+_PEERS_TTL = 120
+
+
 def _tunnel_peers():
     """
     آی‌پی‌هایی که خودِ ما به آن‌ها تانل داریم.
@@ -380,6 +387,10 @@ def _tunnel_peers():
     منبع: دیتابیس تانل پنل، به‌علاوه‌ی هر پیری که پردازه‌اش یکی از
     موتورهای شناخته‌شده‌ی تانل باشد.
     """
+    now = time.time()
+    if now - _PEERS_CACHE["at"] < _PEERS_TTL:
+        return _PEERS_CACHE["data"]
+
     peers = {}
 
     # ۱) از دیتابیس تانل
@@ -419,6 +430,8 @@ def _tunnel_peers():
                 if m:
                     peers.setdefault(m.group(1).strip("[]"), "موتور تانل")
 
+    _PEERS_CACHE["at"] = now
+    _PEERS_CACHE["data"] = peers
     return peers
 
 

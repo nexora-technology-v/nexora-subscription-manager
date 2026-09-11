@@ -130,6 +130,71 @@ check("کاربران سریع زودتر از کاربر کند تمام شدن
       " ← ".join(res3[:3]) + " ... ")
 check("هیچ کاربری گم نشد", len(res3) == 6, str(len(res3)))
 
+head("کش تنظیمات در Ctx")
+
+import tempfile   # noqa: E402
+os.environ["BOT_DB_PATH"] = tempfile.mktemp(suffix=".db")
+sys.path.insert(0, os.path.join(ROOT, "bot"))
+
+from bot import db as _db          # noqa: E402
+import bot.tg as _tg               # noqa: E402
+import bot.handlers as _H          # noqa: E402
+
+
+class _FakeBot:
+    def __init__(self, token=None):
+        self.token = token
+
+    def __getattr__(self, n):
+        return lambda *a, **k: {"message_id": 1, "chat": {"id": 1}}
+
+
+_tg.Bot = _FakeBot
+_H.Bot = _FakeBot
+_db.init_db()
+_tid = _db.create_tenant("T", bot_token="1:X", owner_tg_id=9)
+_db.save_tenant_settings(_tid, {"brand": "Nexora", "coins": {"per_referral": 10}})
+_tenant = _db.get_tenant(_tid)
+
+_reads = {"n": 0}
+_orig = _db.tenant_settings
+
+
+def _counting(tid):
+    _reads["n"] += 1
+    return _orig(tid)
+
+
+_db.tenant_settings = _counting
+_H.DB.tenant_settings = _counting
+
+_ctx = _H.Ctx(_FakeBot(), _tenant)
+_reads["n"] = 0
+for _ in range(30):
+    _ctx.s
+check("۳۰ دسترسی به ctx.s فقط یک بار دیسک می‌خورد",
+      _reads["n"] == 1, f"{_reads['n']} بار خواندن")
+
+# تغییر تنظیمات از پنل باید بعد از TTL دیده شود
+_H.Ctx.CACHE_TTL = 0.05
+_ctx2 = _H.Ctx(_FakeBot(), _tenant)
+_ = _ctx2.s
+_db.save_tenant_settings(_tid, {"brand": "عوض‌شده"})
+time.sleep(0.12)
+check("تغییر تنظیمات پنل بعد از TTL دیده می‌شود",
+      _ctx2.s.get("brand") == "عوض‌شده", str(_ctx2.s.get("brand")))
+
+_ctx3 = _H.Ctx(_FakeBot(), _tenant)
+_ = _ctx3.s
+_ctx3.invalidate()
+_reads["n"] = 0
+_ = _ctx3.s
+check("invalidate کش را دور می‌ریزد", _reads["n"] == 1, f"{_reads['n']} بار")
+
+_db.tenant_settings = _orig
+_H.DB.tenant_settings = _orig
+_H.Ctx.CACHE_TTL = 2
+
 head("تنظیمات واقعی run.py")
 
 import importlib.util   # noqa: E402

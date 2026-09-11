@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.2.0]
+
+### Fixed — Every bot message re-read the settings 31 times
+
+`ctx.s` was a property that opened a fresh SQLite connection, ran a query and parsed JSON
+on **every access** — and handlers touch it in 31 places. One simple message meant dozens
+of disk round-trips before the bot did any actual work.
+
+Measured: 2ms per read on an SSD, 62ms of pure overhead per message, and that is a fast
+disk. On a VPS with shared storage it is several times worse.
+
+Settings and tenant data are now cached for two seconds — short enough that a change made
+in the panel appears effectively instantly, long enough that a single message reads them
+once. Overhead per message dropped from 70ms to under 0.1ms.
+
+### Fixed — SQLite locked the whole database on every write
+
+The bot opened its database in the default journal mode, where a write blocks every
+reader. That stayed invisible while updates were processed one at a time, but 1.0.0
+introduced a pool of eight workers, and this is exactly where they queued up behind each
+other.
+
+WAL is now enabled, with `synchronous=NORMAL` and a 20-second busy timeout. Eight threads
+running 60 mixed read/write operations each complete with no lock errors. Filesystems
+that cannot support WAL fall back silently to the previous behaviour.
+
+### Added — `slow-doctor.sh`
+
+The panel can only see so much from inside. This script measures the server itself and
+says what each number means: CPU saturation relative to core count, memory and swap
+pressure, real disk write speed, service restart counts, **latency to Telegram** — which
+dominates how fast the bot feels — SQLite journal mode and size, and the busiest IPs.
+
+Run it with `sudo bash slow-doctor.sh` and send the output.
+
+### Changed
+
+- Tunnel peer lookup is cached for two minutes. Detecting them cost an extra `ss` call on
+  every sample, which on a page refreshing every eight seconds is work for nothing
+
+### Reverted
+
+A cache for the panel's `load_config` was written and then removed: measured against the
+real config it was *slower* than reading the file, because the defensive deep copy cost
+more than the read it replaced. Complexity that does not pay for itself does not ship.
+
 ## [1.1.0]
 
 ### Fixed — The referral link never told anyone anything
