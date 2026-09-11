@@ -7,7 +7,7 @@
 
 set -o pipefail
 
-VERSION="1.9.0"
+VERSION="1.0.0"
 INSTALL_DIR="/opt/nexora-panel"
 SSL_DIR="/etc/nginx/ssl"
 
@@ -570,7 +570,7 @@ fi
 
 # Enable automatic updates from GitHub
 if [ ! -f "$INSTALL_DIR/.github" ]; then
-  echo 'GITHUB_REPO="nexoratech-v/nexora-subscription-manager"' > "$INSTALL_DIR/.github"
+  echo 'GITHUB_REPO="nexora-technology-v/nexora-subscription-manager"' > "$INSTALL_DIR/.github"
   chmod 600 "$INSTALL_DIR/.github"
   ok "Auto-update enabled — run 'nexora update' anytime"
 fi

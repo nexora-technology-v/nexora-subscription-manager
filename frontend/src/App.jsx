@@ -10461,7 +10461,7 @@ function UpdateCard({ password }) {
             <code dir="ltr" className="block px-3 py-2.5 rounded-lg text-[13px]"
               style={{ background: "#05070C", border: "1px solid var(--border-2)", color: "var(--accent-2)",
                        fontFamily: "var(--mono)", wordBreak: "break-all" }}>
-              echo 'GITHUB_REPO="nexoratech-v/nexora-subscription-manager"' &gt; /opt/nexora-panel/.github
+              echo 'GITHUB_REPO="nexora-technology-v/nexora-subscription-manager"' &gt; /opt/nexora-panel/.github
             </code>
             <p className="text-[12px] mt-2" style={{ color: "var(--muted)" }}>
               سپس <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>nexora restart</span> را بزنید.

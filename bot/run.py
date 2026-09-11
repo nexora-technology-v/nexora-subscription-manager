@@ -18,6 +18,7 @@ import signal
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -30,6 +31,12 @@ log = logging.getLogger("nexora.bot")
 _stop = threading.Event()
 _workers = {}          # tenant_id → Thread
 _lock = threading.Lock()
+
+#: چند آپدیت هم‌زمان برای هر مستاجر.
+#: هشت یعنی هشت کاربر می‌توانند هم‌زمان کانفیگ بگیرند بدون
+#: اینکه منتظر هم بمانند؛ بالاتر از این، محدودیت نرخ تلگرام
+#: و پنل 3x-ui گلوگاه می‌شوند نه ما.
+POOL_SIZE = int(os.getenv("BOT_POOL_SIZE", "8"))
 
 
 # ═══════════════════════════════════════════════════════════
@@ -45,7 +52,49 @@ def tenant_loop(tenant_id: int):
     """
     offset = 0
     backoff = 1
+    tg = None
     name = f"tenant-{tenant_id}"
+
+    # ── چرا اینجا استخر نخ داریم ──
+    #
+    # قبلاً آپدیت‌ها یکی‌یکی و پشت‌سرهم پردازش می‌شدند. ساخت کانفیگ
+    # در 3x-ui چند ثانیه طول می‌کشد (لاگین، افزودن کلاینت، بازخوانی،
+    # گرفتن لینک) و در تمام آن مدت *هیچ* پیام دیگری پردازش نمی‌شد.
+    # با ده کاربر هم‌زمان، نفر دهم ده‌ها ثانیه منتظر می‌ماند.
+    #
+    # حالا هر آپدیت به استخر می‌رود، ولی پیام‌های یک کاربر با قفلِ
+    # همان چت سریالی می‌مانند — وگرنه دو پیام پشت‌سرهم یک نفر
+    # می‌توانستند جابه‌جا اجرا شوند و وضعیت گفت‌وگو خراب شود.
+    pool = ThreadPoolExecutor(max_workers=POOL_SIZE,
+                              thread_name_prefix=f"{name}-w")
+    chat_locks = {}
+    locks_guard = threading.Lock()
+
+    def chat_lock(update):
+        msg = (update.get("message") or update.get("callback_query", {})
+               .get("message") or {})
+        cid = (msg.get("chat") or {}).get("id")
+        if cid is None:
+            cid = ((update.get("callback_query") or {}).get("from")
+                   or {}).get("id", 0)
+        with locks_guard:
+            lk = chat_locks.get(cid)
+            if lk is None:
+                lk = chat_locks[cid] = threading.Lock()
+            # جلوگیری از رشد بی‌پایان در ربات پرترافیک
+            if len(chat_locks) > 5000:
+                for k in [k for k, v in list(chat_locks.items())
+                          if k != cid and not v.locked()][:2500]:
+                    chat_locks.pop(k, None)
+        return lk
+
+    def handle(tenant_snapshot, bot, update):
+        try:
+            with chat_lock(update):
+                handlers.dispatch(tenant_snapshot, bot, update)
+        except Exception:
+            log.exception("%s: خطا در پردازش آپدیت %s",
+                          name, update.get("update_id"))
 
     while not _stop.is_set():
         try:
@@ -54,7 +103,16 @@ def tenant_loop(tenant_id: int):
                 log.info("%s: غیرفعال یا بدون توکن — خروج", name)
                 return
 
-            tg = Bot(tenant["bot_token"])
+            # Bot را یک‌بار می‌سازیم و نگه می‌داریم.
+            #
+            # قبلاً در هر دور حلقه یکی نو ساخته می‌شد، یعنی نشست
+            # requests و اتصال باز TLS هر بار دور ریخته می‌شد و
+            # فراخوانی بعدی از صفر دست می‌داد. روی مسیر ایران به
+            # تلگرام، همین تنهایی چند صد میلی‌ثانیه به هر پیام
+            # اضافه می‌کرد.
+            if tg is None or tg.token != tenant["bot_token"]:
+                tg = Bot(tenant["bot_token"])
+
             updates = tg.updates(offset=offset, timeout=25)
             backoff = 1
 
@@ -62,10 +120,7 @@ def tenant_loop(tenant_id: int):
                 offset = up["update_id"] + 1
                 if _stop.is_set():
                     break
-                try:
-                    handlers.dispatch(tenant, tg, up)
-                except Exception:
-                    log.exception("%s: خطا در پردازش آپدیت %s", name, up.get("update_id"))
+                pool.submit(handle, tenant, tg, up)
 
         except TelegramError as e:
             msg = str(e)

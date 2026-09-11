@@ -34,7 +34,7 @@ git init
 git add .
 git commit -m "Initial release v1.2.0"
 git branch -M main
-git remote add origin https://github.com/nexoratech-v/nexora-subscription-manager.git
+git remote add origin https://github.com/nexora-technology-v/nexora-subscription-manager.git
 git push -u origin main
 ```
 
@@ -92,7 +92,7 @@ backend/__pycache__/
 
 روی سرور، فایل تنظیمات را بسازید:
 ```bash
-echo 'GITHUB_REPO="nexoratech-v/nexora-subscription-manager"' > /opt/nexora-panel/.github
+echo 'GITHUB_REPO="nexora-technology-v/nexora-subscription-manager"' > /opt/nexora-panel/.github
 ```
 
 سپس:
@@ -111,7 +111,7 @@ nexora update
 روی سرور:
 ```bash
 cat > /opt/nexora-panel/.github << 'EOF'
-GITHUB_REPO="nexoratech-v/nexora-subscription-manager"
+GITHUB_REPO="nexora-technology-v/nexora-subscription-manager"
 GITHUB_TOKEN="ghp_توکن_شما"
 EOF
 chmod 600 /opt/nexora-panel/.github

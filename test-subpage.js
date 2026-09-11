@@ -39,8 +39,60 @@ const MOCK_CONFIG = {
   },
 };
 
+// صفحه‌ی اشتراک یک *قالب Go* است، نه HTML آماده: x-ui موقع سرو کردن
+// جای {{ .sId }} و امثالش مقدار می‌گذارد. تا قبل از این، تست فایل خام
+// را به jsdom می‌داد و پارسر روی اولین {{ می‌شکست — برای همین هر ۱۷
+// تست همیشه رد می‌شد و کسی نمی‌فهمید چون خطا فقط یک خط بود.
+//
+// این‌جا همان کاری را می‌کنیم که x-ui می‌کند: مقدار نمونه می‌گذاریم.
+function renderTemplate(src) {
+  // مقدارها بدون گیومه‌اند: آن‌هایی که در قالب داخل "..." نشسته‌اند
+  // گیومه‌شان را از خود قالب می‌گیرند. اگر اینجا گیومه بگذاریم،
+  // """" تولید می‌شود که JS نامعتبر است.
+  const vars = {
+    sId: 'abc123',
+    enabled: 'true',
+    expire: '1800000000',
+    downloadByte: '10737418240',
+    uploadByte: '1073741824',
+    totalByte: '53687091200',
+    lastOnline: '1800000000',
+    subUrl: 'https://sub.test.com/sub/abc123',
+    subClashUrl: 'https://sub.test.com/clash/abc123',
+    subSupportUrl: 'https://t.me/support',
+  };
+  return src
+    // حلقه‌های range که آرایه می‌سازند، اول و یکجا.
+    //
+    // شکلشان این است:
+    //   [{{ range $i, $e := .emails }}{{ if $i }},{{ end }}"{{ $e }}"{{ end }}]
+    //
+    // جایگزینی تک‌تکِ جای‌نگهدارها این را به [,""""] تبدیل می‌کرد، چون
+    // {{ $e }} داخل یک رشته‌ی جاوااسکریپت نشسته. پس کل بلوک را با یک
+    // آرایه‌ی نمونه عوض می‌کنیم.
+    .replace(/\[\{\{\s*range[^\]]*\]/g, (m) =>
+      m.includes('.links') ? '["vless://sample@host:443#user"]'
+                           : '["user@example.com"]')
+    // بلوک‌های شرطی — خود تگ می‌رود، محتوایش می‌ماند
+    .replace(/\{\{\s*(if|range|else|end)[^}]*\}\}/g, '')
+    // جایگزینی آگاه از بافت.
+    //
+    // قالب گاهی جای‌نگهدار را داخل گیومه گذاشته ("{{ .subUrl }}") و
+    // گاهی لخت ({{ .expire }}). اگر همیشه یک شکل بگذاریم، یکی از دو
+    // حالت خراب می‌شود: یا """" می‌سازیم یا مقدار بی‌گیومه در جای
+    // رشته. پس به کاراکتر قبل و بعد نگاه می‌کنیم.
+    .replace(/\{\{\s*\.?([A-Za-z_$][\w.$]*)\s*\}\}/g, (m, name, off, full) => {
+      const key = name.split('.').pop();
+      const quoted = full[off - 1] === '"' && full[off + m.length] === '"';
+      if (Object.prototype.hasOwnProperty.call(vars, key)) return vars[key];
+      return quoted ? 'sample' : '0';
+    })
+    .replace(/\{\{[^}]*\}\}/g, (m, off, full) =>
+      (full[off - 1] === '"' && full[off + m.length] === '"') ? 'sample' : '0');
+}
+
 async function run() {
-  let html = fs.readFileSync(HTML_PATH, 'utf8');
+  let html = renderTemplate(fs.readFileSync(HTML_PATH, 'utf8'));
 
   const dom = new JSDOM(html, {
     runScripts: 'dangerously',
@@ -52,8 +104,25 @@ async function run() {
         if (String(url).includes('/api/public/config')) {
           return Promise.resolve({ ok:true, json:()=>Promise.resolve(MOCK_CONFIG) });
         }
-        // درخواست live data صفحه ساب
-        return Promise.resolve({ ok:false, status:404, json:()=>Promise.resolve({}) });
+        // درخواست live data: صفحه لینک اشتراک خودش را می‌خواند تا
+        // مصرف و آخرین اتصال را از هدرها بگیرد.
+        //
+        // قبلاً اینجا ۴۰۴ برمی‌گرداندیم و بعد تست شکایت می‌کرد که
+        // «خطای جاوااسکریپت هست» — خطایی که خودمان ساخته بودیم.
+        // با پاسخ درست، آن تست دوباره معنا پیدا می‌کند: از این به
+        // بعد فقط وقتی قرمز می‌شود که خطای *واقعی* در صفحه باشد.
+        const headers = new Map([
+          ['subscription-userinfo',
+           'upload=1073741824; download=10737418240; total=53687091200; expire=1800000000'],
+          ['subscription-last-online', '1800000000'],
+        ]);
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: (k) => headers.get(String(k).toLowerCase()) ?? null },
+          text: () => Promise.resolve(''),
+          json: () => Promise.resolve({}),
+        });
       };
       window.AbortSignal = { timeout: () => null };
       // ثبت خطاها
@@ -169,12 +238,18 @@ async function run() {
   console.log(`نتیجه: ${passed}/${results.length} تست پاس شد`);
   console.log('─'.repeat(46));
 
+  // صفحه دو setInterval برای به‌روزرسانی زنده دارد. تا وقتی پنجره
+  // باز باشد، حلقه‌ی رویداد Node تمام نمی‌شود و تست برای همیشه
+  // معلق می‌ماند — بدون اینکه حتی نتیجه را چاپ کند.
+  try { dom.window.close(); } catch { /* بی‌اهمیت */ }
+
   if (passed < results.length) {
     console.log('\n⚠️ خطاهای ثبت‌شده:');
     jsErrors.slice(0,5).forEach(e => console.log('  •', String(e).slice(0,150)));
     process.exit(1);
   } else {
     console.log('\n🎉 همه تست‌ها پاس شدند');
+    process.exit(0);
   }
 }
 

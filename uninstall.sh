@@ -182,7 +182,7 @@ if [ "$REMOVE_TEMPLATE" = false ] && [ -n "$TEMPLATE_FOUND" ]; then
 fi
 
 echo -e "  ${C_DIM}To reinstall later:${C_RESET}"
-echo -e "  ${C_WHITE}git clone https://github.com/nexoratech-v/nexora-subscription-manager.git${C_RESET}"
+echo -e "  ${C_WHITE}git clone https://github.com/nexora-technology-v/nexora-subscription-manager.git${C_RESET}"
 echo -e "  ${C_WHITE}cd nexora-subscription-manager && sudo bash install.sh${C_RESET}"
 echo ""
 echo -e "${C_GRAY}  ─────────────────────────────────────────────────────${C_RESET}"

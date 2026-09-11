@@ -6,7 +6,7 @@
 
 دو راه:
 
-- [Security advisory خصوصی](https://github.com/nexoratech-v/nexora-subscription-manager/security/advisories/new) در همین ریپو
+- [Security advisory خصوصی](https://github.com/nexora-technology-v/nexora-subscription-manager/security/advisories/new) در همین ریپو
 - تلگرام: [@crm_nexoravpn](https://t.me/crm_nexoravpn)
 
 در گزارش، اگر می‌شود این‌ها را بنویسید: نسخه، مسیری که مشکل از آن قابل بهره‌برداری است، و اینکه مهاجم باید احراز هویت شده باشد یا نه.

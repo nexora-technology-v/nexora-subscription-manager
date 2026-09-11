@@ -2,7 +2,7 @@
 
 <img src="https://capsule-render.vercel.app/api?type=waving&color=0:06090F,45:2B7FD6,100:5AA9E6&height=170&section=header&text=NEXORA&fontSize=68&fontColor=ffffff&fontAlignY=34&desc=Subscription%20Manager%20for%203x-ui&descSize=16&descAlignY=54" width="100%" alt="Nexora">
 
-<img src="https://img.shields.io/badge/version-1.9.0-2B7FD6?style=for-the-badge&labelColor=06090F" alt="version">
+<img src="https://img.shields.io/badge/version-1.0.0-2B7FD6?style=for-the-badge&labelColor=06090F" alt="version">
 <img src="https://img.shields.io/badge/tests-248%20passing-34D399?style=for-the-badge&labelColor=06090F" alt="tests">
 <img src="https://img.shields.io/badge/3x--ui-3.5%2B-5AA9E6?style=for-the-badge&labelColor=06090F" alt="3x-ui">
 <img src="https://img.shields.io/badge/license-MIT-A78BFA?style=for-the-badge&labelColor=06090F" alt="license">
@@ -163,7 +163,7 @@ agent فقط به کتابخانه‌ی استاندارد پایتون نیاز
 پیش‌نیاز: اوبونتو ۲۰.۰۴ به بالا یا دبیان ۱۱ به بالا، ۳x-ui نصب‌شده، یک دامنه، و یک گیگابایت رم.
 
 ```bash
-git clone https://github.com/nexoratech-v/nexora-subscription-manager.git
+git clone https://github.com/nexora-technology-v/nexora-subscription-manager.git
 cd nexora-subscription-manager
 sudo bash install.sh
 ```
@@ -271,7 +271,7 @@ It's 3 AM. A customer paid and is waiting for their config. Get up and build it 
 **Sales report** — revenue for a chosen period, conversion rate from new users, top buyers with their phone numbers, a daily trend chart, and CSV export.
 
 ```bash
-git clone https://github.com/nexoratech-v/nexora-subscription-manager.git
+git clone https://github.com/nexora-technology-v/nexora-subscription-manager.git
 cd nexora-subscription-manager
 sudo bash install.sh
 ```
