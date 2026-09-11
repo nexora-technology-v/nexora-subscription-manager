@@ -5549,8 +5549,185 @@ function useFirewall(password) {
   return { d, busy, msg, setMsg, load, call };
 }
 
+/**
+ * پیشنهاد قواعد بر اساس چیزی که واقعاً روی سرور گوش می‌دهد.
+ *
+ * مدیر نباید از حفظ بداند کدام پورت لازم است. این بخش سرویس‌های در
+ * حال اجرا را می‌خواند و برای هرکدام می‌گوید باید باز بماند یا بسته
+ * شود — و چرا. هیچ‌چیز بدون تیک‌زدن و تایید اعمال نمی‌شود.
+ */
+function FirewallSuggest({ password, onApplied }) {
+  const [d, setD] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [picked, setPicked] = useState({});
+  const [open, setOpen] = useState(false);
+
+  const load = async () => {
+    setBusy(true);
+    try {
+      const j = await fetch(`${API_URL}/api/admin/firewall/suggest`, {
+        headers: { "X-Admin-Password": password },
+      }).then((r) => r.json());
+      setD(j);
+      // پیش‌فرض: همه‌ی پیشنهادهای «ببند» تیک می‌خورند، چون همان‌ها
+      // دلیل وجود این بخش‌اند. «باز بماند» تیک نمی‌خورد تا کسی
+      // ناخواسته دری را که بسته بوده باز نکند.
+      const p = {};
+      (j.close || []).forEach((x) => { p[`${x.port}/${x.proto}`] = true; });
+      setPicked(p);
+    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+    finally { setBusy(false); }
+  };
+
+  useEffect(() => { if (open && !d) load(); }, [open]);
+  useEffect(() => { if (msg) { const t = setTimeout(() => setMsg(null), 5000); return () => clearTimeout(t); } }, [msg]);
+
+  const all = [...((d && d.close) || []), ...((d && d.keep) || [])];
+  const chosen = all.filter((x) => picked[`${x.port}/${x.proto}`]);
+
+  const apply = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/firewall/apply-plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Password": password },
+        body: JSON.stringify({ confirm: true, rules: chosen }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMsg({ t: "ok", m: j.note || "اعمال شد" });
+        await load();
+        onApplied && onApplied();
+      } else setMsg({ t: "err", m: j.detail || "اعمال ناموفق" });
+    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+    finally { setBusy(false); }
+  };
+
+  const Row = ({ x, tone }) => {
+    const key = `${x.port}/${x.proto}`;
+    const on = !!picked[key];
+    const col = tone === "close" ? "var(--danger)" : "var(--ok)";
+    return (
+      <label className="flex items-start gap-3 p-3 rounded-xl mb-2 cursor-pointer"
+        style={{
+          background: on ? "var(--accent-soft)" : "var(--surface-3)",
+          border: `1px solid ${on ? "var(--accent-2)" : "var(--border)"}`,
+        }}>
+        <input type="checkbox" checked={on} style={{ accentColor: "var(--accent)", marginTop: 3 }}
+          onChange={(e) => setPicked({ ...picked, [key]: e.target.checked })} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>{x.port}</span>
+            <span className="text-[12px]" style={{ color: "var(--muted)" }}>{x.proto}</span>
+            {x.process && (
+              <span dir="ltr" className="text-[12px]" style={{ color: "var(--dim)" }}>{esc0(x.process)}</span>
+            )}
+            <span className="fx-pill" style={{ background: "rgba(255,255,255,.04)", color: col }}>
+              {tone === "close" ? "ببند" : "باز بماند"}
+            </span>
+          </div>
+          <div className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--muted)" }}>
+            {esc0(x.why)}
+          </div>
+        </div>
+      </label>
+    );
+  };
+
+  return (
+    <div className="fx-card p-5 mb-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-[14px] font-semibold text-white flex items-center gap-2">
+          <Sparkles size={15} style={{ color: "var(--accent-2)" }} /> پیشنهاد قواعد
+        </div>
+        <button onClick={() => setOpen(!open)} disabled={busy}
+          className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
+          {open ? "بستن" : "سرور را بررسی کن"}
+          <ChevronDown size={13} style={open ? { transform: "rotate(180deg)" } : undefined} />
+        </button>
+      </div>
+      <p className="text-[13px] mt-1" style={{ color: "var(--muted)" }}>
+        می‌بیند چه سرویس‌هایی روی سرور گوش می‌دهند و می‌گوید کدام باید باز
+        بماند و کدام مشکوک است — با دلیل هرکدام.
+      </p>
+
+      {open && (
+        <>
+          <Msg msg={msg} />
+
+          {!d ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
+            </div>
+          ) : (
+            <div className="mt-3">
+              {d.close?.length > 0 && (
+                <>
+                  <div className="text-[13px] mb-2" style={{ color: "var(--danger)" }}>
+                    رو به اینترنت باز است و به سرویس شما ربطی ندارد
+                  </div>
+                  {d.close.map((x) => <Row key={`c${x.port}${x.proto}`} x={x} tone="close" />)}
+                </>
+              )}
+
+              {d.keep?.length > 0 && (
+                <>
+                  <div className="text-[13px] mt-4 mb-2" style={{ color: "var(--ok)" }}>
+                    باید باز بماند
+                  </div>
+                  {d.keep.map((x) => <Row key={`k${x.port}${x.proto}`} x={x} tone="keep" />)}
+                </>
+              )}
+
+              {d.already?.length > 0 && (
+                <div className="mt-4 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+                  <div className="text-[13px] mb-2" style={{ color: "var(--muted)" }}>
+                    از قبل قاعده دارند
+                  </div>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {d.already.map((a) => (
+                      <span key={`a${a.port}`} className="fx-pill"
+                        style={{ background: "var(--surface-3)", color: "var(--dim)" }}>
+                        <span style={{ fontFamily: "var(--mono)" }}>{a.port}</span>
+                        {" · "}{esc0(a.action)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!d.close?.length && !d.keep?.length && (
+                <EmptyState icon={ShieldCheck}
+                  text="هر پورتِ رو به اینترنت از قبل قاعده دارد — چیزی برای پیشنهاد نیست" />
+              )}
+
+              {all.length > 0 && (
+                <>
+                  <InfoBox tone={chosen.some((x) => x.action === "deny") ? "warn" : "info"}>
+                    {chosen.length === 0
+                      ? "چیزی انتخاب نشده."
+                      : <>‌<b>{faNum(chosen.length)}</b> قاعده اعمال می‌شود. قبل از تایید
+                         مطمئن شوید پورتی که استفاده می‌کنید در فهرست «ببند» نیست.</>}
+                  </InfoBox>
+                  <button onClick={apply} disabled={busy || chosen.length === 0}
+                    className="fx-btn w-full mt-3 py-2.5 text-[13px] flex items-center justify-center gap-1.5">
+                    {busy ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                    اعمال {faNum(chosen.length)} قاعده
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function FirewallRules({ password }) {
-  const { d, busy, msg, call } = useFirewall(password);
+  const { d, busy, msg, call, load } = useFirewall(password);
   const [form, setForm] = useState({ port: "", proto: "tcp", action: "allow", comment: "" });
   const [confirmSsh, setConfirmSsh] = useState(false);
   const [q, setQ] = useState("");
@@ -5622,6 +5799,8 @@ function FirewallRules({ password }) {
         } />
 
       <Msg msg={msg} />
+
+      <FirewallSuggest password={password} onApplied={load} />
 
       {!d.active && (
         <div className="fx-card p-5 mb-4" style={{ borderColor: "rgba(251,191,36,.3)" }}>

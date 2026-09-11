@@ -603,7 +603,7 @@ def show_order_status(ctx, user, chat_id, message_id, order_id):
         f"{icon} <b>وضعیت سفارش: {label}</b>\n\n"
         f"{esc(p['name']) if p else '—'}\n"
         f"<b>{core.toman(o['amount'])}</b> تومان\n"
-        f"ثبت شده در {core.fa(str(o.get('created_at', ''))[:16])}\n\n"
+        f"ثبت شده در {core.fa_datetime(o.get('created_at'))}\n\n"
         f"<i>کد پیگیری:</i> <code>#{order_id}</code>"
     )
     if o["status"] == "rejected" and o.get("admin_note"):
@@ -1006,7 +1006,7 @@ def deliver(ctx, user, sub):
     if d is not None:
         line = f"⏳ <b>{core.fa(d)} روز</b> اعتبار"
         if sub.get("expires_at"):
-            line += f" — تا {core.fa(str(sub['expires_at'])[:10])}"
+            line += f" — تا {core.fa_date(sub['expires_at'])}"
         lines.append(line)
     if sub.get("client_email"):
         lines.append(f"🏷 <code>{esc(sub['client_email'])}</code>")
@@ -1157,7 +1157,7 @@ def show_subs(ctx, user, chat_id, message_id):
         else:
             line = f"⏳ <b>{core.fa(d)} روز</b> اعتبار"
             if s.get("expires_at"):
-                line += f" — تا {core.fa(str(s['expires_at'])[:10])}"
+                line += f" — تا {core.fa_date(s['expires_at'])}"
             lines.append(line)
 
         if s.get("client_email"):
@@ -1268,7 +1268,16 @@ def wallet_topup(ctx, user, chat_id, message_id):
     همان جریان کارت‌به‌کارت خرید است — مبلغ انتخاب می‌شود، رسید
     می‌آید، شما تایید می‌کنید و موجودی اضافه می‌شود.
     """
-    cards = ctx.db.q("SELECT * FROM cards WHERE tenant_id=? AND active=1", (ctx.tid,))
+    # کارت‌ها در تنظیمات مستاجر ذخیره می‌شوند، نه در جدول.
+    #
+    # این‌جا از جدولی به نام cards می‌خواند که هیچ‌وقت ساخته نشده —
+    # پس هر بار که مشتری «شارژ کیف پول» را می‌زد، یک
+    # OperationalError بالا می‌رفت و هیچ پاسخی نمی‌گرفت. مسیر خرید
+    # از همان اول درست بود (core.pick_card روی ctx.s) و فقط شارژ
+    # کیف پول جا مانده بود.
+    cards = [c for c in (ctx.s.get("cards") or [])
+             if isinstance(c, dict) and c.get("number")
+             and c.get("active", True)]
     if not cards:
         return _reply(ctx, chat_id, message_id,
                       "شارژ کیف پول فعلاً در دسترس نیست.", back_kb("wallet"))
@@ -1300,12 +1309,13 @@ def wallet_topup_amount(ctx, user, chat_id, message_id, amount):
                       back_kb("wallet"))
 
     u = ctx.db.get_user(user["tg_id"])
-    card = ctx.db.q("SELECT * FROM cards WHERE tenant_id=? AND active=1 LIMIT 1",
-                    (ctx.tid,))
+    card = core.pick_card(ctx.s.get("cards"))
     if not card:
         return _reply(ctx, chat_id, message_id,
-                      "شماره کارتی ثبت نشده.", back_kb("wallet"))
-    card = card[0]
+                      "هنوز شماره کارتی ثبت نشده.\n\n"
+                      "<blockquote>از پنل، بخش «اتصال و تنظیمات»، کارت را "
+                      "اضافه کنید.</blockquote>",
+                      back_kb("wallet"))
 
     # plan_id خالی یعنی این سفارش شارژ است نه خرید پلن
     order = ctx.db.create_order(u["id"], None, amount, amount, kind="topup")
@@ -1598,7 +1608,7 @@ def affiliate_list(ctx, user, chat_id, message_id):
     lines = ["📋 <b>ریز فروش‌ها</b>", ""]
     for r in rows:
         who = r.get("first_name") or r.get("username") or "کاربر"
-        when = core.fa((r.get("created_at") or "")[:10])
+        when = core.fa_date(r.get("created_at"), with_month_name=False)
         mark = "✅" if r["status"] == "paid" else "⏳"
         lines.append(f"{mark} {esc(who)} · {when}")
         lines.append(f"خرید {core.toman(r['order_amount'])} — "
@@ -1644,7 +1654,7 @@ def my_orders(ctx, user, chat_id, message_id):
     lines = ["🧾 <b>سفارش‌های من</b>", ""]
     for o in rows:
         st = label.get(o["status"], o["status"])
-        when = core.fa((o.get("created_at") or "")[:16].replace("T", " "))
+        when = core.fa_datetime(o.get("created_at"))
         name = o.get("plan_name") or "—"
 
         lines.append(f"{st} · {name}")
@@ -1882,7 +1892,7 @@ def admin_order_detail(ctx, user, chat_id, message_id, order_id):
     if o.get("coins_used"):
         txt += (f"با {core.fa(o['coins_used'])} سکه · "
                 f"{core.fa(o.get('discount_pct', 0))}٪ تخفیف\n")
-    txt += f"{core.fa(str(o.get('created_at', ''))[:16])}"
+    txt += f"{core.fa_datetime(o.get('created_at'))}"
 
     if o.get("receipt_text"):
         txt += f"\n\n📝 <i>{esc(str(o['receipt_text'])[:180])}</i>"
@@ -1952,7 +1962,7 @@ def admin_user_detail(ctx, user, chat_id, message_id, target_id):
         f"🪙 سکه   <b>{core.fa(u.get('coins', 0))}</b>\n"
         f"👛 کیف پول   <b>{core.toman(u.get('balance', 0))}</b> تومان\n"
         f"📦 اشتراک فعال   <b>{core.fa(len(active))}</b>\n"
-        f"📅 عضویت   {core.fa(str(u.get('created_at', ''))[:10])}\n\n"
+        f"📅 عضویت   {core.fa_date(u.get('created_at'))}\n\n"
         f"🔗 کد دعوت   <code>{u.get('ref_code', '—')}</code>"
     )
     if u.get("is_blocked"):
@@ -2027,6 +2037,10 @@ def admin_ask_input(ctx, user, chat_id, message_id, kind, target=None):
                "متن پیام را بفرستید تا مستقیم برایش ارسال شود.",
         "ask": "💬 سوالتان از این مشتری را بفرستید.",
         "find": "🔎 نام، یوزرنیم یا آیدی عددی کاربر را بفرستید.",
+        "tkreply": "✍️ <b>پاسخ به تیکت</b>\n\n"
+                   "متن پاسخ را بفرستید تا مستقیم برای مشتری ارسال شود.\n\n"
+                   "<blockquote>مشتری فقط همین متن را می‌بیند — نه نام شما "
+                   "و نه اینکه از گروه مدیریت فرستاده شده.</blockquote>",
     }
     ctx.db.set_state(user["tg_id"], f"adm_{kind}", {"t": target})
     return _reply(ctx, chat_id, message_id,
@@ -2176,6 +2190,43 @@ def admin_input(ctx, user, chat_id, text, state, data):
                 return _reply(ctx, chat_id, None,
                               "❌ نرسید — احتمالاً کاربر ربات را بلاک کرده.",
                               back_kb("adm:users"))
+
+    if kind == "tkreply" and target:
+        t = ctx.db.q("SELECT * FROM tickets WHERE tenant_id=? AND id=?",
+                     (ctx.tid, int(target)), one=True)
+        if not t:
+            return _reply(ctx, chat_id, None, "این تیکت پیدا نشد.", back_kb())
+
+        u = ctx.db.get_user_by_id(t["user_id"])
+        if not u:
+            return _reply(ctx, chat_id, None, "کاربر این تیکت پیدا نشد.", back_kb())
+
+        try:
+            ctx.bot.send(
+                u["tg_id"],
+                "💬 <b>پاسخ پشتیبانی</b>\n\n"
+                f"{esc(txt)}\n\n"
+                f"<blockquote>درباره‌ی پیامی که فرستاده بودید — "
+                f"شماره پیگیری <code>#{t['id']}</code></blockquote>",
+                keyboard=kb([[("💬 پاسخ دوباره", "support")],
+                             [("‹ منوی اصلی", "menu")]]))
+        except TelegramError:
+            return _reply(ctx, chat_id, None,
+                          "❌ نرسید — احتمالاً کاربر ربات را بلاک کرده.",
+                          back_kb())
+
+        # تیکت بسته می‌شود تا در فهرست «باز» نماند و دو بار جواب نگیرد
+        try:
+            ctx.db.exec(
+                "UPDATE tickets SET status='answered', answer=?, "
+                "answered_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?",
+                (txt[:2000], ctx.tid, int(target)))
+        except Exception:
+            pass
+
+        return _reply(ctx, chat_id, None,
+                      f"✅ پاسخ تیکت <code>#{target}</code> برای مشتری رفت.",
+                      kb([[("‹ منوی مدیریت", "admin")]]))
 
     if kind == "reject" and target:
         do_reject(ctx, int(target), user["tg_id"], txt or "رسید تأیید نشد.")
@@ -2442,6 +2493,16 @@ def _on_callback(ctx, cq):
             return _reply(ctx, chat_id, mid,
                           "سفارش لغو شد. هر وقت خواستید دوباره اقدام کنید 👍",
                           main_menu(ctx, user))
+
+        # دکمه‌ی «پاسخ» روی تیکت در گروه مدیریت.
+        #
+        # این هم مثل دکمه‌ی تمدید هندلر نداشت: ادمین روی «پاسخ»
+        # می‌زد و هیچ اتفاقی نمی‌افتاد، پس عملاً هیچ تیکتی از داخل
+        # تلگرام جواب داده نمی‌شد.
+        if action == "tk":
+            if not ctx.is_admin(frm["id"]):
+                return ctx.bot.answer_cb(cq["id"], "دسترسی ندارید", alert=True)
+            return admin_ask_input(ctx, user, chat_id, mid, "tkreply", arg)
 
         # دکمه‌ی «تمدید» در اشتراک‌های من.
         #

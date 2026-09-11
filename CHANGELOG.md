@@ -1,5 +1,64 @@
 # Changelog
 
+## [1.3.0]
+
+### Fixed — Topping up the wallet crashed every time
+
+`wallet_topup` and `wallet_topup_amount` both ran `SELECT * FROM cards`. There is no
+`cards` table — bank cards live in the tenant's settings JSON, and always have. Every
+customer who pressed "شارژ کیف پول" hit an `OperationalError` that the dispatcher
+swallowed, so the button simply did nothing and nobody was told why.
+
+Both call sites now read `ctx.s["cards"]` and pick one through `core.pick_card()`, the
+same path the purchase flow has always used.
+
+This was found by building a preview that renders every bot screen. The two screens had
+never been exercised by a test because no test had ever pressed that button.
+
+### Added — Every date the bot shows is now Jalali
+
+The bot told an Iranian customer their subscription expires on `2027-01-15`. Nobody
+reads that and knows whether it is next week or next year.
+
+`core.fa_date()` and `core.fa_datetime()` convert through `jdatetime`, so expiry now
+reads `۲۵ دی ۱۴۰۵` and an order timestamp reads `۱۴۰۵/۰۶/۲۰ — ۱۶:۵۱`. If `jdatetime`
+is missing or the stored value is malformed, the old Gregorian string comes back
+unchanged — showing a date must never be able to kill a message.
+
+### Added — Firewall rule suggestions in the panel
+
+The backend has had `/api/admin/firewall/suggest` and `/apply-plan` since 1.1.0 with
+nothing in the panel calling them. The endpoints were dead code.
+
+The firewall workspace now reads what is actually listening on the server and, for each
+service, says whether the port should stay open or be closed, and why. Close suggestions
+arrive pre-ticked because they are the reason the section exists; keep suggestions do
+not, so nobody accidentally opens a door that was shut. Nothing is applied without an
+explicit confirm, and SSH is still refused as a close target.
+
+### Added — `bot/preview_texts.py`
+
+Renders all forty bot screens to a text file without touching Telegram or a real panel:
+the purchase flow, wallet, coins, referrals, tickets, renewals, the expiry reminder, the
+automatic-renewal success and failure notices, every admin page, and the daily group
+report.
+
+It exists so bot copy can be reviewed as a whole instead of one screen at a time — and
+it earned its keep immediately by surfacing the wallet crash and a Gregorian date that
+had been missed.
+
+### Added — `tools/test-bot-buttons.py`
+
+Walks every `callback_data` the bot can emit and asserts the dispatcher has a branch for
+it. Two buttons had shipped with no handler at all: "تمدید" and the admin ticket-reply
+button. Both were dead on arrival and neither was noticed by a human.
+
+### Fixed — `slow-doctor.sh` printed garbled IP addresses
+
+The Persian labels inside `awk printf` collided with the terminal's bidirectional text
+handling, and the connection parser read a fixed `$5` where the column position varies
+by `ss` version. Rewritten in English, parsing `$NF`.
+
 ## [1.2.0]
 
 ### Fixed — Every bot message re-read the settings 31 times

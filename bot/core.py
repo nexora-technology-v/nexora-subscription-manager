@@ -215,6 +215,55 @@ def fa(v):
     return str(v).translate(_FA_DIGITS)
 
 
+#: نام ماه‌های شمسی
+_FA_MONTHS = ("فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
+              "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند")
+
+
+def fa_date(value, with_month_name=True):
+    """
+    تاریخ شمسی برای مشتری فارسی‌زبان.
+
+    تا قبل از این، ربات تاریخ انقضا را میلادی نشان می‌داد — مشتری
+    ایرانی «۲۰۲۷-۰۱-۱۵» را نمی‌خواند و نمی‌فهمد چند روز دیگر است.
+
+    اگر jdatetime نصب نباشد یا ورودی خراب باشد، همان میلادیِ قبلی
+    برمی‌گردد؛ نمایش تاریخ نباید بتواند پیام را از کار بیندازد.
+    """
+    if not value:
+        return ""
+    raw = str(value)[:10]
+    try:
+        y, m, d = (int(x) for x in raw.split("-"))
+    except (ValueError, TypeError):
+        return fa(raw)
+
+    try:
+        import jdatetime
+        from datetime import date as _date
+        j = jdatetime.date.fromgregorian(date=_date(y, m, d))
+        if with_month_name:
+            return f"{fa(j.day)} {_FA_MONTHS[j.month - 1]} {fa(j.year)}"
+        return fa(f"{j.year}/{j.month:02d}/{j.day:02d}")
+    except Exception:
+        return fa(raw)
+
+
+def fa_datetime(value):
+    """
+    تاریخ شمسی به‌همراه ساعت — برای سفارش‌ها و رویدادها.
+
+    ساعت همان‌طور می‌ماند؛ فقط بخش تاریخ شمسی می‌شود.
+    """
+    if not value:
+        return ""
+    raw = str(value).replace("T", " ")
+    date_part = raw[:10]
+    time_part = raw[11:16].strip()
+    d = fa_date(date_part, with_month_name=False)
+    return f"{d} — {fa(time_part)}" if time_part else d
+
+
 def toman(n):
     """قالب‌بندی مبلغ با جداکننده‌ی هزارگان."""
     try:

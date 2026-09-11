@@ -29,11 +29,11 @@ class FakeBot:
         self.token = token
 
     def send(self, chat_id, text, keyboard=None, **kw):
-        SENT.append({"text": text, "kb": keyboard})
+        SENT.append({"to": chat_id, "text": text, "kb": keyboard})
         return {"message_id": len(SENT), "chat": {"id": chat_id}}
 
     def edit(self, chat_id, message_id, text, keyboard=None, **kw):
-        SENT.append({"text": text, "kb": keyboard})
+        SENT.append({"to": chat_id, "text": text, "kb": keyboard})
         return {"message_id": message_id}
 
     def edit_markup(self, *a, **k):
@@ -43,7 +43,16 @@ class FakeBot:
         return True
 
     def send_photo(self, chat_id, photo, caption=None, keyboard=None, **kw):
-        SENT.append({"text": caption or "[عکس]", "kb": keyboard})
+        SENT.append({"to": chat_id, "text": caption or "[عکس]", "kb": keyboard})
+        return {"message_id": len(SENT)}
+
+    def send_photo_bytes(self, chat_id, data, filename="qr.png", caption=None,
+                         keyboard=None, **kw):
+        # امضا باید با Bot واقعی یکی باشد، وگرنه مسیر کیوآر در
+        # پیش‌نمایش بی‌صدا رد می‌شود و دقیقاً همان چیزی را نشان
+        # نمی‌دهد که مشتری می‌بیند
+        SENT.append({"to": chat_id, "text": caption or "[تصویر کیوآر]",
+                     "kb": keyboard, "qr": True, "bytes": len(data or b"")})
         return {"message_id": len(SENT)}
 
     def copy(self, *a, **k):
@@ -125,16 +134,32 @@ def render(title, text, kb=None):
     print(f"\033[38;5;245m{'─' * BOX}\033[0m")
 
     t = text or "(خالی)"
+
+    # blockquote اول از همه: تلگرام آن را با یک نوار کناری نشان
+    # می‌دهد، و کل دلیل استفاده‌مان از آن همین جداشدنِ دیداری است.
+    # اگر اینجا رندر نشود، پیش‌نمایش دقیقاً همان چیزی را نشان
+    # نمی‌دهد که مشتری می‌بیند و قضاوت روی آن بی‌معنی است.
+    def _quote(m):
+        body = m.group(1).strip()
+        lines = [ln for ln in body.split("\n")]
+        out = []
+        for ln in lines:
+            out.append(f"\033[38;5;108m▌\033[0m \033[38;5;250m{ln}\033[0m")
+        return "\n".join(out)
+
+    t = re.sub(r"<blockquote>(.*?)</blockquote>", _quote, t, flags=re.S)
+
     # تگ‌های تلگرام را به شکل خوانا در ترمینال درمی‌آوریم
-    t = re.sub(r"</?b>", "\033[1m" if True else "", t)
-    t = t.replace("\033[1m", "\033[1m", 1)
-    t = re.sub(r"<b>", "\033[1m", text or "")
+    t = re.sub(r"<b>", "\033[1m", t)
     t = re.sub(r"</b>", "\033[0m", t)
     t = re.sub(r"<i>", "\033[3;38;5;245m", t)
     t = re.sub(r"</i>", "\033[0m", t)
     t = re.sub(r"<code>", "\033[38;5;222m", t)
     t = re.sub(r"</code>", "\033[0m", t)
-    t = re.sub(r"</?s>", "", t)
+    t = re.sub(r"<s>", "\033[9;38;5;245m", t)
+    t = re.sub(r"</s>", "\033[0m", t)
+    t = re.sub(r"<tg-spoiler>", "\033[48;5;238m", t)
+    t = re.sub(r"</tg-spoiler>", "\033[0m", t)
     print(html.unescape(t))
 
     if kb:
@@ -147,10 +172,10 @@ def render(title, text, kb=None):
             print(f"\033[38;5;108m[ {labels} ]\033[0m")
 
 
-def up_msg(tg_id, text):
+def up_msg(tg_id, text, first_name="علی"):
     return {"message": {"message_id": 1, "text": text,
                         "chat": {"id": tg_id, "type": "private"},
-                        "from": {"id": tg_id, "first_name": "علی",
+                        "from": {"id": tg_id, "first_name": first_name,
                                  "is_bot": False}}}
 
 
@@ -219,6 +244,115 @@ if sub:
         break
 
 shot("۱۶. پنل مدیریت", up_cb(999, "admin"))
+shot("۱۷. رسیدها (مدیریت)", up_cb(999, "adm:orders"))
+shot("۱۸. کاربران (مدیریت)", up_cb(999, "adm:users"))
+shot("۱۹. آمار (مدیریت)", up_cb(999, "adm:stats"))
+shot("۲۰. پلن‌ها (مدیریت)", up_cb(999, "adm:plans"))
+shot("۲۱. جزئیات یک کاربر", up_cb(999, f"adm:u:555"))
+shot("۲۲. پیام همگانی", up_cb(999, "adm:bc"))
+shot("۲۳. جست‌وجوی کاربر", up_cb(999, "adm:find"))
+shot("۲۴. تغییر سکه", up_cb(999, "adm:coin:555"))
+shot("۲۵. تغییر موجودی", up_cb(999, "adm:bal:555"))
+shot("۲۶. پیام به یک کاربر", up_cb(999, "adm:msg:555"))
+
+# ── صفحه‌ی تمدید ──
+_s = D.q("SELECT * FROM subscriptions WHERE tenant_id=? LIMIT 1", (tid,), one=True)
+if _s:
+    shot("۲۷. تمدید اشتراک", up_cb(555, f"renew:{_s['id']}"))
+
+# ── شارژ کیف پول ──
+shot("۲۸. انتخاب مبلغ شارژ", up_cb(555, "topup"))
+shot("۲۹. کارت برای شارژ", up_cb(555, "topup:200000"))
+
+# ── همکاری در فروش ──
+shot("۳۰. پنل همکار فروش", up_cb(555, "affiliate"))
+
+# ── تیکت و پاسخش ──
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(555, "support"))
+H.dispatch(tenant, bot, up_msg(555, "اینترنتم قطع و وصل می‌شود"))
+for m in SENT:
+    if m["text"] and "ثبت شد" in str(m["text"]):
+        render("۳۱. تیکت ثبت شد", m["text"], m.get("kb"))
+        break
+
+_tk = D.q("SELECT * FROM tickets WHERE tenant_id=? ORDER BY id DESC LIMIT 1",
+          (tid,), one=True)
+if _tk:
+    shot("۳۲. پاسخ به تیکت (مدیریت)", up_cb(999, f"tk:{_tk['id']}"))
+    SENT.clear()
+    H.dispatch(tenant, bot, up_msg(999, "مشکل از سرور بود، الان درست شد."))
+    for m in SENT:
+        if m["to"] == 555:
+            render("۳۳. پاسخ پشتیبانی (از دید مشتری)", m["text"], m.get("kb"))
+            break
+
+# ── اطلاع به معرف ──
+SENT.clear()
+_inv = D.get_user(555)
+H.dispatch(tenant, bot, up_msg(7788, f"/start {_inv['ref_code']}", "مهمان"))
+for m in SENT:
+    if m["to"] == 555:
+        render("۳۴. یک نفر با لینک شما آمد", m["text"], m.get("kb"))
+        break
+
+# ── سکه بابت خرید زیرمجموعه ──
+SENT.clear()
+try:
+    H._reward_referrer(ctx, D.get_user(7788), order["id"])
+    for m in SENT:
+        if m["to"] == 555:
+            render("۳۵. سکه گرفتید", m["text"], m.get("kb"))
+            break
+except Exception:
+    pass
+
+# ── تمدید خودکار ──
+if _s:
+    D.exec("UPDATE users SET balance=500000 WHERE tenant_id=? AND tg_id=?", (tid, 555))
+    _row = D.q("""SELECT s.*, u.tg_id, u.balance FROM subscriptions s
+                  JOIN users u ON u.id=s.user_id
+                  WHERE s.tenant_id=? AND s.id=?""", (tid, _s["id"]), one=True)
+    SENT.clear()
+    try:
+        H.auto_renew_subscription(tenant, bot, _row)
+        for m in SENT:
+            if m["to"] == 555:
+                render("۳۶. تمدید خودکار انجام شد", m["text"], m.get("kb"))
+                break
+    except Exception:
+        pass
+
+    # و حالت موجودی ناکافی
+    D.exec("UPDATE users SET balance=0 WHERE tenant_id=? AND tg_id=?", (tid, 555))
+    _row2 = D.q("""SELECT s.*, u.tg_id, u.balance FROM subscriptions s
+                   JOIN users u ON u.id=s.user_id
+                   WHERE s.tenant_id=? AND s.id=?""", (tid, _s["id"]), one=True)
+    SENT.clear()
+    try:
+        H.auto_renew_subscription(tenant, bot, _row2)
+        for m in SENT:
+            if m["to"] == 555:
+                render("۳۷. تمدید خودکار ناموفق", m["text"], m.get("kb"))
+                break
+    except Exception:
+        pass
+
+# ── تست رایگان ──
+shot("۳۸. تست رایگان", up_cb(7788, "trial"))
+
+# ── وضعیت سفارش ──
+shot("۳۹. وضعیت سفارش", up_cb(555, f"ost:{order['id']}"))
+
+# ── گزارش روزانه به گروه ──
+SENT.clear()
+try:
+    H.send_daily_report(tenant)
+    for m in SENT:
+        render("۴۰. گزارش روزانه (گروه مدیریت)", m["text"], m.get("kb"))
+        break
+except Exception:
+    pass
 
 print(f"\n\033[38;5;245m{'─' * BOX}\033[0m")
 print("پایان پیش‌نمایش.\n")

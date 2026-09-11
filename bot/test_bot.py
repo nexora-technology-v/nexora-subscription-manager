@@ -241,6 +241,18 @@ check("پله‌های سفارشی مرتب می‌شوند", custom["tiers"][0
 section("ابزارهای نمایش")
 
 check("قالب‌بندی تومان", len(core.toman(1234567)) > 7, core.toman(1234567))
+
+# تاریخ شمسی — مشتری ایرانی «2027-01-15» را نمی‌خواند
+_d = core.fa_date("2027-01-15")
+check("تاریخ شمسی می‌شود", "دی" in _d and "۱۴۰۵" in _d, _d)
+check("تاریخ کوتاه شمسی", core.fa_date("2027-01-15", False) == "۱۴۰۵/۱۰/۲۵",
+      core.fa_date("2027-01-15", False))
+check("اول فروردین درست تبدیل می‌شود",
+      core.fa_date("2026-03-21").startswith("۱ فروردین"),
+      core.fa_date("2026-03-21"))
+# نمایش تاریخ نباید بتواند پیام را از کار بیندازد
+check("ورودی خراب خطا نمی‌دهد", core.fa_date("خراب") == "خراب")
+check("ورودی خالی خطا نمی‌دهد", core.fa_date(None) == "" and core.fa_date("") == "")
 check("قالب‌بندی حجم", "۳۰" in core.fmt_gb(30), core.fmt_gb(30))
 check("حجم نامحدود", "نامحدود" in core.fmt_gb(0), core.fmt_gb(0))
 check("مدت نامحدود", "محدودیت" in core.fmt_days(0) or "نامحدود" in core.fmt_days(0),

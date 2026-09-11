@@ -508,6 +508,44 @@ H.dispatch(tenant, bot, up_cb(555, "renew:99999"))
 check("اشتراک ناموجود خطای تمیز می‌دهد",
       SENT and "پیدا نشد" in SENT[-1]["text"], SENT[-1]["text"][:40] if SENT else "—")
 
+# ═══════════════ پاسخ به تیکت ═══════════════
+section("پاسخ به تیکت")
+
+# دکمه‌ی «✍️ پاسخ» در گروه مدیریت ساخته می‌شد ولی هیچ شاخه‌ای در
+# dispatch نداشت — ادمین می‌زد و هیچ اتفاقی نمی‌افتاد، پس عملاً هیچ
+# تیکتی از داخل تلگرام جواب داده نمی‌شد.
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(555, "support"))     # وارد حالت await_ticket
+H.dispatch(tenant, bot, up_msg(555, "اینترنتم قطع می‌شود"))
+tk = D.q("SELECT * FROM tickets WHERE tenant_id=? ORDER BY id DESC LIMIT 1",
+         (tid,), one=True)
+check("تیکت ثبت شد", bool(tk), f"#{tk['id']}" if tk else "—")
+
+if tk:
+    SENT.clear()
+    H.dispatch(tenant, bot, up_cb(999, f"tk:{tk['id']}"))
+    check("دکمه‌ی پاسخ، ورودی می‌خواهد",
+          any("پاسخ به تیکت" in s["text"] for s in SENT), f"{len(SENT)} پیام")
+
+    SENT.clear()
+    H.dispatch(tenant, bot, up_msg(999, "مشکل از سرور بود، الان درست شد."))
+
+    to_user = [s for s in SENT if s["to"] == 555]
+    check("پاسخ به مشتری رسید", len(to_user) > 0, f"{len(to_user)} پیام")
+    if to_user:
+        rt = to_user[0]["text"]
+        check("متن پاسخ در پیام هست", "الان درست شد" in rt)
+        check("شماره پیگیری ذکر شده", f"#{tk['id']}" in rt)
+        check("از blockquote استفاده شده", "<blockquote>" in rt)
+
+    after = D.q("SELECT * FROM tickets WHERE tenant_id=? AND id=?",
+                (tid, tk["id"]), one=True)
+    check("تیکت به answered تغییر کرد",
+          after and after["status"] == "answered",
+          after["status"] if after else "—")
+    check("متن پاسخ ذخیره شد",
+          after and "الان درست شد" in (after["answer"] or ""))
+
 # ═══════════════ دکمه‌ی کپی ═══════════════
 section("دکمه‌ی کپی")
 
