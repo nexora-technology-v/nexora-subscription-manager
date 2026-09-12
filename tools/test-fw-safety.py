@@ -324,6 +324,109 @@ check("مسیر عادی یعنی بسته نیست", v2["blocked"] is False, v2
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("سوکت‌های موقت xray قاعده‌ی فایروال نمی‌سازند")
+
+# xray برای هر ترافیک خروجی (DNS، QUIC) یک سوکت UDP موقت باز می‌کند.
+# در ss عیناً مثل یک سرویس در حال گوش‌دادن دیده می‌شوند — روی سرور
+# واقعی حدود چهل‌تا. چون نام پردازه‌شان xray است، همه در دسته‌ی
+# «باز بماند» می‌نشستند: فهرست فایروال با چهل ردیف بی‌معنی پر می‌شد،
+# و اعمال پیشنهادها چهل قاعده‌ی ufw می‌ساخت برای پورت‌هایی که با
+# اولین ری‌استارت xray عدد تازه می‌گیرند.
+
+import sqlite3 as _sq
+import tempfile as _tf
+
+XDB = _tf.mktemp(suffix=".db")
+_c = _sq.connect(XDB)
+_c.execute("CREATE TABLE inbounds (id INTEGER PRIMARY KEY, port INTEGER,"
+           " remark TEXT, enable INTEGER)")
+_c.executemany("INSERT INTO inbounds (port, remark, enable) VALUES (?,?,1)",
+               [(8443, "آلمان"), (2096, "اشتراک"), (36112, "هیستریا UDP")])
+_c.commit()
+_c.close()
+os.environ["XUI_DB_PATH"] = XDB
+
+ports = FW.xray_service_ports()
+check("اینباندها از x-ui خوانده می‌شوند", ports == {8443, 2096, 36112},
+      str(sorted(ports or [])))
+
+REAL = [
+    {"port": 22, "proto": "tcp", "process": "sshd", "public": True,
+     "known": "SSH"},
+    {"port": 443, "proto": "tcp", "process": "nginx", "public": True,
+     "known": "HTTPS"},
+    {"port": 8443, "proto": "tcp", "process": "xray-linux-amd6",
+     "public": True, "known": "Xray"},
+    {"port": 36112, "proto": "udp", "process": "xray-linux-amd6",
+     "public": True, "known": ""},
+    {"port": 7777, "proto": "tcp", "process": "backpack", "public": True,
+     "known": ""},
+]
+EPH = [{"port": p, "proto": "udp", "process": "xray-linux-amd6",
+        "public": True, "known": ""}
+       for p in (25289, 45772, 29394, 49882, 29411, 33512, 21242)]
+
+FW.status = lambda: {"ready": True, "installed": True, "active": False,
+                     "rules": [], "sshProtected": False}
+FW.tunnel_ports_in_use = lambda: {7777: "backpack"}
+
+r = FW.suggest(listening_ports=REAL + EPH)
+kept = {x["port"] for x in r["keep"]}
+eph = {x["port"] for x in r["ephemeral"]}
+
+check("سوکت‌های موقت کنار گذاشته می‌شوند", eph == {p["port"] for p in EPH},
+      f"{len(eph)} سوکت")
+check("و در هیچ دسته‌ی دیگری نیستند",
+      not (eph & (kept | {x["port"] for x in r["close"]}
+                  | {x["port"] for x in r["unknown"]})),
+      "وگرنه باز هم قاعده می‌سازند")
+
+check("اینباند واقعی xray باز می‌ماند", 8443 in kept)
+check("اینباند UDP واقعی هم باز می‌ماند", 36112 in kept,
+      "هیستریا روی پورت بالای UDP کار می‌کند — نباید با موقت‌ها اشتباه شود")
+check("SSH دست‌نخورده می‌ماند", 22 in kept)
+check("تانل دست‌نخورده می‌ماند", 7777 in kept)
+check("nginx دست‌نخورده می‌ماند", 443 in kept)
+check("فهرست پیشنهاد کوتاه و خواندنی می‌شود", len(r["keep"]) == 5,
+      f"{len(r['keep'])} ردیف به‌جای {len(REAL) + len(EPH)}")
+
+head("وقتی مطمئن نیستیم، چیزی را کنار نمی‌گذاریم")
+
+os.environ["XUI_DB_PATH"] = "/nowhere/x-ui.db"
+check("بدون دیتابیس x-ui، پاسخ None است — نه مجموعه‌ی خالی",
+      FW.xray_service_ports() is None,
+      "مجموعه‌ی خالی یعنی «هیچ اینباندی نیست» و همه چیز را موقت می‌دید")
+
+r2 = FW.suggest(listening_ports=REAL + EPH)
+check("و هیچ پورتی کنار گذاشته نمی‌شود", not r2["ephemeral"])
+check("رفتار قبلی دست‌نخورده می‌ماند",
+      len(r2["keep"]) == len(REAL) + len(EPH),
+      "حدس‌نزدن بهتر از حدسِ اشتباه است")
+
+os.environ["XUI_DB_PATH"] = XDB
+
+head("پورت محافظت‌شده هیچ‌وقت موقت حساب نمی‌شود")
+
+r3 = FW.suggest(listening_ports=[
+    {"port": 22, "proto": "tcp", "process": "xray-linux-amd6",
+     "public": True, "known": ""},
+    {"port": 7777, "proto": "udp", "process": "xray-linux-amd6",
+     "public": True, "known": ""},
+])
+check("SSH حتی با نام پردازه‌ی xray کنار گذاشته نمی‌شود",
+      22 in {x["port"] for x in r3["keep"]},
+      "یک اشتباه این‌جا یعنی قفل‌شدن بیرون سرور")
+check("پورت تانل هم همین‌طور", 7777 in {x["port"] for x in r3["keep"]})
+
+try:
+    os.unlink(XDB)
+except OSError:
+    pass
+os.environ.pop("XUI_DB_PATH", None)
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

@@ -112,6 +112,9 @@ export function FirewallSuggest({ password, onApplied }) {
   const closeList = ((d && d.close) || []).filter(match);
   const keepList = ((d && d.keep) || []).filter(match);
   const unknownList = ((d && d.unknown) || []).filter(match);
+  // سوکت‌های موقت xray: شمرده می‌شوند تا مدیر بداند فهرست چرا کوتاه
+  // است، ولی ردیف نمی‌گیرند — قاعده ساختن برایشان بی‌معنی است.
+  const ephCount = ((d && d.ephemeral) || []).length;
   const shownClose = showAll ? closeList : closeList.slice(0, 8);
   const shownKeep = showAll ? keepList : keepList.slice(0, 6);
   const shownUnknown = showAll ? unknownList : unknownList.slice(0, 6);
@@ -223,6 +226,13 @@ export function FirewallSuggest({ password, onApplied }) {
                   {" "}{faNum(unknownList.length)} نامشخص ·
                   {" "}{faNum(keepList.length)} باید باز بماند
                 </span>
+                {ephCount > 0 && (
+                  <span className="text-[12px] px-2 py-[3px] rounded-md"
+                    style={{ color: "var(--muted)", background: "var(--chip)" }}
+                    title="xray برای هر ترافیک خروجی یک سوکت موقت باز می‌کند. این‌ها سرویس نیستند و با هر ری‌استارت عدد تازه می‌گیرند، پس قاعده ساختن برایشان بی‌فایده است.">
+                    {faNum(ephCount)} سوکت موقت xray نادیده گرفته شد
+                  </span>
+                )}
               </div>
 
               {shownClose.length > 0 && (

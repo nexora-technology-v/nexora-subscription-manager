@@ -32,7 +32,7 @@ from pathlib import Path
 #: نسخه‌ی ایجنت. پنل از روی همین می‌فهمد که آیا این ایجنت دستورهای
 #: تازه را می‌شناسد یا نه — پس با هر قابلیت جدید باید بالا برود،
 #: وگرنه پنل فکر می‌کند ایجنت قدیمی است و بی‌دلیل به‌روزرسانی می‌خواهد.
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 
 PANEL_URL = os.getenv("NEXORA_PANEL", "").rstrip("/")
 TOKEN = os.getenv("NEXORA_TOKEN", "")
@@ -754,9 +754,14 @@ def update_self(url):
     آدرس ناقص بفرستد این تابع ردش می‌کرد و به‌روزرسانی هیچ‌وقت
     انجام نمی‌شد — بدون اینکه کسی بفهمد چرا.
     """
-    url = (url or "").strip() or f"{PANEL_URL}/api/agent/agent.py"
-    if not url.startswith(PANEL_URL):
-        return False, "آدرس به‌روزرسانی خارج از پنل مجاز نیست"
+    own = f"{PANEL_URL}/api/agent/agent.py"
+    url = (url or "").strip()
+    if not url or not url.startswith(PANEL_URL):
+        # آدرسی که پنل داده با پنلی که ما می‌شناسیم یکی نیست. قبلاً
+        # این‌جا خطا می‌دادیم و به‌روزرسانی هیچ‌وقت انجام نمی‌شد؛ ولی
+        # آدرس پنل را خودمان داریم، پس دلیلی برای شکست نیست — از
+        # همان‌جایی می‌گیریم که هر دقیقه با آن چک‌این می‌کنیم.
+        url = own
     try:
         tmp = Path(tempfile.mktemp(suffix=".py"))
         download(url, tmp)

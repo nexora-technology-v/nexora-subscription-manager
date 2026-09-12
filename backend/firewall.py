@@ -319,6 +319,53 @@ def _tunnel_procs():
 SERVICE_PROCS = ("xray", "x-ui", "nginx", "sing-box", "caddy", "apache")
 
 
+#: جاهایی که x-ui دیتابیسش را می‌گذارد.
+XUI_DB_PATHS = ("/etc/x-ui/x-ui.db", "/usr/local/x-ui/x-ui.db",
+                "/opt/x-ui/x-ui.db", "/etc/x-ui/db/x-ui.db")
+
+
+def xray_service_ports():
+    """
+    پورت‌هایی که واقعاً در x-ui تعریف شده‌اند — یعنی اینباندها.
+
+    چرا لازم است: xray علاوه بر اینباندهایش، برای هر ترافیک خروجی
+    (DNS، QUIC) هم یک سوکت UDP موقت باز می‌کند. این سوکت‌ها در ss
+    عیناً مثل یک سرویس در حال گوش‌دادن دیده می‌شوند — روی سرور شما
+    حدود چهل‌تا از آن‌ها هست.
+
+    نتیجه‌اش دو چیز بود: فهرست فایروال با چهل ردیف بی‌معنی پر می‌شد،
+    و اگر مدیر پیشنهادها را اعمال می‌کرد، چهل قاعده‌ی ufw برای
+    پورت‌هایی ساخته می‌شد که با اولین ری‌استارت xray عدد تازه
+    می‌گیرند — یعنی چهل قاعده‌ی زباله که هیچ‌وقت هم پاک نمی‌شوند.
+
+    تنها منبع درست، خودِ x-ui است. برمی‌گردانیم:
+      مجموعه‌ای از پورت‌ها  — می‌دانیم اینباندها کدام‌اند
+      None                  — دیتابیس خوانده نشد، پس حدس نمی‌زنیم
+    """
+    import sqlite3
+    env = os.getenv("XUI_DB_PATH", "").strip()
+    for p in ((env,) if env else ()) + XUI_DB_PATHS:
+        if not p or not os.path.exists(p):
+            continue
+        try:
+            cx = sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=3)
+            try:
+                rows = cx.execute("SELECT port FROM inbounds").fetchall()
+            finally:
+                cx.close()
+        except Exception:
+            continue
+        ports = set()
+        for r in rows:
+            try:
+                ports.add(int(r[0]))
+            except (TypeError, ValueError):
+                continue
+        if ports:
+            return ports
+    return None
+
+
 def tunnel_ports_in_use():
     """
     پورت‌هایی که همین حالا یک پردازه‌ی تانل صاحبشان است.
@@ -374,8 +421,10 @@ def suggest(listening_ports=None):
 
     tun = tunnel_ports_in_use()
     tprocs = _tunnel_procs()
+    xports = xray_service_ports()
 
     keep, close, unknown, already = [], [], [], []
+    ephemeral = []
     seen = set()
 
     for p in listening_ports or []:
@@ -390,6 +439,16 @@ def suggest(listening_ports=None):
         proc = (p.get("process") or "").lower()
         known = p.get("known") or ""
         public = bool(p.get("public"))
+
+        # سوکت موقتِ xray — نه سرویس است، نه قاعده می‌خواهد. فقط وقتی
+        # مطمئنیم کنارش می‌گذاریم: یعنی وقتی فهرست اینباندها را از
+        # خود x-ui خوانده‌ایم و این پورت در آن نیست.
+        if (xports is not None and port not in xports
+                and ("xray" in proc or "sing-box" in proc)
+                and port not in tun and port not in CRITICAL_PORTS):
+            ephemeral.append({"port": port, "proto": p.get("proto") or "udp",
+                              "process": p.get("process") or ""})
+            continue
         row = {"port": port, "proto": p.get("proto") or "tcp",
                "process": p.get("process") or ""}
 
@@ -443,6 +502,7 @@ def suggest(listening_ports=None):
         "close": close,
         "unknown": unknown,
         "already": already,
+        "ephemeral": ephemeral,
         "tunnelPorts": sorted(tun),
         "sshCovered": st.get("sshProtected", False),
     }

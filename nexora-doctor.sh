@@ -176,12 +176,31 @@ else
   info "ufw is not installed — only blackhole blocking is available"
 fi
 
+XDB=""
+for p in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db /opt/x-ui/x-ui.db; do
+  [ -r "$p" ] && XDB="$p" && break
+done
+
 if command -v ss >/dev/null 2>&1; then
   # The panel only warns about ports it can attribute to a process.
   # Ports whose owner it cannot see are the ones that cause confusion.
+  # پورت‌های اینباند xray را از خود x-ui می‌گیریم. بدون این فهرست
+  # نمی‌شود سوکت موقتِ خروجی را از یک اینباند واقعیِ UDP جدا کرد.
+  XPORTS=""
+  if [ -n "$XDB" ] && command -v sqlite3 >/dev/null 2>&1; then
+    XPORTS=$(sqlite3 "$XDB" "SELECT port FROM inbounds;" 2>/dev/null \
+             | tr '\n' ' ')
+  fi
+  HAVEX=0
+  [ -n "$XPORTS" ] && HAVEX=1
+
   echo ""
   echo "  ${C_D}listening ports and their owners:${C_R}"
-  ss -tulpnH 2>/dev/null | awk '
+  # TCP اول چاپ می‌شود: پورت‌هایی که واقعاً اهمیت دارند — SSH، وب،
+  # پنل، تانل — همه TCP هستند، و ss آن‌ها را بعد از UDP می‌دهد.
+  # سقف قبلی (۴۰ ردیف) دقیقاً همین‌ها را می‌خورد و گزارش را از
+  # سوکت‌های موقت xray پر می‌کرد.
+  ss -tulpnH 2>/dev/null | awk -v xports=" ${XPORTS}" -v have="$HAVEX" '
     {
       split($5, a, ":"); port = a[length(a)]
       proc = "-"
@@ -189,8 +208,21 @@ if command -v ss >/dev/null 2>&1; then
         proc = substr($0, RSTART+9, RLENGTH-10)
       }
       key = $1 " " port " " proc
-      if (!seen[key]++) printf "       %-6s %-8s %s\n", $1, port, proc
-    }' | head -40
+      if (seen[key]++) next
+
+      # xray برای هر ترافیک خروجی یک سوکت UDP موقت باز می‌کند. اگر
+      # پورت در اینباندهای x-ui نباشد سرویس نیست — و با هر ری‌استارت
+      # عدد تازه می‌گیرد، پس نامش هم به درد نمی‌خورد.
+      if ($1 == "udp" && have == 1 && proc ~ /xray|sing-box/ && index(xports, " " port " ") == 0) { eph++; next }
+
+      if ($1 == "tcp") t[++tn] = sprintf("       %-6s %-8s %s", $1, port, proc)
+      else             u[++un] = sprintf("       %-6s %-8s %s", $1, port, proc)
+    }
+    END {
+      for (i = 1; i <= tn; i++) print t[i]
+      for (i = 1; i <= un; i++) print u[i]
+      if (eph > 0) printf "       %-6s %-8s %s\n", "udp", "+" eph, "ephemeral xray sockets — outbound, not services"
+    }'
 
   NOPROC=$(ss -tulpnH 2>/dev/null | grep -cv 'users:(')
   [ "${NOPROC:-0}" -gt 0 ] && {
@@ -220,11 +252,6 @@ fi
 
 # ═══ 5. Accounting ═══
 section "5. Accounting — can it read x-ui"
-
-XDB=""
-for p in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db /opt/x-ui/x-ui.db; do
-  [ -r "$p" ] && XDB="$p" && break
-done
 
 if [ -z "$XDB" ]; then
   bad "x-ui database not readable"
@@ -275,7 +302,14 @@ if [ -r "$BILL_DB" ] && command -v sqlite3 >/dev/null 2>&1; then
   [ "${NOSTART:-0}" -gt 0 ] && {
     warn "${NOSTART} billable group(s) have no start date"
     info "their configs count as one month each"
-    fix "panel > Accounting > dashboard > set start date for all"
+    # نام گروه را می‌گوییم: با یازده گروه، «یکی از آن‌ها» یعنی مدیر
+    # باید همه را یکی‌یکی باز کند تا ببیند کدام است.
+    sqlite3 "$BILL_DB" \
+      "SELECT COALESCE(NULLIF(TRIM(label),''), group_key) FROM group_config
+        WHERE billable=1 AND (period_start IS NULL OR period_start='')
+        ORDER BY 1 LIMIT 10;" 2>/dev/null \
+      | while read -r g; do echo "       ${C_W}${g}${C_R}"; done
+    fix "panel > Accounting > dashboard > set start date"
   }
 fi
 

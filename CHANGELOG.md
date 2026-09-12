@@ -1,5 +1,53 @@
 # Changelog
 
+## [1.9.5]
+
+Everything here came out of one `nexora check` run on the production server.
+
+### Fixed — The doctor hid every TCP port
+
+`nexora check` capped the port list at 40 lines. `ss` prints UDP before TCP, and
+xray keeps about 40 ephemeral UDP sockets open for its own outbound traffic — so
+the cap was reached before a single TCP port was printed. SSH, nginx, the panel
+and every tunnel listener were missing from the report, which is exactly the list
+you run the report to see.
+
+TCP is printed first now, in full, and the ephemeral xray sockets are collapsed
+into one line.
+
+### Fixed — 40 phantom xray ports in the firewall
+
+Those same ephemeral sockets reached the firewall page. The process is named
+`xray-linux-amd6`, which matches the known-service list, so all 40 were filed
+under "must stay open". Applying the plan would have written 40 permanent ufw
+rules for ports that get new random numbers the next time xray restarts.
+
+They are now recognised by checking the port against x-ui's own `inbounds`
+table — the only authoritative source for which ports xray actually serves. A
+real inbound on a high UDP port (Hysteria, for example) is kept; an ephemeral
+socket is dropped and counted. If x-ui's database cannot be read, nothing is
+filtered: a wrong guess here closes a customer-facing port.
+
+### Fixed — Agent updates were rejected as "outside the panel"
+
+Three `update_agent` jobs in a row failed with "the update address is not
+allowed". The agent refuses any URL that does not start with its own
+`PANEL_URL`, which is correct — it should not fetch its own executable from an
+arbitrary host.
+
+The mistake was on the panel side: it guessed its external address from nginx
+headers and sent a domain, while the agent had been installed pointing at an
+address of its own. The panel does not know that value and cannot know it.
+
+The panel now sends no URL at all. The agent builds one from the address it
+already check-ins with every minute, so the guard passes and stays intact. This
+takes effect on the running 1.5.0 agent without reinstalling it.
+
+### Changed — The doctor names the group missing a start date
+
+With eleven groups, "1 billable group has no start date" meant opening all
+eleven to find it. It prints the name now.
+
 ## [1.9.4]
 
 ### Fixed — The same expiry reminder went out three times

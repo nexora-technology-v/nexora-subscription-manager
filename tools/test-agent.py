@@ -175,9 +175,11 @@ except Exception as e:
 head("به‌روزرسانی خود ایجنت")
 
 check("آدرس خالی را خودش می‌سازد",
-      'url = (url or "").strip() or f"{PANEL_URL}' in AGENT,
+      'own = f"{PANEL_URL}/api/agent/agent.py"' in AGENT,
       "پنل پشت nginx آدرس بیرونی‌اش را نمی‌داند")
-check("فقط از پنل خودش می‌گیرد", "خارج از پنل مجاز نیست" in AGENT)
+check("فقط از پنل خودش می‌گیرد",
+      'if not url or not url.startswith(PANEL_URL):' in AGENT,
+      "هر آدرس دیگری نادیده گرفته می‌شود و آدرس خودمان جایش می‌نشیند")
 check("فایل دریافتی بررسی می‌شود", "معتبر نیست" in AGENT)
 check("نسخه‌ی قبلی پشتیبان گرفته می‌شود", '".bak"' in AGENT)
 check("پنل آدرس مطلق می‌سازد", "request.base_url" in APP)
@@ -303,6 +305,62 @@ if os.path.exists(DOC):
     check("به CLI وصل شده",
           "check|diagnose" in io.open(
               os.path.join(ROOT, "nexora-cli.sh"), encoding="utf-8").read())
+
+
+
+# ═══════════════════════════════════════════════════════════
+head("به‌روزرسانی ایجنت با حدسِ آدرسِ پنل شکست نمی‌خورد")
+
+# سه کار پشت سر هم روی سرور واقعی با «آدرس به‌روزرسانی خارج از پنل
+# مجاز نیست» رد شده بود. علتش این بود که پنل آدرس بیرونی خودش را از
+# هدرهای nginx حدس می‌زد (manage.example.ir) در حالی که ایجنت موقع
+# نصب با آی‌پی و پورت تنظیم شده بود. نگهبانِ ایجنت درست کار می‌کرد؛
+# چیزی که غلط بود، حدس‌زدنِ پنل بود.
+
+APPSRC = io.open(os.path.join(ROOT, "backend/app.py"),
+                 encoding="utf-8").read()
+
+check("پنل دیگر آدرس نمی‌فرستد",
+      'TUN.queue_job(node_id, "update_agent", {"url": ""})' in APPSRC,
+      "ایجنت از PANEL_URL خودش می‌سازد — همان که با آن چک‌این می‌کند")
+check("و از هدرها برای این کار استفاده نمی‌کند",
+      '_external_base(request)\n    url = f"{base}/api/agent/agent.py"' not in APPSRC)
+
+AGSRC = io.open(os.path.join(ROOT, "agent/nexora-agent.py"),
+                encoding="utf-8").read()
+check("ایجنت در صورت عدم تطابق خطا نمی‌دهد",
+      'url = own' in AGSRC and
+      'if not url or not url.startswith(PANEL_URL):' in AGSRC,
+      "آدرس خودش را دارد، پس دلیلی برای شکست نیست")
+check("ولی آدرس بیرونی را هم قبول نمی‌کند",
+      'own = f"{PANEL_URL}/api/agent/agent.py"' in AGSRC,
+      "نگهبان سر جایش می‌ماند — فایل اجرایی فقط از پنل خودش")
+check("نسخه‌ی ایجنت بالا رفت",
+      'VERSION = "1.5.1"' in AGSRC)
+
+
+def _update_url(given, panel):
+    """همان منطق update_self، جدا شده تا بشود مستقیم امتحانش کرد."""
+    own = f"{panel}/api/agent/agent.py"
+    u = (given or "").strip()
+    if not u or not u.startswith(panel):
+        u = own
+    return u
+
+
+PANEL = "http://10.0.0.5:8100"
+check("آدرس خالی → آدرس خودِ ایجنت",
+      _update_url("", PANEL) == f"{PANEL}/api/agent/agent.py")
+check("دامنه‌ی متفاوت → آدرس خودِ ایجنت، نه خطا",
+      _update_url("https://manage.example.ir/api/agent/agent.py", PANEL)
+      == f"{PANEL}/api/agent/agent.py",
+      "همان حالتی که سه بار شکست خورده بود")
+check("آدرس درست دست‌نخورده می‌ماند",
+      _update_url(f"{PANEL}/api/agent/agent.py", PANEL)
+      == f"{PANEL}/api/agent/agent.py")
+check("سایت ناشناس هیچ‌وقت دانلود نمی‌شود",
+      _update_url("https://evil.example/agent.py", PANEL).startswith(PANEL),
+      "به آدرس خودِ پنل برمی‌گردد، نه به آن‌که فرستاده شده")
 
 
 
