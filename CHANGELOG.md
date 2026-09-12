@@ -1,5 +1,30 @@
 # Changelog
 
+## [Unreleased]
+
+_کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
+
+### Fixed — The intrusion page said "last 24 hours" and showed weeks
+
+`_auth_lines` asks journald for the window with `--since`, then falls back to
+`tail -n 20000 /var/log/auth.log`. `tail` limits how many lines, not how old they
+are — so on the fallback path the page counted attempts from as far back as the
+file went, while the response still reported `hours: 24`.
+
+An address that hammered the server a month ago appeared as a current attacker,
+and every count was inflated.
+
+The fallback also triggered more often than it looks. The check was `if
+out.strip()`, so a journald query that ran fine but found nothing — a quiet day —
+was treated the same as journald being unavailable, and fell through to the
+unbounded file. Success with no output now returns nothing, which is what it
+means.
+
+Lines from the file are filtered by timestamp, in both the syslog and ISO
+formats, with the year inferred and rolled back when that would put the line in
+the future. A line whose timestamp cannot be read is kept: dropping it would be
+silent data loss, which is the thing being fixed.
+
 ## [1.10.10]
 
 ### Fixed — The rollback endpoint built a shell command from its input

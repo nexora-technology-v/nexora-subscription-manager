@@ -18,6 +18,7 @@
     · lastb               (ورودهای ناموفق ثبت‌شده در btmp)
 """
 
+from datetime import datetime, timedelta
 import re
 import shutil
 import subprocess
@@ -53,6 +54,58 @@ def _run(cmd, timeout=20):
         return ""
 
 
+def _ran_ok(cmd, timeout=20):
+    """مثل _run، ولی می‌گوید دستور موفق بود یا نه: (موفق, خروجی)"""
+    try:
+        p = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                           timeout=timeout, encoding="utf-8", errors="replace")
+        return p.returncode == 0, (p.stdout or "")
+    except (subprocess.TimeoutExpired, OSError):
+        return False, ""
+
+
+def _within(line, cutoff):
+    """
+    آیا این خط لاگ از cutoff به بعد است؟
+
+    دو قالب: syslog («Sep 12 16:18:20» بدون سال) و ISO. برای syslog
+    سال جاری را فرض می‌کنیم و اگر نتیجه در آینده افتاد یک سال عقب
+    می‌بریم — تنها راه درست‌بودن حوالی اول ژانویه.
+
+    خطی که تاریخش خوانده نشود نگه داشته می‌شود: انداختنش یعنی
+    بی‌صدا داده از دست دادن، و این‌جا همان چیزی است که می‌خواهیم
+    از آن دور بمانیم.
+    """
+    head = line[:32]
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})", head)
+    if m:
+        try:
+            return datetime(*(int(g) for g in m.groups())) >= cutoff
+        except ValueError:
+            return True
+
+    m = re.match(r"([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})",
+                  head)
+    if not m:
+        return True
+    try:
+        mon = _MONTHS.index(m.group(1)) + 1
+    except ValueError:
+        return True
+    try:
+        when = datetime(cutoff.year, mon, int(m.group(2)),
+                        int(m.group(3)), int(m.group(4)), int(m.group(5)))
+    except ValueError:
+        return True
+    if when > datetime.now() + timedelta(days=1):
+        when = when.replace(year=when.year - 1)
+    return when >= cutoff
+
+
+_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
 def _auth_lines(hours=24):
     """
     خطوط لاگ احراز هویت در بازه‌ی خواسته‌شده.
@@ -61,15 +114,24 @@ def _auth_lines(hours=24):
     نبودِ لاگ نباید صفحه را از کار بیندازد.
     """
     if shutil.which("journalctl"):
-        out = _run(f"journalctl -u ssh -u sshd --since '-{int(hours)} hours' "
-                   "--no-pager -q 2>/dev/null")
-        if out.strip():
+        ok, out = _ran_ok(
+            f"journalctl -u ssh -u sshd --since '-{int(hours)} hours' "
+            "--no-pager -q")
+        if ok:
+            # موفق ولی خالی یعنی در این بازه چیزی نبوده — یک روز آرام.
+            # قبلاً این حالت هم به فایل می‌افتاد و تاریخچه‌ی کهنه را
+            # به‌جای «هیچ» نشان می‌داد.
             return out
 
+    # فایل، با همان بازه. tail تنها اندازه را محدود می‌کند نه زمان را،
+    # پس بدون این فیلتر صفحه می‌گفت «۲۴ ساعت گذشته» و تلاش‌های چند
+    # هفته پیش را نشان می‌داد — با شمارش‌های بادکرده.
+    cutoff = datetime.now() - timedelta(hours=int(hours))
     for path in ("/var/log/auth.log", "/var/log/secure"):
         out = _run(f"tail -n 20000 {path} 2>/dev/null")
         if out.strip():
-            return out
+            kept = [ln for ln in out.splitlines() if _within(ln, cutoff)]
+            return "\n".join(kept) + ("\n" if kept else "")
     return ""
 
 

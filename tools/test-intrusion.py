@@ -139,6 +139,94 @@ for ip in ("10.0.0.1", "127.0.0.1", "192.168.1.1", "172.16.0.1", "::1"):
 for ip in ("8.8.8.8", "45.9.148.1", "172.32.0.1"):
     check(f"{ip} داخلی نیست", not IN._is_private(ip))
 
+# ═══════════════════════════════════════════════════════════
+head("بازه‌ی زمانی واقعاً اعمال می‌شود")
+
+# _auth_lines اول journald را می‌خواند و --since می‌دهد. ولی اگر
+# journald چیزی برنگرداند — مثلاً یک روز آرام، یا واحدی با نام
+# دیگر — به tail -n 20000 روی auth.log می‌افتاد، که *هیچ* فیلتر
+# زمانی ندارد.
+#
+# نتیجه: صفحه می‌گفت «۲۴ ساعت گذشته» و تلاش‌های چند هفته پیش را
+# نشان می‌داد. شمارش‌ها باد می‌کردند و آی‌پی‌ای که ماه پیش حمله کرده
+# بود، مهاجمِ امروز به نظر می‌رسید.
+
+from datetime import datetime as _dt, timedelta as _td
+
+CMDS = []
+
+
+def _fake_run(cmd, timeout=20):
+    CMDS.append(cmd)
+    if "journalctl" in cmd:
+        return FAKE["journal"]
+    return FAKE["file"]
+
+
+def _line(when, ip, user="root"):
+    return (f"{when:%b %e %H:%M:%S} srv sshd[1]: "
+            f"Failed password for {user} from {ip} port 2 ssh2")
+
+
+NOW = _dt.now()
+OLD = _line(NOW - _td(days=20), "9.9.9.9")
+NEW = _line(NOW - _td(hours=2), "8.8.8.8")
+
+FAKE = {"journal": "", "file": OLD + "\n" + NEW + "\n"}
+
+# نمونه‌ی تازه‌ی ماژول: بالاتر در همین فایل _auth_lines با یک lambda
+# جایگزین شده، و آزمودنِ آن lambda هیچ چیزی را ثابت نمی‌کند.
+_sp2 = importlib.util.spec_from_file_location(
+    "intrusion_fresh", os.path.join(ROOT, "backend", "intrusion.py"))
+IN = importlib.util.module_from_spec(_sp2)
+_sp2.loader.exec_module(IN)
+
+def _fake_ran_ok(cmd, timeout=20):
+    """journalctl موفق اجرا می‌شود؛ خروجی‌اش همان چیزی است که FAKE می‌گوید."""
+    CMDS.append(cmd)
+    return True, FAKE["journal"]
+
+
+IN._run = _fake_run
+IN._ran_ok = _fake_ran_ok
+# سناریوی اول: سروری بدون journalctl، پس مسیر فایل سنجیده می‌شود
+IN.shutil.which = lambda n: None
+
+CMDS.clear()
+txt = IN._auth_lines(24)
+ips = {r["ip"] for r in IN.ssh_attempts(hours=24)["attempts"]} \
+    if txt else set()
+
+check("خط تازه دیده می‌شود", "8.8.8.8" in txt, txt[:50])
+check("خط بیست‌روزه کنار گذاشته می‌شود", "9.9.9.9" not in txt,
+      "وگرنه صفحه می‌گوید ۲۴ ساعت و چند هفته نشان می‌دهد")
+
+head("وقتی journald جواب می‌دهد، به فایل نمی‌افتد")
+
+IN.shutil.which = lambda n: ("/usr/bin/journalctl" if n == "journalctl" else None)
+
+FAKE["journal"] = NEW + "\n"
+FAKE["file"] = OLD + "\n"
+CMDS.clear()
+txt2 = IN._auth_lines(24)
+check("از journald خوانده می‌شود", "8.8.8.8" in txt2)
+check("سراغ auth.log نمی‌رود",
+      not any("auth.log" in c for c in CMDS),
+      " | ".join(CMDS)[:70])
+
+head("روز آرام یعنی خالی، نه تاریخچه‌ی کهنه")
+
+# journalctl موفق اجرا می‌شود ولی چیزی در این بازه نبوده
+FAKE["journal"] = ""
+FAKE["file"] = OLD + "\n"
+CMDS.clear()
+txt3 = IN._auth_lines(24)
+check("تاریخچه‌ی کهنه جایگزین نمی‌شود", "9.9.9.9" not in txt3,
+      "خالی‌بودنِ journald یعنی چیزی نبوده، نه اینکه جای دیگری بگردیم")
+
+
+
+
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
