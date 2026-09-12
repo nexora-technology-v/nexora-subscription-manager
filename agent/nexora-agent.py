@@ -29,7 +29,10 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-VERSION = "1.0.0"
+#: نسخه‌ی ایجنت. پنل از روی همین می‌فهمد که آیا این ایجنت دستورهای
+#: تازه را می‌شناسد یا نه — پس با هر قابلیت جدید باید بالا برود،
+#: وگرنه پنل فکر می‌کند ایجنت قدیمی است و بی‌دلیل به‌روزرسانی می‌خواهد.
+VERSION = "1.5.0"
 
 PANEL_URL = os.getenv("NEXORA_PANEL", "").rstrip("/")
 TOKEN = os.getenv("NEXORA_TOKEN", "")
@@ -638,7 +641,15 @@ def handle(job):
 
 
 def update_self(url):
-    """به‌روزرسانی خود agent — فقط از همان پنلی که به آن وصل است."""
+    """
+    به‌روزرسانی خود agent — فقط از همان پنلی که به آن وصل است.
+
+    اگر پنل آدرسی ندهد، خودمان از PANEL_URL می‌سازیم. پنل همیشه
+    آدرس بیرونی خودش را نمی‌داند (پشت nginx، دامنه‌ی متفاوت)، و اگر
+    آدرس ناقص بفرستد این تابع ردش می‌کرد و به‌روزرسانی هیچ‌وقت
+    انجام نمی‌شد — بدون اینکه کسی بفهمد چرا.
+    """
+    url = (url or "").strip() or f"{PANEL_URL}/api/agent/agent.py"
     if not url.startswith(PANEL_URL):
         return False, "آدرس به‌روزرسانی خارج از پنل مجاز نیست"
     try:

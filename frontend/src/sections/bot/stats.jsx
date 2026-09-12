@@ -70,20 +70,54 @@ export function BotStatsSection({ password }) {
       </div>
 
       <div className="fx-card p-5">
-        <div className="text-[14px] font-semibold text-white mb-4">قیف تبدیل</div>
-        {(d.steps || []).map((s, i) => {
+        <div className="text-[14px] font-semibold text-white mb-1">قیف تبدیل</div>
+        <p className="text-[12px] mb-4" style={{ color: "var(--muted)" }}>
+          هر پله نسبت به کل بازدید. عدد قرمز بین دو پله یعنی چند درصد
+          همان‌جا از دست می‌روند — همان‌جایی که باید درستش کرد.
+        </p>
+        {(d.steps || []).map((s, i, arr) => {
           const colors = ["var(--accent-2)", "var(--purple)", "var(--warn)", "var(--ok)"];
           const c = colors[i] || "var(--accent-2)";
+          // ریزش نسبت به پله‌ی قبل، نه نسبت به کل
+          const prev = i > 0 ? arr[i - 1] : null;
+          const drop = prev && prev.n
+            ? Math.round(((prev.n - s.n) * 100) / prev.n) : null;
           return (
-            <div key={i} className="mb-3">
-              <div className="flex justify-between mb-1.5">
-                <span className="text-[13px]" style={{ color: "var(--dim)" }}>{s.label}</span>
-                <span className="text-[13px] font-bold" style={{ color: c, fontFamily: "var(--mono)" }}>
-                  {s.n} <span style={{ color: "var(--muted)", fontSize: 10 }}>({s.pct}٪)</span>
-                </span>
-              </div>
-              <div className="h-[7px] rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.05)" }}>
-                <div style={{ width: `${s.pct}%`, height: "100%", borderRadius: 99, background: c, opacity: .85 }} />
+            <div key={i}>
+              {drop !== null && drop > 0 && (
+                <div className="flex items-center gap-2 my-1.5 pr-1">
+                  <span style={{ color: "var(--danger)", fontSize: 11 }}>
+                    ↓ {faNum(drop)}٪ ریزش
+                  </span>
+                  <div className="flex-1 h-px" style={{
+                    background: "linear-gradient(90deg, var(--danger), transparent)",
+                    opacity: 0.35,
+                  }} />
+                </div>
+              )}
+              <div className="mb-1">
+                <div className="flex justify-between mb-1.5">
+                  <span className="text-[13px]" style={{ color: "var(--dim)" }}>
+                    {s.label}
+                  </span>
+                  <span className="text-[13px] font-bold"
+                    style={{ color: c, fontFamily: "var(--mono)" }}>
+                    {faNum(s.n)}
+                    <span style={{ color: "var(--muted)", fontSize: 10 }}>
+                      {" "}({faNum(s.pct)}٪)
+                    </span>
+                  </span>
+                </div>
+                <div className="h-[9px] rounded-full overflow-hidden"
+                  style={{ background: "rgba(255,255,255,.05)" }}>
+                  <div style={{
+                    width: `${Math.max(s.pct, 1)}%`, height: "100%",
+                    borderRadius: 99,
+                    background: `linear-gradient(90deg, ${c}, ${c}99)`,
+                    // حرکت نرم موقع تغییر بازه — نه پرش ناگهانی
+                    transition: "width .5s cubic-bezier(.4,0,.2,1)",
+                  }} />
+                </div>
               </div>
             </div>
           );
@@ -106,6 +140,7 @@ export function BotReportSection({ password }) {
   const [days, setDays] = useState(30);
   const [d, setD] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [hover, setHover] = useState(null);
 
   useEffect(() => {
     let alive = true;
@@ -176,6 +211,11 @@ export function BotReportSection({ password }) {
   const u = d.users || {};
   const s = d.subs || {};
   const maxDay = Math.max(...(d.daily || []).map((x) => x.sum), 1);
+  // میانگین بدون روزهای صفر: روزهای بی‌فروش میانگین را مصنوعی
+  // پایین می‌آورند و خط مرجع بی‌معنا می‌شود.
+  const sold = (d.daily || []).filter((x) => x.sum > 0);
+  const avgDay = sold.length
+    ? sold.reduce((a, b) => a + b.sum, 0) / sold.length : 0;
 
   return (
     <div className="fx-anim">
@@ -236,15 +276,57 @@ export function BotReportSection({ password }) {
           <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
             <TrendingUp size={15} style={{ color: "var(--accent-2)" }} /> فروش روزانه
           </div>
-          <div className="flex items-end gap-[3px]" style={{ height: 90 }}>
-            {d.daily.map((x) => (
-              <div key={x.day} className="flex-1 rounded-t-[3px]"
-                title={`${x.day} — ${faNum(x.sum)} تومان از ${faNum(x.n)} سفارش`}
-                style={{
-                  height: `${Math.max(4, (x.sum / maxDay) * 100)}%`,
-                  background: "var(--accent-2)", opacity: 0.75,
-                }} />
-            ))}
+          <div className="flex items-end gap-[3px] relative"
+            style={{ height: 110 }}
+            onMouseLeave={() => setHover(null)}>
+            {/* خط میانگین — تا معلوم شود کدام روز بالای عرف بوده */}
+            {avgDay > 0 && (
+              <div className="absolute left-0 right-0" style={{
+                bottom: `${(avgDay / maxDay) * 100}%`,
+                borderTop: "1px dashed var(--border-2)",
+                pointerEvents: "none",
+              }}>
+                <span className="absolute text-[10px]" style={{
+                  top: -14, right: 0, color: "var(--muted)",
+                }}>میانگین {faNum(Math.round(avgDay))}</span>
+              </div>
+            )}
+            {d.daily.map((x, i) => {
+              const on = hover === i;
+              return (
+                <div key={x.day} className="flex-1 rounded-t-[3px] cursor-default"
+                  onMouseEnter={() => setHover(i)}
+                  style={{
+                    height: `${Math.max(3, (x.sum / maxDay) * 100)}%`,
+                    background: x.sum >= avgDay
+                      ? "linear-gradient(180deg, var(--accent-2), var(--accent))"
+                      : "var(--accent-2)",
+                    opacity: hover === null ? 0.8 : (on ? 1 : 0.35),
+                    // رشد نرم موقع عوض‌کردن بازه، به‌جای پرش
+                    transition: "height .45s cubic-bezier(.4,0,.2,1), opacity .15s",
+                  }} />
+              );
+            })}
+          </div>
+
+          {/* جزئیات روزِ زیر نشانگر — به‌جای tooltip مرورگر که کند و زشت است */}
+          <div className="text-[12px] mt-2 h-[18px]" style={{ color: "var(--dim)" }}>
+            {hover !== null && d.daily[hover] ? (
+              <>
+                <span style={{ fontFamily: "var(--mono)" }}>
+                  {d.daily[hover].day}
+                </span>
+                {" — "}
+                <b style={{ color: "var(--accent-2)" }}>
+                  {faNum(d.daily[hover].sum)} تومان
+                </b>
+                {" از "}{faNum(d.daily[hover].n)} سفارش
+              </>
+            ) : (
+              <span style={{ color: "var(--muted)" }}>
+                نشانگر را روی نمودار ببرید تا جزئیات هر روز را ببینید
+              </span>
+            )}
           </div>
           <div className="flex justify-between text-[12px] mt-2" style={{ color: "var(--muted)" }}>
             <span>{d.daily[0].day}</span>

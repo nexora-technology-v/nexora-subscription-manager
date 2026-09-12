@@ -341,3 +341,123 @@ def explain_vpn():
         "کلاینت‌های خودتان با آن وصل می‌شوند می‌گردیم. اگر پیدا شود، "
         "پشت آن VPN یک مشتری نشسته."
     )
+
+
+# ═══════════════════════════════════════════════════════════
+#  این آدرس مال کیست؟
+# ═══════════════════════════════════════════════════════════
+
+#: نشانه‌های میزبان و ارائه‌دهنده‌ی سرور در نام معکوس.
+#: آدرسی که به اینها ختم شود، از یک دیتاسنتر می‌آید نه خانه‌ی کسی —
+#: یعنی یا سرور خودتان است، یا VPN، یا ماشینی که اسکن می‌کند.
+HOSTING_HINTS = {
+    "your-server.de": "Hetzner",
+    "hetzner": "Hetzner",
+    "contabo": "Contabo",
+    "ovh.net": "OVH",
+    "ovh.ca": "OVH",
+    "digitalocean": "DigitalOcean",
+    "vultr": "Vultr",
+    "linode": "Linode",
+    "amazonaws": "AWS",
+    "googleusercontent": "Google Cloud",
+    "azure": "Azure",
+    "scaleway": "Scaleway",
+    "leaseweb": "Leaseweb",
+    "hostinger": "Hostinger",
+    "m247": "M247",
+    "datacamp": "DataCamp",
+    "servers.com": "Servers.com",
+    "arvancloud": "ArvanCloud",
+    "cloudflare": "Cloudflare",
+}
+
+#: نشانه‌های اپراتور خانگی/موبایل ایران — یعنی احتمالاً یک آدم واقعی
+IRAN_ISP_HINTS = {
+    "mci.ir": "همراه اول",
+    "irancell": "ایرانسل",
+    "rightel": "رایتل",
+    "shatel": "شاتل",
+    "parsonline": "پارس‌آنلاین",
+    "asiatech": "آسیاتک",
+    "respina": "رسپینا",
+    "tci.ir": "مخابرات",
+    "datak": "داتک",
+    "pishgaman": "پیشگامان",
+}
+
+_RDNS_CACHE = {}
+_RDNS_TTL = 3600.0
+
+
+def rdns(ip, timeout=1.5):
+    """
+    نام معکوس یک آدرس، با کش.
+
+    مهلت عمداً کوتاه است: این فقط یک اطلاعات کمکی است و نباید
+    بارگذاری صفحه را به انتظار DNS بیندازد. آدرس‌های بدون نام
+    هم کش می‌شوند تا هر بار دوباره تلاش نشود.
+    """
+    import socket
+
+    n = normalize(ip)
+    if not n or is_local(n):
+        return ""
+
+    now = time.time()
+    hit = _RDNS_CACHE.get(n)
+    if hit and now - hit[0] <= _RDNS_TTL:
+        return hit[1]
+
+    old = socket.getdefaulttimeout()
+    name = ""
+    try:
+        socket.setdefaulttimeout(timeout)
+        name = socket.gethostbyaddr(n)[0]
+    except Exception:
+        name = ""
+    finally:
+        try:
+            socket.setdefaulttimeout(old)
+        except Exception:
+            pass
+
+    _RDNS_CACHE[n] = (now, name)
+    return name
+
+
+def owner(ip, ptr=None):
+    """
+    آدرس از کجاست: دیتاسنتر، اپراتور ایرانی، یا نامشخص.
+
+    این نزدیک‌ترین چیزی است که می‌شود به «آی‌پی واقعی کاربر» رسید.
+    اگر کسی از VPN استفاده کند، آنچه می‌بینیم خروجیِ همان VPN است و
+    آدرس خانه‌اش از بیرون در دسترس نیست — ولی دست‌کم می‌فهمیم که
+    این یک سرور است نه یک خط خانگی، و همین برای تصمیم‌گیری کافی است:
+
+      · دیتاسنتر + تلاش زیاد  →  اسکنر یا VPN؛ بستنش کم‌خطر است
+      · اپراتور ایرانی        →  به‌احتمال زیاد یک آدم واقعی
+    """
+    n = normalize(ip)
+    name = ptr if ptr is not None else rdns(n)
+    low = (name or "").lower()
+
+    for needle, label in HOSTING_HINTS.items():
+        if needle in low:
+            return {"kind": "hosting", "label": label, "ptr": name,
+                    "why": f"این آدرس متعلق به {label} است — یک دیتاسنتر، "
+                           "نه خط خانگی. یعنی یا سرور است یا خروجی VPN."}
+
+    for needle, label in IRAN_ISP_HINTS.items():
+        if needle in low:
+            return {"kind": "isp", "label": label, "ptr": name,
+                    "why": f"اپراتور {label} — به‌احتمال زیاد یک کاربر "
+                           "واقعی، نه سرور."}
+
+    if name:
+        return {"kind": "named", "label": name.split(".")[-2:] and
+                ".".join(name.split(".")[-2:]), "ptr": name,
+                "why": "نام معکوس دارد ولی ارائه‌دهنده‌اش شناخته‌شده نیست."}
+
+    return {"kind": "unknown", "label": "", "ptr": "",
+            "why": "نام معکوس ندارد — درباره‌ی صاحبش چیزی نمی‌دانیم."}

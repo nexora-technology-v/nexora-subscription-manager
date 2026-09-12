@@ -183,7 +183,8 @@ def frontend_checks(fast):
     env = dict(os.environ, NODE_PATH=nm)
     for f, label in [("tools/test-render.cjs", "ظاهر پنل"),
                      ("test-panel-runtime.js", "اجرای پنل"),
-                     ("test-subpage.js", "صفحه‌ی اشتراک")]:
+                     ("test-subpage.js", "صفحه‌ی اشتراک"),
+                     ("tools/test-components.cjs", "رندر کامپوننت‌ها")]:
         try:
             p = subprocess.run(["node", f], cwd=ROOT, env=env, timeout=400,
                                capture_output=True, text=True,

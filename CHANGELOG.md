@@ -1,5 +1,66 @@
 # Changelog
 
+## [1.5.1]
+
+### Fixed — The black screen had a second, simpler cause
+
+`ConfirmModal` called `createPortal` with no container argument at all. React
+throws #200 — "Target container is not a DOM element" — and tears down the tree,
+so the panel went black **every single time that dialog opened**. 1.5.0 fixed
+the error-message path but not this, which is why blocking an IP still failed.
+
+`tools/test-components.cjs` now mounts every UI component in a real DOM and
+asserts none of them throw. Pattern-matching tests could never have caught this;
+only running the code does. It found a second one immediately: `EmptyState`
+crashed whenever its optional icon was omitted.
+
+### Fixed — Node monitoring stayed empty
+
+The agent had reported version `1.0.0` since the beginning and never bumped it,
+so the "agent too old" check never fired. Worse, the update job sent a relative
+URL that the agent rejected as outside its panel, so the update could not happen
+either. The agent now reports the real version, builds the URL itself when the
+panel does not supply one, and an agent reporting no version at all counts as
+too old.
+
+### Fixed — "undefined کانفیگ در ۱۱ گروه"
+
+The accounting dashboard read `totalClients`, which only a different endpoint
+ever returned. It is part of the overview response now, along with how many of
+each group's clients came from the bot.
+
+### Fixed — Resellers billed for one month regardless of history
+
+Months came from the client's creation date, and older x-ui versions do not
+record one — so every client counted as a single month and a reseller working
+for two years was billed for one. A group's **start date** is now used as the
+fallback, which gives the admin a lever for exactly this case.
+
+### Added — Whose address is this?
+
+Reverse DNS names the owner of an attacking address. `65.108.213.175` resolves
+to `your-server.de` — Hetzner, a datacentre, not someone's home line. The page
+labels each address as datacentre or consumer ISP, which is as close to
+"identify the real user" as anything can honestly get: a VPN exit cannot be
+traced back from outside, but knowing it is a datacentre tells you blocking it
+is low-risk, and knowing it is Irancell tells you it is probably a person.
+
+### Changed — Firewall suggestions no longer need scrolling
+
+Search, a capped list, and a "show the rest" button.
+
+### Changed — Spacing is a system, not a habit
+
+Every pair of sibling blocks inside a section is spaced by one rule using a
+shared scale, instead of the previous rule that only matched a few specific
+class combinations and left everything else touching.
+
+### Changed — The bot sales report looks like the invoice
+
+Same palette, same header, summary cards, alternating rows, a total line, and a
+daily trend chart — instead of a bare table. The funnel shows drop-off between
+steps, and the daily chart has a mean line and per-day detail on hover.
+
 ## [1.5.0]
 
 ### Fixed — Blocking an IP blanked the whole panel

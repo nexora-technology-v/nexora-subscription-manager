@@ -126,6 +126,17 @@ export function FirewallIntrusion({ password }) {
 
       <Msg msg={msg} />
 
+      {d.vpnNote && (
+        <InfoBox>
+          <b>درباره‌ی آدرس واقعی:</b> {d.vpnNote}
+          <div className="mt-2 text-[12px]" style={{ color: "var(--muted)" }}>
+            ستون «صاحب آدرس» می‌گوید آدرس از یک دیتاسنتر آمده یا از یک
+            اپراتور خانگی. دیتاسنتر یعنی سرور یا خروجی VPN — بستنش
+            کم‌خطر است. اپراتور خانگی یعنی به‌احتمال زیاد یک آدم واقعی.
+          </div>
+        </InfoBox>
+      )}
+
       {!ssh.available ? (
         <div className="fx-card p-5">
           <div className="text-[14px] font-semibold text-white mb-2 flex items-center gap-2">
@@ -246,8 +257,8 @@ export function FirewallIntrusion({ password }) {
                 <table className="fx-table">
                   <thead>
                     <tr>
-                      <th>آی‌پی</th><th>تلاش</th><th>کاربر هدف</th>
-                      <th>آخرین بار</th><th></th>
+                      <th>آی‌پی</th><th>صاحب آدرس</th><th>تلاش</th>
+                      <th>کاربر هدف</th><th>آخرین بار</th><th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -260,6 +271,27 @@ export function FirewallIntrusion({ password }) {
                               background: "rgba(251,191,36,.14)",
                               color: "var(--warn)",
                             }}>وصل به سرویس</span>
+                          )}
+                        </td>
+                        <td style={{ fontSize: 12 }}>
+                          {a.owner ? (
+                            <span title={a.ownerWhy} style={{
+                              color: a.ownerKind === "hosting" ? "var(--warn)"
+                                : a.ownerKind === "isp" ? "var(--ok)"
+                                  : "var(--muted)",
+                            }}>{a.owner}</span>
+                          ) : (
+                            <span style={{ color: "var(--muted)" }}>—</span>
+                          )}
+                          {a.ownerKind === "hosting" && (
+                            <div style={{ color: "var(--muted)", fontSize: 11 }}>
+                              دیتاسنتر
+                            </div>
+                          )}
+                          {a.ownerKind === "isp" && (
+                            <div style={{ color: "var(--muted)", fontSize: 11 }}>
+                              اپراتور خانگی
+                            </div>
                           )}
                         </td>
                         <td style={{

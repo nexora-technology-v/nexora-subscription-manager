@@ -118,7 +118,9 @@ export function Tabs({ items, active, onChange, counts }) {
 export function EmptyState({ icon: Icon, text, hint, action }) {
   return (
     <div className="fx-card py-12 px-5 text-center fx-fade" style={{ borderStyle: "dashed" }}>
-      <Icon size={24} className="mx-auto mb-3" style={{ color: "#2A3444" }} />
+      {/* آیکون اختیاری است: بدون این شرط، فراموش‌کردن آن یعنی
+          «Element type is invalid» و سقوط همان بخش */}
+      {Icon && <Icon size={24} className="mx-auto mb-3" style={{ color: "#2A3444" }} />}
       <p className="text-[13px]" style={{ color: "var(--dim)" }}>{text}</p>
       {hint && (
         <p className="text-[12px] mt-2 mx-auto leading-relaxed"
@@ -184,7 +186,12 @@ export function ConfirmModal({ title, desc, onConfirm, onCancel, confirmLabel = 
           <button onClick={onConfirm} className="flex-1 py-2.5 rounded-[11px] text-[14px] font-semibold text-white transition-all hover:brightness-110" style={{ background: "var(--danger)" }}>{confirmLabel}</button>
         </div>
       </div>
-    </div>
+    </div>,
+    // بدون این آرگومان، createPortal خطای «Target container is not a DOM
+    // element» می‌دهد و React کل درخت را می‌اندازد — یعنی هر بار که این
+    // مودال باز می‌شد، صفحه سیاه می‌شد. دقیقاً همان چیزی که موقع بستن
+    // آی‌پی اتفاق می‌افتاد.
+    document.body,
   );
 }
 

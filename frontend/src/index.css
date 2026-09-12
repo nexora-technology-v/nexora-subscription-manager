@@ -20,6 +20,13 @@
 }
 
 :root {
+  /* مقیاس فاصله — داشبورد فشرده: ۸ / ۱۲ / ۱۶ / ۲۴ / ۳۲ */
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
   --bg: #070A12;
   --surface: #0E1523;
   --surface-2: #131C2E;
@@ -194,13 +201,26 @@ input, select, textarea, button, optgroup {
  * عمداً فقط فرزندان مستقیم .fx-anim را می‌گیرد تا خانه‌های گرید —
  * که خودشان gap دارند — دست‌نخورده بمانند.
  */
-.fx-anim > .fx-card + .fx-card,
-.fx-anim > .fx-card + [class*="fx-g"],
-.fx-anim > [class*="fx-g"] + .fx-card,
-.fx-anim > [class*="fx-g"] + [class*="fx-g"],
-.fx-anim > .fx-card + table,
-.fx-anim > table + .fx-card {
-  margin-top: 16px;
+/*
+ * ریتم عمودی یک‌دست.
+ *
+ * هر دو عنصر هم‌سطح داخل یک بخش، ۱۶ پیکسل فاصله می‌گیرند — فرقی
+ * نمی‌کند کارت باشد، جدول، گرید یا هر چیز دیگر. قاعده‌ی قبلی فقط
+ * چند ترکیب مشخص را می‌گرفت و هر شکل تازه‌ای دوباره می‌چسبید.
+ *
+ * در جریان بلوکیِ عادی، margin-bottom عنصر قبلی با این ادغام
+ * می‌شود (collapse)، پس mb-4 های موجود دو برابر نمی‌شوند.
+ *
+ * فرزندان مستقیم .fx-anim — خانه‌های گرید خودشان gap دارند و
+ * دست‌نخورده می‌مانند.
+ */
+.fx-anim > * + * {
+  margin-top: var(--space-4);
+}
+
+/* فاصله‌ی داخل کارت‌های پشت‌سرهم در یک ستون */
+.fx-stack > * + * {
+  margin-top: var(--space-3);
 }
 
 .fx-card-i:hover {

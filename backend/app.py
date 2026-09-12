@@ -2405,7 +2405,16 @@ def firewall_intrusion(hours: int = 24, x_admin_password: str = Header(...)):
         try:
             tun = NETID.tunnel_peers()
             cl = NETID.client_ips()
-            for a in (res.get("ssh") or {}).get("attempts") or []:
+            # جست‌وجوی نام معکوس کند است، پس فقط برای آن‌هایی که
+            # واقعاً روی صفحه دیده می‌شوند انجام می‌شود.
+            attempts = (res.get("ssh") or {}).get("attempts") or []
+            for a in attempts[:60]:
+                own = NETID.owner(a.get("ip"))
+                a["owner"] = own.get("label") or ""
+                a["ownerKind"] = own.get("kind")
+                a["ptr"] = own.get("ptr") or ""
+                a["ownerWhy"] = own.get("why") or ""
+            for a in attempts:
                 info = NETID.identify(a.get("ip"), tunnels=tun, clients=cl)
                 a["kind"] = info.get("kind")
                 a["why"] = info.get("why")
@@ -4181,18 +4190,26 @@ def _period_bounds(conf, ref=None):
     return start, start + timedelta(days=length)
 
 
-def _months_for(cl, logged):
+def _months_for(cl, logged, since=None):
     """
     تعداد ماه یک کانفیگ.
 
     اگر تمدید در نکسورا ثبت شده باشد، همان قطعی است. وگرنه از فاصله‌ی
     ایجاد تا انقضا تخمین می‌زنیم — که کم‌شمار است، چون تمدید زودتر از
     موعد چند روز را می‌سوزاند.
+
+    since: تاریخ شروع گروه. نسخه‌های قدیمی x-ui ستون created_at ندارند،
+    و بدون تاریخ شروع، هر کانفیگ فقط «یک ماه» حساب می‌شد — یعنی
+    واسطه‌ای که دو سال است کار می‌کند، یک ماه صورت‌حساب می‌گرفت.
+    با تنظیم «تاریخ شروع» برای گروه، همه‌ی کانفیگ‌هایش از همان
+    تاریخ محاسبه می‌شوند.
     """
     if cl["email"] in logged:
         return 1 + logged[cl["email"]], "قطعی", 0
 
     exp, created = cl.get("expiry"), cl.get("createdAt")
+    if not created and since:
+        created = since
     if not exp or exp <= 0 or not created:
         return 1, "پیش‌فرض", 0
 
@@ -4374,7 +4391,7 @@ def _billing_overview_impl():
         G["used"] += cl["used"]
         G["quota"] += cl["totalGB"]
 
-        months, kind, _ = _months_for(cl, logged)
+        months, kind, _ = _months_for(cl, logged, since=conf.get("period_start"))
         G["months"] += months
         G["renewals"] += months - 1
         if kind == "تخمینی":
@@ -4420,6 +4437,9 @@ def _billing_overview_impl():
             }
 
     out = sorted(groups.values(), key=lambda g: (-g["billable"], -g["configs"]))
+    # داشبورد این را می‌خواند. تا امروز فقط endpoint دیگری آن را
+    # برمی‌گرداند و این‌جا undefined می‌شد: «undefined کانفیگ در ۱۱ گروه».
+    total_clients = sum(g["configs"] for g in out)
     for g in out:
         g["balance"] = g["due"] - g["paid"]
         g["usedGB"] = round(g["used"] / (1024 ** 3), 1)
@@ -4440,6 +4460,8 @@ def _billing_overview_impl():
     return {
         "ready": True,
         "groups": out,
+        "totalClients": total_clients,
+        "botClients": sum(g.get("botOwned", 0) for g in out),
         "totals": {
             "due": sum(g["due"] for g in billed),
             "paid": sum(g["paid"] for g in billed),
@@ -5166,11 +5188,12 @@ def _pdf_font(bold=False):
 @app.get("/api/admin/bot/users/report/pdf")
 def bot_users_report_pdf(days: int = 30, x_admin_password: str = Header(...)):
     """
-    گزارش فروش ربات به‌صورت PDF — با همان قالب صورتحساب حسابداری.
+    گزارش فروش ربات به‌صورت PDF — با همان قالب و رنگ صورتحساب واسطه.
 
-    تا امروز این گزارش فقط روی صفحه دیده می‌شد. چیزی که روی صفحه
-    است را نمی‌شود بایگانی کرد، برای شریک فرستاد، یا کنار دفتر
-    گذاشت — و همان دلیلی است که مدیر می‌خواهد نسخه‌ی چاپی داشته باشد.
+    چیزی که فقط روی صفحه است را نمی‌شود بایگانی کرد یا برای شریک
+    فرستاد؛ به همین دلیل نسخه‌ی چاپی لازم است. و چون کنار صورتحساب
+    حسابداری بایگانی می‌شود، باید همان شکل را داشته باشد نه یک جدول
+    ساده‌ی بی‌قواره.
     """
     check_auth(x_admin_password)
 
@@ -5192,121 +5215,221 @@ def bot_users_report_pdf(days: int = 30, x_admin_password: str = Header(...)):
     F = _pdf_font()
     FB = _pdf_font(bold=True)
 
-    import io
-    buf = io.BytesIO()
+    import io as _io
+    buf = _io.BytesIO()
     W, H = A4
     c = pdfcanvas.Canvas(buf, pagesize=A4)
 
+    # همان پالت صورتحساب — روشن و چاپ‌پذیر
     NAVY = colors.HexColor("#1F3864")
     INK = colors.HexColor("#1A1A1A")
     GREY = colors.HexColor("#555555")
     MUTE = colors.HexColor("#8A92A0")
     LINE = colors.HexColor("#CFD6E4")
-    HEAD = colors.HexColor("#E8EDF6")
+    SOFT = colors.HexColor("#F6F8FC")
     CARD = colors.HexColor("#FAFBFD")
+    HEAD = colors.HexColor("#E8EDF6")
+    GOOD = colors.HexColor("#14683C")
 
     def money(n):
         return f"{int(n or 0):,}"
 
     stamp = datetime.now()
-    ML, MR = 15 * mm, 15 * mm
+    doc_no = f"NX-R-{stamp:%Y%m%d}-{days}"
+
+    ML, MR = 14 * mm, 14 * mm
     CW = W - ML - MR
+    page = [0]
 
-    c.setFillColor(colors.white)
-    c.rect(0, 0, W, H, fill=1, stroke=0)
+    def footer():
+        c.setFont(F, 7)
+        c.setFillColor(MUTE)
+        c.drawCentredString(W / 2, 8 * mm,
+                            _fa(f"گزارش نکسورا — صفحه {page[0]}"))
 
-    y = H - 18 * mm
-    c.setFont(FB, 19)
-    c.setFillColor(NAVY)
-    c.drawString(ML, y, "NEXORA")
-    c.setFont(F, 8)
-    c.setFillColor(GREY)
-    c.drawString(ML, y - 6 * mm, _fa(f"گزارش فروش ربات — {days} روز گذشته"))
-    c.setFont(F, 8)
-    c.setFillColor(MUTE)
-    c.drawRightString(W - MR, y, _fa("تاریخ صدور") + f": {stamp:%Y-%m-%d}")
+    def header():
+        page[0] += 1
+        c.setFillColor(colors.white)
+        c.rect(0, 0, W, H, fill=1, stroke=0)
 
-    c.setStrokeColor(NAVY)
-    c.setLineWidth(1.6)
-    c.line(ML, y - 11 * mm, W - MR, y - 11 * mm)
-    y -= 22 * mm
+        y0 = H - 14 * mm
+        c.setFont(FB, 19)
+        c.setFillColor(NAVY)
+        c.drawString(ML, y0 - 4 * mm, "NEXORA")
+        c.setFont(F, 8)
+        c.setFillColor(GREY)
+        c.drawString(ML, y0 - 9.5 * mm, _fa("گزارش فروش ربات تلگرام"))
 
-    # کارت‌های خلاصه — همان اعدادی که مدیر اول از همه می‌خواهد
+        c.setFont(F, 8)
+        meta = [
+            (_fa("شماره گزارش") + ": ", doc_no),
+            (_fa("تاریخ صدور") + ": ", stamp.strftime("%Y-%m-%d")),
+            (_fa("بازه") + ": ", _fa(f"{days} روز گذشته")),
+        ]
+        yy = y0 - 3 * mm
+        for label, val in meta:
+            c.setFillColor(GREY)
+            tw = c.stringWidth(val, F, 8)
+            c.drawRightString(W - MR, yy, val)
+            c.setFillColor(MUTE)
+            c.drawRightString(W - MR - tw - 1 * mm, yy, label)
+            yy -= 4.5 * mm
+
+        c.setStrokeColor(NAVY)
+        c.setLineWidth(1.8)
+        c.line(ML, H - 28 * mm, W - MR, H - 28 * mm)
+        footer()
+        return H - 38 * mm
+
+    y = header()
+
     o = rep.get("orders") or {}
     u = rep.get("users") or {}
+    subs = rep.get("subs") or {}
+
+    # ── کارت‌های خلاصه ──
     cards = [
-        ("کاربر جدید", f"{int(u.get('newUsers') or 0):,}"),
-        ("خریدار", f"{int(rep.get('buyerCount') or 0):,}"),
-        ("سفارش موفق", f"{int(o.get('approved') or 0):,}"),
-        ("فروش (تومان)", money(o.get("revenue"))),
+        ("کاربر جدید", f"{int(u.get('newUsers') or 0):,}", NAVY),
+        ("خریدار", f"{int(rep.get('buyerCount') or 0):,}", NAVY),
+        ("سفارش موفق", f"{int(o.get('approved') or 0):,}", GOOD),
+        ("درآمد (تومان)", money(o.get("revenue")), GOOD),
     ]
     cw = CW / len(cards)
-    for i, (label, val) in enumerate(cards):
-        x = ML + i * cw
+    for idx, (label, val, col) in enumerate(cards):
+        x = ML + idx * cw
         c.setFillColor(CARD)
         c.setStrokeColor(LINE)
-        c.rect(x + 1 * mm, y - 16 * mm, cw - 2 * mm, 16 * mm, fill=1, stroke=1)
+        c.setLineWidth(0.6)
+        c.roundRect(x + 1.2 * mm, y - 17 * mm, cw - 2.4 * mm, 17 * mm,
+                    2 * mm, fill=1, stroke=1)
         c.setFont(F, 7.5)
         c.setFillColor(MUTE)
-        c.drawCentredString(x + cw / 2, y - 5 * mm, _fa(label))
+        c.drawCentredString(x + cw / 2, y - 5.5 * mm, _fa(label))
         c.setFont(FB, 13)
-        c.setFillColor(NAVY)
-        c.drawCentredString(x + cw / 2, y - 12.5 * mm, val)
-    y -= 24 * mm
+        c.setFillColor(col)
+        c.drawCentredString(x + cw / 2, y - 13 * mm, val)
+    y -= 26 * mm
 
-    c.setFont(F, 8.5)
-    c.setFillColor(GREY)
-    for label, val in (
+    # ── خلاصه‌ی دوره ──
+    detail = [
         ("نرخ تبدیل بازدید به خرید", f"{rep.get('conversion') or 0}%"),
         ("میانگین هر سفارش", money(o.get("avg")) + " " + _fa("تومان")),
         ("سفارش رد شده", f"{int(o.get('rejected') or 0):,}"),
         ("سفارش در انتظار", f"{int(o.get('pending') or 0):,}"),
-    ):
-        c.setFillColor(MUTE)
-        c.drawString(ML, y, _fa(label))
-        c.setFillColor(INK)
-        c.drawRightString(W - MR, y, val)
-        c.setStrokeColor(LINE)
-        c.setLineWidth(0.4)
-        c.line(ML, y - 2 * mm, W - MR, y - 2 * mm)
-        y -= 7 * mm
-
+        ("اشتراک فعال", f"{int(subs.get('active') or 0):,}"),
+    ]
+    c.setFont(FB, 9.5)
+    c.setFillColor(NAVY)
+    c.drawRightString(W - MR, y, _fa("خلاصه‌ی دوره"))
     y -= 6 * mm
-    c.setFont(FB, 10)
+
+    for idx, (label, val) in enumerate(detail):
+        if idx % 2 == 0:
+            c.setFillColor(SOFT)
+            c.rect(ML, y - 2.2 * mm, CW, 6.8 * mm, fill=1, stroke=0)
+        c.setFont(F, 8.5)
+        c.setFillColor(MUTE)
+        c.drawRightString(W - MR - 2 * mm, y, _fa(label))
+        c.setFillColor(INK)
+        c.drawString(ML + 2 * mm, y, val)
+        y -= 6.8 * mm
+
+    y -= 8 * mm
+
+    # ── بیشترین خریداران ──
+    c.setFont(FB, 9.5)
     c.setFillColor(NAVY)
     c.drawRightString(W - MR, y, _fa("بیشترین خریداران"))
-    y -= 6 * mm
+    y -= 7 * mm
 
-    cols = [(ML, "مبلغ"), (ML + 45 * mm, "سفارش"), (W - MR, "مشتری")]
-    c.setFillColor(HEAD)
-    c.rect(ML, y - 2 * mm, CW, 7 * mm, fill=1, stroke=0)
-    c.setFont(FB, 8)
-    c.setFillColor(NAVY)
-    for x, label in cols[:2]:
-        c.drawString(x + 2 * mm, y, _fa(label))
-    c.drawRightString(W - MR - 2 * mm, y, _fa("مشتری"))
-    y -= 9 * mm
+    COL_AMOUNT = ML + 2 * mm
+    COL_ORDERS = ML + 42 * mm
 
-    c.setFont(F, 8)
-    for b in (rep.get("buyers") or [])[:25]:
-        if y < 25 * mm:
-            c.showPage()
-            y = H - 20 * mm
-            c.setFont(F, 8)
-        name = b.get("first_name") or b.get("username") or str(b.get("tg_id") or "")
-        c.setFillColor(INK)
-        c.drawString(ML + 2 * mm, y, money(b.get("spent")))
-        c.drawString(ML + 45 * mm + 2 * mm, y, f"{int(b.get('orders') or 0):,}")
-        c.drawRightString(W - MR - 2 * mm, y, _fa(str(name)[:40]))
-        c.setStrokeColor(LINE)
-        c.setLineWidth(0.3)
-        c.line(ML, y - 2.5 * mm, W - MR, y - 2.5 * mm)
+    def table_head(yy):
+        c.setFillColor(HEAD)
+        c.rect(ML, yy - 2.4 * mm, CW, 7.5 * mm, fill=1, stroke=0)
+        c.setFont(FB, 8)
+        c.setFillColor(NAVY)
+        c.drawString(COL_AMOUNT, yy, _fa("مبلغ (تومان)"))
+        c.drawString(COL_ORDERS, yy, _fa("سفارش"))
+        c.drawRightString(W - MR - 2 * mm, yy, _fa("مشتری"))
+        return yy - 8.5 * mm
+
+    y = table_head(y)
+
+    buyers = rep.get("buyers") or []
+    if not buyers:
+        c.setFont(F, 8.5)
+        c.setFillColor(MUTE)
+        c.drawCentredString(W / 2, y, _fa("در این بازه خریدی ثبت نشده است"))
+        y -= 8 * mm
+    else:
+        for idx, b in enumerate(buyers[:30]):
+            if y < 28 * mm:
+                c.showPage()
+                y = table_head(header())
+            if idx % 2 == 0:
+                c.setFillColor(SOFT)
+                c.rect(ML, y - 2.2 * mm, CW, 6.8 * mm, fill=1, stroke=0)
+            name = (b.get("first_name") or b.get("username")
+                    or str(b.get("tg_id") or ""))
+            c.setFont(F, 8.5)
+            c.setFillColor(INK)
+            c.drawString(COL_AMOUNT, y, money(b.get("spent")))
+            c.setFillColor(GREY)
+            c.drawString(COL_ORDERS, y, f"{int(b.get('orders') or 0):,}")
+            c.setFillColor(INK)
+            c.drawRightString(W - MR - 2 * mm, y, _fa(str(name)[:38]))
+            y -= 6.8 * mm
+
+        total = sum(int(b.get("spent") or 0) for b in buyers)
+        c.setStrokeColor(NAVY)
+        c.setLineWidth(0.9)
+        c.line(ML, y - 0.5 * mm, W - MR, y - 0.5 * mm)
         y -= 6.5 * mm
+        c.setFont(FB, 9)
+        c.setFillColor(NAVY)
+        c.drawString(COL_AMOUNT, y, money(total))
+        c.drawRightString(W - MR - 2 * mm, y, _fa("جمع کل"))
+        y -= 9 * mm
 
-    c.setFont(F, 7)
-    c.setFillColor(MUTE)
-    c.drawCentredString(W / 2, 10 * mm,
-                        _fa("این گزارش توسط پنل نکسورا تولید شده است"))
+    # ── روند روزانه ──
+    #
+    # نمودار میله‌ای ساده و بدون کتابخانه: روند فروش را در یک نگاه
+    # نشان می‌دهد، که از یک ستون عدد خیلی گویاتر است.
+    daily = rep.get("daily") or []
+    if daily and y > 55 * mm:
+        c.setFont(FB, 9.5)
+        c.setFillColor(NAVY)
+        c.drawRightString(W - MR, y, _fa("روند فروش روزانه"))
+        y -= 8 * mm
+
+        peak = max([int(x.get("sum") or 0) for x in daily] + [1])
+        bar_h = 22 * mm
+        n = min(len(daily), 30)
+        shown = daily[-n:]
+        bw = CW / n
+        base = y - bar_h
+
+        c.setStrokeColor(LINE)
+        c.setLineWidth(0.5)
+        c.line(ML, base, W - MR, base)
+
+        for idx, x in enumerate(shown):
+            v = int(x.get("sum") or 0)
+            h = (v / peak) * bar_h if peak else 0
+            bx = ML + idx * bw
+            c.setFillColor(NAVY if v else LINE)
+            c.rect(bx + bw * 0.22, base, bw * 0.56, max(h, 0.4),
+                   fill=1, stroke=0)
+
+        c.setFont(F, 6.5)
+        c.setFillColor(MUTE)
+        c.drawString(ML, base - 4 * mm, _fa(str(shown[0].get("d") or "")))
+        c.drawRightString(W - MR, base - 4 * mm,
+                          _fa(str(shown[-1].get("d") or "")))
+        c.drawCentredString(W / 2, base - 4 * mm,
+                            _fa("بیشترین روز: ") + money(peak))
 
     c.showPage()
     c.save()
@@ -5315,7 +5438,7 @@ def bot_users_report_pdf(days: int = 30, x_admin_password: str = Header(...)):
         content=buf.read(),
         media_type="application/pdf",
         headers={"Content-Disposition":
-                 f'attachment; filename="nexora-bot-report-{days}d.pdf"'})
+                 "attachment; filename=nexora-bot-report-" + str(days) + "d.pdf"})
 
 
 @app.get("/api/admin/billing/invoice/{group_key}/pdf")
@@ -6707,7 +6830,12 @@ def node_sysmon_get(node_id: int, x_admin_password: str = Header(...)):
                 (node_id,)).fetchone()
             if row:
                 ver = (row["agent_version"] or "").strip()
-                if ver and _older_than(ver, "1.4.0"):
+                # ایجنت‌های قبل از ۱.۵.۰ نسخه‌ی ۱.۰.۰ گزارش می‌کردند
+                # و هیچ‌وقت بالا نرفت. پس هر چیزی زیر ۱.۵.۰ — و هر
+                # ایجنتی که اصلاً نسخه نمی‌دهد — قدیمی است.
+                if not ver:
+                    stale_agent = "نامشخص"
+                elif _older_than(ver, "1.5.0"):
                     stale_agent = ver
             bad = c.execute(
                 """SELECT result FROM jobs
@@ -6762,7 +6890,8 @@ def _older_than(ver, floor):
 
 
 @app.post("/api/admin/tunnel/node/{node_id}/update-agent")
-def node_update_agent(node_id: int, x_admin_password: str = Header(...)):
+def node_update_agent(node_id: int, request: Request,
+                      x_admin_password: str = Header(...)):
     """
     به‌روزرسانی ایجنت یک سرور از روی همین پنل.
 
@@ -6772,8 +6901,16 @@ def node_update_agent(node_id: int, x_admin_password: str = Header(...)):
     """
     check_auth(x_admin_password)
     _need_tunnels()
+    # آدرس را از خود درخواست می‌سازیم: پنل پشت nginx است و آدرس
+    # بیرونی‌اش را در تنظیمات ندارد. اگر خالی بفرستیم هم مشکلی
+    # نیست — ایجنت خودش از PANEL_URL خودش می‌سازد.
     base = os.getenv("NEXORA_PANEL_URL", "").rstrip("/")
-    url = f"{base}/api/agent/agent.py" if base else "/api/agent/agent.py"
+    if not base:
+        try:
+            base = str(request.base_url).rstrip("/")
+        except Exception:
+            base = ""
+    url = f"{base}/api/agent/agent.py" if base else ""
     jid = TUN.queue_job(node_id, "update_agent", {"url": url})
     return {"ok": True, "jobId": jid,
             "note": "به‌روزرسانی در صف قرار گرفت — ایجنت بعد از "

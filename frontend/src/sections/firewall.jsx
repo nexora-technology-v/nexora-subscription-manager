@@ -72,6 +72,8 @@ export function FirewallSuggest({ password, onApplied }) {
   const [msg, setMsg] = useState(null);
   const [picked, setPicked] = useState({});
   const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [showAll, setShowAll] = useState(false);
 
   const load = async () => {
     setBusy(true);
@@ -95,6 +97,21 @@ export function FirewallSuggest({ password, onApplied }) {
 
   const all = [...((d && d.close) || []), ...((d && d.keep) || [])];
   const chosen = all.filter((x) => picked[`${x.port}/${x.proto}`]);
+
+  // یک سرور معمولی ده‌ها پورت باز دارد. نشان‌دادن همه‌شان یعنی
+  // اسکرول طولانی و گم‌شدن آن چندتایی که واقعاً مهم‌اند.
+  const match = (x) => {
+    if (!q.trim()) return true;
+    const t = q.trim().toLowerCase();
+    return `${x.port} ${x.proto} ${x.process || ""} ${x.why || ""}`
+      .toLowerCase().includes(t);
+  };
+  const closeList = ((d && d.close) || []).filter(match);
+  const keepList = ((d && d.keep) || []).filter(match);
+  const shownClose = showAll ? closeList : closeList.slice(0, 8);
+  const shownKeep = showAll ? keepList : keepList.slice(0, 6);
+  const more = (closeList.length - shownClose.length)
+             + (keepList.length - shownKeep.length);
 
   const apply = async () => {
     setBusy(true);
@@ -173,22 +190,58 @@ export function FirewallSuggest({ password, onApplied }) {
             </div>
           ) : (
             <div className="mt-3">
-              {d.close?.length > 0 && (
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <div className="fx-search" style={{ width: 200 }}>
+                  <Search size={14} style={{ color: "var(--muted)" }} />
+                  <input value={q} onChange={(e) => setQ(e.target.value)}
+                    placeholder="پورت یا سرویس..." />
+                </div>
+                <span className="text-[12px]" style={{ color: "var(--muted)" }}>
+                  {faNum(closeList.length)} پیشنهاد بستن ·
+                  {" "}{faNum(keepList.length)} باید باز بماند
+                </span>
+              </div>
+
+              {shownClose.length > 0 && (
                 <>
                   <div className="text-[13px] mb-2" style={{ color: "var(--danger)" }}>
                     رو به اینترنت باز است و به سرویس شما ربطی ندارد
                   </div>
-                  {d.close.map((x) => <Row key={`c${x.port}${x.proto}`} x={x} tone="close" />)}
+                  {shownClose.map((x) => (
+                    <Row key={`c${x.port}${x.proto}`} x={x} tone="close" />
+                  ))}
                 </>
               )}
 
-              {d.keep?.length > 0 && (
+              {shownKeep.length > 0 && (
                 <>
                   <div className="text-[13px] mt-4 mb-2" style={{ color: "var(--ok)" }}>
                     باید باز بماند
                   </div>
-                  {d.keep.map((x) => <Row key={`k${x.port}${x.proto}`} x={x} tone="keep" />)}
+                  {shownKeep.map((x) => (
+                    <Row key={`k${x.port}${x.proto}`} x={x} tone="keep" />
+                  ))}
                 </>
+              )}
+
+              {more > 0 && !showAll && (
+                <button onClick={() => setShowAll(true)}
+                  className="fx-btn-ghost px-3 py-2 text-[13px] mt-2 w-full"
+                  style={{ color: "var(--accent-2)" }}>
+                  نمایش {faNum(more)} مورد دیگر
+                </button>
+              )}
+              {showAll && (
+                <button onClick={() => setShowAll(false)}
+                  className="fx-btn-ghost px-3 py-2 text-[13px] mt-2 w-full"
+                  style={{ color: "var(--muted)" }}>
+                  جمع کردن
+                </button>
+              )}
+
+              {!closeList.length && !keepList.length && (
+                <EmptyState icon={ShieldCheck}
+                  text={q ? "با این جست‌وجو چیزی نیست" : "پیشنهادی نیست"} />
               )}
 
               {d.already?.length > 0 && (
