@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.10.0]
+
+### Fixed — A job the agent took but never answered was stuck forever
+
+When the agent picks up a job its status becomes `taken`. There was no way out
+of that state. If the agent restarted mid-job, lost the network, or was killed,
+the job stayed `taken` permanently.
+
+The panel detected this — both `nexora check` and the node diagnose page said
+"the agent picked it up and never reported back" — and then did nothing about it.
+The admin pressed the button, nothing happened, and the only recourse was to
+press it again and hope.
+
+Jobs taken more than five minutes ago are requeued on the agent's next check-in.
+Every allowed action is idempotent (`apply`, `restart`, `sysmon`, `update_agent`
+and the rest), so retrying is safe. After three attempts the job is marked failed
+with the reason and the journalctl command to look at, so one broken job cannot
+fill the queue forever.
+
+Five minutes is deliberately longer than the slowest job: `sysmon` on a loaded
+server takes a minute or two, and requeueing sooner would run two copies at once.
+
+### Changed — Ports dropped from a tunnel say so
+
+`validate_ports` discarded invalid rows with a bare `continue`. An admin entering
+three ports got a tunnel with two, and nothing anywhere said where the third
+went. When that port later did not work there was no trail to follow.
+
+Dropped ports are now recorded as a warning event on the tunnel, with the reason
+— out of range, not a number, or port 22, which is refused so nobody locks
+themselves out by accident. When *every* port is rejected, the error says which
+ones and why instead of "at least one valid port is required".
+
+### Added — `tools/test-jobs.py`
+
+The job queue had no functional test; `test-nodes.py` checks the source text
+rather than running anything. 28 checks covering the normal lifecycle, recovery,
+the attempt ceiling, node isolation, and port validation.
+
 ## [1.9.9]
 
 ### Fixed — A config on an exact half-month boundary billed unpredictably

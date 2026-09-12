@@ -13,7 +13,7 @@ import json
 import os
 import secrets
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # ═══════════════════════════════════════════════════════════
@@ -194,6 +194,9 @@ def conn():
         for col in ("health", "health_at"):
             if col not in ncols:
                 con.execute(f"ALTER TABLE nodes ADD COLUMN {col} TEXT")
+        jcols = {r[1] for r in con.execute("PRAGMA table_info(jobs)")}
+        if "attempts" not in jcols:
+            con.execute("ALTER TABLE jobs ADD COLUMN attempts INTEGER DEFAULT 0")
     except Exception:
         pass
 
@@ -338,14 +341,17 @@ def rotate_token(node_id):
 #  تانل‌ها
 # ═══════════════════════════════════════════════════════════
 
-def validate_ports(ports):
+def validate_ports(ports, report=False):
     """
     بررسی فهرست پورت‌ها.
 
     هر ردیف: {"local": 443, "remote": 443} یا فقط عدد که یعنی
     هر دو طرف یکی باشند.
+
+    با report=True یک زوج برمی‌گرداند: (پورت‌های معتبر, کنارگذاشته‌ها)
+    که هر کنارگذاشته (مقدار, دلیل) است.
     """
-    out = []
+    out, dropped = [], []
     for p in (ports or []):
         try:
             if isinstance(p, (int, str)):
@@ -355,15 +361,24 @@ def validate_ports(ports):
                 item = {"local": int(p.get("local")),
                         "remote": int(p.get("remote") or p.get("local"))}
         except (TypeError, ValueError):
+            dropped.append((str(p)[:20], "عدد نیست"))
             continue
 
         if not (1 <= item["local"] <= 65535 and 1 <= item["remote"] <= 65535):
+            dropped.append((str(item["local"]), "خارج از ۱ تا ۶۵۵۳۵"))
             continue
         # پورت‌های سیستمی حساس را رد می‌کنیم تا کسی سهواً SSH را نبندد
         if item["local"] in (22,):
+            dropped.append(("22", "SSH — راه ورود شما به سرور"))
             continue
         out.append(item)
-    return out
+
+    # آن‌چه کنار گذاشته شد باید دیده شود.
+    #
+    # قبلاً بی‌صدا حذف می‌شد: مدیر سه پورت وارد می‌کرد، تانل با دوتا
+    # ساخته می‌شد، و هیچ‌جا نمی‌گفت سومی کجا رفت. بعداً که آن پورت کار
+    # نمی‌کرد، هیچ سرنخی وجود نداشت.
+    return (out, dropped) if report else out
 
 
 def create_tunnel(data):
@@ -395,8 +410,12 @@ def create_tunnel(data):
     if not (1024 <= bridge <= 65535):
         raise ValueError("پورت ارتباط باید بین ۱۰۲۴ تا ۶۵۵۳۵ باشد")
 
-    ports = validate_ports(data.get("ports"))
+    ports, dropped_ports = validate_ports(data.get("ports"), report=True)
     if not ports:
+        if dropped_ports:
+            raise ValueError(
+                "هیچ پورت معتبری نماند — "
+                + "، ".join(f"{v}: {why}" for v, why in dropped_ports))
         raise ValueError("حداقل یک پورت معتبر لازم است")
 
     secret = (data.get("secret") or "").strip() or secrets.token_urlsafe(24)
@@ -419,6 +438,10 @@ def create_tunnel(data):
         tid = cur.lastrowid
         log(node_id=node_id, tunnel_id=tid,
             message=f"تانل «{name}» با {ENGINES[engine]['name']} ساخته شد")
+        if dropped_ports:
+            log(node_id=node_id, tunnel_id=tid, level="warn",
+                message="این پورت‌ها اضافه نشدند — "
+                        + "، ".join(f"{v} ({why})" for v, why in dropped_ports))
         return tid
     finally:
         c.close()
@@ -495,8 +518,12 @@ def update_tunnel(tid, data):
         params.append(int(data["bridge_port"]))
 
     if "ports" in data:
-        ports = validate_ports(data["ports"])
+        ports, dropped_ports = validate_ports(data["ports"], report=True)
         if not ports:
+            if dropped_ports:
+                raise ValueError(
+                    "هیچ پورت معتبری نماند — "
+                    + "، ".join(f"{v}: {why}" for v, why in dropped_ports))
             raise ValueError("حداقل یک پورت معتبر لازم است")
         fields.append("ports = ?")
         params.append(json.dumps(ports))
@@ -804,8 +831,81 @@ def queue_job(node_id, action, payload=None):
         c.close()
 
 
+#: چند دقیقه صبر کنیم تا کارِ بی‌جواب را گیرکرده حساب کنیم.
+#
+# باید از طولانی‌ترین کار بیشتر باشد: sysmon روی سرور کند و شلوغ
+# می‌تواند یکی دو دقیقه طول بکشد، و اگر زودتر دوباره صفش کنیم دو
+# نسخه هم‌زمان اجرا می‌شوند.
+JOB_STALE_MINUTES = 5
+
+#: بعد از چند تلاش دست برداریم.
+JOB_MAX_ATTEMPTS = 3
+
+
+def requeue_stale(node_id, minutes=JOB_STALE_MINUTES,
+                  max_attempts=JOB_MAX_ATTEMPTS):
+    """
+    کارهایی که ایجنت برداشت و جوابشان نیامد را دوباره به صف می‌برد.
+
+    چرا لازم است: وضعیت «taken» هیچ راه خروجی نداشت. اگر ایجنت وسط
+    کار ری‌استارت می‌شد یا شبکه قطع می‌شد، آن کار *تا ابد* روی taken
+    می‌ماند. پنل این را تشخیص می‌داد — هم nexora check و هم صفحه‌ی
+    عیب‌یابی می‌گفتند «برداشته شده ولی نتیجه‌ای نفرستاده» — ولی هیچ
+    کاری برایش نمی‌کرد. مدیر دکمه را می‌زد و هیچ اتفاقی نمی‌افتاد.
+
+    تلاش دوباره امن است چون همه‌ی دستورهای مجاز idempotent‌اند: اجرای
+    دوباره‌ی apply یا restart یا sysmon ضرری ندارد.
+
+    بی‌نهایت هم تلاش نمی‌کنیم — بعد از چند بار، کار شکست‌خورده علامت
+    می‌خورد تا صف برای همیشه پر از یک کار خراب نماند.
+
+    برمی‌گرداند: (چند تا دوباره صف شد, چند تا شکست‌خورده شد)
+    """
+    cutoff = (datetime.now() - timedelta(minutes=minutes)).isoformat(
+        timespec="seconds")
+    c = conn()
+    try:
+        rows = c.execute(
+            """SELECT id, action, COALESCE(attempts, 0) AS attempts
+                 FROM jobs
+                WHERE node_id = ? AND status = 'taken'
+                  AND taken_at IS NOT NULL AND taken_at < ?""",
+            (node_id, cutoff)).fetchall()
+
+        requeued = failed = 0
+        for r in rows:
+            nxt = int(r["attempts"]) + 1
+            if nxt >= max_attempts:
+                c.execute(
+                    """UPDATE jobs SET status='failed', attempts=?, done_at=?,
+                                       result=?
+                        WHERE id = ?""",
+                    (nxt, now(),
+                     f"ایجنت این کار را {nxt} بار برداشت و هیچ پاسخی نفرستاد. "
+                     "روی آن سرور: journalctl -u nexora-agent -n 50",
+                     r["id"]))
+                failed += 1
+            else:
+                c.execute(
+                    "UPDATE jobs SET status='queued', attempts=?, taken_at=NULL"
+                    " WHERE id = ?", (nxt, r["id"]))
+                requeued += 1
+        c.commit()
+
+        if requeued or failed:
+            log(node_id=node_id, level="warn",
+                message=f"کار بی‌پاسخ: {requeued} دوباره صف شد، "
+                        f"{failed} شکست‌خورده علامت خورد")
+        return requeued, failed
+    finally:
+        c.close()
+
+
 def take_jobs(node_id, limit=5):
     """کارهای در انتظار را به agent می‌دهد و علامت می‌زند."""
+    # هر چک‌اینِ ایجنت فرصتی است برای جمع‌کردن کارهای جامانده
+    requeue_stale(node_id)
+
     c = conn()
     try:
         rows = c.execute(
@@ -813,8 +913,8 @@ def take_jobs(node_id, limit=5):
                ORDER BY id LIMIT ?""", (node_id, limit)).fetchall()
         out = []
         for r in rows:
-            c.execute("UPDATE jobs SET status = 'taken', taken_at = ? WHERE id = ?",
-                      (now(), r["id"]))
+            c.execute("UPDATE jobs SET status = 'taken', taken_at = ? "
+                      "WHERE id = ?", (now(), r["id"]))
             d = dict(r)
             try:
                 d["payload"] = json.loads(d.get("payload") or "{}")

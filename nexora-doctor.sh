@@ -127,8 +127,9 @@ if [ -r "$TUN_DB" ] && command -v sqlite3 >/dev/null 2>&1; then
          AND created_at > datetime('now','-1 day');" 2>/dev/null)
 
     [ "${STUCK:-0}" -gt 0 ] && {
-      bad "${STUCK} job(s) taken by the agent with no answer"
-      info "the agent picked them up and never reported back"
+      warn "${STUCK} job(s) taken by the agent with no answer"
+      info "the panel requeues these on the agent's next check-in"
+      info "if the count keeps growing, the agent is failing mid-job"
       fix "journalctl -u nexora-agent -n 80 --no-pager"
     }
     [ "${QUEUED:-0}" -gt 0 ] && {
