@@ -10,7 +10,9 @@ import {
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errText, esc0, faNum } from "../../lib/format";
-import { CountUp, EmptyState, SectionHead, Segmented, StatTile } from "../../ui/index";
+import {
+  AreaChart, CountUp, EmptyState, SectionHead, Segmented, StatTile,
+} from "../../ui/index";
 
 export function BotStatsSection({ password }) {
   const [d, setD] = useState(null);
@@ -276,63 +278,12 @@ export function BotReportSection({ password }) {
           <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
             <TrendingUp size={15} style={{ color: "var(--accent-2)" }} /> فروش روزانه
           </div>
-          <div className="flex items-end gap-[3px] relative"
-            style={{ height: 110 }}
-            onMouseLeave={() => setHover(null)}>
-            {/* خط میانگین — تا معلوم شود کدام روز بالای عرف بوده */}
-            {avgDay > 0 && (
-              <div className="absolute left-0 right-0" style={{
-                bottom: `${(avgDay / maxDay) * 100}%`,
-                borderTop: "1px dashed var(--border-2)",
-                pointerEvents: "none",
-              }}>
-                <span className="absolute text-[10px]" style={{
-                  top: -14, right: 0, color: "var(--muted)",
-                }}>میانگین {faNum(Math.round(avgDay))}</span>
-              </div>
-            )}
-            {d.daily.map((x, i) => {
-              const on = hover === i;
-              return (
-                <div key={x.day} className="flex-1 rounded-t-[3px] cursor-default"
-                  onMouseEnter={() => setHover(i)}
-                  style={{
-                    height: `${Math.max(3, (x.sum / maxDay) * 100)}%`,
-                    background: x.sum >= avgDay
-                      ? "linear-gradient(180deg, var(--accent-2), var(--accent))"
-                      : "var(--accent-2)",
-                    opacity: hover === null ? 0.8 : (on ? 1 : 0.35),
-                    // رشد نرم موقع عوض‌کردن بازه، به‌جای پرش
-                    transition: "height .45s cubic-bezier(.4,0,.2,1), opacity .15s",
-                  }} />
-              );
-            })}
-          </div>
-
-          {/* جزئیات روزِ زیر نشانگر — به‌جای tooltip مرورگر که کند و زشت است */}
-          <div className="text-[12px] mt-2 h-[18px]" style={{ color: "var(--dim)" }}>
-            {hover !== null && d.daily[hover] ? (
-              <>
-                <span style={{ fontFamily: "var(--mono)" }}>
-                  {d.daily[hover].day}
-                </span>
-                {" — "}
-                <b style={{ color: "var(--accent-2)" }}>
-                  {faNum(d.daily[hover].sum)} تومان
-                </b>
-                {" از "}{faNum(d.daily[hover].n)} سفارش
-              </>
-            ) : (
-              <span style={{ color: "var(--muted)" }}>
-                نشانگر را روی نمودار ببرید تا جزئیات هر روز را ببینید
-              </span>
-            )}
-          </div>
-          <div className="flex justify-between text-[12px] mt-2" style={{ color: "var(--muted)" }}>
-            <span>{d.daily[0].day}</span>
-            <span>بیشترین روز: {faNum(maxDay)} تومان</span>
-            <span>{d.daily[d.daily.length - 1].day}</span>
-          </div>
+          <AreaChart
+            data={d.daily.map((x) => x.sum)}
+            color="var(--accent-2)"
+            height={110}
+            label={`${d.daily[0].day} تا ${d.daily[d.daily.length - 1].day}`}
+            format={(v) => `${faNum(v)} تومان`} />
         </div>
       )}
 

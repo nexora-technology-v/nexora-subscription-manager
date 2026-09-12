@@ -4,7 +4,7 @@
  * از App.jsx جدا شد؛ آن فایل ۱۱۴۰۰ خط بود و پیداکردن یک کامپوننت
  * در آن عملاً ناممکن.
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle, CheckCircle2, Info, Loader2, Minus, Plus, X,
@@ -420,4 +420,97 @@ export class ErrorBoundary extends React.Component {
       </div>
     );
   }
+}
+
+
+/**
+ * نمودار سطحی با منحنی نرم.
+ *
+ * خط شکسته بین نقطه‌ها درست است ولی خشن به نظر می‌رسد و چشم را
+ * روی نویز نگه می‌دارد. منحنی کاتمول-رام از همان نقطه‌ها رد می‌شود
+ * — پس داده دستکاری نمی‌شود — ولی روند را نشان می‌دهد نه دندانه را.
+ *
+ * زیر منحنی با گرادیان پر می‌شود تا حجم دیده شود، و نشانگر مقدار
+ * هر نقطه را می‌گوید.
+ */
+export function AreaChart({
+  data, color = "var(--accent-2)", height = 90, label,
+  format = (v) => String(v), fill = true,
+}) {
+  const [hover, setHover] = useState(null);
+  const id = useRef(`ac${Math.random().toString(36).slice(2, 9)}`).current;
+
+  const pts = (data || []).filter((v) => typeof v === "number" && isFinite(v));
+  if (pts.length < 2) {
+    return (
+      <div className="text-[12px] py-6 text-center" style={{ color: "var(--muted)" }}>
+        هنوز داده‌ی کافی نیست
+      </div>
+    );
+  }
+
+  const W = 100, H = 34;
+  const max = Math.max(...pts, 1);
+  // کف صفر است تا نسبت‌ها صادقانه دیده شوند
+  const x = (i) => (i / (pts.length - 1)) * W;
+  const y = (v) => H - (v / max) * (H - 2) - 1;
+
+  // کاتمول-رام → بزیه: منحنی از خودِ نقطه‌ها رد می‌شود
+  let d = `M ${x(0)},${y(pts[0])}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i === 0 ? 0 : i - 1];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
+    const c1x = x(i) + (x(i + 1) - x(i === 0 ? 0 : i - 1)) / 6;
+    const c1y = y(p1) + (y(p2) - y(p0)) / 6;
+    const c2x = x(i + 1) - (x(i + 2 < pts.length ? i + 2 : i + 1) - x(i)) / 6;
+    const c2y = y(p2) - (y(p3) - y(p1)) / 6;
+    d += ` C ${c1x},${c1y} ${c2x},${c2y} ${x(i + 1)},${y(p2)}`;
+  }
+  const area = `${d} L ${W},${H} L 0,${H} Z`;
+
+  const onMove = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const rel = (e.clientX - r.left) / r.width;
+    // چیدمان راست‌به‌چپ است ولی نمودار زمانی چپ‌به‌راست می‌ماند
+    const i = Math.round(rel * (pts.length - 1));
+    setHover(Math.max(0, Math.min(pts.length - 1, i)));
+  };
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+        style={{ width: "100%", height, display: "block", cursor: "crosshair" }}
+        onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+        <defs>
+          <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {fill && <path d={area} fill={`url(#${id})`} />}
+        <path d={d} fill="none" stroke={color} strokeWidth="1.6"
+          strokeLinecap="round" strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke" />
+        {hover !== null && (
+          <>
+            <line x1={x(hover)} y1="0" x2={x(hover)} y2={H}
+              stroke={color} strokeWidth="0.6" strokeDasharray="2 2"
+              opacity="0.5" vectorEffect="non-scaling-stroke" />
+            <circle cx={x(hover)} cy={y(pts[hover])} r="2.2" fill={color}
+              stroke="var(--surface)" strokeWidth="1"
+              vectorEffect="non-scaling-stroke" />
+          </>
+        )}
+      </svg>
+      <div className="text-[12px] mt-1.5 h-[18px] flex justify-between"
+        style={{ color: "var(--muted)" }}>
+        <span>{label}</span>
+        <span style={{ color: hover !== null ? color : "var(--muted)" }}>
+          {hover !== null ? format(pts[hover]) : `بیشینه ${format(max)}`}
+        </span>
+      </div>
+    </div>
+  );
 }

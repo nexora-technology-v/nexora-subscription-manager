@@ -77,13 +77,37 @@ def run(cmd, timeout=90):
 #  ارتباط با پنل
 # ═══════════════════════════════════════════════════════════
 
+def sign(body: bytes, ts: str) -> str:
+    """
+    امضای HMAC-SHA256 روی بدنه‌ی درخواست و زمان آن.
+
+    توکن به‌تنهایی کافی است تا پنل ما را بشناسد، ولی اگر یک بار لو
+    برود — از لاگ، از پشتیبان، از هرجا — هر کسی می‌تواند خودش را
+    جای این سرور جا بزند و تا وقتی باطل نشده کار کند.
+
+    با امضا، توکن دیگر مستقیم روی سیم نمی‌رود: چیزی که فرستاده
+    می‌شود امضای همان درخواست است، و چون زمان داخل امضاست، ضبط و
+    بازپخشِ بعدی هم بی‌فایده است.
+
+    توکن هنوز فرستاده می‌شود تا ایجنت‌های قدیمی از کار نیفتند؛ پنل
+    هر دو را می‌پذیرد و امضا را وقتی هست بررسی می‌کند.
+    """
+    import hashlib
+    import hmac
+    msg = ts.encode() + b"." + (body or b"")
+    return hmac.new(TOKEN.encode(), msg, hashlib.sha256).hexdigest()
+
+
 def api(path, data=None, timeout=25):
     url = f"{PANEL_URL}/api/agent/{path}"
     body = json.dumps(data or {}).encode() if data is not None else None
+    ts = str(int(time.time()))
     req = urllib.request.Request(
         url, data=body,
         headers={"Content-Type": "application/json",
                  "X-Agent-Token": TOKEN,
+                 "X-Agent-Time": ts,
+                 "X-Agent-Sign": sign(body or b"", ts),
                  "User-Agent": f"nexora-agent/{VERSION}"},
         method="POST" if body is not None else "GET")
     try:
@@ -548,6 +572,13 @@ def monitor(payload):
     return True, json.dumps(result, ensure_ascii=False)
 
 
+#: ماژول‌هایی که هر ماژول پنل ممکن است لازم داشته باشد
+MODULE_DEPS = {
+    "monitor": ("netid",),
+    "firewall": ("netid",),
+}
+
+
 def remote_module(name, func, payload):
     """
     یک ماژول پنل را روی این سرور اجرا می‌کند.
@@ -563,8 +594,42 @@ def remote_module(name, func, payload):
     try:
         import importlib.util
         mod_path = BASE / f"{name}.py"
-        if not mod_path.exists() or payload.get("refresh"):
+        stamp = BASE / f".{name}.version"
+
+        # کش را وقتی پنل نسخه عوض می‌کند دور می‌ریزیم.
+        #
+        # قبلاً فقط «اگر فایل نبود» دانلود می‌شد. یعنی ایجنتی که یک بار
+        # monitor.py را گرفته بود، تا ابد همان را نگه می‌داشت — حتی
+        # وقتی پنل به‌روز می‌شد و تابع تازه‌ای مثل snapshot اضافه
+        # می‌شد. نتیجه‌اش «تابع snapshot در monitor نیست» بود و
+        # مانیتورینگ هیچ‌وقت نمی‌آمد، بدون اینکه معلوم باشد چرا.
+        want = str(payload.get("panelVersion") or "").strip()
+        have = ""
+        try:
+            if stamp.exists():
+                have = stamp.read_text(encoding="utf-8").strip()
+        except Exception:
+            have = ""
+
+        stale = bool(want) and want != have
+        if not mod_path.exists() or payload.get("refresh") or stale:
             download(f"{PANEL_URL}/api/agent/{name}.py", mod_path)
+            # وابستگی‌های اختیاری: اگر پنل نداشته باشدشان، ماژول
+            # خودش جایگزین داخلی دارد و نبودشان مشکلی نیست.
+            for dep in MODULE_DEPS.get(name, ()):
+                try:
+                    download(f"{PANEL_URL}/api/agent/{dep}.py", BASE / f"{dep}.py")
+                except Exception:
+                    pass
+            if want:
+                try:
+                    stamp.write_text(want, encoding="utf-8")
+                except Exception:
+                    pass
+
+        # تا ماژول بتواند وابستگی‌اش را import کند
+        if str(BASE) not in sys.path:
+            sys.path.insert(0, str(BASE))
         spec = importlib.util.spec_from_file_location(f"nx_{name}", mod_path)
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
@@ -576,9 +641,11 @@ def remote_module(name, func, payload):
         return False, f"{type(e).__name__}: {str(e)[:150]}"
 
 
-def handle(job):
+def handle(job, panel_version=""):
     action = job.get("action")
     p = job.get("payload") or {}
+    if panel_version:
+        p.setdefault("panelVersion", panel_version)
 
     if action == "install":
         return install_engine(p.get("engine", "backhaul"))
@@ -700,7 +767,7 @@ def main():
                 jid, action = job.get("id"), job.get("action")
                 log(f"Job {jid}: {action}")
                 try:
-                    ok, out = handle(job)
+                    ok, out = handle(job, res.get("panelVersion", ""))
                 except Exception as e:
                     ok, out = False, f"{type(e).__name__}: {str(e)[:200]}"
                 log(f"  {'✓' if ok else '✗'} {str(out)[:110]}")

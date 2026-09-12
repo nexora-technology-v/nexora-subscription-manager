@@ -1282,6 +1282,98 @@ export function BillingUnavailable({ info, password }) {
   );
 }
 
+/**
+ * وقتی گروهی تاریخ شروع ندارد، همه‌ی کانفیگ‌هایش «یک ماه» حساب
+ * می‌شوند — و صورت‌حساب واسطه‌ای که دو سال کار کرده، غلط درمی‌آید.
+ *
+ * این بنر مشکل را در همان صفحه‌ای که دیده می‌شود توضیح می‌دهد و
+ * یک‌جا حلش می‌کند، به‌جای اینکه مدیر مجبور باشد یازده بار وارد
+ * تنظیمات هر گروه شود — کاری که عملاً هیچ‌کس نمی‌کند.
+ */
+function NeedStartBanner({ groups, password, onDone }) {
+  const [date, setDate] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [open, setOpen] = useState(false);
+
+  const apply = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/billing/bulk-start`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Password": password,
+        },
+        body: JSON.stringify({ start: date, groups }),
+      });
+      const j = await res.json().catch(() => ({}));
+      setMsg(res.ok ? { t: "ok", m: j.note || "انجام شد" }
+        : { t: "err", m: errText(j.detail, "ناموفق") });
+      if (res.ok) { setOpen(false); onDone && onDone(); }
+    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fx-card p-5" style={{
+      border: "1px solid var(--warn)", background: "rgba(251,191,36,.05)",
+    }}>
+      <div className="flex items-center gap-2 mb-2" style={{ color: "var(--warn)" }}>
+        <AlertTriangle size={16} />
+        <span className="text-[14px] font-semibold">
+          {faNum(groups.length)} گروه تاریخ شروع ندارند
+        </span>
+      </div>
+      <p className="text-[13px] leading-relaxed" style={{ color: "var(--dim)" }}>
+        نسخه‌ی x-ui شما تاریخ ساخت کلاینت را نگه نمی‌دارد، پس پنل
+        نمی‌داند این واسطه‌ها از کی کار می‌کنند و همه‌ی کانفیگ‌هایشان را
+        <b> یک ماه </b> حساب می‌کند. اگر بگویید همکاری از چه تاریخی شروع
+        شده، از همان روز محاسبه می‌شود.
+      </p>
+      <div className="flex gap-1.5 flex-wrap my-3">
+        {groups.slice(0, 12).map((g) => (
+          <span key={g} className="fx-pill" style={{
+            background: "rgba(255,255,255,.05)", color: "var(--muted)",
+          }}>{g}</span>
+        ))}
+      </div>
+
+      <Msg msg={msg} />
+
+      {!open ? (
+        <button onClick={() => setOpen(true)}
+          className="fx-btn px-4 py-2.5 text-[13px]">
+          تعیین تاریخ شروع برای همه
+        </button>
+      ) : (
+        <div className="flex gap-2 items-end flex-wrap">
+          <div style={{ minWidth: 180 }}>
+            <Field label="همکاری از چه تاریخی شروع شد؟"
+              hint="میلادی — همین یک بار لازم است">
+              <input className="fx-input" type="date" dir="ltr" value={date}
+                onChange={(e) => setDate(e.target.value)} />
+            </Field>
+          </div>
+          <button onClick={apply} disabled={busy || !date}
+            className="fx-btn px-4 py-2.5 text-[13px] flex items-center gap-1.5">
+            {busy && <Loader2 size={13} className="animate-spin" />} اعمال
+          </button>
+          <button onClick={() => setOpen(false)}
+            className="fx-btn-g px-4 py-2.5 text-[13px]">انصراف</button>
+        </div>
+      )}
+
+      <p className="text-[12px] mt-3" style={{ color: "var(--muted)" }}>
+        گروه‌هایی که از قبل تاریخ دارند دست‌نخورده می‌مانند. از امروز به
+        بعد، پنل خودش تاریخ اولین دیدن هر کانفیگ تازه را ثبت می‌کند و
+        این مشکل دیگر پیش نمی‌آید.
+      </p>
+    </div>
+  );
+}
+
+
 export function BillingDash({ password }) {
   const { data, loading, reload } = useBilling(password);
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
@@ -1300,12 +1392,15 @@ export function BillingDash({ password }) {
   return (
     <div className="fx-anim">
       <SectionHead title="داشبورد حسابداری"
-        desc={`${data.totalClients} کانفیگ در ${data.groups.length} گروه`}
+        desc={`${faNum(data.totalClients)} کانفیگ در ${faNum(data.groups.length)} گروه`}
         action={
           <button onClick={reload} className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
             <RefreshCw size={13} /> تازه‌سازی
           </button>
         } />
+
+      {(data.needStart || []).length > 0 && <NeedStartBanner
+        groups={data.needStart} password={password} onDone={reload} />}
 
       <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
         {[["کل بدهی دوره", due, "var(--accent-2)"],

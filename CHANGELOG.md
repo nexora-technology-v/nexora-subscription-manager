@@ -1,5 +1,57 @@
 # Changelog
 
+## [1.6.0]
+
+### Fixed — Why node monitoring never arrived
+
+Three faults stacked on top of each other, and none of them printed anything.
+
+The agent reported version `1.0.0` from the first release and never bumped it,
+so the "this agent is too old" check could not fire. The update job then sent a
+relative URL, which the agent rejected as outside its own panel — so it could not
+update either.
+
+The root cause was underneath both: the agent downloads `monitor.py` from the
+panel and cached it forever. `if not mod_path.exists()` was the only condition.
+When the panel later grew a `snapshot()` function, the agent still held a copy
+from months earlier and answered "no such function" — a failure that reached a
+row in the jobs table and stopped there.
+
+The panel now sends its version with every check-in and the agent re-downloads
+its modules whenever that version changes. `netid.py` ships alongside them, so
+a remote server detects tunnels and mapped loopback the same way the main one
+does.
+
+### Added — Signed agent requests
+
+The token alone was enough to impersonate a node if it ever leaked — from a log,
+a backup, anywhere — and it travelled on every request. Requests now carry an
+HMAC-SHA256 signature over the body and a timestamp, so the token itself is not
+what goes over the wire and a recorded request cannot be replayed later. Clock
+drift beyond five minutes is rejected, comparison is constant-time, and agents
+that do not sign yet still work so nothing breaks overnight.
+
+### Fixed — Accounting counted from today instead of from the start
+
+`_months_for` now reports **where its number came from**: a logged renewal, the
+client's creation date, the group's start date, or the first time the panel saw
+the client. Groups show the mix, so "one month" is no longer a silent guess.
+
+Two real errors fell out of that. A config that ran for two years and expired
+yesterday was billed as one month, because the span was measured to the expiry
+date and came out negative; it now measures to today. And the panel records the
+first time it sees every client, so this cannot recur for anything added from
+here on — the past cannot be reconstructed, but it can stop growing.
+
+The dashboard now says how many groups have no start date and sets them all at
+once, instead of expecting eleven visits to eleven settings pages.
+
+### Changed — Charts are curves
+
+Catmull-Rom through the real data points with a gradient fill underneath, a
+crosshair, and the value under the cursor. The line still passes through every
+measurement — nothing is smoothed away, it just stops looking like a saw.
+
 ## [1.5.2]
 
 ### Fixed — The firewall offered to cut the tunnel

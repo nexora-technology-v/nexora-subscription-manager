@@ -178,6 +178,12 @@ const CASES = [
   ["Segmented", { value: 7, onChange: noop, items: [[7, "۷"], [30, "۳۰"]] }],
   ["NumberStepper", { value: 5, onChange: noop, min: 0, max: 10 }],
   ["Sparkline", { data: [1, 5, 3, 8, 2] }],
+  ["AreaChart", { data: [4, 9, 2, 11, 7, 3], label: "روند" }],
+  // یک نقطه: نباید بیفتد، باید پیام «داده کافی نیست» بدهد
+  ["AreaChart", { data: [5] }],
+  ["AreaChart", { data: [] }],
+  // مقدار خراب لای داده‌ی درست — نباید NaN وارد مسیر SVG کند
+  ["AreaChart", { data: [3, null, 7, NaN, 5, undefined, 2] }],
   ["Tabs", { items: [{ key: "a", label: "یک" }, { key: "b", label: "دو" }],
              active: "a", onChange: noop }],
   // بدون آیکون — قبلاً همین حالت کل بخش را می‌انداخت

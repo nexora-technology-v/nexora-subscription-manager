@@ -3891,6 +3891,22 @@ def _billing_conn():
             note        TEXT,
             created_at  TEXT DEFAULT CURRENT_TIMESTAMP
         );
+        -- اولین باری که پنل هر کلاینت را دید.
+        --
+        -- نسخه‌های قدیمی x-ui تاریخ ساخت کلاینت را نگه نمی‌دارند، و آن
+        -- اطلاعات جای دیگری هم وجود ندارد — پس هر کانفیگ «یک ماهه»
+        -- حساب می‌شد و واسطه‌ای که دو سال کار کرده، یک ماه صورت‌حساب
+        -- می‌گرفت.
+        --
+        -- گذشته را نمی‌شود ساخت، ولی از امروز به بعد می‌شود ثبت کرد.
+        -- این کف مطمئنی می‌دهد: «دست‌کم از این تاریخ می‌شناسیمش».
+        CREATE TABLE IF NOT EXISTS client_seen (
+            email      TEXT PRIMARY KEY,
+            group_key  TEXT,
+            first_seen TEXT NOT NULL,
+            last_seen  TEXT
+        );
+
         -- لاگ تمدید: x-ui تاریخچه ندارد، پس از امروز خودمان ثبت می‌کنیم
         CREATE TABLE IF NOT EXISTS renewals (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4190,43 +4206,79 @@ def _period_bounds(conf, ref=None):
     return start, start + timedelta(days=length)
 
 
-def _months_for(cl, logged, since=None):
+def _months_for(cl, logged, since=None, first_seen=None):
     """
-    تعداد ماه یک کانفیگ.
+    یک کانفیگ چند ماه صورت‌حساب دارد، و این عدد از کجا آمده.
 
-    اگر تمدید در نکسورا ثبت شده باشد، همان قطعی است. وگرنه از فاصله‌ی
-    ایجاد تا انقضا تخمین می‌زنیم — که کم‌شمار است، چون تمدید زودتر از
-    موعد چند روز را می‌سوزاند.
+    برمی‌گرداند: (تعداد ماه, منبع, خطای تخمین به روز)
 
-    since: تاریخ شروع گروه. نسخه‌های قدیمی x-ui ستون created_at ندارند،
-    و بدون تاریخ شروع، هر کانفیگ فقط «یک ماه» حساب می‌شد — یعنی
-    واسطه‌ای که دو سال است کار می‌کند، یک ماه صورت‌حساب می‌گرفت.
-    با تنظیم «تاریخ شروع» برای گروه، همه‌ی کانفیگ‌هایش از همان
-    تاریخ محاسبه می‌شوند.
+    منبع‌ها به ترتیب اعتبار:
+
+      ثبت‌شده   تمدیدهایی که خودِ نکسورا ثبت کرده — قطعی
+      ساخت      تاریخ ساخت کلاینت در x-ui — قطعی، ولی نسخه‌های
+                قدیمی این ستون را ندارند
+      شروع گروه مدیر تاریخ شروع همکاری با واسطه را گفته
+      اولین‌دید  پنل از این تاریخ کلاینت را می‌شناسد — کف مطمئن،
+                نه تاریخ واقعی شروع
+      پیش‌فرض   هیچ‌کدام نبود؛ یک ماه
+
+    چرا منبع برمی‌گردد: قبلاً همه‌ی این حالت‌ها یک عدد خشک می‌دادند و
+    مدیر نمی‌فهمید چرا واسطه‌ای که دو سال کار کرده «یک ماه» صورت‌حساب
+    گرفته. حالا پنل می‌تواند دقیقاً بگوید عدد از کجا آمده و چه چیزی
+    لازم است تا درست شود.
     """
+    from datetime import datetime as _dt
+
     if cl["email"] in logged:
-        return 1 + logged[cl["email"]], "قطعی", 0
+        return 1 + logged[cl["email"]], "ثبت‌شده", 0
 
-    exp, created = cl.get("expiry"), cl.get("createdAt")
-    if not created and since:
-        created = since
-    if not exp or exp <= 0 or not created:
+    exp = cl.get("expiry")
+
+    def _ms(v):
+        """هر شکلی از تاریخ را به میلی‌ثانیه تبدیل می‌کند."""
+        if not v:
+            return None
+        if isinstance(v, (int, float)):
+            # x-ui گاهی ثانیه می‌دهد و گاهی میلی‌ثانیه
+            return float(v) * (1000 if float(v) < 1e11 else 1)
+        try:
+            txt = str(v).strip().replace("Z", "+00:00")
+            return _dt.fromisoformat(txt[:19]).timestamp() * 1000
+        except (ValueError, TypeError):
+            return None
+
+    created = _ms(cl.get("createdAt"))
+    source = "ساخت"
+    if created is None:
+        created = _ms(since)
+        source = "شروع گروه"
+    if created is None:
+        created = _ms(first_seen)
+        source = "اولین‌دید"
+
+    if not exp or exp <= 0 or created is None:
         return 1, "پیش‌فرض", 0
 
-    try:
-        from datetime import datetime as _dt
-        if isinstance(created, str):
-            c0 = _dt.fromisoformat(created.replace("Z", "+00:00")).timestamp() * 1000
-        else:
-            c0 = float(created)
-        days = (exp - c0) / 86400000.0
+    exp_ms = _ms(exp)
+    if exp_ms is None:
+        return 1, "پیش‌فرض", 0
+
+    days = (exp_ms - created) / 86400000.0
+    if days <= 0:
+        # منقضی شده: از شروع تا امروز حساب می‌کنیم، نه تا انقضا —
+        # وگرنه کانفیگی که سه سال کار کرده و دیروز تمام شده،
+        # «یک ماه» حساب می‌شد.
+        days = (_dt.now().timestamp() * 1000 - created) / 86400000.0
         if days <= 0:
             return 1, "منقضی", 0
         months = max(1, round(days / 30))
-        drift = abs(days - months * 30)
-        return months, ("قطعی" if drift <= 2 else "تخمینی"), round(drift)
-    except Exception:
-        return 1, "پیش‌فرض", 0
+        return months, source + " (منقضی)", 0
+
+    months = max(1, round(days / 30))
+    drift = abs(days - months * 30)
+    if source == "ساخت" and drift <= 2:
+        return months, "قطعی", 0
+    return months, source, round(drift)
 
 
 def _price_per_gb(conf):
@@ -4333,6 +4385,49 @@ def _bot_sold_emails():
         con.close()
 
 
+
+def _record_seen(bcon, clients):
+    """
+    اولین و آخرین باری که هر کلاینت دیده شده را ثبت می‌کند.
+
+    برمی‌گرداند: {ایمیل: تاریخ اولین دیدن}
+
+    این تنها منبع قابل اتکایی است که خودمان می‌سازیم. x-ui در
+    نسخه‌های قدیمی تاریخ ساخت ندارد، و هیچ‌جای دیگری هم این را
+    نگه نمی‌دارد — پس اگر خودمان ثبت نکنیم، برای همیشه نداریمش.
+    """
+    now = datetime.now().strftime("%Y-%m-%d")
+    out = {}
+    try:
+        for r in bcon.execute("SELECT email, first_seen FROM client_seen"):
+            out[r["email"]] = r["first_seen"]
+    except Exception:
+        return out
+
+    fresh = [(c["email"], c.get("group") or "", now, now)
+             for c in clients if c.get("email") and c["email"] not in out]
+    if fresh:
+        try:
+            bcon.executemany(
+                "INSERT OR IGNORE INTO client_seen "
+                "(email, group_key, first_seen, last_seen) VALUES (?,?,?,?)",
+                fresh)
+            bcon.commit()
+            for em, _g, fs, _l in fresh:
+                out[em] = fs
+        except Exception:
+            log.debug("ثبت اولین دیدن ناموفق", exc_info=True)
+
+    try:
+        bcon.executemany(
+            "UPDATE client_seen SET last_seen=? WHERE email=?",
+            [(now, c["email"]) for c in clients if c.get("email")])
+        bcon.commit()
+    except Exception:
+        pass
+    return out
+
+
 def _billing_overview_impl():
     clients, known_groups, err = _read_xui_clients()
     if clients is None:
@@ -4353,6 +4448,11 @@ def _billing_overview_impl():
             "SELECT email, COALESCE(SUM(months),0) m FROM renewals GROUP BY email"
         ):
             logged[r["email"]] = r["m"]
+
+        # هر بار که نمای کلی خوانده می‌شود، دیدن کلاینت‌ها ثبت می‌شود.
+        # این‌طور از امروز به بعد یک کف واقعی برای «از کی می‌شناسیمش»
+        # داریم، بدون اینکه مدیر کاری بکند.
+        seen = _record_seen(bcon, clients)
     finally:
         bcon.close()
 
@@ -4391,10 +4491,16 @@ def _billing_overview_impl():
         G["used"] += cl["used"]
         G["quota"] += cl["totalGB"]
 
-        months, kind, _ = _months_for(cl, logged, since=conf.get("period_start"))
+        months, kind, _ = _months_for(
+            cl, logged, since=conf.get("period_start"),
+            first_seen=seen.get(cl["email"]))
         G["months"] += months
         G["renewals"] += months - 1
-        if kind == "تخمینی":
+        G["sources"][kind] = G["sources"].get(kind, 0) + 1
+        # «تخمینی» یعنی هر چیزی جز دو منبع قطعی. بدون این، گروهی که
+        # همه‌ی کانفیگ‌هایش روی پیش‌فرض یک ماه افتاده‌اند، با اطمینان
+        # کامل نمایش داده می‌شد.
+        if kind not in ("قطعی", "ثبت‌شده"):
             G["estimated"] += 1
 
         # کلاینت ربات هرگز به واسطه صورت‌حساب نمی‌شود، حتی اگر
@@ -6406,29 +6512,77 @@ def _need_tunnels():
                             detail="ماژول تانل بارگذاری نشد — nexora update را اجرا کنید")
 
 
-def _agent_node(token: str):
-    """نود را از روی توکن پیدا می‌کند."""
+#: چقدر اختلاف ساعت بین پنل و سرور راه دور تحمل می‌شود.
+#: پنج دقیقه هم برای ساعت‌های ناهماهنگ جا دارد و هم پنجره‌ی بازپخش
+#: را به‌قدر کافی کوتاه نگه می‌دارد.
+AGENT_CLOCK_SKEW = 300
+
+
+def _agent_node(token: str, *, body: bytes = b"",
+                ts: str = "", sign: str = ""):
+    """
+    نود را از روی توکن پیدا می‌کند، و اگر امضا آمده باشد بررسی‌اش می‌کند.
+
+    امضا اختیاری است تا ایجنت‌های قدیمی از کار نیفتند — ولی وقتی
+    بیاید، باید درست باشد. امضای غلط یعنی یا توکن جای دیگری استفاده
+    شده یا کسی درخواست را دستکاری کرده؛ هیچ‌کدام را رد نکردن اشتباه
+    است.
+    """
     _need_tunnels()
     if not token:
         raise HTTPException(status_code=401, detail="توکن ارسال نشده")
     node = TUN.node_by_token(token.strip())
     if not node:
         raise HTTPException(status_code=401, detail="توکن نامعتبر یا نود غیرفعال")
+
+    if sign:
+        import hashlib
+        import hmac
+        try:
+            drift = abs(int(time.time()) - int(ts))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=401, detail="زمان درخواست نامعتبر")
+        if drift > AGENT_CLOCK_SKEW:
+            raise HTTPException(
+                status_code=401,
+                detail=f"اختلاف ساعت {drift} ثانیه — ساعت سرور را هماهنگ کنید")
+
+        want = hmac.new(token.strip().encode(),
+                        ts.encode() + b"." + (body or b""),
+                        hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(want, sign.strip()):
+            raise HTTPException(status_code=401, detail="امضای درخواست نادرست")
+
     return node
 
 
 @app.post("/api/agent/checkin")
-def agent_checkin(payload: dict = None, x_agent_token: str = Header(None)):
+async def agent_checkin(request: Request, payload: dict = None,
+                        x_agent_token: str = Header(None),
+                        x_agent_time: str = Header(None),
+                        x_agent_sign: str = Header(None)):
     """
     agent هر ۳۰ ثانیه اینجا خبر می‌دهد و کارهایش را می‌گیرد.
 
     این تنها راه ارتباط است؛ پنل هرگز به سرور ایران وصل نمی‌شود.
     """
-    node = _agent_node(x_agent_token)
+    raw = await request.body()
+    node = _agent_node(x_agent_token, body=raw,
+                       ts=x_agent_time or "", sign=x_agent_sign or "")
     TUN.touch_node(node["id"], (payload or {}).get("metrics"))
     jobs = TUN.take_jobs(node["id"])
+
+    # نسخه‌ی پنل را می‌فرستیم تا ایجنت بفهمد ماژول‌های کش‌شده‌اش
+    # کهنه‌اند. بدون این، ایجنتی که یک بار monitor.py را گرفته، تا
+    # ابد همان نسخه را نگه می‌دارد و قابلیت‌های تازه هرگز نمی‌رسند.
+    try:
+        pv = (Path(__file__).resolve().parent.parent / "VERSION"
+              ).read_text(encoding="utf-8").strip()
+    except Exception:
+        pv = ""
+
     return {"ok": True, "node": node["name"], "jobs": jobs,
-            "interval": 30}
+            "interval": 30, "panelVersion": pv}
 
 
 @app.post("/api/agent/job-result")
@@ -7327,3 +7481,70 @@ def firewall_rollback_state(x_admin_password: str = Header(...)):
     check_auth(x_admin_password)
     fw = _fw_or_die()
     return fw.rollback_state()
+
+
+@app.post("/api/admin/billing/bulk-start")
+def billing_bulk_start(payload: dict, x_admin_password: str = Header(...)):
+    """
+    تاریخ شروع را یک‌جا برای چند گروه تنظیم می‌کند.
+
+    بدون این، مدیری که یازده گروه دارد باید یازده بار وارد تنظیمات
+    هر گروه شود — و عملاً نمی‌شود، پس همه روی «یک ماه» می‌مانند و
+    صورت‌حساب‌ها غلط درمی‌آیند.
+
+    گروه‌هایی که از قبل تاریخ دارند دست‌نخورده می‌مانند، مگر
+    overwrite خواسته شود؛ بازنویسی ناخواسته‌ی تاریخی که مدیر خودش
+    گذاشته، بدتر از نداشتنش است.
+    """
+    check_auth(x_admin_password)
+    p = payload or {}
+    start = str(p.get("start") or "").strip()[:10]
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", start):
+        raise HTTPException(status_code=400,
+                            detail="تاریخ باید به شکل ۲۰۲۴-۰۹-۰۱ باشد")
+
+    keys = p.get("groups")
+    overwrite = bool(p.get("overwrite"))
+
+    con = _billing_conn()
+    try:
+        have = {r["group_key"]: r["period_start"] for r in
+                con.execute("SELECT group_key, period_start FROM group_config")}
+        if not keys:
+            ov = _billing_overview_impl()
+            keys = ov.get("needStart") or []
+
+        changed, skipped = [], []
+        for k in keys:
+            if have.get(k) and not overwrite:
+                skipped.append(k)
+                continue
+            con.execute(
+                "INSERT INTO group_config (group_key, period_start) VALUES (?,?) "
+                "ON CONFLICT(group_key) DO UPDATE SET period_start=excluded.period_start",
+                (k, start))
+            changed.append(k)
+        con.commit()
+    finally:
+        con.close()
+
+    note = f"تاریخ شروع {len(changed)} گروه روی {start} تنظیم شد"
+    if skipped:
+        note += f" — {len(skipped)} گروه که از قبل تاریخ داشتند دست‌نخورده ماند"
+    return {"ok": True, "note": note, "changed": changed, "skipped": skipped}
+
+
+@app.get("/api/agent/netid.py")
+def agent_netid_module():
+    """
+    ماژول شناسایی آی‌پی برای سرورهای دیگر.
+
+    monitor.py و firewall.py بدون این هم کار می‌کنند — جایگزین
+    داخلی دارند — ولی تشخیص تانل و لوپ‌بکِ نگاشته بدون آن ناقص
+    است. پس همراهشان فرستاده می‌شود.
+    """
+    p = _root_dir() / "backend" / "netid.py"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="ماژول netid پیدا نشد")
+    return Response(content=p.read_text(encoding="utf-8"),
+                    media_type="text/x-python")
