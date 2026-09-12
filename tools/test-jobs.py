@@ -38,6 +38,14 @@ def check(name, cond, detail=""):
         print(f"  {R}✗{X} {name}" + (f" {D}— {detail}{X}" if detail else ""))
 
 
+def _raises(fn):
+    try:
+        fn()
+        return False
+    except Exception:
+        return True
+
+
 def head(t):
     print(f"\n{D}── {t} ──{X}")
 
@@ -208,6 +216,159 @@ except ValueError as e:
     check("و خطا می‌گوید چرا", "SSH" in str(e) or "عدد نیست" in str(e),
           "نه فقط «حداقل یک پورت لازم است»")
 
+
+
+head("هر موتور، پورت‌ها را در جهت درست می‌بندد")
+
+# قاعده‌ای که خودِ backhaul در مستندش نوشته:
+#
+#     مشتری ──► سرور ایران ──[تانل]──► سرور خارج (3x-ui)
+#
+#     local  = پورتی که روی سرور ایران باز می‌شود؛ مشتری به این وصل است
+#     remote = پورت سرویس واقعی روی سرور خارج
+#
+# «اشتباه گرفتن این دو یعنی تانل بالا می‌آید ولی هیچ ترافیکی رد
+# نمی‌شود.» تا وقتی local و remote یکی‌اند — حالت پیش‌فرض پنل — هیچ‌کس
+# متوجه نمی‌شود؛ اولین نگاشتِ نامتقارن ترافیک را به پورت اشتباه
+# می‌فرستد.
+#
+# هر موتور نگاشت را جای دیگری اعلام می‌کند (backhaul سمت ایران،
+# chisel سمت خارج) پس این‌جا خروجی دقیقِ هرکدام سنجیده می‌شود، نه یک
+# قاعده‌ی کلی.
+
+IRAN_PORT, FOREIGN_PORT = 8443, 8080
+
+TPL = {
+    "name": "تست", "secret": "s3cret",
+    "remote_host": "203.0.113.9", "bridge_port": 3080,
+    "ports": [{"local": IRAN_PORT, "remote": FOREIGN_PORT}],
+    "options": {},
+}
+
+
+def cfg(eng, side):
+    return T.build_config(
+        dict(TPL, engine=eng,
+             transport=T.ENGINES[eng]["default_transport"]), side)
+
+
+# ── Backhaul: نگاشت را سمت ایران می‌نویسد ──
+check("Backhaul: نگاشت «ایران=خارج» درست است",
+      f'"{IRAN_PORT}={FOREIGN_PORT}"' in cfg("backhaul", "iran"),
+      "برعکسش یعنی ایران روی پورت خارج گوش می‌دهد")
+check("Backhaul: سمت ایران [server] است",
+      "[server]" in cfg("backhaul", "iran"))
+check("Backhaul: سمت خارج [client] است",
+      "[client]" in cfg("backhaul", "foreign"))
+
+# ── Chisel: نگاشت را سمت خارج می‌نویسد ──
+check("Chisel: تانل معکوس درست است",
+      f"R:0.0.0.0:{IRAN_PORT}:127.0.0.1:{FOREIGN_PORT}"
+      in cfg("chisel", "foreign"),
+      "R:<پورتی که ایران باز می‌کند>:<سرویس واقعی روی خارج>")
+check("Chisel: سمت ایران server --reverse است",
+      "--reverse" in cfg("chisel", "iran"))
+
+# ── Rathole: هر دو طرف ──
+check("Rathole: ایران پورت مشتری را باز می‌کند",
+      f'bind_addr = "0.0.0.0:{IRAN_PORT}"' in cfg("rathole", "iran"),
+      "قبلاً پورت سرویسِ خارج را باز می‌کرد")
+check("Rathole: خارج به سرویس واقعی وصل می‌شود",
+      f'local_addr = "127.0.0.1:{FOREIGN_PORT}"' in cfg("rathole", "foreign"),
+      "قبلاً به پورت ایران وصل می‌شد — یعنی به هیچ‌جا")
+check("Rathole: نام سرویس دو طرف یکی است",
+      set(l for l in cfg("rathole", "iran").split("\n") if l.startswith("[server.services."))
+      and cfg("rathole", "iran").count(".services.p") ==
+          cfg("rathole", "foreign").count(".services.p"),
+      "اگر نام‌ها یکی نباشند rathole جفتشان نمی‌کند")
+
+# ── FRP ──
+frpc = cfg("frp", "foreign")
+check("FRP: سرویس واقعی روی پورت خارج است",
+      f"localPort = {FOREIGN_PORT}" in frpc,
+      "localPort یعنی پورت روی همان ماشینِ frpc — یعنی سرور خارج")
+check("FRP: پورت منتشرشده روی ایران، پورت مشتری است",
+      f"remotePort = {IRAN_PORT}" in frpc,
+      "remotePort یعنی پورتی که frps (ایران) باز می‌کند")
+check("FRP: سمت ایران فقط bindPort دارد",
+      f"bindPort = {TPL['bridge_port']}" in cfg("frp", "iran"))
+
+# ── GOST ──
+gforeign = cfg("gost", "foreign")
+check("GOST: از rtcp استفاده می‌کند",
+      "rtcp" in gforeign,
+      "با handler: tcp فقط یک پراکسی رو به جلو بود — ایران هیچ پورتی باز نمی‌کرد")
+check("GOST: پورتی که ایران باز می‌کند اعلام می‌شود",
+      f"addr: :{IRAN_PORT}" in gforeign)
+check("GOST: مقصد، سرویس واقعی روی خارج است",
+      f"127.0.0.1:{FOREIGN_PORT}" in gforeign,
+      "بدون forwarder، ترافیک به هیچ‌جا نمی‌رفت")
+check("GOST: سمت ایران relay را می‌پذیرد",
+      "type: relay" in cfg("gost", "iran"))
+
+head("کانفیگ تولیدشده واقعاً قابل‌خواندن است")
+
+# یک کانفیگ خراب روی سرور یعنی سرویسی که بالا نمی‌آید و خطایش هم
+# فقط در journalctl آن ماشین دیده می‌شود. این‌جا قبل از فرستادن
+# می‌سنجیمش.
+try:
+    import yaml as _yaml
+except ImportError:
+    _yaml = None
+
+if _yaml:
+    for side in ("iran", "foreign"):
+        try:
+            doc = _yaml.safe_load(cfg("gost", side))
+            good = isinstance(doc, dict) and "services" in doc
+        except Exception as e:
+            doc, good = None, False
+            print(f"       {D}{e}{X}")
+        check(f"GOST ({side}): YAML معتبر است", good)
+    fdoc = _yaml.safe_load(cfg("gost", "foreign"))
+    check("GOST: مقصد forwarder واقعاً ثبت شده",
+          fdoc["services"][0]["forwarder"]["nodes"][0]["addr"]
+          == f"127.0.0.1:{FOREIGN_PORT}",
+          str(fdoc["services"][0].get("forwarder")))
+else:
+    check("YAML نصب نیست — این بررسی رد شد", True, "pip install pyyaml")
+
+try:
+    import tomllib as _toml
+except ImportError:
+    try:
+        import tomli as _toml
+    except ImportError:
+        _toml = None
+
+if _toml:
+    for eng in ("backhaul", "rathole", "frp"):
+        for side in ("iran", "foreign"):
+            try:
+                _toml.loads(cfg(eng, side))
+                good = True
+            except Exception as e:
+                good = False
+                print(f"       {D}{e}{X}")
+            check(f"{T.ENGINES[eng]['name']} ({side}): TOML معتبر است", good)
+else:
+    check("TOML نصب نیست — این بررسی رد شد", True)
+
+
+head("چیزهایی که در هر پنج موتور باید باشد")
+
+for eng in sorted(T.ENGINES):
+    iran, foreign = cfg(eng, "iran"), cfg(eng, "foreign")
+    check(f"{T.ENGINES[eng]['name']}: راز در هر دو طرف",
+          "s3cret" in iran and "s3cret" in foreign)
+    check(f"{T.ENGINES[eng]['name']}: خارج آدرس ایران را دارد",
+          "203.0.113.9" in foreign,
+          "بدون آن نمی‌داند به کجا وصل شود")
+    check(f"{T.ENGINES[eng]['name']}: پورت ارتباط در هر دو طرف",
+          "3080" in iran and "3080" in foreign)
+
+check("موتور ناشناخته رد می‌شود",
+      _raises(lambda: T.build_config(dict(TPL, engine="هیچ"), "iran")))
 
 
 print(f"\n{D}{'─' * 50}{X}")

@@ -667,62 +667,81 @@ def _cfg_rathole(t, side):
                  f'bind_addr = "0.0.0.0:{t["bridge_port"]}"',
                  f'default_token = "{t["secret"]}"', ""]
         for p in t["ports"]:
-            lines += [f'[server.services.p{p["remote"]}]',
-                      f'bind_addr = "0.0.0.0:{p["remote"]}"', ""]
+            # ایران پورتی را باز می‌کند که مشتری به آن وصل می‌شود
+            lines += [f'[server.services.p{p["local"]}]',
+                      f'bind_addr = "0.0.0.0:{p["local"]}"', ""]
         return "\n".join(lines)
 
     lines = ["[client]",
              f'remote_addr = "{t["remote_host"]}:{t["bridge_port"]}"',
              f'default_token = "{t["secret"]}"', ""]
     for p in t["ports"]:
-        lines += [f'[client.services.p{p["remote"]}]',
-                  f'local_addr = "127.0.0.1:{p["local"]}"', ""]
+        # و خارج به سرویس واقعیِ خودش وصل می‌شود
+        lines += [f'[client.services.p{p["local"]}]',
+                  f'local_addr = "127.0.0.1:{p["remote"]}"', ""]
     return "\n".join(lines)
 
 
 def _cfg_gost(t, side):
     """
-    GOST با YAML.
+    GOST با YAML — تانل معکوس با rtcp.
 
-    سرور ایران هم relay را می‌پذیرد و هم پورت‌ها را باز می‌کند،
-    پس هر دو بخش در یک فایل می‌آید.
+    سرور ایران فقط relay را می‌پذیرد. سرور خارج وصل می‌شود و با
+    rtcp از relay می‌خواهد پورت مشتری را *روی ایران* باز کند، و هر
+    اتصالی که آمد به سرویس واقعیِ خودش بدهد.
+
+    قبلاً سمت خارج «handler: tcp» با یک chain بود — یعنی یک پراکسیِ
+    رو به جلو: پورت را روی خودِ سرور خارج باز می‌کرد، و هیچ مقصدی
+    هم نداشت که ترافیک را به آن بدهد. نتیجه این بود که روی سرور
+    ایران هیچ پورتی برای مشتری باز نمی‌شد و تانل با اینکه «بالا»
+    به نظر می‌رسید، هیچ ترافیکی رد نمی‌کرد.
     """
     tr = t["transport"]
     if side == "iran":
-        svc = [f"""  - name: bridge
-    addr: ":{t['bridge_port']}"
-    handler:
-      type: relay
-      auth:
-        username: nexora
-        password: {t['secret']}
-    listener:
-      type: {tr}"""]
-        return "services:\n" + "\n".join(svc) + "\n"
+        return (
+            "services:\n"
+            "  - name: bridge\n"
+            f"    addr: \":{t['bridge_port']}\"\n"
+            "    handler:\n"
+            "      type: relay\n"
+            "      auth:\n"
+            "        username: nexora\n"
+            f"        password: {t['secret']}\n"
+            "    listener:\n"
+            f"      type: {tr}\n")
 
     svc = []
     for i, p in enumerate(t["ports"]):
-        svc.append(f"""  - name: fwd{i}
-    addr: ":{p['local']}"
-    handler:
-      type: tcp
-      chain: c0
-    listener:
-      type: tcp""")
-    chain = f"""chains:
-  - name: c0
-    hops:
-      - name: h0
-        nodes:
-          - name: n0
-            addr: {t['remote_host']}:{t['bridge_port']}
-            connector:
-              type: relay
-              auth:
-                username: nexora
-                password: {t['secret']}
-            dialer:
-              type: {tr}"""
+        svc.append(
+            f"  - name: fwd{i}\n"
+            # این پورت روی relay (ایران) باز می‌شود، نه روی این ماشین
+            f"    addr: :{p['local']}\n"
+            "    handler:\n"
+            "      type: rtcp\n"
+            "    listener:\n"
+            "      type: rtcp\n"
+            "      chain: c0\n"
+            "    forwarder:\n"
+            "      nodes:\n"
+            f"        - name: t{i}\n"
+            # و این سرویس واقعی روی همین سرور خارج است
+            f"          addr: 127.0.0.1:{p['remote']}")
+
+    chain = (
+        "chains:\n"
+        "  - name: c0\n"
+        "    hops:\n"
+        "      - name: h0\n"
+        "        nodes:\n"
+        "          - name: n0\n"
+        f"            addr: {t['remote_host']}:{t['bridge_port']}\n"
+        "            connector:\n"
+        "              type: relay\n"
+        "              auth:\n"
+        "                username: nexora\n"
+        f"                password: {t['secret']}\n"
+        "            dialer:\n"
+        f"              type: {tr}")
     return "services:\n" + "\n".join(svc) + "\n" + chain + "\n"
 
 
@@ -781,12 +800,16 @@ def _cfg_frp(t, side):
              'auth.method = "token"',
              f'auth.token = "{t["secret"]}"', ""]
     for p in t["ports"]:
+        # localPort روی همین ماشین است — یعنی سرویس واقعیِ سرور خارج.
+        # remotePort آن چیزی است که frps روی ایران باز می‌کند و مشتری
+        # به آن وصل می‌شود. جابه‌جا نوشتنشان یعنی تانل بالا می‌آید و
+        # هیچ ترافیکی رد نمی‌شود.
         lines += ["[[proxies]]",
-                  f'name = "p{p["remote"]}"',
+                  f'name = "p{p["local"]}"',
                   'type = "tcp"',
                   'localIP = "127.0.0.1"',
-                  f'localPort = {p["local"]}',
-                  f'remotePort = {p["remote"]}', ""]
+                  f'localPort = {p["remote"]}',
+                  f'remotePort = {p["local"]}', ""]
     return "\n".join(lines)
 
 

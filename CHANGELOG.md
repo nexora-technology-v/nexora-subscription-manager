@@ -1,5 +1,51 @@
 # Changelog
 
+## [1.10.1]
+
+Three of the five tunnel engines generated configs that could not carry traffic.
+Backhaul and Chisel — the two marked recommended, and the two actually in use —
+were correct.
+
+The rule, stated in Backhaul's own docstring: `local` is the port opened on the
+Iran server that customers connect to, `remote` is the real service port on the
+foreign server. "Mixing these up means the tunnel comes up and no traffic
+passes."
+
+None of this was visible from the panel, because the port editor writes one value
+into both fields. It surfaces the moment anyone maps 8080 to 80, or calls the API
+directly — `validate_ports` has always accepted `{local, remote}` pairs.
+
+### Fixed — Rathole had both sides inverted
+
+The Iran server opened the *foreign* service port and waited for customers there.
+The foreign server connected to the *Iran* port, which does not exist on that
+machine. Service names were also derived from `remote`; they come from `local` now
+so both ends agree.
+
+### Fixed — FRP had localPort and remotePort swapped
+
+In frpc, `localPort` is the service on the machine frpc runs on — the foreign
+server — and `remotePort` is what frps publishes on the Iran side. They were the
+other way round.
+
+### Fixed — GOST opened no port for customers at all
+
+The foreign side used `handler: tcp` with a chain: a *forward* proxy, opening the
+port on the foreign server itself, with no destination to send traffic to. The
+Iran config only accepted the relay and never listened for customers, despite its
+docstring claiming it did.
+
+Rewritten to use `rtcp`, which is how GOST does reverse forwarding: the foreign
+side asks the relay to open the customer port on Iran and forwards arriving
+connections to its own service.
+
+### Added — Engine configs are tested
+
+`build_config` had no test. There is one per engine now, asserting the exact
+output that carries the port mapping, plus a parse check — TOML for Backhaul,
+Rathole and FRP, YAML for GOST — because a malformed config fails on the remote
+server where only journalctl would show it.
+
 ## [1.10.0]
 
 ### Fixed — A job the agent took but never answered was stuck forever
