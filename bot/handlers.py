@@ -2299,17 +2299,48 @@ def dispatch(tenant, bot, update):
             return _on_callback(ctx, update["callback_query"])
         if "message" in update:
             return _on_message(ctx, update["message"])
-    except Exception:
+    except Exception as e:
         log.exception("خطای پردازش آپدیت %s", update.get("update_id"))
         try:
-            ctx.notify_group(
-                "⚠️ <b>خطای پردازش یک پیام در ربات</b>\n\n"
-                f"<code>{esc(str(update.get('update_id')))}</code>\n"
-                "<i>جزئیات کامل در لاگ سرور است.</i>",
-                topic="alerts")
+            ctx.notify_group(_error_alert(update, e), topic="alerts")
         except Exception:
             pass
     return None
+
+
+def _error_alert(update, exc):
+    """
+    متن هشدار خطا برای گروه مدیریت.
+
+    قبلاً فقط update_id و «جزئیات در لاگ سرور است» فرستاده می‌شد، که
+    یعنی مدیر باید SSH بزند تا بفهمد کدام دکمه شکسته. حالا نوع خطا و
+    دکمه‌ای که زده شده هم می‌آید — هیچ‌کدام حساس نیستند و معمولاً همان
+    دو خط برای فهمیدن ماجرا کافی است.
+
+    عمداً هیچ متن پیام کاربر این‌جا نمی‌آید؛ گروه مدیریت جای محتوای
+    خصوصی مشتری نیست.
+    """
+    cb = (update.get("callback_query") or {})
+    msg = update.get("message") or {}
+    who = (cb.get("from") or msg.get("from") or {})
+
+    lines = ["⚠️ <b>خطا در پردازش یک پیام</b>", ""]
+
+    if cb.get("data"):
+        lines.append(f"دکمه: <code>{esc(str(cb['data'])[:64])}</code>")
+    elif msg.get("text", "").startswith("/"):
+        lines.append(f"دستور: <code>{esc(msg['text'].split()[0][:32])}</code>")
+    else:
+        lines.append("رویداد: پیام معمولی")
+
+    if who.get("id"):
+        lines.append(f"کاربر: <code>{esc(str(who['id']))}</code>")
+
+    lines += ["", f"<code>{esc(type(exc).__name__)}: "
+                  f"{esc(str(exc)[:160])}</code>", ""]
+    lines.append("<i>ردپای کامل در لاگ سرور — "
+                 "<code>journalctl -u nexora-bot -n 50</code></i>")
+    return "\n".join(lines)
 
 
 def _get_or_create(ctx, tg_user, ref=None):

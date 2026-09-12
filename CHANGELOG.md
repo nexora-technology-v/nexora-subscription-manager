@@ -1,5 +1,63 @@
 # Changelog
 
+## [Unreleased]
+
+### Added — CI, so the tests actually run
+
+The project had 475 tests that only ran when someone typed the command by hand.
+`.github/workflows/ci.yml` now runs all of them on every push and pull request:
+Python suites, seam tests, the bot text preview, the frontend build, and the three
+Node suites. Tags additionally run the release gate.
+
+### Added — `tools/test-seams.py`
+
+Every bug that reached a customer in this project was a wiring bug, not a logic bug.
+One half of the code declared something and the other half never heard about it: a
+button with no dispatcher branch, a query against a table that was never created, a
+backend route with no caller, a method defined twice.
+
+Ordinary tests never caught these, because a test exercises a *function* and a seam
+is not a function. This file counts both sides of five seams and diffs them:
+
+- backend routes against frontend callers
+- SQL table names against the real schema
+- settings keys the bot reads against fields the panel can write
+- duplicate function definitions in one scope
+- handler names referenced but never defined
+
+It found twelve real problems on its first run.
+
+### Fixed — Eight bot settings the panel could never set
+
+`trial_enabled`, `ask_phone`, `support_username`, `order_ttl_minutes`, `email_prefix`,
+`sub_base_url`, `help_text` and `admins` were all read by the bot and written by
+nothing. Each had a sensible fallback, so nothing crashed — the features were simply
+frozen at their defaults forever. The free trial in particular could not be switched
+on by any means.
+
+The bot settings page now has a "رفتار ربات" section for all eight.
+
+### Fixed — Error alerts you can act on
+
+When an update failed, the admin group got the update id and "details are in the
+server log", which meant opening an SSH session to learn anything. The alert now
+carries the exception type, its message, and the button or command that triggered it —
+none of which is sensitive. Customer message text is deliberately still excluded.
+
+### Added — `tools/release-check.py`
+
+The release checklist used to live in someone's memory. It is now a command that
+verifies VERSION, `package.json` and the git tag agree, that CHANGELOG has a
+non-empty section for the version, that the tree is clean and on `main`, and that
+every suite passes. It exits non-zero if anything is missing, and CI runs it on tags.
+
+### Known — Four backend routes with no caller
+
+`test-seams.py` reports these as open debt rather than failing on them:
+`/api/admin/reset-defaults` (resets all config with no confirmation),
+`/api/admin/billing/overview`, `DELETE /api/admin/billing/payments/{id}` (the panel can
+record a payment but not remove one), and `/api/admin/health/local`.
+
 ## [1.3.0]
 
 ### Fixed — Topping up the wallet crashed every time

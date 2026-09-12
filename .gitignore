@@ -1,3 +1,6 @@
+# ابزار محلی — اسکیل‌ها و تنظیمات Claude Code
+.claude/
+
 # Build output
 frontend/dist/
 frontend/node_modules/

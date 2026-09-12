@@ -3471,6 +3471,36 @@ const BOT_TEXTS = [
   { k: "expiry_text", label: "یادآوری انقضا",
     hint: "", vars: ["{days}", "{plan}"],
     sample: "⏰ {days} روز تا پایان اشتراک شما باقی مانده." },
+  { k: "help_text", label: "آموزش نصب",
+    hint: "خالی بماند، متن سه‌قدمی پیش‌فرض نمایش داده می‌شود", vars: ["{brand}"],
+    sample: "📚 آموزش نصب\n\nسه قدم، کمتر از دو دقیقه:" },
+];
+
+/**
+ * تنظیم‌هایی که ربات می‌خواند ولی تا امروز هیچ فیلدی در پنل نداشتند.
+ *
+ * تست درزها (tools/test-seams.py) اینها را پیدا کرد: هر هشت کلید در
+ * handlers.py خوانده می‌شد و چون پنل راهی برای نوشتنشان نداشت، همیشه
+ * روی مقدار پیش‌فرض قفل بودند. بدترینش trial_enabled بود — «تست رایگان»
+ * را به‌هیچ‌وجه نمی‌شد روشن کرد.
+ */
+const BOT_BEHAVIOUR = [
+  { k: "trial_enabled", type: "bool", def: false, label: "اشتراک تست رایگان",
+    hint: "هر کاربر یک بار می‌تواند بگیرد" },
+  { k: "ask_phone", type: "bool", def: true, label: "درخواست شماره تماس",
+    hint: "همیشه اختیاری است؛ این فقط نمایش دکمه را کنترل می‌کند" },
+  { k: "support_username", type: "text", label: "یوزرنیم پشتیبانی",
+    ph: "@nexora_support",
+    hint: "در پیام‌های خطا و رد رسید به مشتری نشان داده می‌شود" },
+  { k: "order_ttl_minutes", type: "num", def: 30, min: 5, max: 1440,
+    label: "مهلت پرداخت", unit: "دقیقه",
+    hint: "بعد از این مدت سفارش پرداخت‌نشده منقضی می‌شود" },
+  { k: "email_prefix", type: "text", label: "پیشوند شناسه کانفیگ",
+    ph: "nexora",
+    hint: "شناسه‌ی کلاینت در پنل این شکلی ساخته می‌شود: prefix_tgid_1" },
+  { k: "sub_base_url", type: "text", label: "دامنه‌ی لینک اشتراک",
+    ph: "https://sub.nexora.ir",
+    hint: "خالی بماند، از تنظیمات خود پنل 3x-ui خوانده می‌شود" },
 ];
 
 function BotTextsSection({ password }) {
@@ -3550,6 +3580,62 @@ function BotTextsSection({ password }) {
           {f.hint && <div className="text-[12px] mt-1.5" style={{ color: "var(--muted)" }}>{f.hint}</div>}
         </div>
       ))}
+
+      <SectionHead title="رفتار ربات"
+        desc="تنظیم‌هایی که ربات موقع کار می‌خواند — بدون اینها روی مقدار پیش‌فرض می‌ماند." />
+
+      <div className="fx-card p-4 mt-3">
+        {BOT_BEHAVIOUR.map((f) => (
+          <div key={f.k}
+            className="flex items-start justify-between gap-4 py-3"
+            style={{ borderBottom: "1px solid var(--border)" }}>
+            <div className="min-w-0 flex-1">
+              <div className="text-[14px] font-semibold text-white">{f.label}</div>
+              <div className="text-[12px] mt-1 leading-relaxed"
+                style={{ color: "var(--muted)" }}>{f.hint}</div>
+            </div>
+            <div className="shrink-0" style={{ width: f.type === "bool" ? "auto" : 200 }}>
+              {f.type === "bool" && (
+                <Toggle label={f.label}
+                  checked={s[f.k] === undefined ? f.def : !!s[f.k]}
+                  onChange={() => upS({ [f.k]: !(s[f.k] === undefined ? f.def : !!s[f.k]) })} />
+              )}
+              {f.type === "num" && (
+                <div className="flex items-center gap-2">
+                  <input className="fx-input" type="number" min={f.min} max={f.max}
+                    value={s[f.k] ?? f.def}
+                    onChange={(e) => upS({ [f.k]: Number(e.target.value) || f.def })}
+                    style={{ textAlign: "center" }} />
+                  <span className="text-[12px] shrink-0"
+                    style={{ color: "var(--muted)" }}>{f.unit}</span>
+                </div>
+              )}
+              {f.type === "text" && (
+                <input className="fx-input" value={s[f.k] || ""} placeholder={f.ph}
+                  onChange={(e) => upS({ [f.k]: e.target.value })}
+                  style={{ fontFamily: "var(--mono)", direction: "ltr", textAlign: "left" }} />
+              )}
+            </div>
+          </div>
+        ))}
+
+        {/* مدیرها آیدی عددی‌اند، پس هر خط یک عدد — نه CSV که با فاصله خراب شود */}
+        <div className="pt-3">
+          <Field label="مدیرهای ربات"
+            hint="هر خط یک آیدی عددی تلگرام. اینها دسترسی پنل مدیریت داخل ربات را دارند.">
+            <textarea className="fx-input" rows={3}
+              value={(s.admins || []).join("\n")}
+              onChange={(e) => upS({
+                admins: e.target.value.split("\n")
+                  .map((x) => parseInt(x.trim(), 10))
+                  .filter((x) => Number.isFinite(x)),
+              })}
+              placeholder={"123456789\n987654321"}
+              style={{ fontFamily: "var(--mono)", direction: "ltr",
+                       textAlign: "left", resize: "vertical" }} />
+          </Field>
+        </div>
+      </div>
     </div>
   );
 }
