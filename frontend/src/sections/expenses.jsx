@@ -1,0 +1,558 @@
+/**
+ * هزینه‌ها و دفتر کل.
+ *
+ * «درآمد» بدون کم‌کردن هزینه‌ها عددی است که آدم را خوشحال و ورشکسته
+ * می‌کند. سرور خارج، سرور ایران و خرید حجم پول واقعی‌اند و باید کنار
+ * فروش دیده شوند.
+ *
+ * نکته‌ی مهم در طراحی: مبلغ تومانی در لحظه‌ی ثبت قفل می‌شود. اگر هر
+ * بار با نرخ روز محاسبه کنیم، هزینه‌ی ماه پیش با تکان خوردن بازار
+ * عوض می‌شود و هیچ گزارشی قابل اتکا نمی‌ماند.
+ */
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  AlertTriangle, DollarSign, Loader2, Plus, RefreshCw, Server,
+  Trash2, TrendingUp, Wallet,
+} from "lucide-react";
+import { API_URL } from "../lib/constants";
+import { faNum } from "../lib/format";
+import {
+  ConfirmModal, EmptyState, Field, InfoBox, Msg, SectionHead,
+} from "../ui/index";
+
+const KIND_META = {
+  server_abroad: { label: "سرور خارج", icon: Server, color: "var(--accent-2)" },
+  server_iran: { label: "سرور ایران", icon: Server, color: "#34d399" },
+  traffic: { label: "خرید حجم", icon: TrendingUp, color: "#fbbf24" },
+  domain: { label: "دامنه و گواهی", icon: Wallet, color: "#a78bfa" },
+  other: { label: "متفرقه", icon: DollarSign, color: "var(--muted)" },
+};
+
+const toman = (n) => `${faNum(Number(n || 0).toLocaleString("en-US")
+  .replace(/,/g, "،"))} تومان`;
+
+function useJson(path, password, deps = []) {
+  const [d, setD] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    setBusy(true);
+    try {
+      const j = await fetch(`${API_URL}${path}`, {
+        headers: { "X-Admin-Password": password },
+      }).then((r) => r.json());
+      setD(j);
+    } catch { setD({ ready: false, error: "اتصال برقرار نشد" }); }
+    finally { setBusy(false); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [password, path, ...deps]);
+  useEffect(() => { load(); }, [load]);
+  return { d, busy, load, setD };
+}
+
+/** فرم ثبت هزینه، با تبدیل زنده‌ی ارز پیش از ثبت. */
+function ExpenseForm({ password, onDone, setMsg }) {
+  const [f, setF] = useState({
+    kind: "server_abroad", label: "", amount: "", currency: "EUR",
+    recurring: "monthly", gb: "", spentAt: new Date().toISOString().slice(0, 10),
+    note: "", rate: "",
+  });
+  const [fx, setFx] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  // نرخ را فقط وقتی می‌گیریم که ارز غیرتومانی انتخاب شده باشد
+  useEffect(() => {
+    if (f.currency === "IRT") { setFx(null); return; }
+    let alive = true;
+    fetch(`${API_URL}/api/admin/billing/fx?currency=${f.currency}`, {
+      headers: { "X-Admin-Password": password },
+    }).then((r) => r.json()).then((j) => { if (alive) setFx(j); })
+      .catch(() => { if (alive) setFx({ ok: false }); });
+    return () => { alive = false; };
+  }, [f.currency, password]);
+
+  const rate = Number(f.rate) || (fx && fx.ok ? fx.toman : null);
+  const preview = rate && f.amount ? Math.round(Number(f.amount) * rate) : null;
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/billing/expenses`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Password": password,
+        },
+        body: JSON.stringify({
+          ...f,
+          amount: Number(f.amount),
+          rate: f.rate ? Number(f.rate) : undefined,
+          gb: f.kind === "traffic" && f.gb ? Number(f.gb) : undefined,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMsg({ t: "ok", m: j.note || "ثبت شد" });
+        setF({ ...f, label: "", amount: "", gb: "", note: "" });
+        onDone();
+      } else setMsg({ t: "err", m: j.detail || "ثبت ناموفق" });
+    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fx-card p-5 mb-4">
+      <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
+        <Plus size={15} style={{ color: "var(--accent-2)" }} /> ثبت هزینه‌ی جدید
+      </div>
+
+      <div className="fx-g4 grid grid-cols-4 gap-3">
+        <Field label="دسته">
+          <select className="fx-input" value={f.kind}
+            onChange={(e) => setF({ ...f, kind: e.target.value })}>
+            {Object.entries(KIND_META).map(([k, m]) => (
+              <option key={k} value={k}>{m.label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="عنوان" hint="مثلاً: هتزنر CX22">
+          <input className="fx-input" value={f.label}
+            onChange={(e) => setF({ ...f, label: e.target.value })} />
+        </Field>
+        <Field label="مبلغ">
+          <input className="fx-input" dir="ltr" type="number" step="0.01"
+            value={f.amount} style={{ fontFamily: "var(--mono)" }}
+            onChange={(e) => setF({ ...f, amount: e.target.value })} />
+        </Field>
+        <Field label="ارز">
+          <select className="fx-input" value={f.currency}
+            onChange={(e) => setF({ ...f, currency: e.target.value })}>
+            <option value="EUR">یورو</option>
+            <option value="USD">دلار</option>
+            <option value="IRT">تومان</option>
+          </select>
+        </Field>
+      </div>
+
+      <div className="fx-g4 grid grid-cols-4 gap-3 mt-1">
+        <Field label="تکرار">
+          <select className="fx-input" value={f.recurring}
+            onChange={(e) => setF({ ...f, recurring: e.target.value })}>
+            <option value="once">یک‌بار</option>
+            <option value="monthly">ماهانه</option>
+            <option value="yearly">سالانه</option>
+          </select>
+        </Field>
+        <Field label="تاریخ">
+          <input className="fx-input" dir="ltr" type="date" value={f.spentAt}
+            onChange={(e) => setF({ ...f, spentAt: e.target.value })} />
+        </Field>
+        {f.kind === "traffic" ? (
+          <Field label="حجم (گیگابایت)">
+            <input className="fx-input" dir="ltr" type="number" value={f.gb}
+              style={{ fontFamily: "var(--mono)" }}
+              onChange={(e) => setF({ ...f, gb: e.target.value })} />
+          </Field>
+        ) : (
+          <Field label="توضیح" hint="اختیاری">
+            <input className="fx-input" value={f.note}
+              onChange={(e) => setF({ ...f, note: e.target.value })} />
+          </Field>
+        )}
+        {f.currency !== "IRT" && (
+          <Field label="نرخ دستی" hint="خالی = نرخ روز بازار">
+            <input className="fx-input" dir="ltr" type="number" value={f.rate}
+              placeholder={fx && fx.ok ? String(fx.toman) : "—"}
+              style={{ fontFamily: "var(--mono)" }}
+              onChange={(e) => setF({ ...f, rate: e.target.value })} />
+          </Field>
+        )}
+      </div>
+
+      {f.currency !== "IRT" && (
+        <div className="mt-2 text-[12px] flex items-center gap-2 flex-wrap"
+          style={{ color: "var(--muted)" }}>
+          {!fx ? "در حال گرفتن نرخ…"
+            : fx.ok ? (
+              <>
+                <span>نرخ {f.currency}: {toman(fx.toman)}</span>
+                {fx.at && <span>· {fx.at}</span>}
+                {fx.stale && (
+                  <span style={{ color: "var(--warn)" }}>
+                    · نرخ کهنه ({faNum(fx.ageMinutes || 0)} دقیقه پیش)
+                  </span>
+                )}
+              </>
+            ) : (
+              <span style={{ color: "var(--warn)" }}>
+                نرخ خوانده نشد — نرخ را دستی وارد کنید
+              </span>
+            )}
+          {preview !== null && (
+            <span style={{ color: "var(--accent-2)" }}>
+              ← معادل {toman(preview)}
+            </span>
+          )}
+        </div>
+      )}
+
+      <button onClick={submit} disabled={busy || !f.label || !f.amount}
+        className="fx-btn px-4 py-2.5 text-[13px] flex items-center gap-1.5 mt-3">
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+        ثبت هزینه
+      </button>
+    </div>
+  );
+}
+
+export function BillingExpenses({ password }) {
+  const [months, setMonths] = useState(12);
+  const { d, busy, load } = useJson(
+    `/api/admin/billing/expenses?months=${months}`, password, [months]);
+  const [msg, setMsg] = useState(null);
+  const [del, setDel] = useState(null);
+
+  useEffect(() => {
+    if (msg) {
+      const t = setTimeout(() => setMsg(null), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [msg]);
+
+  const remove = async (id) => {
+    try {
+      const res = await fetch(`${API_URL}/api/admin/billing/expenses/${id}`, {
+        method: "DELETE", headers: { "X-Admin-Password": password },
+      });
+      setMsg(res.ok ? { t: "ok", m: "حذف شد" } : { t: "err", m: "حذف ناموفق" });
+      if (res.ok) load();
+    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+    finally { setDel(null); }
+  };
+
+  if (!d) {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="fx-anim">
+      <SectionHead title="هزینه‌ها"
+        desc="سرور، حجم و دامنه پول واقعی‌اند. تا این‌ها ثبت نشوند، عدد سود فقط یک آرزوست."
+        action={(
+          <div className="flex items-center gap-2">
+            <select className="fx-input" value={months} style={{ width: 130 }}
+              onChange={(e) => setMonths(Number(e.target.value))}>
+              <option value={3}>۳ ماه اخیر</option>
+              <option value={12}>یک سال اخیر</option>
+              <option value={120}>همه</option>
+            </select>
+            <button onClick={load} disabled={busy}
+              className="fx-btn-ghost px-3 py-2 text-[13px] flex items-center gap-1.5">
+              <RefreshCw size={14} className={busy ? "animate-spin" : ""} />
+              تازه‌سازی
+            </button>
+          </div>
+        )} />
+
+      <Msg msg={msg} />
+
+      <div className="fx-g3 grid grid-cols-3 gap-3 mb-4">
+        <div className="fx-card p-4">
+          <div className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
+            هزینه‌ی این بازه
+          </div>
+          <div className="text-[21px] font-bold"
+            style={{ color: "var(--danger)", fontFamily: "var(--mono)" }}>
+            {toman(d.total)}
+          </div>
+        </div>
+        <div className="fx-card p-4">
+          <div className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
+            هزینه‌ی ثابت ماهانه
+          </div>
+          <div className="text-[21px] font-bold"
+            style={{ color: "var(--warn)", fontFamily: "var(--mono)" }}>
+            {toman(d.monthlyRecurring)}
+          </div>
+          <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+            این مبلغ را هر ماه باید دربیاورید
+          </div>
+        </div>
+        <div className="fx-card p-4">
+          <div className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
+            حجم خریداری‌شده
+          </div>
+          <div className="text-[21px] font-bold"
+            style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
+            {faNum(d.trafficGB || 0)} <span className="text-[14px]">گیگ</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="fx-card p-4 mb-4">
+        <div className="text-[13px] mb-3" style={{ color: "var(--dim)" }}>
+          تفکیک بر اساس دسته
+        </div>
+        {Object.entries(d.byKind || {}).map(([k, v]) => {
+          const m = KIND_META[k] || KIND_META.other;
+          const pct = d.total ? Math.round((v * 100) / d.total) : 0;
+          return (
+            <div key={k} className="flex items-center gap-3 py-2">
+              <m.icon size={15} style={{ color: m.color, flexShrink: 0 }} />
+              <span className="text-[13px]" style={{ width: 120 }}>{m.label}</span>
+              <div className="flex-1 h-2 rounded-full"
+                style={{ background: "var(--surface-3)" }}>
+                <div className="h-2 rounded-full"
+                  style={{ width: `${pct}%`, background: m.color }} />
+              </div>
+              <span className="text-[13px]" style={{
+                fontFamily: "var(--mono)", color: "var(--dim)", width: 130,
+                textAlign: "left",
+              }}>{toman(v)}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      <ExpenseForm password={password} onDone={load} setMsg={setMsg} />
+
+      <div className="fx-card p-5">
+        <div className="text-[14px] font-semibold text-white mb-3">
+          هزینه‌های ثبت‌شده
+          <span className="text-[13px] font-normal mr-2"
+            style={{ color: "var(--muted)" }}>
+            ({faNum((d.expenses || []).length)})
+          </span>
+        </div>
+
+        {!(d.expenses || []).length ? (
+          <EmptyState icon={Wallet} text="هنوز هزینه‌ای ثبت نشده" />
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="fx-table">
+              <thead>
+                <tr>
+                  <th>تاریخ</th><th>دسته</th><th>عنوان</th>
+                  <th>مبلغ</th><th>معادل تومان</th><th>تکرار</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(d.expenses || []).map((e) => {
+                  const m = KIND_META[e.kind] || KIND_META.other;
+                  return (
+                    <tr key={e.id}>
+                      <td dir="ltr" style={{
+                        fontFamily: "var(--mono)", color: "var(--muted)",
+                        fontSize: 12,
+                      }}>{e.spent_at}</td>
+                      <td style={{ color: m.color }}>{m.label}</td>
+                      <td>
+                        {e.label}
+                        {e.gb ? (
+                          <span className="fx-pill mr-2" style={{
+                            background: "var(--surface-3)", color: "var(--muted)",
+                          }}>{faNum(e.gb)} گیگ</span>
+                        ) : null}
+                      </td>
+                      <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
+                        {e.amount} {e.currency}
+                        {e.fx_rate && e.currency !== "IRT" ? (
+                          <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                            نرخ {faNum(e.fx_rate)}
+                            {e.fx_source === "manual" ? " (دستی)" : ""}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td style={{ fontFamily: "var(--mono)" }}>
+                        {toman(e.amount_irt)}
+                      </td>
+                      <td style={{ color: "var(--muted)", fontSize: 12 }}>
+                        {e.recurring === "monthly" ? "ماهانه"
+                          : e.recurring === "yearly" ? "سالانه" : "یک‌بار"}
+                      </td>
+                      <td>
+                        <button onClick={() => setDel(e)}
+                          className="fx-btn-ghost px-2 py-1"
+                          style={{ color: "var(--danger)" }}>
+                          <Trash2 size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {del && (
+        <ConfirmModal title="حذف هزینه"
+          desc={`«${del.label}» به مبلغ ${toman(del.amount_irt)} حذف می‌شود.`}
+          confirmLabel="حذف کن"
+          onConfirm={() => remove(del.id)}
+          onCancel={() => setDel(null)} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * دفتر کل — از روز اول تا امروز.
+ *
+ * مدیر یک سؤال دارد: «در مجموع چقدر جلو هستم و چه کسی به من بدهکار
+ * است؟» این صفحه فقط همان را جواب می‌دهد.
+ */
+export function BillingLedger({ password }) {
+  const { d, busy, load } = useJson("/api/admin/billing/ledger", password);
+
+  if (!d) {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
+      </div>
+    );
+  }
+
+  if (d.error) {
+    return (
+      <div className="fx-anim">
+        <SectionHead title="دفتر کل" desc="جمع‌بندی همه‌چیز از روز اول." />
+        <InfoBox tone="warn">{d.error}</InfoBox>
+      </div>
+    );
+  }
+
+  const profit = d.profit || 0;
+
+  return (
+    <div className="fx-anim">
+      <SectionHead title="دفتر کل"
+        desc={d.since ? `همه‌ی اعداد از ${d.since} تا امروز` : "جمع‌بندی از روز اول"}
+        action={(
+          <button onClick={load} disabled={busy}
+            className="fx-btn-ghost px-3 py-2 text-[13px] flex items-center gap-1.5">
+            <RefreshCw size={14} className={busy ? "animate-spin" : ""} />
+            تازه‌سازی
+          </button>
+        )} />
+
+      <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
+        {[
+          ["صورت‌حساب‌شده", d.billed, "var(--accent-2)", "کل مبلغی که باید بگیرید"],
+          ["دریافت‌شده", d.paid, "#34d399", "آنچه واقعاً به دستتان رسیده"],
+          ["طلب شما", d.outstanding, "var(--warn)", "هنوز پرداخت نشده"],
+          ["هزینه", d.spent, "var(--danger)", "سرور، حجم، دامنه"],
+        ].map(([label, val, color, hint]) => (
+          <div key={label} className="fx-card p-4">
+            <div className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
+              {label}
+            </div>
+            <div className="text-[19px] font-bold"
+              style={{ color, fontFamily: "var(--mono)" }}>
+              {toman(val)}
+            </div>
+            <div className="text-[11.5px] mt-1" style={{ color: "var(--muted)" }}>
+              {hint}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="fx-card p-5 mb-4">
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-[13px]" style={{ color: "var(--dim)" }}>
+              سود واقعی تا امروز
+            </div>
+            <div className="text-[28px] font-bold" style={{
+              color: profit >= 0 ? "#34d399" : "var(--danger)",
+              fontFamily: "var(--mono)",
+            }}>{toman(profit)}</div>
+            <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+              دریافتی منهای هزینه — نه آنچه طلب دارید
+            </div>
+          </div>
+          <div style={{ textAlign: "left" }}>
+            <div className="text-[13px]" style={{ color: "var(--dim)" }}>
+              اگر همه تسویه کنند
+            </div>
+            <div className="text-[19px] font-bold" style={{
+              color: "var(--accent-2)", fontFamily: "var(--mono)",
+            }}>{toman(d.profitIfAllPaid)}</div>
+          </div>
+        </div>
+      </div>
+
+      {(d.owing || []).length > 0 && (
+        <div className="fx-card p-5 mb-4">
+          <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
+            <AlertTriangle size={15} style={{ color: "var(--warn)" }} />
+            بدهکاران
+          </div>
+          <p className="text-[12px] mb-3" style={{ color: "var(--muted)" }}>
+            پرداختی هر واسطه را در صفحه‌ی «پرداخت‌ها» ثبت کنید تا مانده‌اش
+            به‌روز شود.
+          </p>
+          <div style={{ overflowX: "auto" }}>
+            <table className="fx-table">
+              <thead>
+                <tr>
+                  <th>واسطه</th><th>کانفیگ</th><th>صورت‌حساب</th>
+                  <th>پرداختی</th><th>مانده</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(d.owing || []).map((g) => (
+                  <tr key={g.key}>
+                    <td>
+                      {g.label}
+                      {g.unpriced > 0 && (
+                        <span className="fx-pill mr-2" style={{
+                          background: "rgba(251,191,36,.14)", color: "var(--warn)",
+                        }}>{faNum(g.unpriced)} بدون نرخ</span>
+                      )}
+                    </td>
+                    <td style={{ fontFamily: "var(--mono)" }}>{faNum(g.configs)}</td>
+                    <td style={{ fontFamily: "var(--mono)" }}>{toman(g.due)}</td>
+                    <td style={{ fontFamily: "var(--mono)", color: "#34d399" }}>
+                      {toman(g.paid)}
+                    </td>
+                    <td style={{ fontFamily: "var(--mono)", color: "var(--warn)" }}>
+                      {toman(g.balance)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {(d.credit || []).length > 0 && (
+        <div className="fx-card p-5">
+          <div className="text-[14px] font-semibold text-white mb-1">
+            پیش‌پرداخت‌ها
+          </div>
+          <p className="text-[12px] mb-3" style={{ color: "var(--muted)" }}>
+            این واسطه‌ها بیشتر از صورت‌حسابشان پرداخت کرده‌اند — یعنی
+            اعتبار دارند.
+          </p>
+          {(d.credit || []).map((g) => (
+            <div key={g.key}
+              className="flex items-center justify-between py-2 text-[13px]"
+              style={{ borderBottom: "1px solid var(--border)" }}>
+              <span>{g.label}</span>
+              <span style={{ fontFamily: "var(--mono)", color: "#34d399" }}>
+                {toman(Math.abs(g.balance))} اعتبار
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

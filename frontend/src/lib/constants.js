@@ -5,7 +5,7 @@
  * در آن عملاً ناممکن.
  */
 import {
-  Activity, AlertTriangle, Apple, Bell, Bot, Clock, Coins, CreditCard, Database, Eye, FileText, Gift, HelpCircle, Key, Layers, LayoutGrid, Link2, MessageCircle, MessageSquare, Monitor, Network, Package, Send, Server, ShieldCheck, Sliders, Smartphone, TrendingUp, Users, Video, Wallet, XCircle, Zap,
+  Activity, AlertTriangle, Apple, Bell, DollarSign, Bot, Clock, Coins, CreditCard, Database, Eye, FileText, Gift, HelpCircle, Key, Layers, LayoutGrid, Link2, MessageCircle, MessageSquare, Monitor, Network, Package, Send, Server, ShieldCheck, Sliders, Smartphone, TrendingUp, Users, Video, Wallet, XCircle, Zap,
 } from "lucide-react";
 
 export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8100";
@@ -85,6 +85,8 @@ export const WORKSPACES = {
         title: "مدیریت مالی",
         items: [
           { key: "bill-dash", label: "داشبورد", icon: TrendingUp },
+          { key: "bill-ledger", label: "دفتر کل", icon: FileText },
+          { key: "bill-expenses", label: "هزینه‌ها", icon: DollarSign },
           { key: "bill-groups", label: "واسطه‌ها و نرخ", icon: Users },
           { key: "bill-invoice", label: "صورتحساب", icon: FileText },
           { key: "bill-pay", label: "پرداخت‌ها", icon: Wallet },

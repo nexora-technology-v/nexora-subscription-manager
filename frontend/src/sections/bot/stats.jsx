@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect } from "react";
 import {
-  Download, Loader2, RefreshCw, TrendingUp, Users,
+  FileText, Download, Loader2, RefreshCw, TrendingUp, Users,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { esc0, faNum } from "../../lib/format";
@@ -118,11 +118,44 @@ export function BotReportSection({ password }) {
     return () => { alive = false; };
   }, [password, days]);
 
-  const download = () => {
-    const a = document.createElement("a");
-    a.href = `${API_URL}/api/admin/bot/users/export`;
-    a.click();
+  const [busy, setBusy] = useState(false);
+
+  /**
+   * دانلود فایل از یک مسیر محافظت‌شده.
+   *
+   * نسخه‌ی قبلی آدرس را مستقیم در <a href> می‌گذاشت. مرورگر در آن
+   * حالت هیچ هدری نمی‌فرستد، پس سرور ۴۰۱ می‌داد و کاربر یک فایل
+   * خطا دانلود می‌کرد بدون اینکه بفهمد چرا. پس fetch می‌کنیم و
+   * blob را دانلود می‌دهیم.
+   */
+  const grab = async (path, filename) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}${path}`, {
+        headers: { "X-Admin-Password": password },
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert(j.detail || "ساخت فایل ناموفق بود");
+        return;
+      }
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      alert("اتصال به سرور برقرار نشد");
+    } finally { setBusy(false); }
   };
+
+  const today = new Date().toISOString().slice(0, 10);
+  const download = () => grab("/api/admin/bot/users/export",
+                              `nexora-users-${today}.csv`);
+  const downloadPdf = () => grab(
+    `/api/admin/bot/users/report/pdf?days=${days}`,
+    `nexora-bot-report-${days}d-${today}.pdf`);
 
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
 
@@ -152,7 +185,11 @@ export function BotReportSection({ password }) {
           <div className="flex items-center gap-2 flex-wrap">
             <Segmented value={days} onChange={setDays}
               items={REPORT_RANGES.map(([v, l]) => [v, l])} />
-            <button onClick={download}
+            <button onClick={downloadPdf} disabled={busy}
+              className="fx-btn px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+              <FileText size={13} /> گزارش PDF
+            </button>
+            <button onClick={download} disabled={busy}
               className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
               <Download size={13} /> خروجی اکسل
             </button>

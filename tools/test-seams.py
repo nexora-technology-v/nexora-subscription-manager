@@ -134,10 +134,13 @@ for lit in re.findall(r'`([^`]*)`', APP_JSX):
     m = re.search(r'\$\{API_URL\}(/api[^\s]*)', lit)
     if m:
         called.add(normalize(m.group(1)))
-for m in re.finditer(r'call\(\s*[`"\']([^`"\']*(?:\$\{[^}]*\}[^`"\']*)*)',
-                     APP_JSX):
-    if m.group(1).startswith("/api"):
-        called.add(normalize(m.group(1)))
+
+# هر رشته‌ای که با /api/ شروع شود یک صدازدن است — فرقی نمی‌کند
+# مستقیم در fetch باشد یا به یک helper مثل call() یا useJson() برود.
+# الگوی قبلی فقط call() را می‌شناخت و وقتی useJson اضافه شد، مسیرهای
+# تازه بی‌صداکننده به نظر رسیدند.
+for m in re.finditer(r'[`"\'](/api/[^`"\'\s]*)', APP_JSX):
+    called.add(normalize(m.group(1)))
 
 check("مسیرهای بک‌اند استخراج شدند", len(routes) > 50, f"{len(routes)} مسیر")
 check("صداکننده‌های فرانت‌اند استخراج شدند", len(called) > 40,

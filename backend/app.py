@@ -8,7 +8,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
@@ -3835,8 +3835,31 @@ def _billing_conn():
             source      TEXT,
             created_at  TEXT DEFAULT CURRENT_TIMESTAMP
         );
+        -- هزینه‌ها: سرور خارج، سرور ایران، خرید حجم، دامنه و بقیه.
+        -- بدون این، «درآمد» عدد بی‌معنایی است؛ سود آن چیزی است که
+        -- بعد از کم‌کردن اینها می‌ماند.
+        CREATE TABLE IF NOT EXISTS expenses (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind        TEXT NOT NULL,      -- server_abroad | server_iran | traffic | domain | other
+            label       TEXT NOT NULL,
+            amount      REAL NOT NULL,      -- به واحد currency
+            currency    TEXT DEFAULT 'IRT', -- IRT | EUR | USD
+            -- مبلغ تومانیِ *لحظه‌ی خرید*. عمداً ذخیره می‌شود و دوباره
+            -- محاسبه نمی‌شود: اگر هر بار با نرخ روز حساب کنیم، هزینه‌ی
+            -- ماه پیش با تکان‌خوردن بازار عوض می‌شود.
+            amount_irt  INTEGER,
+            fx_rate     INTEGER,
+            fx_source   TEXT,
+            gb          INTEGER,            -- برای خرید حجم
+            recurring   TEXT DEFAULT 'once',-- once | monthly | yearly
+            spent_at    TEXT NOT NULL,
+            note        TEXT,
+            created_at  TEXT DEFAULT CURRENT_TIMESTAMP
+        );
         CREATE INDEX IF NOT EXISTS idx_pay_group ON payments(group_key);
         CREATE INDEX IF NOT EXISTS idx_ren_email ON renewals(email);
+        CREATE INDEX IF NOT EXISTS idx_exp_date ON expenses(spent_at);
+        CREATE INDEX IF NOT EXISTS idx_exp_kind ON expenses(kind);
     """)
     try:
         cols = {r[1] for r in con.execute("PRAGMA table_info(group_config)")}
@@ -4407,6 +4430,230 @@ def billing_group_put(group_key: str, payload: dict, x_admin_password: str = Hea
         con.close()
 
 
+try:
+    import fx as FX
+except Exception:
+    try:
+        import importlib.util as _ifx
+        _xs = _ifx.spec_from_file_location(
+            "fx", Path(__file__).resolve().parent / "fx.py")
+        FX = _ifx.module_from_spec(_xs)
+        _xs.loader.exec_module(FX)
+    except Exception:
+        FX = None
+
+
+#: دسته‌های هزینه، با نامی که مدیر می‌فهمد
+EXPENSE_KINDS = {
+    "server_abroad": "سرور خارج",
+    "server_iran": "سرور ایران",
+    "traffic": "خرید حجم و ترافیک",
+    "domain": "دامنه و گواهی",
+    "other": "متفرقه",
+}
+
+
+@app.get("/api/admin/billing/fx")
+def billing_fx(currency: str = "EUR", x_admin_password: str = Header(...)):
+    """نرخ روز ارز — برای تبدیل هزینه‌ی سرور خارج به تومان."""
+    check_auth(x_admin_password)
+    if not FX:
+        raise HTTPException(status_code=500, detail="ماژول نرخ ارز بارگذاری نشد")
+    return FX.live((currency or "EUR").upper())
+
+
+@app.get("/api/admin/billing/expenses")
+def expenses_list(months: int = 12, x_admin_password: str = Header(...)):
+    """
+    هزینه‌ها به‌همراه جمع هر دسته.
+
+    بازه را محدود می‌کنیم تا بعد از چند سال، صفحه کند نشود؛ ولی
+    جمع کل از ابتدا هم جدا برمی‌گردد چون مدیر همان را می‌خواهد.
+    """
+    check_auth(x_admin_password)
+    months = max(1, min(int(months or 12), 120))
+    since = (datetime.now() - timedelta(days=31 * months)).strftime("%Y-%m-%d")
+
+    con = _billing_conn()
+    try:
+        rows = [dict(r) for r in con.execute(
+            "SELECT * FROM expenses WHERE spent_at >= ? "
+            "ORDER BY spent_at DESC, id DESC", (since,))]
+        by_kind = {r["kind"]: r["s"] for r in con.execute(
+            "SELECT kind, COALESCE(SUM(amount_irt),0) s FROM expenses "
+            "WHERE spent_at >= ? GROUP BY kind", (since,))}
+        all_time = con.execute(
+            "SELECT COALESCE(SUM(amount_irt),0) s, COUNT(*) n FROM expenses"
+        ).fetchone()
+        gb_total = con.execute(
+            "SELECT COALESCE(SUM(gb),0) g FROM expenses WHERE kind='traffic'"
+        ).fetchone()
+        # هزینه‌ی ماهانه‌ی تکرارشونده — عددی که مدیر باید هر ماه دربیاورد
+        monthly = con.execute(
+            "SELECT COALESCE(SUM(amount_irt),0) s FROM expenses "
+            "WHERE recurring='monthly'"
+        ).fetchone()
+    finally:
+        con.close()
+
+    return {
+        "ready": True,
+        "months": months,
+        "expenses": rows,
+        "kinds": EXPENSE_KINDS,
+        "byKind": {k: by_kind.get(k, 0) for k in EXPENSE_KINDS},
+        "total": sum(by_kind.values()),
+        "allTimeTotal": all_time["s"] if all_time else 0,
+        "allTimeCount": all_time["n"] if all_time else 0,
+        "trafficGB": gb_total["g"] if gb_total else 0,
+        "monthlyRecurring": monthly["s"] if monthly else 0,
+    }
+
+
+@app.post("/api/admin/billing/expenses")
+def expenses_add(payload: dict, x_admin_password: str = Header(...)):
+    """
+    ثبت یک هزینه.
+
+    تبدیل ارز همین‌جا و یک‌بار انجام می‌شود و نتیجه ذخیره می‌ماند —
+    نه در زمان نمایش. اگر نرخ در دسترس نباشد و مدیر هم نرخ دستی
+    نداده باشد، ثبت را رد می‌کنیم: هزینه‌ی بدون مبلغ تومانی، یعنی
+    گزارش سودی که بی‌صدا غلط است.
+    """
+    check_auth(x_admin_password)
+    p = payload or {}
+
+    kind = str(p.get("kind") or "other")
+    if kind not in EXPENSE_KINDS:
+        raise HTTPException(status_code=400, detail="دسته‌ی هزینه نامعتبر است")
+
+    label = str(p.get("label") or "").strip()
+    if not label:
+        raise HTTPException(status_code=400, detail="عنوان هزینه لازم است")
+
+    try:
+        amount = float(p.get("amount") or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="مبلغ باید بزرگ‌تر از صفر باشد")
+
+    currency = str(p.get("currency") or "IRT").upper()
+    if currency not in ("IRT", "EUR", "USD"):
+        raise HTTPException(status_code=400, detail="ارز پشتیبانی نمی‌شود")
+
+    if not FX:
+        raise HTTPException(status_code=500, detail="ماژول نرخ ارز بارگذاری نشد")
+    conv = FX.to_toman(amount, currency, manual_rate=p.get("rate"))
+    if conv.get("toman") is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(conv.get("error") or "نرخ ارز در دسترس نیست") +
+                   " — نرخ را دستی وارد کنید")
+
+    spent_at = str(p.get("spentAt") or "").strip()[:10] \
+        or datetime.now().strftime("%Y-%m-%d")
+    recurring = str(p.get("recurring") or "once")
+    if recurring not in ("once", "monthly", "yearly"):
+        recurring = "once"
+
+    gb = p.get("gb")
+    try:
+        gb = int(gb) if gb not in (None, "") else None
+    except (TypeError, ValueError):
+        gb = None
+
+    con = _billing_conn()
+    try:
+        cur = con.execute(
+            """INSERT INTO expenses (kind, label, amount, currency, amount_irt,
+                                     fx_rate, fx_source, gb, recurring,
+                                     spent_at, note)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (kind, label[:120], amount, currency, conv["toman"],
+             conv.get("rate"), conv.get("source"), gb, recurring,
+             spent_at, str(p.get("note") or "")[:300]))
+        con.commit()
+        new_id = cur.lastrowid
+    finally:
+        con.close()
+
+    return {"ok": True, "id": new_id, "toman": conv["toman"],
+            "rate": conv.get("rate"), "source": conv.get("source"),
+            "note": f"{label} ثبت شد"}
+
+
+@app.delete("/api/admin/billing/expenses/{exp_id}")
+def expenses_del(exp_id: int, x_admin_password: str = Header(...)):
+    """حذف یک هزینه — مثلاً وقتی اشتباه ثبت شده."""
+    check_auth(x_admin_password)
+    con = _billing_conn()
+    try:
+        con.execute("DELETE FROM expenses WHERE id=?", (exp_id,))
+        con.commit()
+    finally:
+        con.close()
+    return {"ok": True, "note": "هزینه حذف شد"}
+
+
+@app.get("/api/admin/billing/ledger")
+def billing_ledger(x_admin_password: str = Header(...)):
+    """
+    دفتر کل از روز اول: چه کسی چقدر بدهکار است و سود واقعی چقدر بوده.
+
+    «درآمد» بدون کم‌کردن هزینه‌ها عددی است که آدم را خوشحال و
+    ورشکسته می‌کند. این‌جا هر دو طرف با هم می‌آیند.
+    """
+    check_auth(x_admin_password)
+
+    overview = _billing_overview_impl()
+    groups = overview.get("groups") or []
+
+    billed = sum(g.get("due", 0) for g in groups if g.get("billable"))
+    paid = sum(g.get("paid", 0) for g in groups if g.get("billable"))
+
+    con = _billing_conn()
+    try:
+        spent = con.execute(
+            "SELECT COALESCE(SUM(amount_irt),0) s FROM expenses").fetchone()["s"]
+        by_kind = {r["kind"]: r["s"] for r in con.execute(
+            "SELECT kind, COALESCE(SUM(amount_irt),0) s FROM expenses "
+            "GROUP BY kind")}
+        first_pay = con.execute(
+            "SELECT MIN(paid_at) d FROM payments").fetchone()["d"]
+        first_exp = con.execute(
+            "SELECT MIN(spent_at) d FROM expenses").fetchone()["d"]
+    finally:
+        con.close()
+
+    debtors = sorted(
+        [{"key": g["key"], "label": g.get("label") or g["key"],
+          "due": g.get("due", 0), "paid": g.get("paid", 0),
+          "balance": g.get("balance", 0),
+          "configs": g.get("configs", 0),
+          "unpriced": g.get("unpriced", 0)}
+         for g in groups if g.get("billable")],
+        key=lambda g: -g["balance"])
+
+    return {
+        "ready": overview.get("ready", True),
+        "error": overview.get("error"),
+        # از ابتدای تاریخ، نه فقط دوره‌ی جاری
+        # قدیمی‌ترین رویداد ثبت‌شده — یعنی «از کی» این اعداد را می‌شمریم
+        "since": min([d for d in (first_pay, first_exp) if d], default=None),
+        "billed": billed,
+        "paid": paid,
+        "outstanding": billed - paid,
+        "spent": spent,
+        "spentByKind": {k: by_kind.get(k, 0) for k in EXPENSE_KINDS},
+        "profit": paid - spent,
+        "profitIfAllPaid": billed - spent,
+        "debtors": debtors,
+        "owing": [d for d in debtors if d["balance"] > 0],
+        "credit": [d for d in debtors if d["balance"] < 0],
+    }
+
+
 @app.get("/api/admin/billing/payments")
 def billing_payments_get(group: str = "", x_admin_password: str = Header(...)):
     """فهرست پرداخت‌ها."""
@@ -4823,6 +5070,161 @@ def _pdf_font(bold=False):
                 continue
 
     return "Helvetica-Bold" if bold else "Helvetica"
+
+
+@app.get("/api/admin/bot/users/report/pdf")
+def bot_users_report_pdf(days: int = 30, x_admin_password: str = Header(...)):
+    """
+    گزارش فروش ربات به‌صورت PDF — با همان قالب صورتحساب حسابداری.
+
+    تا امروز این گزارش فقط روی صفحه دیده می‌شد. چیزی که روی صفحه
+    است را نمی‌شود بایگانی کرد، برای شریک فرستاد، یا کنار دفتر
+    گذاشت — و همان دلیلی است که مدیر می‌خواهد نسخه‌ی چاپی داشته باشد.
+    """
+    check_auth(x_admin_password)
+
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.units import mm
+        from reportlab.lib import colors
+        from reportlab.pdfgen import canvas as pdfcanvas
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="reportlab نصب نیست: pip install reportlab arabic-reshaper python-bidi")
+
+    rep = bot_users_report(days=days, x_admin_password=x_admin_password)
+    if not rep.get("ready"):
+        raise HTTPException(status_code=400,
+                            detail=rep.get("error") or "گزارش در دسترس نیست")
+
+    F = _pdf_font()
+    FB = _pdf_font(bold=True)
+
+    import io
+    buf = io.BytesIO()
+    W, H = A4
+    c = pdfcanvas.Canvas(buf, pagesize=A4)
+
+    NAVY = colors.HexColor("#1F3864")
+    INK = colors.HexColor("#1A1A1A")
+    GREY = colors.HexColor("#555555")
+    MUTE = colors.HexColor("#8A92A0")
+    LINE = colors.HexColor("#CFD6E4")
+    HEAD = colors.HexColor("#E8EDF6")
+    CARD = colors.HexColor("#FAFBFD")
+
+    def money(n):
+        return f"{int(n or 0):,}"
+
+    stamp = datetime.now()
+    ML, MR = 15 * mm, 15 * mm
+    CW = W - ML - MR
+
+    c.setFillColor(colors.white)
+    c.rect(0, 0, W, H, fill=1, stroke=0)
+
+    y = H - 18 * mm
+    c.setFont(FB, 19)
+    c.setFillColor(NAVY)
+    c.drawString(ML, y, "NEXORA")
+    c.setFont(F, 8)
+    c.setFillColor(GREY)
+    c.drawString(ML, y - 6 * mm, _fa(f"گزارش فروش ربات — {days} روز گذشته"))
+    c.setFont(F, 8)
+    c.setFillColor(MUTE)
+    c.drawRightString(W - MR, y, _fa("تاریخ صدور") + f": {stamp:%Y-%m-%d}")
+
+    c.setStrokeColor(NAVY)
+    c.setLineWidth(1.6)
+    c.line(ML, y - 11 * mm, W - MR, y - 11 * mm)
+    y -= 22 * mm
+
+    # کارت‌های خلاصه — همان اعدادی که مدیر اول از همه می‌خواهد
+    o = rep.get("orders") or {}
+    u = rep.get("users") or {}
+    cards = [
+        ("کاربر جدید", f"{int(u.get('newUsers') or 0):,}"),
+        ("خریدار", f"{int(rep.get('buyerCount') or 0):,}"),
+        ("سفارش موفق", f"{int(o.get('approved') or 0):,}"),
+        ("فروش (تومان)", money(o.get("revenue"))),
+    ]
+    cw = CW / len(cards)
+    for i, (label, val) in enumerate(cards):
+        x = ML + i * cw
+        c.setFillColor(CARD)
+        c.setStrokeColor(LINE)
+        c.rect(x + 1 * mm, y - 16 * mm, cw - 2 * mm, 16 * mm, fill=1, stroke=1)
+        c.setFont(F, 7.5)
+        c.setFillColor(MUTE)
+        c.drawCentredString(x + cw / 2, y - 5 * mm, _fa(label))
+        c.setFont(FB, 13)
+        c.setFillColor(NAVY)
+        c.drawCentredString(x + cw / 2, y - 12.5 * mm, val)
+    y -= 24 * mm
+
+    c.setFont(F, 8.5)
+    c.setFillColor(GREY)
+    for label, val in (
+        ("نرخ تبدیل بازدید به خرید", f"{rep.get('conversion') or 0}%"),
+        ("میانگین هر سفارش", money(o.get("avg")) + " " + _fa("تومان")),
+        ("سفارش رد شده", f"{int(o.get('rejected') or 0):,}"),
+        ("سفارش در انتظار", f"{int(o.get('pending') or 0):,}"),
+    ):
+        c.setFillColor(MUTE)
+        c.drawString(ML, y, _fa(label))
+        c.setFillColor(INK)
+        c.drawRightString(W - MR, y, val)
+        c.setStrokeColor(LINE)
+        c.setLineWidth(0.4)
+        c.line(ML, y - 2 * mm, W - MR, y - 2 * mm)
+        y -= 7 * mm
+
+    y -= 6 * mm
+    c.setFont(FB, 10)
+    c.setFillColor(NAVY)
+    c.drawRightString(W - MR, y, _fa("بیشترین خریداران"))
+    y -= 6 * mm
+
+    cols = [(ML, "مبلغ"), (ML + 45 * mm, "سفارش"), (W - MR, "مشتری")]
+    c.setFillColor(HEAD)
+    c.rect(ML, y - 2 * mm, CW, 7 * mm, fill=1, stroke=0)
+    c.setFont(FB, 8)
+    c.setFillColor(NAVY)
+    for x, label in cols[:2]:
+        c.drawString(x + 2 * mm, y, _fa(label))
+    c.drawRightString(W - MR - 2 * mm, y, _fa("مشتری"))
+    y -= 9 * mm
+
+    c.setFont(F, 8)
+    for b in (rep.get("buyers") or [])[:25]:
+        if y < 25 * mm:
+            c.showPage()
+            y = H - 20 * mm
+            c.setFont(F, 8)
+        name = b.get("first_name") or b.get("username") or str(b.get("tg_id") or "")
+        c.setFillColor(INK)
+        c.drawString(ML + 2 * mm, y, money(b.get("spent")))
+        c.drawString(ML + 45 * mm + 2 * mm, y, f"{int(b.get('orders') or 0):,}")
+        c.drawRightString(W - MR - 2 * mm, y, _fa(str(name)[:40]))
+        c.setStrokeColor(LINE)
+        c.setLineWidth(0.3)
+        c.line(ML, y - 2.5 * mm, W - MR, y - 2.5 * mm)
+        y -= 6.5 * mm
+
+    c.setFont(F, 7)
+    c.setFillColor(MUTE)
+    c.drawCentredString(W / 2, 10 * mm,
+                        _fa("این گزارش توسط پنل نکسورا تولید شده است"))
+
+    c.showPage()
+    c.save()
+    buf.seek(0)
+    return Response(
+        content=buf.read(),
+        media_type="application/pdf",
+        headers={"Content-Disposition":
+                 f'attachment; filename="nexora-bot-report-{days}d.pdf"'})
 
 
 @app.get("/api/admin/billing/invoice/{group_key}/pdf")
