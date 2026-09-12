@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.4.1]
+
+### Fixed — slow-doctor printed its own separator lines as data
+
+The script defined a shell function named `head`. A function shadows the
+coreutil of the same name, so every `| head -8` in the script was calling that
+function with "-8" as a title — printing a decorative line instead of the first
+eight rows.
+
+On a real server that meant the process list, the busiest peer IPs and the
+whole Xray section came back as `-7`, `-1` and rows of `──────`, with no error
+anywhere to explain it. The function is now called `section`.
+
+`tools/test-slowdoctor.py` asserts that no function in the script shares a name
+with a coreutil it pipes into, so this cannot come back.
+
+### Added — slow-doctor compares x-ui against what the bot sold
+
+A connection count that looks impossible usually has a dull explanation: x-ui
+holds clients that were added by hand and the bot never sold. The script now
+counts them, says how many are enabled beyond the bot's subscriptions, and
+lists the heaviest clients by traffic — one client far above the rest is a
+shared config, many clients evenly spread is simply more users than you thought.
+
 ## [1.4.0]
 
 ### Added — The bot uses what Telegram actually offers

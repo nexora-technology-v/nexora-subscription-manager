@@ -16,14 +16,18 @@ ok()   { echo "  ${G}OK${X}   $1"; }
 warn() { echo "  ${Y}WARN${X} $1"; }
 bad()  { echo "  ${R}BAD${X}  $1"; }
 info() { echo "       ${D}$1${X}"; }
-head() { echo ""; echo "${W}$1${X}"; echo "${D}──────────────────────────────────────────────${X}"; }
+# NOT named "head": a shell function shadows the coreutil of the same
+# name, so every `| head -N` in this script was calling this function
+# with "-N" as a title. That is why the process list, the busiest
+# peers and the Xray section all printed separator lines as data.
+section() { echo ""; echo "${W}$1${X}"; echo "${D}──────────────────────────────────────────────${X}"; }
 
 echo ""
 echo "${W}Nexora — slowness report${X}"
 echo "${D}$(date '+%Y-%m-%d %H:%M')  ·  $(hostname)${X}"
 
 # ═══ 1. CPU ═══
-head "1. CPU load"
+section "1. CPU load"
 CORES=$(nproc 2>/dev/null || echo 1)
 LOAD1=$(awk '{print $1}' /proc/loadavg 2>/dev/null || echo 0)
 LOAD5=$(awk '{print $2}' /proc/loadavg 2>/dev/null || echo 0)
@@ -46,7 +50,7 @@ ps -eo pcpu,pmem,rss,comm --sort=-pcpu 2>/dev/null | head -7 \
          {printf "       %-6s %-6s %-9s %s\n", $1, $2, int($3/1024)"M", $4}'
 
 # ═══ 2. Memory ═══
-head "2. Memory"
+section "2. Memory"
 if [ -r /proc/meminfo ]; then
   MT=$(awk '/MemTotal/{print $2}' /proc/meminfo)
   MA=$(awk '/MemAvailable/{print $2}' /proc/meminfo)
@@ -71,7 +75,7 @@ if [ -r /proc/meminfo ]; then
 fi
 
 # ═══ 3. Disk ═══
-head "3. Disk"
+section "3. Disk"
 df -h / 2>/dev/null | awk 'NR==2{printf "  root: %s of %s used (%s)\n", $3, $2, $5}'
 DPCT=$(df / 2>/dev/null | awk 'NR==2{gsub("%","",$5); print $5}')
 if [ "${DPCT:-0}" -ge 90 ]; then bad "disk almost full — SQLite and logs suffer"
@@ -90,7 +94,7 @@ case "$DD" in
 esac
 
 # ═══ 4. Services ═══
-head "4. Services"
+section "4. Services"
 for s in nexora-panel nexora-bot x-ui nginx; do
   systemctl list-unit-files 2>/dev/null | grep -q "^$s" || continue
   ST=$(systemctl is-active "$s" 2>/dev/null)
@@ -107,7 +111,7 @@ for s in nexora-panel nexora-bot x-ui nginx; do
 done
 
 # ═══ 5. Telegram latency ═══
-head "5. Telegram latency"
+section "5. Telegram latency"
 info "this dominates how fast the bot feels"
 T=$(curl -o /dev/null -s -w '%{time_connect} %{time_total}' -m 15 \
       https://api.telegram.org 2>/dev/null)
@@ -125,7 +129,7 @@ else
 fi
 
 # ═══ 6. Bot database ═══
-head "6. Bot database"
+section "6. Bot database"
 BOTDB=""
 for p in /opt/nexora/data/bot.db /opt/nexora-panel/data/bot.db; do
   [ -f "$p" ] && BOTDB="$p" && break
@@ -150,7 +154,7 @@ else
 fi
 
 # ═══ 7. Connections ═══
-head "7. Active connections"
+section "7. Active connections"
 if command -v ss >/dev/null 2>&1; then
   # ss -tun with a state filter drops the State column, so the peer is
   # the last field. Using $NF instead of a fixed index is what makes
@@ -210,6 +214,54 @@ if command -v ss >/dev/null 2>&1; then
     info "note: clients added directly in x-ui are not counted here"
   fi
 
+  # The bot only knows about subscriptions it sold. x-ui may hold many
+  # more clients added by hand, and those are the usual explanation for
+  # a connection count that looks impossible. Counting them turns
+  # "something is wrong" into an actual answer.
+  XDB=""
+  for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db \
+           /opt/x-ui/x-ui.db /usr/local/x-ui/bin/x-ui.db; do
+    [ -r "$c" ] && XDB="$c" && break
+  done
+
+  if [ -n "$XDB" ] && command -v sqlite3 >/dev/null 2>&1; then
+    echo ""
+    echo "  ${D}Clients in the x-ui panel itself:${X}"
+
+    XC=$(sqlite3 "$XDB" "SELECT COUNT(*) FROM client_traffics;" 2>/dev/null)
+    XE=$(sqlite3 "$XDB" "SELECT COUNT(*) FROM client_traffics WHERE enable=1;" 2>/dev/null)
+    XU=$(sqlite3 "$XDB" \
+      "SELECT COUNT(*) FROM client_traffics WHERE (up+down) > 0;" 2>/dev/null)
+
+    echo "       total clients:   ${W}${XC:-?}${X}"
+    echo "       enabled:         ${W}${XE:-?}${X}"
+    echo "       with traffic:    ${W}${XU:-?}${X}"
+
+    if [ -n "${XE:-}" ] && [ -n "${S:-}" ] && [ "${XE:-0}" -gt "${S:-0}" ]; then
+      EXTRA=$(( XE - S ))
+      echo ""
+      bad "${EXTRA} enabled clients exist in x-ui that the bot never sold"
+      info "these are real users. they explain the connection count,"
+      info "and none of them are being billed by the bot"
+      info "see them in the panel under: Billing > All clients"
+    elif [ -n "${XE:-}" ] && [ "${XE:-0}" -le "${S:-0}" ]; then
+      ok "x-ui client count matches what the bot sold"
+      info "so the connections come from the clients you know about —"
+      info "either heavy real use, or one config shared with many people"
+    fi
+
+    # Traffic per client separates "one shared link" from "many users".
+    echo ""
+    echo "  ${D}Heaviest clients by traffic:${X}"
+    sqlite3 -separator '|' "$XDB" \
+      "SELECT email, (up+down)/1073741824 FROM client_traffics
+       ORDER BY (up+down) DESC LIMIT 8;" 2>/dev/null \
+      | awk -F'|' '{printf "       %-28s %6s GB\n", $1, $2}'
+    info "one client far above the rest usually means a shared config"
+  elif [ -z "$XDB" ]; then
+    info "x-ui database not found — cannot compare with panel clients"
+  fi
+
   if [ "$TOT" -gt 2000 ]; then
     echo ""
     warn "over 2000 established connections — this is what your CPU is doing"
@@ -218,7 +270,7 @@ if command -v ss >/dev/null 2>&1; then
 fi
 
 # ═══ 8. Xray ═══
-head "8. Xray"
+section "8. Xray"
 XPID=$(pgrep -x xray 2>/dev/null | head -1)
 if [ -n "$XPID" ]; then
   XFD=$(ls /proc/"$XPID"/fd 2>/dev/null | wc -l)
@@ -240,6 +292,6 @@ else
   info "xray process not found under that name"
 fi
 
-head "What to send"
+section "What to send"
 info "Copy this whole output. BAD lines come first, WARN next."
 echo ""
