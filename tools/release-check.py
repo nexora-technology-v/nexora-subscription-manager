@@ -91,6 +91,13 @@ def version_checks(tag):
         want = tag.lstrip("v")
         check(f"تگ {tag} با VERSION می‌خواند", want == ver,
               f"تگ={want} · VERSION={ver}")
+    else:
+        # بدون این، دروازه می‌گوید «آماده‌ی ریلیز ۱.۳.۰» در حالی که
+        # ۱.۳.۰ قبلاً منتشر شده و تگ‌زدن دوباره‌اش شکست می‌خورد.
+        okt, out = run(["git", "tag", "--list", f"v{ver}"])
+        check(f"نسخه‌ی {ver} هنوز تگ نخورده", not (okt and out.strip()),
+              f"v{ver} از قبل وجود دارد — اول VERSION را بالا ببرید"
+              if okt and out.strip() else "")
     return ver
 
 
