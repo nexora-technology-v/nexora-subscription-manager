@@ -53,7 +53,6 @@ jobs:
           python tools/test-monitor.py
           python tools/test-firewall.py
           python tools/test-maintenance.py
-          python tools/test-serve.py
 
       - name: تست‌های اتصال
         # اینها باگ‌هایی را می‌گیرند که تست معمولی نمی‌بیند:
@@ -95,6 +94,11 @@ jobs:
           node tools/test-render.cjs
           node test-panel-runtime.js
           node test-subpage.js
+
+      - name: تست سرو کردن پنل ساخته‌شده
+        # به frontend/dist نیاز دارد، پس بعد از build اجرا می‌شود.
+        # فقط کتابخانه‌ی استاندارد پایتون لازم دارد.
+        run: python3 tools/test-serve.py
 
   release-gate:
     name: دروازه‌ی ریلیز
