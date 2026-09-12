@@ -4,6 +4,27 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Changed — Every monitoring refresh cost a second of waiting and an apt run
+
+Both `cpu()` and `network()` measure rates, so each read its counter twice with a
+`SAMPLE` wait between. They each took their own wait: 1.2 seconds of pure
+sleeping per snapshot, for two numbers that can come from the same window.
+`snapshot` now samples once and hands each of them its pair. Called on their own
+they still sample themselves, since the agent may use them individually.
+
+`packages()` runs `apt-get -s upgrade` with a 25-second timeout, and it ran on
+every refresh. The list of upgradable packages does not change minute to minute;
+it is cached for an hour now.
+
+`security()` greps 24 hours of SSH journal on every refresh — the same scan the
+intrusion page does. Only that scan is cached, for five minutes.
+
+Caching the whole `security` section was the obvious move and it was wrong: the
+existing tests caught that it also froze the firewall and fail2ban status. An
+admin who has just switched the firewall on should not be told it is off for the
+next five minutes. Same for `xray`, which is left uncached so a stopped service
+shows immediately.
+
 ### Fixed — The intrusion page said "last 24 hours" and showed weeks
 
 `_auth_lines` asks journald for the window with `--since`, then falls back to

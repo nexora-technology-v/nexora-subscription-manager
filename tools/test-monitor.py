@@ -132,6 +132,10 @@ class Fake:
 
 
 def install(fake, *, has=lambda b: True, load=None):
+    # فهرست بسته‌ها ساعتی کش می‌شود — عمدی، چون apt گران است.
+    # ولی هر سناریوی تست یک سرورِ تازه است، پس کش باید پاک شود
+    # وگرنه سناریوی بعدی جوابِ سناریوی قبلی را می‌بیند.
+    M._CACHE.clear()
     M._read = fake.read
     M._run = fake.run
     M._has = has
@@ -286,6 +290,93 @@ snap = M.snapshot(include=["disk", "memory"])
 check("خطای یک بخش کل خروجی را نمی‌شکند", "level" in snap and "metrics" in snap)
 check("بخش خراب به‌عنوان هشدار می‌آید",
       any(m["level"] == "warn" for m in snap["metrics"]) or snap["level"] != "crit")
+
+# ═══════════════════════════════════════════════════════════
+head("یک عکس‌برداری چقدر منتظر می‌ماند")
+
+# هم CPU و هم شبکه نرخ‌اند و پنجره‌ی نمونه‌برداری لازم دارند. قبلاً
+# هر کدام خواب خودش را داشت: ۱.۲ ثانیه انتظارِ خالص در هر تازه‌سازی
+# صفحه، برای دو عددی که می‌توانستند از یک پنجره بیایند.
+
+# نمونه‌ی تازه‌ی ماژول: بالاتر در همین فایل _run با تابعی که خطا
+# می‌دهد جایگزین شده، و آن استاب این بخش را هم می‌گیرد.
+import importlib.util as _ilu                            # noqa: E402
+_msp = _ilu.spec_from_file_location(
+    "monitor_fresh",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                 "backend", "monitor.py"))
+MF = _ilu.module_from_spec(_msp)
+_msp.loader.exec_module(MF)
+
+SLEEPS = []
+_real_sleep = MF.time.sleep
+MF.time.sleep = lambda n: SLEEPS.append(n)
+
+MF._CACHE.clear()
+SLEEPS.clear()
+MF.snapshot(include=["cpu", "network"])
+check("برای cpu و network یک بار صبر می‌شود", len(SLEEPS) == 1,
+      f"{len(SLEEPS)} خواب × {SLEEPS[0] if SLEEPS else 0} ثانیه")
+check("و همان یک پنجره کامل است", SLEEPS and SLEEPS[0] == MF.SAMPLE,
+      str(SLEEPS))
+
+SLEEPS.clear()
+MF.cpu()
+check("صدازدن مستقیم cpu هنوز خودش نمونه می‌گیرد", len(SLEEPS) == 1,
+      "ایجنت ممکن است تک‌تک صدایشان بزند")
+
+SLEEPS.clear()
+MF.cpu(sample=(None, None))
+check("ولی با نمونه‌ی آماده صبر نمی‌کند", not SLEEPS, str(SLEEPS))
+
+SLEEPS.clear()
+MF.network(sample=({}, {}))
+check("network هم همین‌طور", not SLEEPS, str(SLEEPS))
+
+MF.time.sleep = _real_sleep
+
+head("بخش‌های گران دوباره اجرا نمی‌شوند")
+
+check("فهرست بسته‌ها ساعتی کش می‌شود، نه هر بار",
+      MF._CACHE_TTL.get("packages", 0) >= 600,
+      "apt-get -s upgrade با مهلت ۲۵ ثانیه، در هر تازه‌سازی صفحه")
+check("اسکن ۲۴ ساعته‌ی لاگ SSH کش می‌شود",
+      getattr(MF, "SSH_SCAN_TTL", 0) >= 60,
+      f"{getattr(MF, 'SSH_SCAN_TTL', None)} ثانیه")
+
+# ولی فقط همان تکه — نه کل بخش. وضعیت فایروال و xray باید زنده بماند،
+# وگرنه مدیری که همین الان فایروال را روشن کرده، دقایقی «خاموش»
+# می‌بیند و هشدار بی‌معنی می‌شود.
+check("بخش امنیت به‌عنوان یک کل کش نمی‌شود",
+      not MF._CACHE_TTL.get("security"),
+      "وضعیت فایروال و fail2ban باید لحظه‌ای باشد")
+check("بخش xray هم کش نمی‌شود",
+      not MF._CACHE_TTL.get("xray"),
+      "خاموش‌شدن xray نباید با تأخیر دیده شود")
+
+CALLS = {"n": 0}
+
+
+def _counted():
+    CALLS["n"] += 1
+    return []
+
+
+MF._CACHE.clear()
+MF._cached("packages", _counted)
+MF._cached("packages", _counted)
+MF._cached("packages", _counted)
+check("سه بار خواستن، یک بار اجرا", CALLS["n"] == 1, f"{CALLS['n']} اجرا")
+
+CALLS["n"] = 0
+MF._cached("memory", _counted)
+MF._cached("memory", _counted)
+check("بخش بدون کش هر بار تازه اجرا می‌شود", CALLS["n"] == 2,
+      "حافظه لحظه‌ای است و کش‌کردنش یعنی عدد کهنه")
+
+MF._CACHE.clear()
+
+
 
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R

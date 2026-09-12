@@ -178,12 +178,32 @@ def _cpu_times():
     return sum(parts), idle
 
 
-def cpu():
+def sample_rates():
+    """
+    یک خواب، دو شمارنده.
+
+    هم CPU و هم شبکه نرخ‌اند: باید دو بار خوانده شوند و بینشان صبر
+    شود. قبلاً هر کدام خواب خودش را داشت، یعنی هر عکس‌برداری ۱.۲
+    ثانیه فقط منتظر می‌ماند — در حالی که همان یک پنجره برای هر دو
+    کافی است.
+
+    برمی‌گرداند: {"cpu": (قبل, بعد), "net": (قبل, بعد)}
+    """
+    c0, n0 = _cpu_times(), _net_counters()
+    time.sleep(SAMPLE)
+    return {"cpu": (c0, _cpu_times()), "net": (n0, _net_counters())}
+
+
+def cpu(sample=None):
     cores = os.cpu_count() or 1
 
-    a = _cpu_times()
-    time.sleep(SAMPLE)
-    b = _cpu_times()
+    if sample:
+        a, b = sample
+    else:
+        a = _cpu_times()
+        time.sleep(SAMPLE)
+        b = _cpu_times()
+
     usage = None
     if a and b:
         dt, di = b[0] - a[0], b[1] - a[1]
@@ -321,10 +341,13 @@ def _net_counters():
     return res
 
 
-def network():
-    a = _net_counters()
-    time.sleep(SAMPLE)
-    b = _net_counters()
+def network(sample=None):
+    if sample:
+        a, b = sample
+    else:
+        a = _net_counters()
+        time.sleep(SAMPLE)
+        b = _net_counters()
 
     rx = tx = 0
     per_if = []
@@ -747,8 +770,18 @@ def security():
     out = []
 
     # تلاش‌های ناموفق ورود SSH — نشانه‌ی حمله‌ی brute force
-    ok, log = _run(["journalctl", "-u", "ssh", "-u", "sshd", "--since", "-24h",
-                    "--no-pager", "-g", "Failed password"], timeout=15)
+    def _scan():
+        return _run(["journalctl", "-u", "ssh", "-u", "sshd", "--since", "-24h",
+                     "--no-pager", "-g", "Failed password"], timeout=15)
+
+    now = time.time()
+    hit = _CACHE.get("_ssh_scan")
+    if hit and now - hit[0] < SSH_SCAN_TTL:
+        ok, log = hit[1]
+    else:
+        ok, log = _scan()
+        _CACHE["_ssh_scan"] = (now, (ok, log))
+
     if ok:
         n = len([x for x in log.split("\n") if "Failed password" in x])
         ips = re.findall(r"from ([\d.]+)", log)
@@ -821,7 +854,18 @@ _CACHE_TTL = {
     "processes": 10.0,
     "services": 15.0,
     "connections": 4.0,   # سریع عوض می‌شود، ولی نه در کمتر از ۴ ثانیه
+
+    # apt-get -s upgrade با مهلت ۲۵ ثانیه، در هر تازه‌سازی صفحه اجرا
+    # می‌شد. فهرست بسته‌های قابل‌ارتقا ساعتی یک‌بار هم تازه است.
+    "packages": 3600.0,
 }
+
+#: اسکن ۲۴ ساعت لاگ SSH گران است — همان کاری که صفحه‌ی نفوذ هم می‌کند.
+#
+#  فقط *همین* تکه کش می‌شود، نه کل بخش امنیت. وضعیت فایروال و
+#  fail2ban باید زنده بماند: اگر مدیر همین الان فایروال را روشن کند
+#  و پنل پنج دقیقه بگوید خاموش است، هشدار بی‌معنی می‌شود.
+SSH_SCAN_TTL = 300.0
 
 
 def _cached(name, fn):
@@ -862,10 +906,13 @@ def snapshot(include=None):
             metrics.append(_metric(name, name, None, "", WARN,
                                    f"خواندن ناموفق: {type(e).__name__}"))
 
-    add("cpu", cpu)
+    # وقتی هر دو خواسته شده‌اند، یک پنجره‌ی نمونه‌برداری برای هر دو
+    rates = sample_rates() if ("cpu" in want and "network" in want) else None
+
+    add("cpu", (lambda: cpu(rates["cpu"])) if rates else cpu)
     add("memory", memory)
     add("disk", disks)
-    add("network", network)
+    add("network", (lambda: network(rates["net"])) if rates else network)
     add("xray", xray)
     add("packages", packages)
     add("security", security)
