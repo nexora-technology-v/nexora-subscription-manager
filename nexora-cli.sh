@@ -17,6 +17,52 @@ bad()  { echo -e "  ${C_RED}✗${C_RESET} $1"; }
 warn() { echo -e "  ${C_YELLOW}!${C_RESET} $1"; }
 info() { echo -e "  ${C_LBLUE}i${C_RESET} $1"; }
 
+# ═══════════════════════════════════════════════════════════
+#  عکس‌برداری از وضعیت فعلی
+#
+#  یک تابع، دو صداکننده: پیش از update و پیش از rollback.
+#
+#  قبلاً دو فهرست جدا بودند و فهرستِ rollback هشت مورد کم داشت —
+#  از جمله bot.db. یعنی اگر بعد از rollback «بازگردانی تنظیمات» را
+#  می‌زدید، دیتابیس زنده‌ی ربات با نسخه‌ی قدیمی بازنویسی می‌شد و
+#  نسخه‌ی زنده هیچ‌جا ذخیره نشده بود: هر کاربر، سفارش و موجودی کیف
+#  پولی که از آخرین به‌روزرسانی به بعد ساخته شده بود، برای همیشه.
+#
+#  با یک تابع، دو فهرست نمی‌توانند از هم فاصله بگیرند.
+# ═══════════════════════════════════════════════════════════
+snapshot_to() {
+  SNAP_DEST="$1"
+  SNAP_FROM="${2:-$VER}"
+  mkdir -p "$SNAP_DEST/frontend"
+
+  cp "$INSTALL_DIR/data/config.json"   "$SNAP_DEST/" 2>/dev/null
+  cp "$INSTALL_DIR/data/auth.json"     "$SNAP_DEST/" 2>/dev/null
+  cp "$INSTALL_DIR/sub-page-index.html" "$SNAP_DEST/" 2>/dev/null
+  cp "$INSTALL_DIR/VERSION"            "$SNAP_DEST/" 2>/dev/null
+  cp "$INSTALL_DIR/.github"            "$SNAP_DEST/" 2>/dev/null
+  cp "$INSTALL_DIR/nexora-cli.sh"      "$SNAP_DEST/" 2>/dev/null
+
+  cp -r "$INSTALL_DIR/backend" "$SNAP_DEST/backend" 2>/dev/null
+  rm -rf "$SNAP_DEST/backend/venv" "$SNAP_DEST/backend/__pycache__" 2>/dev/null
+
+  if [ -d "$INSTALL_DIR/bot" ]; then
+    cp -r "$INSTALL_DIR/bot" "$SNAP_DEST/bot" 2>/dev/null
+    rm -rf "$SNAP_DEST/bot/__pycache__" 2>/dev/null
+  fi
+
+  # داده‌ی مشتری‌ها، حسابداری و تانل‌ها — گران‌ترین چیزی که داریم
+  for db in bot.db billing.db tunnels.db; do
+    [ -f "$INSTALL_DIR/data/$db" ] && cp "$INSTALL_DIR/data/$db" "$SNAP_DEST/" 2>/dev/null
+  done
+
+  cp -r "$INSTALL_DIR/frontend/src" "$SNAP_DEST/frontend/src" 2>/dev/null
+  cp "$INSTALL_DIR/frontend/package.json" "$SNAP_DEST/frontend/" 2>/dev/null
+  cp "$INSTALL_DIR/frontend/.env" "$SNAP_DEST/frontend/" 2>/dev/null
+
+  echo "$SNAP_FROM" > "$SNAP_DEST/FROM_VERSION"
+}
+
+
 logo() {
 echo ""
 echo -e "${C_BLUE}   ╔═══════════════════════════════════════════════╗${C_RESET}"
@@ -156,28 +202,7 @@ case "$1" in
     SNAP="/root/nexora-snapshots/$TS"
     mkdir -p "$SNAP"
 
-    cp "$INSTALL_DIR/data/config.json" "$SNAP/" 2>/dev/null
-    cp "$INSTALL_DIR/data/auth.json" "$SNAP/" 2>/dev/null
-    cp "$INSTALL_DIR/sub-page-index.html" "$SNAP/" 2>/dev/null
-    cp "$INSTALL_DIR/VERSION" "$SNAP/" 2>/dev/null
-    cp "$INSTALL_DIR/.github" "$SNAP/" 2>/dev/null
-    cp "$INSTALL_DIR/nexora-cli.sh" "$SNAP/" 2>/dev/null
-    cp -r "$INSTALL_DIR/backend" "$SNAP/backend" 2>/dev/null
-    rm -rf "$SNAP/backend/venv" "$SNAP/backend/__pycache__" 2>/dev/null
-    if [ -d "$INSTALL_DIR/bot" ]; then
-      cp -r "$INSTALL_DIR/bot" "$SNAP/bot" 2>/dev/null
-      rm -rf "$SNAP/bot/__pycache__" 2>/dev/null
-    fi
-    # دیتابیس ربات هم بک‌آپ می‌شود — داده مشتریان حیاتی است
-    [ -f "$INSTALL_DIR/data/bot.db" ] && cp "$INSTALL_DIR/data/bot.db" "$SNAP/" 2>/dev/null
-    # نرخ‌ها و پرداخت‌های واسطه — بدون این، rollback حسابداری را پاک می‌کند
-    [ -f "$INSTALL_DIR/data/billing.db" ] && cp "$INSTALL_DIR/data/billing.db" "$SNAP/" 2>/dev/null
-    [ -f "$INSTALL_DIR/data/tunnels.db" ] && cp "$INSTALL_DIR/data/tunnels.db" "$SNAP/" 2>/dev/null
-    mkdir -p "$SNAP/frontend"
-    cp -r "$INSTALL_DIR/frontend/src" "$SNAP/frontend/src" 2>/dev/null
-    cp "$INSTALL_DIR/frontend/package.json" "$SNAP/frontend/" 2>/dev/null
-    cp "$INSTALL_DIR/frontend/.env" "$SNAP/frontend/" 2>/dev/null
-    echo "$VER" > "$SNAP/FROM_VERSION"
+    snapshot_to "$SNAP"
 
     # keep only the 5 most recent snapshots
     ls -1dt /root/nexora-snapshots/*/ 2>/dev/null | tail -n +6 | xargs rm -rf 2>/dev/null
@@ -561,15 +586,7 @@ BOTEOF
     # Snapshot the CURRENT state first, so rollback itself is reversible
     NOWTS=$(date +%Y%m%d-%H%M%S)
     PRE="$SNAPDIR/$NOWTS"
-    mkdir -p "$PRE/frontend"
-    cp "$INSTALL_DIR/data/config.json" "$PRE/" 2>/dev/null
-    cp "$INSTALL_DIR/data/auth.json" "$PRE/" 2>/dev/null
-    cp "$INSTALL_DIR/sub-page-index.html" "$PRE/" 2>/dev/null
-    cp -r "$INSTALL_DIR/backend" "$PRE/backend" 2>/dev/null
-    rm -rf "$PRE/backend/venv" "$PRE/backend/__pycache__" 2>/dev/null
-    cp -r "$INSTALL_DIR/frontend/src" "$PRE/frontend/src" 2>/dev/null
-    cp "$INSTALL_DIR/frontend/package.json" "$PRE/frontend/" 2>/dev/null
-    echo "$VER" > "$PRE/FROM_VERSION"
+    snapshot_to "$PRE"
     ok "Current state saved (in case you want to come back)"
 
     echo ""

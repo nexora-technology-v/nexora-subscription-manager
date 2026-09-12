@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.10.7]
+
+### Fixed — Rolling back could destroy the bot database
+
+`nexora-cli` takes a snapshot in two places: before an update, and before a
+rollback. Each had its own hand-written list of what to copy, and the rollback
+one was missing eight items — `VERSION`, `.github`, `nexora-cli.sh`, the whole
+`bot/` directory, `frontend/.env`, and all three databases.
+
+The comment above it says the current state is saved "so rollback itself is
+reversible". It was not.
+
+The damage: rolling back asks whether to restore settings from the snapshot. Say
+yes, and it copies that snapshot's `bot.db` over the live one — while the live
+one was never saved anywhere. Every user, order, subscription and wallet balance
+created since the last update is gone, with no copy to recover from and nothing
+on screen to suggest anything was lost.
+
+Rolling back also could not be undone for the bot: its code was not in the
+snapshot either, so the bot stayed on the rolled-back version permanently.
+
+Both call sites now use one `snapshot_to` function. Two lists cannot drift when
+there is only one.
+
+### Added — `tools/test-snapshot.py`
+
+Runs the function for real against a fake install tree rather than reading the
+script. 13 checks: that both paths call the shared function, that all seventeen
+files land in the snapshot, that `bot.db` arrives with its contents intact, that
+`venv` and `__pycache__` stay out, and that a partial install — no bot, no
+databases — neither errors nor creates empty placeholder files, since a zero-byte
+`bot.db` restored later would wipe the database just as thoroughly.
+
 ## [1.10.6]
 
 ### Fixed — The intrusion page went black (React #310)

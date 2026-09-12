@@ -73,6 +73,7 @@ jobs:
           python tools/test-backup.py
           python tools/test-public-config.py
           python tools/test-health.py
+          python tools/test-snapshot.py
           python tools/test-agent.py
           python tools/test-slowdoctor.py
           python tools/test-netid.py
