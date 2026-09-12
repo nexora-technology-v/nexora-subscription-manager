@@ -1,6 +1,91 @@
 # Changelog
 
-## [Unreleased]
+## [1.4.0]
+
+### Added — The bot uses what Telegram actually offers
+
+Messages built HTML by hand inside f-strings. One unclosed tag makes Telegram
+reject the whole message, so the customer sees nothing and the log holds only a
+400. `bot/fmt.py` turns the tag vocabulary into functions that always escape
+their input and always close, and `tg.py` validates every message before it
+goes out — a malformed one is sent as plain text rather than vanishing.
+
+What that bought, per the formatting request:
+
+- monospace for everything copyable — card numbers, subscription links,
+  referral codes, order ids
+- blockquotes for asides, and **expandable** blockquotes for the install guide
+  so a long explanation no longer buries the screen
+- strikethrough on the old price beside the bold new one, so the customer sees
+  the saving instead of reading "20% off"
+- spoilers where curiosity is the point
+- hyperlinks instead of raw URLs
+- an emoji at the start of each line as a visual anchor
+
+`bot/test_fmt.py` runs the validator over all 44 rendered screens, so a broken
+tag fails the build rather than a customer's message.
+
+### Fixed — "تمدید" meant nothing when you had three subscriptions
+
+Three subscriptions produced three identical buttons. Every screen now names a
+subscription by plan **and** by the inbound's own remark — the name you gave the
+server in 3x-ui — so a customer with servers in two countries can tell them
+apart. The welcome screen listed only the first subscription's days remaining
+without saying which one it meant; it now lists up to three by name.
+
+### Added — Who is knocking on SSH
+
+A new firewall page reads the auth log and groups failed logins by IP. The
+distinction that matters: IPs currently connected to your service are almost
+certainly your own customers mistyping, and blocking one costs you a customer.
+Those are separated, coloured differently, and skipped by batch blocking.
+
+Each hardening gap — root login, password auth, port, fail2ban — comes with the
+exact command to fix it, and the one that can lock you out says so.
+
+### Fixed — The firewall rules table was twice as long as it needed to be
+
+ufw lists every rule twice, IPv4 and IPv6. They are merged now, with filters by
+action and scope, so the page stops being a scroll.
+
+### Added — Expenses, and what they do to profit
+
+Servers abroad, the Iran server, traffic top-ups and domains had nowhere to
+live, which made "revenue" a number that feels like profit and isn't.
+
+Expenses now have a page, split by category, with the recurring monthly total
+called out. Euro costs convert through the free-market rate, but the toman
+amount is **frozen at entry** — recomputing later would make last month's cost
+move with the market. A manual rate always beats the live one. An expense that
+cannot be converted is refused rather than stored as zero.
+
+The ledger page answers the question directly: billed, received, outstanding,
+spent, and profit from money actually received. Debtors are listed so a
+reseller's payment lands against the right balance.
+
+### Added — The Iran server, managed from this panel
+
+The agent now runs the panel's own `monitor.py` and `firewall.py`, downloaded
+from the panel at run time. A second copy inside the agent would drift within a
+release and report different numbers for the same server; this way every node
+reports with identical thresholds and field names. No second panel install.
+
+### Added — Bot sales report as a PDF
+
+Same house style as the reseller invoice. Its CSV download was also broken: the
+link carried no auth header, so the browser saved a 401 body and called it a
+spreadsheet.
+
+### Fixed — Things found while building the above
+
+`app.py` referenced a `log` that was never defined and had no module-level
+`import logging`. The panel's node list came from an endpoint that does not
+exist. `test-seams.py` only recognised `fetch` and `call()`, so a helper named
+`useJson` made four new routes look uncalled.
+
+CI now also runs on Python 3.10: `install.sh` uses whatever `python3` the distro
+ships, and testing only 3.12 would let syntax that breaks on Ubuntu 22.04 ship
+silently.
 
 ### Changed — App.jsx was 11,418 lines in one file
 
