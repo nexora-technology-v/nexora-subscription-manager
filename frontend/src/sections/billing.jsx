@@ -1458,6 +1458,17 @@ export function BillingDash({ password }) {
                   حجم بدون نرخ: {g.unpriced.map((v) => v ? `${faNum(v)}GB` : "نامحدود").join("، ")}
                 </div>
               )}
+              {/* کانفیگ‌هایی که نرخ نگرفتند — با دلیل، تا معلوم باشد
+                  چرا عدد صورت‌حساب از تعداد کانفیگ‌ها کمتر است */}
+              {g.skipped > 0 && (
+                <div className="text-[12px] mt-2" style={{ color: "var(--muted)" }}>
+                  {faNum(g.skipped)} کانفیگ حساب نشد
+                  {Object.keys(g.skippedWhy || {}).length > 0 && (
+                    <span> — {Object.entries(g.skippedWhy)
+                      .map(([w, n]) => `${faNum(n)} ${w}`).join("، ")}</span>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}

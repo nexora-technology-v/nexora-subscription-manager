@@ -4455,6 +4455,46 @@ def _record_seen(bcon, clients):
     return out
 
 
+
+def _billable_config(cl):
+    """
+    آیا این کانفیگ باید نرخ بگیرد؟ برمی‌گرداند: (بله/خیر, دلیل)
+
+    قاعده‌ای که مالک خواست: فقط کانفیگ‌های در استفاده حساب شوند — ولی
+    «منقضی شد» نباید راه فرار از پرداخت باشد.
+
+    این دو با هم می‌خوانند، چون منقضی‌شدن یعنی کانفیگ *دوره‌اش را کار
+    کرده*. مشتری آن ماه را استفاده کرده و واسطه باید بابتش بدهد. آنچه
+    نباید حساب شود، کانفیگی است که ساخته شده و اصلاً به کار نیفتاده:
+    غیرفعال، بدون یک بایت ترافیک.
+
+    ۳x-ui کانفیگ منقضی را خودش غیرفعال می‌کند، پس اگر فقط به enable
+    نگاه می‌کردیم، هر کانفیگی با تمام‌شدن دوره‌اش از صورت‌حساب بیرون
+    می‌افتاد — دقیقاً همان چیزی که مالک هشدار داد.
+    """
+    used = int(cl.get("used") or 0)
+    enabled = bool(cl.get("enable"))
+
+    if enabled:
+        return True, "فعال"
+    if used > 0:
+        return True, "غیرفعال ولی مصرف داشته"
+
+    exp = cl.get("expiry")
+    try:
+        expired = bool(exp) and int(exp) > 0 and int(exp) < _now_ms()
+    except (TypeError, ValueError):
+        expired = False
+    if expired:
+        return True, "دوره‌اش تمام شده — کار کرده و باید حساب شود"
+
+    return False, "ساخته شده ولی هرگز به کار نیفتاده"
+
+
+def _now_ms():
+    return int(datetime.now().timestamp() * 1000)
+
+
 def _billing_overview_impl():
     clients, known_groups, err = _read_xui_clients()
     if clients is None:
@@ -4508,6 +4548,10 @@ def _billing_overview_impl():
                 "configs": 0, "active": 0, "months": 0, "renewals": 0,
                 "used": 0, "quota": 0, "due": 0,
                 "paid": pays.get(g, 0), "unpriced": 0, "estimated": 0,
+                # کانفیگ‌هایی که ساخته شدند ولی هرگز به کار نیفتادند —
+                # اینها نرخ نمی‌گیرند و این‌جا شمرده می‌شوند تا مدیر
+                # ببیند چند تا و چرا کنار گذاشته شده‌اند
+                "skipped": 0, "skippedWhy": {},
                 # کلاینت‌هایی که ربات فروخته — مشتری مستقیم، نه واسطه
                 "botOwned": 0,
             }
@@ -4520,6 +4564,12 @@ def _billing_overview_impl():
             G["active"] += 1
         G["used"] += cl["used"]
         G["quota"] += cl["totalGB"]
+
+        bill_it, why = _billable_config(cl)
+        if not bill_it:
+            G["skipped"] += 1
+            G["skippedWhy"][why] = G["skippedWhy"].get(why, 0) + 1
+            continue
 
         months, kind, _ = _months_for(
             cl, logged, since=conf.get("period_start"),

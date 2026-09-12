@@ -226,6 +226,65 @@ r3 = APP.billing_bulk_start({"start": "2020-01-01", "groups": ["ali"],
 check("با overwrite عوض می‌شود", "ali" in (r3.get("changed") or []))
 
 
+# ═══════════════════════════════════════════════════════════
+head("کدام کانفیگ نرخ می‌گیرد")
+
+# قاعده‌ای که مالک خواست: فقط کانفیگ‌های در استفاده — ولی «منقضی شد»
+# نباید راه فرار از پرداخت باشد، چون منقضی‌شدن یعنی دوره‌اش را کار
+# کرده. ۳x-ui کانفیگ منقضی را خودش خاموش می‌کند، پس نگاه‌کردن فقط به
+# enable یعنی هر کانفیگی با تمام‌شدن دوره‌اش از صورت‌حساب بیرون بیفتد.
+GB2 = 1024 ** 3
+CASES = [
+    ("فعال، بدون مصرف", {"enable": 1, "used": 0,
+                          "expiry": NOW_MS + 30 * 86400000}, True),
+    ("فعال، با مصرف", {"enable": 1, "used": 5 * GB2,
+                        "expiry": NOW_MS + 30 * 86400000}, True),
+    ("غیرفعال ولی مصرف داشته", {"enable": 0, "used": 12 * GB2,
+                                 "expiry": NOW_MS + 30 * 86400000}, True),
+    ("منقضی — x-ui خاموشش کرده", {"enable": 0, "used": 0,
+                                   "expiry": NOW_MS - 5 * 86400000}, True),
+    ("ساخته شد و هرگز به کار نیفتاد", {"enable": 0, "used": 0,
+                                        "expiry": NOW_MS + 30 * 86400000}, False),
+    ("غیرفعال، بدون تاریخ انقضا", {"enable": 0, "used": 0,
+                                    "expiry": 0}, False),
+]
+
+for label, cl, want in CASES:
+    got, why = APP._billable_config(cl)
+    check(f"{label} → {'نرخ می‌گیرد' if want else 'نرخ نمی‌گیرد'}",
+          got is want, why)
+
+check("منقضی‌شدن راه فرار نیست",
+      APP._billable_config({"enable": 0, "used": 0,
+                            "expiry": NOW_MS - 86400000})[0] is True,
+      "کانفیگی که دوره‌اش تمام شده، آن دوره را کار کرده")
+
+head("گروه، کنارگذاشته‌ها را گزارش می‌کند")
+
+# یک کانفیگ بی‌استفاده به گروه ali اضافه می‌کنیم
+xc = sqlite3.connect(XUI)
+xc.execute("INSERT INTO clients (id,email,group_name,total_gb,expiry_time,"
+           "enable,created_at) VALUES (99,'never_used','ali',50,?,0,NULL)",
+           (NOW_MS + 30 * 86400000,))
+xc.execute("INSERT INTO client_traffics (id,email,up,down,expiry_time,enable)"
+           " VALUES (99,'never_used',0,0,?,0)", (NOW_MS + 30 * 86400000,))
+xc.commit()
+xc.close()
+
+ov3 = APP._billing_overview_impl()
+g3 = {g["key"]: g for g in ov3["groups"]}["ali"]
+check("کانفیگ بی‌استفاده شمرده می‌شود", g3["configs"] >= 3,
+      f"{g3['configs']} کانفیگ")
+check("ولی از صورت‌حساب کنار گذاشته می‌شود", g3["skipped"] >= 1,
+      f"{g3['skipped']} کنار گذاشته شد")
+check("دلیلش گزارش می‌شود", bool(g3.get("skippedWhy")),
+      "، ".join(g3.get("skippedWhy") or {}))
+check("ماه‌ها فقط برای حساب‌شده‌ها جمع می‌شود",
+      g3["months"] < g3["configs"] * 60,
+      f"{g3['months']} ماه برای {g3['configs']} کانفیگ")
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

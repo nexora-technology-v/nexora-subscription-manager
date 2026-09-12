@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.9.2]
+
+### Changed — Only configs that were actually used get charged
+
+Every config in a group was billed, including ones created and never switched
+on. Accounting now skips those — and only those.
+
+The rule has to hold two things at once, because expiry is where a naive version
+goes wrong. 3x-ui disables a config when its term ends, so billing on `enable`
+alone would drop every config from the invoice the moment it expired — which is
+backwards: expiry means the config **ran its term**. The customer used that
+month and the reseller owes for it.
+
+So a config is billed when it is enabled, or has traffic, or has expired. It is
+skipped only when all three are false: disabled, no traffic, never expired — a
+config that was created and never went into service.
+
+Each group shows how many were skipped and why, so a due figure lower than the
+config count explains itself instead of looking like a miscalculation.
+
 ## [1.9.1]
 
 ### Fixed — Paying to renew created a second config instead
