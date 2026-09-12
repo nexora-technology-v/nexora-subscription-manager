@@ -426,6 +426,140 @@ _b.close()
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("مدت اشتراک با هر شکلی از تاریخ")
+
+# _duration_days هم روی float(created) بود. با تاریخ متنی None
+# برمی‌گرداند، پس ستون «مدت» در صورتحساب گروه و در فهرست کاربران
+# برای *همه‌ی* کلاینت‌ها خالی می‌ماند.
+
+_START_TXT = "2024-09-12 10:00:00"
+_START_MS = APP._epoch_ms(_START_TXT)
+_END_MS = _START_MS + 90 * 86400000
+
+check("تاریخ متنی مدت می‌دهد",
+      APP._duration_days(_START_TXT, _END_MS) == 90.0,
+      str(APP._duration_days(_START_TXT, _END_MS)))
+check("عدد هم همان را می‌دهد",
+      APP._duration_days(_START_MS, _END_MS) == 90.0)
+check("ثانیه و میلی‌ثانیه یکسان‌اند",
+      APP._duration_days(_START_MS / 1000, _END_MS) == 90.0,
+      "x-ui هر دو شکل را می‌دهد")
+check("بدون تاریخ ساخت، None — نه صفر",
+      APP._duration_days(None, _END_MS) is None,
+      "صفر یعنی «مدت صفر» و با «نمی‌دانیم» فرق دارد")
+check("بدون انقضا هم None", APP._duration_days(_START_TXT, 0) is None)
+check("مدت منفی None می‌شود",
+      APP._duration_days(_END_MS, _START_MS) is None,
+      "انقضا قبل از ساخت یعنی داده خراب است")
+check("متن بی‌معنی خطا نمی‌دهد",
+      APP._duration_days("چیزی نیست", _END_MS) is None)
+
+
+
+# ═══════════════════════════════════════════════════════════
+head("عدد صورتحساب نباید به شکل ذخیره‌سازی x-ui وابسته باشد")
+
+# این بلوک برای همین کلاس از باگ نوشته شده: کدی که فرض می‌کند
+# created_at عدد است، روی نصب‌هایی که متن ذخیره می‌کنند بی‌صدا
+# عددهای غلط می‌دهد. دو دیتابیس یکسان می‌سازیم — یکی متنی، یکی
+# عددی — و انتظار داریم *همه‌ی* عددها یکی دربیایند.
+
+from datetime import datetime as _d2, timedelta as _t2
+import shutil as _sh
+
+_AGES = (700, 430, 260, 95, 40)
+
+
+def _build(as_text):
+    d = tempfile.mkdtemp()
+    x = os.path.join(d, "x-ui.db")
+    c = sqlite3.connect(x)
+    c.executescript("""
+    CREATE TABLE clients (id INTEGER PRIMARY KEY, email TEXT, group_name TEXT,
+     total_gb INTEGER, expiry_time INTEGER, enable INTEGER, created_at,
+     limit_ip INTEGER DEFAULT 0);
+    CREATE TABLE client_traffics (id INTEGER PRIMARY KEY, email TEXT, up INTEGER,
+     down INTEGER, expiry_time INTEGER, enable INTEGER);
+    """)
+    for n, age in enumerate(_AGES, start=1):
+        born = _d2.now() - _t2(days=age)
+        created = (born.isoformat(sep=" ", timespec="seconds") if as_text
+                   else int(born.timestamp() * 1000))
+        exp = NOW_MS + 25 * 86400000
+        c.execute("INSERT INTO clients (id,email,group_name,total_gb,"
+                  "expiry_time,enable,created_at) VALUES (?,?,?,?,?,1,?)",
+                  (n, f"cmp_{n}", "مقایسه", 50, exp, created))
+        c.execute("INSERT INTO client_traffics (id,email,up,down,expiry_time,"
+                  "enable) VALUES (?,?,?,?,?,1)", (n, f"cmp_{n}", GB, GB, exp))
+    c.commit()
+    c.close()
+
+    b = os.path.join(d, "billing.db")
+    return x, b
+
+
+def _numbers(xpath, bpath):
+    """همان عددهایی که مدیر روی صفحه می‌بیند."""
+    APP._xui_db_path = lambda: Path(xpath)
+    APP.BILLING_DB = Path(bpath)
+    con2 = sqlite3.connect(bpath)
+    APP._billing_conn().close()          # جدول‌ها ساخته شوند
+    con2.close()
+    b = sqlite3.connect(bpath)
+    b.execute("INSERT OR REPLACE INTO group_config (group_key,label,billable,"
+              "rates,period_days) VALUES ('مقایسه','مقایسه',1,?,30)",
+              ('[{"gb": 50, "price": 100000}]',))
+    b.commit()
+    b.close()
+
+    ov = APP._billing_overview_impl()
+    g = {x["key"]: x for x in ov["groups"]}.get("مقایسه", {})
+    inv = APP.billing_period("مقایسه", full=1, x_admin_password="x")
+    return {
+        "configs": g.get("configs"),
+        "months": g.get("months"),
+        "due": g.get("due"),
+        "newCount": inv["totals"]["newCount"],
+        "renewalCount": inv["totals"]["renewalCount"],
+        "invoiceDue": inv["totals"]["due"],
+        "start": inv["period"]["start"],
+    }
+
+
+_xt, _bt = _build(as_text=True)
+_xn, _bn = _build(as_text=False)
+_saved_x, _saved_b = APP._xui_db_path, APP.BILLING_DB
+
+txt = _numbers(_xt, _bt)
+num = _numbers(_xn, _bn)
+
+check("تعداد کانفیگ یکی است",
+      txt["configs"] == num["configs"] == len(_AGES),
+      f"متنی {txt['configs']} · عددی {num['configs']}")
+check("ماه‌ها یکی است", txt["months"] == num["months"],
+      f"متنی {txt['months']} · عددی {num['months']}")
+check("بدهی نمای کلی یکی است", txt["due"] == num["due"],
+      f"متنی {txt['due']} · عددی {num['due']}")
+check("کانفیگ‌های جدیدِ صورتحساب یکی است",
+      txt["newCount"] == num["newCount"],
+      f"متنی {txt['newCount']} · عددی {num['newCount']}")
+check("تمدیدها یکی است — و صفر نیست",
+      txt["renewalCount"] == num["renewalCount"] > 0,
+      f"متنی {txt['renewalCount']} · عددی {num['renewalCount']}")
+check("مبلغ صورتحساب یکی است",
+      txt["invoiceDue"] == num["invoiceDue"],
+      f"متنی {txt['invoiceDue']} · عددی {num['invoiceDue']}")
+check("شروع بازه‌ی «از ابتدا» یکی است",
+      txt["start"] == num["start"],
+      f"متنی {txt['start']} · عددی {num['start']}")
+check("و مبلغ واقعاً محاسبه شده، نه صفر",
+      (txt["invoiceDue"] or 0) > 0, str(txt["invoiceDue"]))
+
+APP._xui_db_path, APP.BILLING_DB = _saved_x, _saved_b
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

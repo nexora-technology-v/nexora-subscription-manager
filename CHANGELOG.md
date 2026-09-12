@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.9.8]
+
+### Fixed — Subscription length was blank for every client
+
+`_duration_days` was the third function carrying the assumption fixed in 1.9.7:
+`float(created)` raises `ValueError` on a text date, so it returned `None` for
+every client whose `created_at` is stored as text. The length column in the group
+invoice and in the clients list was empty as a result.
+
+It goes through `_epoch_ms` now, like the rest.
+
+### Added — The numbers no longer depend on how x-ui stores dates
+
+The 1.9.7 bugs all had one shape: code that assumed `created_at` was a number.
+The tests never caught them because the fixture left `created_at` as `NULL`,
+which takes a different branch entirely.
+
+There is now a test that builds the same five clients twice — once with text
+timestamps, once with numeric — and asserts that config count, months, group
+balance, invoice line counts, renewal count, invoice total, and period start all
+come out identical. With the old code the text side reported zero renewals while
+the numeric side reported 49, so this fails loudly on any regression of the same
+kind.
+
+### Added — `nexora check` reports how x-ui stores `created_at`
+
+One line in the accounting section, giving the SQLite type and a sample value.
+Which storage format a server uses decides which code path the accounting takes,
+and there was no way to see it without opening the database by hand.
+
 ## [1.9.7]
 
 ### Fixed — Every invoice was roughly ten times too small

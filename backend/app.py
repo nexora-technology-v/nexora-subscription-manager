@@ -4183,17 +4183,18 @@ def _duration_days(created, expiry):
 
     اگر یکی از دو تاریخ نباشد، None برمی‌گردد — نه صفر، چون صفر
     یعنی «مدت صفر» و این با «نمی‌دانیم» فرق دارد.
+
+    هر دو ورودی از _epoch_ms رد می‌شوند: created در x-ui معمولاً متن
+    است و float("2024-09-12 10:00:00") خطا می‌داد، پس این تابع برای
+    *همه‌ی* کلاینت‌ها None برمی‌گرداند و ستون «مدت» در صورتحساب
+    گروه همیشه خالی بود.
     """
-    if not expiry or expiry <= 0 or not created:
+    c0 = _epoch_ms(created)
+    e0 = _epoch_ms(expiry)
+    if not c0 or not e0:
         return None
-    try:
-        c0 = float(created)
-        if c0 <= 0:
-            return None
-        days = (float(expiry) - c0) / 86400000.0
-        return round(days, 1) if days > 0 else None
-    except (TypeError, ValueError):
-        return None
+    days = (e0 - c0) / 86400000.0
+    return round(days, 1) if days > 0 else None
 
 
 def _usage_percent(used_bytes, quota_bytes):

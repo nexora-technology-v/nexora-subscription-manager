@@ -269,6 +269,17 @@ else
       "SELECT COUNT(*) FROM pragma_table_info('clients') WHERE name='created_at';" 2>/dev/null)
 
     if [ "${HASC:-0}" = "1" ]; then
+      # شکلِ ذخیره‌سازی تاریخ مهم است: x-ui در نسخه‌های مختلف
+      # created_at را متنی یا عددی نگه می‌دارد، و حسابداری باید هر
+      # دو را بفهمد. این خط می‌گوید روی این سرور کدام است.
+      CTYPE=$(sqlite3 "$XDB" \
+        "SELECT typeof(created_at) FROM clients
+          WHERE created_at IS NOT NULL AND created_at<>'' LIMIT 1;" 2>/dev/null)
+      CSAMP=$(sqlite3 "$XDB" \
+        "SELECT created_at FROM clients
+          WHERE created_at IS NOT NULL AND created_at<>'' LIMIT 1;" 2>/dev/null)
+      [ -n "$CTYPE" ] && info "created_at: ${CTYPE} — نمونه: ${CSAMP}"
+
       NULLC=$(sqlite3 "$XDB" \
         "SELECT COUNT(*) FROM clients WHERE created_at IS NULL OR created_at='';" 2>/dev/null)
       if [ "${NULLC:-0}" -gt 0 ]; then
