@@ -441,6 +441,29 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins):
         user["id"], plan_id, p["price"], pr["final"],
         coins_used=pr["coins_used"], ttl_minutes=ttl
     )
+
+    # سکه همین حالا رزرو می‌شود، نه موقع تایید.
+    #
+    # اگر تا تایید صبر کنیم، مشتری می‌تواند چند سفارش با همان سکه‌ها
+    # بسازد — چون هنوز کم نشده‌اند — و همه را تایید بگیرد. رزروکردن
+    # این را ناممکن می‌کند و مسیر بازگشت سکه در «رد شدن» را هم درست
+    # می‌کند، که تا امروز سکه‌ی رایگان می‌داد.
+    if pr["coins_used"]:
+        took, left = ctx.db.spend_coins(
+            user["id"], pr["coins_used"], "hold",
+            f"رزرو برای سفارش #{order['id']}", order_id=order["id"])
+        if not took:
+            ctx.db.exec(
+                "UPDATE orders SET status='expired' WHERE tenant_id=? AND id=?",
+                (ctx.tid, order["id"]))
+            return _reply(ctx, chat_id, message_id,
+                          "سکه‌های شما برای این تخفیف کافی نیست.\n\n"
+                          f"موجودی: <b>{core.fa(left)}</b> سکه\n"
+                          f"لازم: <b>{core.fa(pr['coins_used'])}</b> سکه\n\n"
+                          "<blockquote>اگر همین الان سفارش دیگری ثبت "
+                          "کرده‌اید، سکه‌هایتان آن‌جا رزرو شده‌اند."
+                          "</blockquote>",
+                          back_kb("buy"))
     ctx.db.exec("UPDATE orders SET card_used=?, status='pending' WHERE tenant_id=? AND id=?",
                 (card.get("number"), ctx.tid, order["id"]))
     ctx.db.set_state(user["tg_id"], "await_receipt", {"order_id": order["id"]})
@@ -566,6 +589,7 @@ def handle_receipt(ctx, msg, user, state_data):
             if datetime.fromisoformat(order["expires_at"]) < datetime.now():
                 ctx.db.exec("UPDATE orders SET status='expired' WHERE tenant_id=? AND id=?",
                             (ctx.tid, order_id))
+                _release_coins(ctx, order_id)
                 ctx.db.clear_state(user["tg_id"])
                 return ctx.bot.send(user["tg_id"],
                                     "⌛️ مهلت این سفارش تمام شد.\n\n"
@@ -807,10 +831,16 @@ def approve_order(ctx, order_id, admin_tg_id):
         # نبود پورسانت نباید تحویل سفارش را متوقف کند
         pass
 
-    # مصرف سکه
+    # سکه هنگام ثبت سفارش رزرو شده — این‌جا فقط نوعش را ثبت می‌کنیم
+    # که در تاریخچه «خرج‌شده» دیده شود، نه «رزرو».
+    #
+    # کم‌کردن دوباره‌ی آن، همان باگی بود که با دو سفارش هم‌زمان
+    # موجودی را منفی می‌کرد.
     if order["coins_used"]:
-        ctx.db.add_coins(user["id"], -order["coins_used"], "spend",
-                         f"تخفیف سفارش #{order_id}", order_id=order_id)
+        ctx.db.exec(
+            "UPDATE coin_tx SET kind='spend', note=? "
+            "WHERE tenant_id=? AND order_id=? AND kind='hold'",
+            (f"تخفیف سفارش #{order_id}", ctx.tid, order_id))
 
     # پاداش معرف — فقط بعد از اولین خرید موفق
     _reward_referrer(ctx, user, order_id)
@@ -877,6 +907,30 @@ def _notify_referrer_joined(ctx, referrer_id, tg_user):
                                   [("‹ منوی اصلی", "menu")]]))
     except TelegramError:
         pass
+
+
+
+def _release_coins(ctx, order_id):
+    """
+    سکه‌های رزروشده‌ی یک سفارش را برمی‌گرداند.
+
+    رزرو فقط وقتی معنا دارد که راه برگشتی هم داشته باشد. بدون این،
+    سفارشی که منقضی یا لغو شود سکه‌ها را برای همیشه نگه می‌دارد و
+    مشتری بدون اینکه چیزی گرفته باشد، آن‌ها را از دست می‌دهد.
+
+    دو بار برگرداندن ممکن نیست: تراکنش رزرو بعد از بازگشت به
+    «released» تغییر نام می‌دهد، پس دفعه‌ی بعد پیدا نمی‌شود.
+    """
+    held = ctx.db.q(
+        "SELECT * FROM coin_tx WHERE tenant_id=? AND order_id=? AND kind='hold'",
+        (ctx.tid, order_id))
+    for tx in held:
+        ctx.db.add_coins(tx["user_id"], abs(int(tx["amount"])), "refund",
+                         f"بازگشت سکه — سفارش #{order_id}", order_id=order_id)
+        ctx.db.exec(
+            "UPDATE coin_tx SET kind='released' WHERE tenant_id=? AND id=?",
+            (ctx.tid, tx["id"]))
+    return len(held)
 
 
 def _reward_referrer(ctx, user, order_id):
@@ -2663,6 +2717,7 @@ def _on_callback(ctx, cq):
         if action == "cancel":
             ctx.db.exec("UPDATE orders SET status='expired' WHERE tenant_id=? AND id=?",
                         (ctx.tid, int(arg)))
+            _release_coins(ctx, int(arg))
             ctx.db.clear_state(user["tg_id"])
             return _reply(ctx, chat_id, mid,
                           "سفارش لغو شد. هر وقت خواستید دوباره اقدام کنید 👍",
@@ -2813,10 +2868,12 @@ def do_reject(ctx, order_id, admin_tg_id, reason):
     if not o:
         return False
 
-    # سکه‌های خرج‌شده برمی‌گردند
-    if o.get("coins_used"):
-        ctx.db.add_coins(o["user_id"], int(o["coins_used"]), "refund",
-                         f"بازگشت سکه — سفارش #{order_id} رد شد")
+    # سکه‌های رزروشده برمی‌گردند.
+    #
+    # قبلاً این‌جا بی‌قید add_coins صدا زده می‌شد، در حالی که سکه‌ای
+    # کم نشده بود — یعنی هر سفارشی که رد می‌شد، به مشتری سکه‌ی
+    # رایگان می‌داد. حالا فقط چیزی که واقعاً رزرو شده آزاد می‌شود.
+    _release_coins(ctx, order_id)
 
     u = ctx.db.get_user_by_id(o["user_id"])
     if not u:

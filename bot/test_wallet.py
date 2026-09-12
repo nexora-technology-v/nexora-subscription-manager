@@ -21,6 +21,7 @@
 
 اجرا:  python3 bot/test_wallet.py
 """
+import io
 import os
 import sys
 import tempfile
@@ -181,6 +182,85 @@ u7 = new_user(10000)
 d.add_balance(u7["id"], -15000, "admin", "اصلاح دستی")
 check("add_balance هنوز شرط ندارد", bal(u7["id"]) == -5000,
       "ادمین باید بتواند بدهی ثبت کند؛ فقط خرجِ مشتری شرط دارد")
+
+
+
+# ═══════════════════════════════════════════════════════════
+head("سکه — همان دسته، همان خطر")
+
+def coins(uid):
+    row = d.q("SELECT coins FROM users WHERE tenant_id=? AND id=?", (tid, uid))
+    return row[0]["coins"] if row else None
+
+
+c1 = new_user(0)
+d.add_coins(c1["id"], 100, "admin", "شارژ تست")
+check("سکه اضافه می‌شود", coins(c1["id"]) == 100)
+
+okc, left = d.spend_coins(c1["id"], 40, "spend", "تخفیف")
+check("خرج در حد موجودی", okc and left == 60, f"{left}")
+
+okc, left = d.spend_coins(c1["id"], 80, "spend", "بیش از موجودی")
+check("خرج بیش از موجودی رد می‌شود", okc is False)
+check("موجودی دست‌نخورده", coins(c1["id"]) == 60, f"{coins(c1['id'])}")
+
+txs = d.q("SELECT * FROM coin_tx WHERE tenant_id=? AND user_id=? AND amount<0",
+          (tid, c1["id"]))
+check("تراکنش ناموفق ثبت نمی‌شود", len(txs) == 1, f"{len(txs)}")
+
+head("سکه — دو سفارش هم‌زمان با یک موجودی")
+
+# همان اکسپلویت: دو سفارش، هرکدام ۵۰ سکه، ولی فقط ۵۰ سکه هست
+c2 = new_user(0)
+d.add_coins(c2["id"], 50, "admin", "شارژ")
+a, _ = d.spend_coins(c2["id"], 50, "hold", "سفارش الف")
+b, _ = d.spend_coins(c2["id"], 50, "hold", "سفارش ب")
+check("فقط یکی از دو سفارش سکه می‌گیرد", a and not b,
+      "قبلاً هر دو می‌گرفتند و موجودی منفی می‌شد")
+check("موجودی صفر شد نه منفی", coins(c2["id"]) == 0, f"{coins(c2['id'])}")
+
+head("سکه — فشار ده‌نخی")
+
+c3 = new_user(0)
+d.add_coins(c3["id"], 30, "admin", "شارژ")
+res3 = []
+start3 = threading.Barrier(10)
+
+
+def w3():
+    start3.wait()
+    okk, _ = d.spend_coins(c3["id"], 10, "hold", "هم‌زمان")
+    with lock:
+        res3.append(okk)
+
+
+t3 = [threading.Thread(target=w3) for _ in range(10)]
+for t in t3:
+    t.start()
+for t in t3:
+    t.join()
+
+check("دقیقاً سه رزرو موفق شد", sum(1 for x in res3 if x) == 3,
+      f"{sum(1 for x in res3 if x)} از ۱۰")
+check("موجودی سکه منفی نشد", coins(c3["id"]) == 0, f"{coins(c3['id'])}")
+
+head("سکه‌ی رایگان از راه رد شدن — دیگر ممکن نیست")
+
+SRC = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "handlers.py"), encoding="utf-8").read()
+check("سکه هنگام ثبت سفارش رزرو می‌شود",
+      'spend_coins(' in SRC and '"hold"' in SRC,
+      "نه هنگام تایید — وگرنه دو سفارش یک موجودی را می‌خورند")
+check("تایید دیگر دوباره کم نمی‌کند",
+      'add_coins(user["id"], -order["coins_used"]' not in SRC)
+check("رد شدن فقط رزرو را آزاد می‌کند",
+      "_release_coins(ctx, order_id)" in SRC,
+      "قبلاً بی‌قید add_coins مثبت می‌زد — سکه‌ی رایگان")
+check("انقضا هم آزاد می‌کند", SRC.count("_release_coins(") >= 3,
+      f"{SRC.count('_release_coins(')} جا")
+check("آزادسازی دو بار انجام نمی‌شود", "kind='released'" in SRC,
+      "تراکنش بعد از بازگشت نام عوض می‌کند")
+
 
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R

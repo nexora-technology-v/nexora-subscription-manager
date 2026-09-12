@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.7.1]
+
+### Fixed — Rejecting an order handed out free coins
+
+The rejection path refunded `coins_used` back to the customer. Coins were never
+taken at that point — they were only deducted when an order was **approved** —
+so every rejected order credited coins that had never left the balance.
+
+Sending a deliberately bad receipt was therefore a coin printer: order with 100
+coins of discount, get it rejected, receive 100 coins, repeat. Unlimited coins
+means unlimited discounts.
+
+### Fixed — The same coins could pay for two orders
+
+Because the deduction waited for approval, nothing stopped a customer creating a
+second order while the first was still pending. Both stored the same
+`coins_used`, both got approved, and both deducted from a balance that had only
+ever covered one — with no condition on the UPDATE, so the balance simply went
+negative.
+
+Coins are now **reserved when the order is created** and released on rejection,
+expiry or cancellation. Reserving makes both faults impossible at once: a second
+order cannot reserve what is already held, and the refund on rejection now
+returns something that was genuinely taken.
+
+`spend_coins()` is atomic in the same way `spend_balance()` became in 1.6.1 —
+the row only updates while the balance covers the amount, and a failed reserve
+writes no transaction. Releases are marked so the same hold cannot be returned
+twice.
+
+`bot/test_wallet.py` now covers both currencies: ten threads race for coins that
+cover three reservations, and exactly three win.
+
 ## [1.7.0]
 
 ### Added — Blocking an address without turning the firewall on

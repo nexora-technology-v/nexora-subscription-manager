@@ -531,7 +531,54 @@ class TenantDB:
         self.set_state(tg_id, None, {})
 
     # ---------- سکه ----------
+    def spend_coins(self, user_id, amount, kind, note=None, order_id=None):
+        """
+        خرج‌کردن سکه — اتمی. برمی‌گرداند: (موفق, موجودی تازه)
+
+        چرا لازم است:
+            سکه هنگام *تایید* سفارش کم می‌شد، نه هنگام ثبتش. بین آن
+            دو، مشتری می‌توانست سفارش دومی با همان سکه‌ها بسازد —
+            چون هنوز کم نشده بودند — و بعد هر دو تایید شوند و دو بار
+            از یک موجودی برداشته شود.
+
+            و از آن بدتر: مسیر «رد کردن سفارش» سکه را *برمی‌گرداند*،
+            در حالی که اصلاً کم نشده بود. یعنی هر سفارشی که رد می‌شد
+            به مشتری سکه‌ی رایگان می‌داد.
+
+            حالا سکه همان لحظه‌ی ثبت سفارش رزرو می‌شود و فقط در رد،
+            انقضا یا لغو برمی‌گردد — پس هر دو مشکل از ریشه می‌رود.
+        """
+        amount = abs(int(amount))
+        with conn() as c:
+            cur = c.execute(
+                "UPDATE users SET coins = coins - ? "
+                "WHERE tenant_id=? AND id=? AND coins >= ?",
+                (amount, self.tid, user_id, amount)
+            )
+            if not cur.rowcount:
+                row = c.execute(
+                    "SELECT coins FROM users WHERE tenant_id=? AND id=?",
+                    (self.tid, user_id)).fetchone()
+                return False, (row["coins"] if row else 0)
+
+            c.execute(
+                """INSERT INTO coin_tx (tenant_id, user_id, amount, kind, note,
+                                        ref_user_id, order_id)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (self.tid, user_id, -amount, kind, note, None, order_id)
+            )
+            row = c.execute(
+                "SELECT coins FROM users WHERE tenant_id=? AND id=?",
+                (self.tid, user_id)).fetchone()
+            return True, (row["coins"] if row else 0)
+
     def add_coins(self, user_id, amount, kind, note=None, ref_user_id=None, order_id=None):
+        """
+        تغییر موجودی سکه — برای پاداش، بازگشت و تنظیم دستی ادمین.
+
+        برای *خرج‌کردن* از spend_coins استفاده کنید؛ این تابع شرطی
+        ندارد و موجودی را منفی هم می‌کند.
+        """
         with conn() as c:
             c.execute(
                 "UPDATE users SET coins = coins + ? WHERE tenant_id=? AND id=?",
