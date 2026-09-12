@@ -205,6 +205,49 @@ check("رابط تشخیص را نشان می‌دهد",
                        "nodes-monitor.jsx"), encoding="utf-8").read())
 
 
+# ═══════════════════════════════════════════════════════════
+head("مانیتورینگ خودکار ثبت می‌شود، نه فقط دستی")
+
+# در لاگ یک سرور واقعی ۲۳ کار health پشت هم دیده شد و حتی یک sysmon —
+# چون sysmon فقط با کلیک مدیر ثبت می‌شد. یعنی صفحه تا اولین کلیک خالی
+# بود و بعدش هم بلافاصله کهنه می‌شد.
+check("زمان‌بند sysmon را هم ثبت می‌کند",
+      'TUN.queue_job(nid, "sysmon", {})' in APP,
+      "کنار health، در همان حلقه")
+check("قبلش تازگی بررسی می‌شود", "_sysmon_fresh(nid)" in APP,
+      "تا صف بی‌دلیل شلوغ نشود")
+check("آستانه‌ی تازگی تعریف شده", "SYSMON_MAX_AGE" in APP)
+check("هر دو کار در یک حلقه‌اند",
+      0 < (APP.index('TUN.queue_job(nid, "sysmon"')
+           - APP.index('TUN.queue_job(nid, "health"')) < 900,
+      "پس اگر health می‌رسد، sysmon هم می‌رسد")
+
+_sp2 = importlib.util.spec_from_file_location(
+    "nxapp2", os.path.join(ROOT, "backend", "app.py"))
+A2 = importlib.util.module_from_spec(_sp2)
+try:
+    _sp2.loader.exec_module(A2)
+    from datetime import datetime as _dt, timedelta as _td
+
+    def _stub(at):
+        return type("T", (), {"get_sysmon": staticmethod(lambda nid: at)})
+
+    A2.TUN = _stub({"at": (_dt.now() - _td(seconds=30)).isoformat()})
+    check("گزارش سی‌ثانیه‌ای تازه حساب می‌شود", A2._sysmon_fresh(1) is True)
+
+    A2.TUN = _stub({"at": (_dt.now() - _td(seconds=900)).isoformat()})
+    check("گزارش پانزده‌دقیقه‌ای کهنه است", A2._sysmon_fresh(1) is False)
+
+    A2.TUN = _stub(None)
+    check("نبود گزارش یعنی کهنه", A2._sysmon_fresh(1) is False)
+
+    A2.TUN = _stub({"at": "خراب"})
+    check("تاریخ خراب خطا نمی‌دهد", A2._sysmon_fresh(1) is False)
+except Exception as e:
+    check("app.py بارگذاری می‌شود", False, f"{type(e).__name__}: {str(e)[:60]}")
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

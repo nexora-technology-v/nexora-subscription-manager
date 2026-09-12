@@ -2814,6 +2814,16 @@ def _start_health_loop():
                         con.close()
                         for nid in ids:
                             TUN.queue_job(nid, "health", {})
+                            # مانیتورینگ هم خودکار، نه فقط دستی.
+                            #
+                            # تا امروز sysmon فقط وقتی ثبت می‌شد که مدیر
+                            # دکمه‌ای را بزند. یعنی صفحه‌ی مانیتورینگ
+                            # سرورهای دیگر تا اولین کلیک خالی بود، و بعد
+                            # از آن هم بلافاصله کهنه می‌شد. در لاگ سرور
+                            # واقعی بیست‌وسه کار health پشت هم دیده شد و
+                            # حتی یک sysmon — چون هیچ‌وقت خواسته نشده بود.
+                            if not _sysmon_fresh(nid):
+                                TUN.queue_job(nid, "sysmon", {})
                     except Exception:
                         pass
             except Exception:
@@ -7274,6 +7284,30 @@ def _health_domain():
         return ((cfg.get("advanced") or {}).get("panelDomain") or "").strip() or None
     except Exception:
         return None
+
+
+
+#: هر چند ثانیه یک بار گزارش کامل سرور تازه شود.
+#: پنج دقیقه: هم‌قدم با چرخه‌ی سلامت، و به‌قدر کافی کوتاه که وقتی
+#: مدیر صفحه را باز می‌کند عدد کهنه نبیند.
+SYSMON_MAX_AGE = 300
+
+
+def _sysmon_fresh(node_id):
+    """
+    آیا گزارش این نود به‌قدر کافی تازه است.
+
+    بدون این بررسی، هر چرخه یک کار تازه ثبت می‌شد حتی وقتی گزارش
+    چند ثانیه پیش رسیده بود — صف بی‌دلیل شلوغ می‌شد.
+    """
+    try:
+        saved = TUN.get_sysmon(node_id)
+        if not saved or not saved.get("at"):
+            return False
+        at = datetime.fromisoformat(str(saved["at"]))
+        return (datetime.now() - at).total_seconds() < SYSMON_MAX_AGE
+    except Exception:
+        return False
 
 
 def _health_alert(server, data, key):

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.7.2]
+
+### Fixed — The monitoring report was only ever requested by hand
+
+The agent log from a live server showed twenty-three `health` jobs in a row,
+five minutes apart, and not a single `sysmon`. That is the whole explanation for
+a page that never filled in: the scheduler queued health checks automatically
+but `sysmon` was only ever queued when an admin pressed a button.
+
+So the page was empty until the first click, and stale immediately after — which
+looks exactly like a broken feature, because in every way that matters it was
+one.
+
+`sysmon` is queued in the same loop as the health check now, skipped while the
+last report is under five minutes old so the queue does not fill with redundant
+work. Open the page and the numbers are already there.
+
 ## [1.7.1]
 
 ### Fixed — Rejecting an order handed out free coins
