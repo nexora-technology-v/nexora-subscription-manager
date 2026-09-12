@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum } from "../lib/format";
-import { ConfirmModal, EmptyState, Field, InfoBox, Msg, SectionHead } from "../ui/index";
+import { ConfirmModal, EmptyState, Field, InfoBox, LongList, Msg, SectionHead } from "../ui/index";
 
 export const FW_ACTIONS = [
   ["allow", "اجازه", "var(--ok)"],
@@ -73,7 +73,6 @@ export function FirewallSuggest({ password, onApplied }) {
   const [picked, setPicked] = useState({});
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const [showAll, setShowAll] = useState(false);
 
   const load = async () => {
     setBusy(true);
@@ -115,12 +114,8 @@ export function FirewallSuggest({ password, onApplied }) {
   // سوکت‌های موقت xray: شمرده می‌شوند تا مدیر بداند فهرست چرا کوتاه
   // است، ولی ردیف نمی‌گیرند — قاعده ساختن برایشان بی‌معنی است.
   const ephCount = ((d && d.ephemeral) || []).length;
-  const shownClose = showAll ? closeList : closeList.slice(0, 8);
-  const shownKeep = showAll ? keepList : keepList.slice(0, 6);
-  const shownUnknown = showAll ? unknownList : unknownList.slice(0, 6);
-  const more = (closeList.length - shownClose.length)
-             + (keepList.length - shownKeep.length)
-             + (unknownList.length - shownUnknown.length);
+  // صفحه‌بندی عددی به‌جای «نمایش بیشتر»: آن دکمه فهرست را بلندتر
+  // می‌کرد و صفحه را بزرگ‌تر — یعنی همان اسکرولی که قرار بود کم شود.
 
   const apply = async () => {
     setBusy(true);
@@ -235,52 +230,37 @@ export function FirewallSuggest({ password, onApplied }) {
                 )}
               </div>
 
-              {shownClose.length > 0 && (
+              {closeList.length > 0 && (
                 <>
                   <div className="text-[13px] mb-2" style={{ color: "var(--danger)" }}>
                     رو به اینترنت باز است و به سرویس شما ربطی ندارد
                   </div>
-                  {shownClose.map((x) => (
-                    <Row key={`c${x.port}${x.proto}`} x={x} tone="close" />
-                  ))}
+                  <LongList items={closeList} initial={8} label="پورت">
+                    {(x) => <Row key={`c${x.port}${x.proto}`} x={x} tone="close" />}
+                  </LongList>
                 </>
               )}
 
-              {shownUnknown.length > 0 && (
+              {unknownList.length > 0 && (
                 <>
                   <div className="text-[13px] mt-4 mb-2" style={{ color: "var(--warn)" }}>
                     نمی‌دانیم این‌ها چیستند — خودتان تصمیم بگیرید
                   </div>
-                  {shownUnknown.map((x) => (
-                    <Row key={`u${x.port}${x.proto}`} x={x} tone="unknown" />
-                  ))}
+                  <LongList items={unknownList} initial={6} label="پورت">
+                    {(x) => <Row key={`u${x.port}${x.proto}`} x={x} tone="unknown" />}
+                  </LongList>
                 </>
               )}
 
-              {shownKeep.length > 0 && (
+              {keepList.length > 0 && (
                 <>
                   <div className="text-[13px] mt-4 mb-2" style={{ color: "var(--ok)" }}>
                     باید باز بماند
                   </div>
-                  {shownKeep.map((x) => (
-                    <Row key={`k${x.port}${x.proto}`} x={x} tone="keep" />
-                  ))}
+                  <LongList items={keepList} initial={6} label="پورت">
+                    {(x) => <Row key={`k${x.port}${x.proto}`} x={x} tone="keep" />}
+                  </LongList>
                 </>
-              )}
-
-              {more > 0 && !showAll && (
-                <button onClick={() => setShowAll(true)}
-                  className="fx-btn-ghost px-3 py-2 text-[13px] mt-2 w-full"
-                  style={{ color: "var(--accent-2)" }}>
-                  نمایش {faNum(more)} مورد دیگر
-                </button>
-              )}
-              {showAll && (
-                <button onClick={() => setShowAll(false)}
-                  className="fx-btn-ghost px-3 py-2 text-[13px] mt-2 w-full"
-                  style={{ color: "var(--muted)" }}>
-                  جمع کردن
-                </button>
               )}
 
               {!closeList.length && !keepList.length && (
@@ -950,7 +930,9 @@ export function FirewallBlocked({ password }) {
           <p className="text-[12px] mb-3" style={{ color: "var(--muted)" }}>
             این‌ها همین حالا فعال‌اند.
           </p>
-          {viaHole.map((r) => (
+          <LongList items={viaHole} initial={8} label="آدرس" searchable
+            match={(r, q) => String(r.ip).includes(q)}>
+            {(r) => (
             <div key={`h${r.ip}`}
               className="flex items-center justify-between gap-3 p-3 rounded-xl mb-2"
               style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
@@ -970,7 +952,8 @@ export function FirewallBlocked({ password }) {
                   className="fx-btn-g px-3 py-2 text-[12px]">باز کن</button>
               </div>
             </div>
-          ))}
+            )}
+          </LongList>
         </div>
       )}
 
@@ -989,7 +972,9 @@ export function FirewallBlocked({ password }) {
               را سد نمی‌کنند.
             </p>
           )}
-          {viaUfw.map((r) => (
+          <LongList items={viaUfw} initial={8} label="قاعده" searchable
+            match={(r, q) => String(r.ip).includes(q)}>
+            {(r) => (
             <div key={`u${r.ip}${r.num}`}
               className="flex items-center justify-between gap-3 p-3 rounded-xl mb-2"
               style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
@@ -1006,7 +991,8 @@ export function FirewallBlocked({ password }) {
                 disabled={busy}
                 className="fx-btn-g px-3 py-2 text-[12px] shrink-0">باز کن</button>
             </div>
-          ))}
+            )}
+          </LongList>
         </div>
       )}
 

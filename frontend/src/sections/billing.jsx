@@ -15,7 +15,7 @@ import { errText, faNum } from "../lib/format";
 import { Field, InfoBox, Modal, Msg, SectionHead, Toggle } from "../ui/index";
 
 export function BillingPeriod({ password }) {
-  const { data } = useBilling(password);
+  const { data, loading: loadingGroups } = useBilling(password);
   const [sel, setSel] = useState("");
   const [inv, setInv] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -31,7 +31,9 @@ export function BillingPeriod({ password }) {
     setLoading(true);
     try {
       let q = "";
-      if (manual && manual.start && manual.end) {
+      if (manual === "full") {
+        q = "?full=1";
+      } else if (manual && manual.start && manual.end) {
         q = `?start=${manual.start}&end=${manual.end}`;
       } else if (offset !== 0) {
         // دوره‌های قبل و بعد را با جابه‌جایی تاریخ می‌گیریم
@@ -56,6 +58,17 @@ export function BillingPeriod({ password }) {
   useEffect(() => { setShift(0); load(0); }, [sel]);
 
   const move = (dir) => { setShift(shift + dir); load(dir); };
+
+  // تا وقتی گروه‌ها نیامده‌اند، «خوانده نشد» نگوییم.
+  //
+  // data با null شروع می‌شود و !data?.ready همان لحظه‌ی اول درست است،
+  // پس کارتِ «دیتابیس ۳x-ui خوانده نشد» یک لحظه ظاهر می‌شد و بعد
+  // جایش را به داده می‌داد — یعنی هر بار ورود به این صفحه یک خطای
+  // دروغین دیده می‌شد.
+  if (loadingGroups) {
+    return <div className="flex justify-center py-16">
+      <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  }
 
   if (!data?.ready) {
     return (
@@ -98,7 +111,9 @@ export function BillingPeriod({ password }) {
                   <div className="flex items-center gap-2">
                     <div className="flex-1 text-center py-2 rounded-xl text-[13px]"
                       style={{ background: "var(--surface-3)", color: "var(--dim)" }}>
-                      {p ? `${p.startJalali} تا ${p.endJalali}` : "بازه دلخواه"}
+                      {!p ? "بازه دلخواه"
+                        : p.full ? `از ابتدا — ${p.startJalali} تا ${p.endJalali}`
+                          : `${p.startJalali} تا ${p.endJalali}`}
                     </div>
                     <button onClick={() => { setCustom(false); setShift(0); load(0); }}
                       className="fx-ico-btn shrink-0" title="بازگشت به دوره‌ها">
@@ -131,6 +146,18 @@ export function BillingPeriod({ password }) {
                   بازه‌ی دلخواه
                 </span>
                 <div className="flex gap-1.5 flex-wrap">
+                  {/* از ابتدا — دوره‌ی پیش‌فرض سی روز است، و برای
+                      واسطه‌ای که دو سال با شما کار کرده یعنی
+                      صورتحسابی که فقط کانفیگ‌های همین ماه را نشان
+                      می‌دهد. این دکمه از تاریخ ساخت قدیمی‌ترین
+                      کانفیگ همان گروه شروع می‌کند. */}
+                  <button
+                    onClick={() => { setCustom(true); load(0, "full"); }}
+                    className="px-2.5 py-1 rounded-lg text-[12px] font-semibold"
+                    style={{ background: "var(--accent)", color: "#fff",
+                             border: "1px solid var(--accent)" }}>
+                    از ابتدا تا امروز
+                  </button>
                   {[["هفته گذشته", 7], ["دو هفته", 14],
                     ["ماه گذشته", 30], ["سه ماه", 90]].map(([l, n]) => (
                     <button key={n}
@@ -151,14 +178,13 @@ export function BillingPeriod({ password }) {
               </div>
 
               <div className="fx-g3 grid grid-cols-3 gap-2">
-                <input className="fx-input" dir="ltr" value={range.start}
-                  onChange={(e) => setRange({ ...range, start: e.target.value })}
-                  placeholder="از  2026-08-01"
-                  style={{ fontFamily: "var(--mono)" }} />
-                <input className="fx-input" dir="ltr" value={range.end}
-                  onChange={(e) => setRange({ ...range, end: e.target.value })}
-                  placeholder="تا  2026-08-15"
-                  style={{ fontFamily: "var(--mono)" }} />
+                {/* تقویم شمسی، انتخابی. تایپ‌کردن تاریخ میلادی از
+                    کسی که همه‌ی کارش شمسی است، هم کند بود هم
+                    اشتباه‌پذیر — و ارقام فارسی هم پذیرفته نمی‌شد. */}
+                <JalaliDate value={range.start} placeholder="از تاریخ"
+                  onChange={(v) => setRange({ ...range, start: v })} />
+                <JalaliDate value={range.end} placeholder="تا تاریخ"
+                  onChange={(v) => setRange({ ...range, end: v })} />
                 <button
                   onClick={() => { setCustom(true); load(0, range); }}
                   disabled={!range.start || !range.end}

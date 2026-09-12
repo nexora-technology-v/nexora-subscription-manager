@@ -1,5 +1,82 @@
 # Changelog
 
+## [1.9.7]
+
+### Fixed — Every invoice was roughly ten times too small
+
+`_to_jalali` accepted epoch milliseconds only. x-ui stores `created_at` as text
+in most versions, and the period invoice passed that value straight through, so
+on those installs the page raised `TypeError`.
+
+`_renewal_dates` had the same assumption in a quieter form: `float(created)`
+raised `ValueError` on a text date and the function returned an empty list. No
+exception surfaced — the invoice simply showed **zero renewals**. A config
+created two years ago and renewed every month since counted as one sale.
+
+On the sample data in the tests, the same 30-day invoice goes from 150,000 to
+1,500,000 once renewals are counted.
+
+All timestamp parsing now goes through one `_epoch_ms` helper that accepts
+seconds, milliseconds, and text, so the numbers no longer depend on which x-ui
+version wrote the row.
+
+### Added — An invoice that covers everything, not just this month
+
+The period invoice defaults to the last 30 days. For a reseller two years into a
+relationship that shows only configs created this month — the complaint that
+accounting "doesn't count anything from before, only the new ones".
+
+There is an "از ابتدا تا امروز" button now. It starts from the creation date of
+the group's oldest config, or from `settled_until` when a settlement is
+recorded, so settled work does not reappear.
+
+### Fixed — `strftime("%s")` is a glibc extension
+
+Used to convert a renewal date to epoch. It raises `ValueError` outside glibc.
+It never ran before because the renewal list was always empty, so no test caught
+it. Replaced with `_date_ms`, which is explicit about UTC.
+
+### Fixed — The subscription name was the panel's, not the customer's
+
+`sub_label` appended the inbound's name *instead of* the config number when the
+inbound had one. Every config on a shared inbound got an identical label:
+
+    یک‌ماهه · پنل جدید
+    یک‌ماهه · پنل جدید
+
+So the renew screen could not say which subscription it was renewing, and the
+name shown belonged to the panel rather than to anything the customer bought.
+The config number comes first now; the inbound name is added only when there is
+more than one inbound, where it actually distinguishes something.
+
+### Fixed — Time sync always reported "not synchronized"
+
+`timedatectl show -p NTPSynchronized,Timezone --value` prints properties in
+systemd's own order, which puts Timezone first. The first line was read as the
+sync flag, so it was never "yes". Running the suggested command changed nothing
+because there was nothing wrong. Parsed as `KEY=value` pairs now, and the check
+is skipped entirely when systemd does not report the property.
+
+### Fixed — "Database not readable" flashed on every visit
+
+The period section rendered its error card while `data` was still `null` from
+the first fetch. It waits for the load now, like the users section already did.
+
+### Changed — Numbered pagination where the lists were long
+
+Firewall suggestions, blackholed addresses, firewall rules, the intrusion table,
+and the active-connections list all rendered in full. "Show more" made the page
+longer, which was the problem. They paginate now.
+
+### Fixed — IPv6 addresses overflowed the connections card
+
+The address column was a fixed 130px. An IPv6 address is about three times an
+IPv4 one and ran outside the card.
+
+### Changed — Custom billing range uses the Jalali picker
+
+It was two text inputs with Gregorian placeholders, typed by hand.
+
 ## [1.9.6]
 
 ### Fixed — Coins spent on an unpaid order were lost for good

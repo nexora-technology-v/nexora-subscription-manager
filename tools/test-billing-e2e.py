@@ -285,6 +285,147 @@ check("ماه‌ها فقط برای حساب‌شده‌ها جمع می‌شو
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("تاریخ متنی — همان چیزی که x-ui واقعاً ذخیره می‌کند")
+
+# _to_jalali فقط عدد می‌پذیرفت، ولی x-ui در بیشتر نسخه‌ها created_at
+# را متنی نگه می‌دارد. صفحه‌ی «صورتحساب دوره» همان مقدار خام را
+# می‌فرستاد، پس روی آن نصب‌ها با TypeError می‌افتاد.
+
+check("متن ISO خوانده می‌شود",
+      APP._epoch_ms("2024-03-11 09:22:00") is not None)
+check("عدد میلی‌ثانیه دست‌نخورده می‌ماند",
+      APP._epoch_ms(NOW_MS) == float(NOW_MS))
+check("عدد ثانیه به میلی‌ثانیه تبدیل می‌شود",
+      APP._epoch_ms(NOW_MS // 1000) == float(NOW_MS // 1000) * 1000,
+      "x-ui هر دو شکل را می‌دهد")
+check("متنِ عددی هم کار می‌کند",
+      APP._epoch_ms(str(NOW_MS)) == float(NOW_MS))
+check("خالی و بی‌معنی None می‌شود",
+      all(APP._epoch_ms(v) is None
+          for v in (None, "", 0, -5, "چیزی نیست", True)))
+
+cj, cg = APP._to_jalali("2024-03-11 09:22:00")
+check("تاریخ متنی به شمسی تبدیل می‌شود", bool(cg), f"{cj} / {cg}")
+check("و با عدد همان نتیجه را می‌دهد",
+      APP._to_jalali(APP._epoch_ms("2024-03-11 09:22:00"))[1] == cg)
+
+head("تمدیدها با تاریخ متنی شمرده می‌شوند")
+
+# _renewal_dates روی float(created) بود و با متن ValueError می‌داد،
+# پس فهرست خالی برمی‌گشت: کانفیگی که دو سال تمدید شده بود، در
+# صورتحساب *صفر* تمدید داشت و تقریباً کل مبلغ از قلم می‌افتاد.
+TXT = {"email": "txt_1",
+       "createdAt": "2024-09-12 10:00:00",
+       "expiry": NOW_MS + 25 * 86400000}
+rd = APP._renewal_dates(TXT, [])
+check("تمدیدها از تاریخ متنی استنتاج می‌شوند", len(rd) > 20,
+      f"{len(rd)} تمدید برای دو سال")
+check("هر تمدید تاریخ میلادی معتبر دارد",
+      all(len(d) == 10 and d[4] == "-" for d, _ in rd),
+      rd[0][0] if rd else "")
+check("و تخمینی علامت می‌خورد", all(k == "تخمینی" for _, k in rd))
+
+NUM = {"email": "num_1",
+       "createdAt": APP._epoch_ms("2024-09-12 10:00:00"),
+       "expiry": NOW_MS + 25 * 86400000}
+check("عدد و متن به یک نتیجه می‌رسند",
+      len(APP._renewal_dates(NUM, [])) == len(rd),
+      "وگرنه صورتحساب به شکل ذخیره‌سازی x-ui وابسته است")
+
+head("_date_ms جای strftime(%s)")
+
+from datetime import date as _date
+check("نیمه‌شب تاریخ به میلی‌ثانیه",
+      APP._date_ms(_date(2026, 1, 1)) == 1767225600000,
+      str(APP._date_ms(_date(2026, 1, 1))))
+check("و روی هر سیستمی یکسان است",
+      APP._to_jalali(APP._date_ms(_date(2026, 1, 1)))[1] == "2026-01-01",
+      "strftime('%s') افزونه‌ی glibc است و روی ویندوز خطا می‌دهد")
+
+
+
+# ═══════════════════════════════════════════════════════════
+head("صورتحساب «از ابتدا» در برابر دوره‌ی جاری")
+
+# شکایت مالک: «حسابداری از قبل انجام نمیشه و جدیدها رو حساب می‌کنه».
+# درست بود — دوره‌ی پیش‌فرض سی روز است، پس برای واسطه‌ای که دو سال
+# کار کرده فقط کانفیگ‌های همین ماه دیده می‌شدند.
+
+import json as _json
+from datetime import datetime as _dtm, timedelta as _tdl
+
+_c = sqlite3.connect(XUI)
+for n, age in enumerate((730, 600, 400, 200, 15), start=200):
+    _cr = (_dtm.now() - _tdl(days=age)).isoformat(sep=" ", timespec="seconds")
+    _ex = NOW_MS + 25 * 86400000
+    _c.execute("INSERT INTO clients (id,email,group_name,total_gb,expiry_time,"
+               "enable,created_at) VALUES (?,?,?,?,?,1,?)",
+               (n, f"vet_{n}", "قدیمی", 50, _ex, _cr))
+    _c.execute("INSERT INTO client_traffics (id,email,up,down,expiry_time,enable)"
+               " VALUES (?,?,?,?,?,1)", (n, f"vet_{n}", 3 * GB, 7 * GB, _ex))
+_c.commit()
+_c.close()
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("INSERT OR REPLACE INTO group_config (group_key,label,billable,"
+           "rates,period_days) VALUES ('قدیمی','قدیمی',1,?,30)",
+           (_json.dumps([{"gb": 50, "price": 150000}]),))
+_b.commit()
+_b.close()
+
+cur = APP.billing_period("قدیمی", x_admin_password="x")
+allt = APP.billing_period("قدیمی", full=1, x_admin_password="x")
+
+check("دوره‌ی جاری فقط تازه‌ها را می‌بیند",
+      cur["totals"]["newCount"] == 1,
+      f"{cur['totals']['newCount']} کانفیگ از ۵")
+check("«از ابتدا» همه را می‌بیند",
+      allt["totals"]["newCount"] == 5,
+      f"{allt['totals']['newCount']} کانفیگ")
+check("و مبلغش بیشتر است",
+      allt["totals"]["due"] > cur["totals"]["due"],
+      f"{allt['totals']['due']} در برابر {cur['totals']['due']}")
+check("تمدیدها صفر نیستند",
+      allt["totals"]["renewalCount"] > 50,
+      f"{allt['totals']['renewalCount']} تمدید — قبلاً صفر بود")
+check("بازه از قدیمی‌ترین کانفیگ شروع می‌شود",
+      allt["period"]["start"] < cur["period"]["start"],
+      allt["period"]["start"])
+check("پاسخ می‌گوید حالت «از ابتدا» است",
+      allt["period"].get("full") is True,
+      "تا صفحه بتواند برچسبش را درست بزند")
+check("دوره‌ی جاری این نشانه را ندارد",
+      not cur["period"].get("full"))
+check("تاریخ شمسی هر دو سر بازه ساخته می‌شود",
+      bool(allt["period"]["startJalali"]) and bool(allt["period"]["endJalali"]),
+      f"{allt['period']['startJalali']} تا {allt['period']['endJalali']}")
+
+head("تسویه‌شده‌ها حتی در «از ابتدا» برنمی‌گردند")
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("UPDATE group_config SET settled_until=? WHERE group_key='قدیمی'",
+           ((_dtm.now() - _tdl(days=300)).date().isoformat(),))
+_b.commit()
+_b.close()
+
+after = APP.billing_period("قدیمی", full=1, x_admin_password="x")
+check("کانفیگ‌های تسویه‌شده کنار می‌روند",
+      after["totals"]["newCount"] < allt["totals"]["newCount"],
+      f"{after['totals']['newCount']} از {allt['totals']['newCount']}")
+check("و شروع بازه جلو می‌آید",
+      after["period"]["start"] > allt["period"]["start"],
+      after["period"]["start"])
+check("تعدادشان گزارش می‌شود", after["skippedSettled"] > 0,
+      f"{after['skippedSettled']} تسویه‌شده")
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("UPDATE group_config SET settled_until=NULL WHERE group_key='قدیمی'")
+_b.commit()
+_b.close()
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

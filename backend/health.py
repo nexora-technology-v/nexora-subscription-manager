@@ -312,19 +312,38 @@ def check_time():
     TLS به زمان درست وابسته است. اختلاف چند دقیقه‌ای باعث می‌شود
     اتصال‌ها با خطای گواهی رد شوند.
     """
-    ok, out = _run(["timedatectl", "show", "-p",
-                    "NTPSynchronized,Timezone", "--value"])
+    # بدون --value و بدون -p می‌خوانیم.
+    #
+    # قبلاً `timedatectl show -p NTPSynchronized,Timezone --value` بود و
+    # فرض شده بود خروجی به همان ترتیبِ خواسته‌شده می‌آید. نمی‌آید —
+    # systemd ویژگی‌ها را به ترتیب داخلی خودش چاپ می‌کند و Timezone
+    # قبل از NTPSynchronized است. پس خط اول همیشه نام منطقه‌ی زمانی
+    # بود، هیچ‌وقت "yes" نمی‌شد، و این بررسی *همیشه* هشدار می‌داد.
+    #
+    # نتیجه: مدیر دستور پیشنهادی را می‌زد، سرور از اول هم همگام بود،
+    # و هشدار سر جایش می‌ماند. خواندن جفت‌های KEY=value به ترتیب
+    # وابسته نیست و روی نسخه‌های قدیمی‌تر systemd هم کار می‌کند.
+    ok, out = _run(["timedatectl", "show"])
     if not ok:
         return None
 
-    parts = out.splitlines()
-    synced = parts[0].strip().lower() == "yes" if parts else False
-    tz = parts[1] if len(parts) > 1 else "?"
+    vals = {}
+    for line in out.splitlines():
+        k, sep, v = line.partition("=")
+        if sep:
+            vals[k.strip()] = v.strip()
 
-    if not synced:
+    raw = vals.get("NTPSynchronized")
+    if raw is None:
+        # systemd این ویژگی را ندارد. حدس‌زدن بدتر از نگفتن است.
+        return None
+
+    tz = vals.get("Timezone") or "?"
+    if raw.strip().lower() != "yes":
         return _check("time", "همگام‌سازی زمان", WARN,
                       f"همگام نیست · {tz}",
-                      "timedatectl set-ntp true — اختلاف زمان TLS را می‌شکند")
+                      "timedatectl set-ntp true — و اگر باز هم همگام نشد: "
+                      "systemctl enable --now systemd-timesyncd")
     return _check("time", "همگام‌سازی زمان", OK, f"همگام · {tz}")
 
 

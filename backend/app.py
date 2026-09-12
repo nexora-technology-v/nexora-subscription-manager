@@ -4109,12 +4109,59 @@ def _read_xui_clients():
 TEHRAN_OFFSET = 3.5 * 3600      # UTC+3:30
 
 
+def _epoch_ms(v):
+    """
+    هر شکلی از تاریخ را به میلی‌ثانیه‌ی epoch تبدیل می‌کند، یا None.
+
+    لازم است چون x-ui در نسخه‌های مختلف created_at را جور دیگری
+    نگه می‌دارد: گاهی عدد ثانیه، گاهی عدد میلی‌ثانیه، و گاهی متنِ
+    «۲۰۲۴-۰۳-۱۱ ۰۹:۲۲:۰۰». هر کد که فرض کند فقط یکی از این‌هاست،
+    روی نصف نصب‌ها می‌شکند.
+    """
+    if v is None or v == "":
+        return None
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        f = float(v)
+        if f <= 0:
+            return None
+        # زیر ۱e11 یعنی ثانیه است، نه میلی‌ثانیه
+        return f * (1000 if f < 1e11 else 1)
+    try:
+        txt = str(v).strip().replace("Z", "+00:00")
+        if txt.isdigit():
+            return _epoch_ms(int(txt))
+        from datetime import datetime as _dt
+        return _dt.fromisoformat(txt[:19]).timestamp() * 1000
+    except (ValueError, TypeError):
+        return None
+
+
+def _date_ms(d):
+    """
+    نیمه‌شبِ یک تاریخ به میلی‌ثانیه — بدون وابستگی به منطقه‌ی زمانی ماشین.
+
+    جایگزین strftime("%s") که افزونه‌ی glibc است: روی ویندوز و
+    هر libc دیگری ValueError می‌دهد و تست‌ها هم آن را نمی‌گرفتند،
+    چون تا پیش از این هیچ‌وقت به آن خط نمی‌رسیدیم.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+    return int(_dt(d.year, d.month, d.day, tzinfo=_tz.utc).timestamp() * 1000)
+
+
 def _to_jalali(epoch_ms):
     """
-    میلی‌ثانیه‌ی epoch به تاریخ شمسی به وقت تهران.
+    تاریخ به شمسی، به وقت تهران.
+
+    ورودی می‌تواند عدد یا متن باشد — قبلاً فقط عدد را می‌پذیرفت و
+    با متن TypeError می‌داد. صفحه‌ی «صورتحساب دوره» دقیقاً همین
+    مقدار را خام می‌فرستاد، پس روی هر x-ui که created_at را متنی
+    ذخیره می‌کند، آن صفحه با خطای ۵۰۰ می‌افتاد.
 
     برمی‌گرداند: (شمسی, میلادی) یا (None, None) اگر مقدار معنادار نباشد.
     """
+    epoch_ms = _epoch_ms(epoch_ms)
     if not epoch_ms or epoch_ms <= 0:
         return None, None
     try:
@@ -4180,12 +4227,16 @@ def _renewal_dates(cl, logged_rows):
     if not created or exp <= 0:
         return []
 
-    try:
-        c0 = float(created)
-        days = (exp - c0) / 86400000.0
-        months = max(1, round(days / 30))
-    except (TypeError, ValueError):
+    # created ممکن است متن باشد. قبلاً float(created) بود و با متن
+    # ValueError می‌داد، پس این تابع خالی برمی‌گشت — یعنی کانفیگی که
+    # دو سال تمدید شده، در صورتحساب *صفر* تمدید داشت و تقریباً کل
+    # مبلغ از قلم می‌افتاد.
+    c0 = _epoch_ms(created)
+    e0 = _epoch_ms(exp)
+    if not c0 or not e0:
         return []
+    days = (e0 - c0) / 86400000.0
+    months = max(1, round(days / 30))
 
     out = []
     for i in range(1, months):
@@ -4261,18 +4312,7 @@ def _months_for(cl, logged, since=None, first_seen=None):
 
     exp = cl.get("expiry")
 
-    def _ms(v):
-        """هر شکلی از تاریخ را به میلی‌ثانیه تبدیل می‌کند."""
-        if not v:
-            return None
-        if isinstance(v, (int, float)):
-            # x-ui گاهی ثانیه می‌دهد و گاهی میلی‌ثانیه
-            return float(v) * (1000 if float(v) < 1e11 else 1)
-        try:
-            txt = str(v).strip().replace("Z", "+00:00")
-            return _dt.fromisoformat(txt[:19]).timestamp() * 1000
-        except (ValueError, TypeError):
-            return None
+    _ms = _epoch_ms
 
     created = _ms(cl.get("createdAt"))
     source = "ساخت"
@@ -6071,6 +6111,7 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
 
 @app.get("/api/admin/billing/period/{group_key}")
 def billing_period(group_key: str, start: str = "", end: str = "",
+                   full: int = 0,
                    x_admin_password: str = Header(...)):
     """
     صورتحساب یک دوره — نه کل بدهی تا امروز.
@@ -6102,8 +6143,28 @@ def billing_period(group_key: str, start: str = "", end: str = "",
     finally:
         bcon.close()
 
-    from datetime import date
-    if start and end:
+    settled = (conf.get("settled_until") or "").strip()[:10]
+
+    from datetime import date, timedelta as _td
+    if full:
+        # از ابتدا تا امروز.
+        #
+        # دوره‌ی پیش‌فرض سی روز است، و برای واسطه‌ای که دو سال با شما
+        # کار کرده یعنی صورتحسابی که فقط کانفیگ‌های همین ماه را نشان
+        # می‌دهد — انگار حسابداری از قبل اصلاً وجود نداشته. این حالت
+        # از تاریخ ساخت قدیمی‌ترین کانفیگ همان گروه شروع می‌کند.
+        firsts = [ (_to_jalali(c.get("createdAt"))[1] or "")
+                   for c in clients if c["group"] == group_key ]
+        firsts = sorted(x for x in firsts if x)
+        p_start = date.fromisoformat(firsts[0]) if firsts else date(2000, 1, 1)
+        # تسویه‌شده‌ها بیرون می‌مانند، پس شروع را جلو می‌بریم
+        if settled:
+            try:
+                p_start = max(p_start, date.fromisoformat(settled))
+            except ValueError:
+                pass
+        p_end = date.today() + _td(days=1)
+    elif start and end:
         try:
             p_start = date.fromisoformat(start[:10])
             p_end = date.fromisoformat(end[:10])
@@ -6112,7 +6173,6 @@ def billing_period(group_key: str, start: str = "", end: str = "",
     else:
         p_start, p_end = _period_bounds(conf)
 
-    settled = (conf.get("settled_until") or "").strip()[:10]
     per_gb = _price_per_gb(conf)
 
     def in_period(d):
@@ -6145,7 +6205,7 @@ def billing_period(group_key: str, start: str = "", end: str = "",
             if settled and rdate < settled:
                 continue
             if in_period(rdate):
-                rj, _ = _to_jalali(int(date.fromisoformat(rdate).strftime("%s")) * 1000)
+                rj, _ = _to_jalali(_date_ms(date.fromisoformat(rdate)))
                 renewals.append({
                     "email": cl["email"], "gb": gb,
                     "gbLabel": "نامحدود" if gb == 0 else f"{gb} GB",
@@ -6174,13 +6234,10 @@ def billing_period(group_key: str, start: str = "", end: str = "",
         "period": {
             "start": p_start.isoformat(),
             "end": p_end.isoformat(),
-            "startJalali": _to_jalali(int(
-                __import__("datetime").datetime.combine(
-                    p_start, __import__("datetime").time()).timestamp() * 1000))[0],
-            "endJalali": _to_jalali(int(
-                __import__("datetime").datetime.combine(
-                    p_end, __import__("datetime").time()).timestamp() * 1000))[0],
+            "startJalali": _to_jalali(_date_ms(p_start))[0],
+            "endJalali": _to_jalali(_date_ms(p_end))[0],
             "days": (p_end - p_start).days,
+            "full": bool(full),
         },
         "settledUntil": settled or None,
         "skippedSettled": skipped,

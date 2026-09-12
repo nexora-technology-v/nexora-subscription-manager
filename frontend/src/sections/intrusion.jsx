@@ -14,7 +14,7 @@ import {
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum } from "../lib/format";
 import {
-  ConfirmModal, EmptyState, InfoBox, Msg, SectionHead,
+  ConfirmModal, EmptyState, InfoBox, Msg, SectionHead, usePager,
 } from "../ui/index";
 import { MetricCard } from "./monitoring";
 
@@ -100,6 +100,11 @@ export function FirewallIntrusion({ password }) {
   const shown = show === "attackers" ? attackers
     : show === "customers" ? customers
       : show === "noise" ? noise : list;
+
+  // جدول تلاش‌های نفوذ روی سرور واقعی صدها ردیف دارد. قبلاً تا صد
+  // ردیف یک‌جا چاپ می‌شد — یعنی صفحه‌ای که باید تا ته اسکرول شود، و
+  // بقیه‌ی ردیف‌ها اصلاً دیده نمی‌شدند.
+  const { shown: pageRows, pager } = usePager(shown, 15);
 
   const post = async (body, okMsg) => {
     setBusy(true);
@@ -314,7 +319,7 @@ export function FirewallIntrusion({ password }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {shown.slice(0, 100).map((a) => (
+                    {pageRows.map((a) => (
                       <tr key={a.ip}>
                         <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
                           {a.ip}
@@ -368,6 +373,7 @@ export function FirewallIntrusion({ password }) {
                     ))}
                   </tbody>
                 </table>
+                {pager}
               </div>
             )}
           </div>

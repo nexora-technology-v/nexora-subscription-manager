@@ -136,9 +136,20 @@ class Ctx:
         """
         نام یکتا و خوانای یک اشتراک.
 
-        ترتیب اولویت: نام پلن + نام سرور. اگر نام سرور نبود، شماره‌ی
-        کانفیگ از انتهای شناسه (nexora_555_2 → «کانفیگ ۲») می‌آید تا
-        دست‌کم دو اشتراک هم‌پلن از هم جدا شوند.
+        ترتیب: نام پلنی که مشتری خریده، بعد شماره‌ی خودِ کانفیگ
+        (nexora_555_2 → «کانفیگ ۲»).
+
+        نام اینباند فقط وقتی می‌آید که تنها یک اینباند در کار نباشد.
+        قبلاً برعکس بود — نام اینباند *به‌جای* شماره‌ی کانفیگ می‌نشست:
+
+            یک‌ماهه · پنل جدید
+            یک‌ماهه · پنل جدید
+            یک‌ماهه · پنل جدید
+
+        چون همه‌ی کانفیگ‌ها روی یک اینباند مشترک‌اند، هر سه اشتراکِ
+        مشتری دقیقاً یک اسم می‌گرفتند و صفحه‌ی تمدید نمی‌گفت کدام را
+        دارد تمدید می‌کند. آن اسم هم مال پنل بود، نه چیزی که مشتری
+        خریده باشد.
 
         plan_name را وقتی می‌دهیم که ردیف اشتراک از یک SELECT خام آمده
         باشد و ستون plan_name نداشته باشد — وگرنه «اشتراک» می‌نویسد.
@@ -149,22 +160,26 @@ class Ctx:
             # مشتری خریده. اگر پلن بعداً حذف شود، این می‌ماند.
             parts.append(str(sub.get("plan_name") or plan_name or "اشتراک"))
 
-        server = None
+        # شناسه‌ی خودِ کانفیگ — این چیزی است که دو اشتراک را از هم
+        # جدا می‌کند، چون روی یک اینباند هم یکتاست.
+        email = str(sub.get("client_email") or "")
+        tail = email.rsplit("_", 1)[-1] if "_" in email else ""
+        if tail.isdigit():
+            parts.append(f"کانفیگ {core.fa(tail)}")
+
+        # نام سرور فقط وقتی اطلاعات اضافه می‌کند که بیش از یک اینباند
+        # داشته باشیم؛ با یک اینباند، برای همه یکی است و فقط طولش
+        # می‌کند.
         iid = sub.get("inbound_id")
         if iid is not None:
             try:
-                server = self.inbound_names().get(int(iid))
+                names = self.inbound_names()
+                if len(names) > 1 and names.get(int(iid)):
+                    parts.append(names[int(iid)])
             except (TypeError, ValueError):
-                server = None
-        if server:
-            parts.append(server)
-        else:
-            email = str(sub.get("client_email") or "")
-            tail = email.rsplit("_", 1)[-1] if "_" in email else ""
-            if tail.isdigit():
-                parts.append(f"کانفیگ {core.fa(tail)}")
+                pass
 
-        return " · ".join(parts)
+        return " · ".join(parts) if parts else "اشتراک"
 
     def is_admin(self, tg_id):
         """

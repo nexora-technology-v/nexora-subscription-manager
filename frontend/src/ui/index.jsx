@@ -552,6 +552,73 @@ function pageNumbers(cur, total) {
 }
 
 
+export function Pager({ page, pages, total, perPage, onPage }) {
+  if (pages <= 1) return null;
+  return (
+    <div className="flex items-center justify-between gap-2 mt-3 flex-wrap">
+      <span className="text-[12px]" style={{ color: "var(--muted)" }}>
+        {faNum((page - 1) * perPage + 1)}–
+        {faNum(Math.min(page * perPage, total))}
+        {" از "}{faNum(total)}
+      </span>
+      <div className="flex items-center gap-1">
+        <button onClick={() => onPage(page - 1)} disabled={page <= 1}
+          className="fx-ico-btn" style={{ width: 28, height: 28 }}
+          aria-label="صفحه‌ی قبل">
+          <ChevronRight size={14} />
+        </button>
+        {pageNumbers(page, pages).map((n, idx) => (
+          n === "…" ? (
+            <span key={`g${idx}`} className="px-1 text-[12px]"
+              style={{ color: "var(--muted)" }}>…</span>
+          ) : (
+            <button key={n} onClick={() => onPage(n)}
+              className="rounded-lg text-[12px]"
+              style={{
+                minWidth: 28, height: 28,
+                background: n === page ? "var(--accent)" : "var(--surface-3)",
+                color: n === page ? "#fff" : "var(--dim)",
+                border: `1px solid ${n === page ? "var(--accent)" : "var(--border)"}`,
+              }}>{faNum(n)}</button>
+          )
+        ))}
+        <button onClick={() => onPage(page + 1)} disabled={page >= pages}
+          className="fx-ico-btn" style={{ width: 28, height: 28 }}
+          aria-label="صفحه‌ی بعد">
+          <ChevronLeft size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * صفحه‌بندی برای جایی که LongList نمی‌تواند برود.
+ *
+ * LongList محتوا را داخل یک div می‌گذارد، و div داخل <table> معتبر
+ * نیست — مرورگر آن را بیرون جدول پرت می‌کند. جدول‌ها این هوک را
+ * می‌گیرند: برش صفحه‌ی جاری، به‌علاوه‌ی همان کنترلی که بقیه‌ی پنل دارد.
+ */
+export function usePager(items, perPage = 10) {
+  const [page, setPage] = useState(1);
+  const all = Array.isArray(items) ? items : [];
+  const total = all.length;
+  const pages = Math.max(1, Math.ceil(total / perPage));
+  const cur = Math.min(page, pages);
+
+  // با عوض‌شدن داده (تعویض تب، فیلتر تازه) به صفحه‌ی اول برمی‌گردیم،
+  // وگرنه کاربر روی صفحه‌ی خالیِ یک فهرست کوتاه‌تر می‌ماند
+  useEffect(() => { setPage(1); }, [total]);
+
+  return {
+    shown: all.slice((cur - 1) * perPage, cur * perPage),
+    pager: <Pager page={cur} pages={pages} total={total}
+      perPage={perPage} onPage={setPage} />,
+  };
+}
+
+
 export function LongList({
   items, children, initial = 8, searchable = false,
   match, empty = "چیزی نیست", label = "مورد",
@@ -614,42 +681,8 @@ export function LongList({
         </div>
       )}
 
-      {pages > 1 && (
-        <div className="flex items-center justify-between gap-2 mt-3 flex-wrap">
-          <span className="text-[12px]" style={{ color: "var(--muted)" }}>
-            {faNum((cur - 1) * perPage + 1)}–
-            {faNum(Math.min(cur * perPage, filtered.length))}
-            {" از "}{faNum(filtered.length)}
-          </span>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setPage(cur - 1)} disabled={cur <= 1}
-              className="fx-ico-btn" style={{ width: 28, height: 28 }}
-              aria-label="صفحه‌ی قبل">
-              <ChevronRight size={14} />
-            </button>
-            {pageNumbers(cur, pages).map((n, idx) => (
-              n === "…" ? (
-                <span key={`g${idx}`} className="px-1 text-[12px]"
-                  style={{ color: "var(--muted)" }}>…</span>
-              ) : (
-                <button key={n} onClick={() => setPage(n)}
-                  className="rounded-lg text-[12px]"
-                  style={{
-                    minWidth: 28, height: 28,
-                    background: n === cur ? "var(--accent)" : "var(--surface-3)",
-                    color: n === cur ? "#fff" : "var(--dim)",
-                    border: `1px solid ${n === cur ? "var(--accent)" : "var(--border)"}`,
-                  }}>{faNum(n)}</button>
-              )
-            ))}
-            <button onClick={() => setPage(cur + 1)} disabled={cur >= pages}
-              className="fx-ico-btn" style={{ width: 28, height: 28 }}
-              aria-label="صفحه‌ی بعد">
-              <ChevronLeft size={14} />
-            </button>
-          </div>
-        </div>
-      )}
+      <Pager page={cur} pages={pages} total={filtered.length}
+        perPage={perPage} onPage={setPage} />
     </div>
   );
 }

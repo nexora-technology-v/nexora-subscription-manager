@@ -233,7 +233,6 @@ export function PortsCard({ ports }) {
  * است و کدامشان غیرعادی است.
  */
 export function ConnectionsCard({ conn, onBlock }) {
-  const [all, setAll] = useState(false);
   if (!conn || !conn.total) {
     return (
       <div className="fx-card p-5 mb-4">
@@ -247,11 +246,10 @@ export function ConnectionsCard({ conn, onBlock }) {
     );
   }
 
-  const ips = all ? conn.byIp : conn.byIp.slice(0, 5);
   const max = conn.byIp[0]?.count || 1;
 
   return (
-    <div className="fx-card p-5 mb-4">
+    <div className="fx-card p-5 mb-4" style={{ overflow: "hidden" }}>
       <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
         <div className="text-[14px] font-semibold text-white flex items-center gap-2">
           <Activity size={15} style={{ color: "var(--accent-2)" }} /> اتصال‌های فعال
@@ -277,7 +275,8 @@ export function ConnectionsCard({ conn, onBlock }) {
             {faNum(conn.tunnels.length)} اتصال از تانل‌های خودتان
           </div>
           {conn.tunnels.map((t) => (
-            <div key={t.ip} className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
+            <div key={t.ip} className="text-[13px] mb-1"
+              style={{ color: "var(--dim)", wordBreak: "break-all" }}>
               <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{t.ip}</span>
               {" — "}{esc0(t.name)}{" · "}<b>{faNum(t.count)}</b> اتصال
               {" "}<span style={{ color: "var(--muted)" }}>({faNum(t.pct)}٪)</span>
@@ -299,7 +298,8 @@ export function ConnectionsCard({ conn, onBlock }) {
           {conn.heavy.map((h) => (
             <div key={h.ip}
               className="flex items-center justify-between gap-3 py-2 flex-wrap">
-              <div className="text-[13px]" style={{ color: "var(--dim)" }}>
+              <div className="text-[13px] min-w-0"
+                style={{ color: "var(--dim)", wordBreak: "break-all" }}>
                 <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{h.ip}</span>
                 {" — "}<b>{faNum(h.count)}</b> اتصال ({faNum(h.pct)}٪ کل)
               </div>
@@ -320,10 +320,16 @@ export function ConnectionsCard({ conn, onBlock }) {
       <div className="mb-1 text-[13px]" style={{ color: "var(--muted)" }}>
         پرمصرف‌ترین آی‌پی‌ها
       </div>
-      {ips.map((x) => (
+      <LongList items={conn.byIp} initial={8} label="آی‌پی" searchable
+        match={(x, q) => String(x.ip).includes(q)}>
+        {(x) => (
         <div key={x.ip} className="flex items-center gap-3 py-1.5">
-          <span dir="ltr" className="text-[13px] shrink-0"
-            style={{ fontFamily: "var(--mono)", color: "var(--dim)", width: 130 }}>
+          {/* آدرس IPv6 سه برابر IPv4 است و با عرض ثابت از کادر
+              می‌زد بیرون. کوتاه می‌شود و کاملش در tooltip می‌ماند. */}
+          <span dir="ltr" className="text-[13px] shrink-0" title={x.ip}
+            style={{ fontFamily: "var(--mono)", color: "var(--dim)",
+                     maxWidth: 150, overflow: "hidden",
+                     textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {x.ip}
           </span>
           <div className="flex-1 rounded-full overflow-hidden" style={{ height: 7, background: "var(--surface-3)" }}>
@@ -336,15 +342,8 @@ export function ConnectionsCard({ conn, onBlock }) {
             {faNum(x.count)}
           </span>
         </div>
-      ))}
-
-      {conn.byIp.length > 5 && (
-        <button onClick={() => setAll(!all)}
-          className="fx-btn-g w-full mt-2.5 py-2.5 text-[13px] flex items-center justify-center gap-1.5">
-          {all ? "کمتر" : `نمایش همه‌ی ${faNum(conn.byIp.length)} آی‌پی`}
-          <ChevronDown size={14} style={all ? { transform: "rotate(180deg)" } : undefined} />
-        </button>
-      )}
+        )}
+      </LongList>
 
       {conn.byPort?.length > 0 && (
         <div className="mt-4 pt-3.5" style={{ borderTop: "1px solid var(--border)" }}>

@@ -223,6 +223,73 @@ check("زیر سقف طول تلگرام است", not F.too_long(full),
 check("متن ساده‌اش خوانا می‌ماند", "پنل کاربری نکسورا" in F.plain(full))
 
 
+# ═══════════════════════════════════════════════════════════
+head("نام اشتراک، اسم کانفیگ مشتری است نه اسم اینباند")
+
+os.environ.setdefault("BOT_DB_PATH", __import__("tempfile").mktemp(suffix=".db"))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from bot import handlers  # noqa: E402
+SRC = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "handlers.py"), encoding="utf-8").read()
+
+# روی سرور واقعی همه‌ی کانفیگ‌ها روی یک اینباند مشترک‌اند («پنل
+# جدید»). sub_label نام اینباند را *به‌جای* شماره‌ی کانفیگ می‌گذاشت،
+# پس هر سه اشتراکِ یک مشتری دقیقاً یک اسم می‌گرفتند و صفحه‌ی تمدید
+# نمی‌گفت کدام را دارد تمدید می‌کند.
+
+class LabelCtx(handlers.Ctx):
+    """Ctx بدون پنل — فقط نام اینباندها را دستی می‌دهیم."""
+
+    def __init__(self, names):
+        self._names = names
+
+    def inbound_names(self):
+        return self._names
+
+
+ONE = LabelCtx({1: "پنل جدید"})
+MANY = LabelCtx({1: "آلمان", 2: "فنلاند"})
+
+S1 = {"plan_name": "یک‌ماهه", "client_email": "nexora_555_1", "inbound_id": 1}
+S2 = {"plan_name": "یک‌ماهه", "client_email": "nexora_555_2", "inbound_id": 1}
+S3 = {"plan_name": "یک‌ماهه", "client_email": "nexora_555_3", "inbound_id": 1}
+
+labels = [ONE.sub_label(s) for s in (S1, S2, S3)]
+check("سه اشتراک، سه اسم متفاوت", len(set(labels)) == 3,
+      " / ".join(labels))
+check("شماره‌ی کانفیگ در اسم هست", "کانفیگ ۲" in labels[1], labels[1])
+check("نام اینباند مشترک نمی‌آید", "پنل جدید" not in labels[0],
+      "اسم پنل است، نه چیزی که مشتری خریده")
+check("نام پلن اول می‌آید", labels[0].startswith("یک‌ماهه"), labels[0])
+
+head("وقتی چند سرور دارید، نام سرور می‌آید")
+
+a = MANY.sub_label({"plan_name": "سه‌ماهه", "client_email": "nexora_9_1",
+                    "inbound_id": 1})
+b = MANY.sub_label({"plan_name": "سه‌ماهه", "client_email": "nexora_9_1",
+                    "inbound_id": 2})
+check("سرور اول نامش می‌آید", "آلمان" in a, a)
+check("سرور دوم هم همین‌طور", "فنلاند" in b, b)
+check("و دو اشتراک روی دو سرور از هم جدا می‌شوند", a != b)
+
+head("حالت‌های ناقص")
+
+check("بدون شناسه‌ی عددی، اسم پلن می‌ماند",
+      ONE.sub_label({"plan_name": "یک‌ماهه", "client_email": "custom"})
+      == "یک‌ماهه")
+check("پلن حذف‌شده با plan_name دستی کار می‌کند",
+      "طلایی" in ONE.sub_label({"client_email": "nexora_1_2"},
+                               plan_name="طلایی"))
+check("هیچ‌چیز نبود، اسم خالی نمی‌ماند",
+      ONE.sub_label({}) == "اشتراک",
+      "دکمه‌ی بدون متن در تلگرام خطا می‌دهد")
+
+check("صفحه‌ی تمدید همین اسم را نشان می‌دهد",
+      "ctx.sub_label(sub, plan_name=" in SRC,
+      "همان چیزی که مشتری در فهرست اشتراک‌ها دیده")
+
+
+
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
