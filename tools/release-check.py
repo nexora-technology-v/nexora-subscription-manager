@@ -127,7 +127,7 @@ def test_checks(fast):
                   "bot/test_admin.py", "bot/test_xui.py",
                   "bot/test_fmt.py"]),
         ("پنل و ابزارها", ["tools/test-admin-api.py", "tools/test-billing.py",
-                           "tools/test-monitor.py", "tools/test-firewall.py",
+                           "tools/test-monitor.py", "tools/test-firewall.py", "tools/test-fw-safety.py",
                            "tools/test-maintenance.py", "tools/test-serve.py",
                            "tools/test-intrusion.py",
                            "tools/test-expenses.py",

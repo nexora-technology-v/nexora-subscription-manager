@@ -323,6 +323,69 @@ check("ماژول‌های لازم import شده‌اند",
 
 
 # ═══════════════════════════════════════════════════════════
+#  درز ۶ — آیکون استفاده‌شده ولی import‌نشده
+# ═══════════════════════════════════════════════════════════
+head("درز ۶ · آیکون بدون import")
+
+# این دو بار اتفاق افتاد و هر دو بار فقط موقع اجرای واقعی پیدا شد:
+# «Activity is not defined» و بعد «Power is not defined». باندل بدون
+# خطا ساخته می‌شود چون esbuild نام آزاد را خطا نمی‌گیرد؛ فقط مرورگر
+# موقع اجرا می‌افتد — و کل پنل سفید می‌شود.
+FRONT = os.path.join(ROOT, "frontend", "src")
+icon_problems = []
+
+for dirpath, _dirs, files in os.walk(FRONT):
+    for fname in files:
+        if not fname.endswith((".jsx", ".js")):
+            continue
+        path = os.path.join(dirpath, fname)
+        src = io.open(path, encoding="utf-8").read()
+
+        imported = set()
+        for im in re.finditer(r'import \{([^}]*)\} from', src):
+            for chunk in im.group(1).split(","):
+                chunk = chunk.strip()
+                if chunk:
+                    imported.add(chunk.split()[-1])
+        imported |= set(re.findall(r'^import (\w+)', src, re.M))
+
+        # هر چیزی که در همین فایل تعریف شده
+        local = set(re.findall(
+            r'^(?:export\s+)?(?:default\s+)?'
+            r'(?:function|const|let|var|class)\s+(\w+)', src, re.M))
+        # کامپوننت‌های تعریف‌شده داخل بدنه‌ی یک کامپوننت دیگر
+        local |= set(re.findall(r'\bconst\s+([A-Z]\w*)\s*=', src))
+
+        # نام‌هایی که از destructuring پارامتر می‌آیند: ({ icon: Icon })
+        # اینها متغیر محلی‌اند، نه نام آزاد. بدون این، هر کامپوننتی که
+        # آیکون را به‌عنوان prop می‌گیرد اشتباهاً «import‌نشده» اعلام
+        # می‌شد — و تست به‌خاطر خودش قرمز می‌ماند.
+        for params in re.findall(r'(?:function\s+\w+|=>|\()\s*\(?\{([^}]*)\}',
+                                 src):
+            local |= set(re.findall(r'\w+\s*:\s*([A-Z]\w*)', params))
+
+        # و از destructuring آرایه‌ای: .map(([k, l, Ico, tag]) => …)
+        for params in re.findall(r'\(\s*\[([^\]]*)\]\s*\)\s*=>', src):
+            local |= set(re.findall(r'\b([A-Z]\w*)\b', params))
+
+        used = set(re.findall(r'<([A-Z][A-Za-z0-9]+)[\s/>]', src))
+        used |= set(re.findall(r'icon:\s*([A-Z][A-Za-z0-9]+)', src))
+
+        for name in sorted(used):
+            if name in imported or name in local:
+                continue
+            if name in ("React", "Fragment"):
+                continue
+            icon_problems.append(f"{os.path.relpath(path, ROOT)}: {name}")
+
+check("هر آیکون/کامپوننت استفاده‌شده import شده", not icon_problems,
+      f"{len(icon_problems)} مورد" if icon_problems
+      else "همان باگی که دو بار پنل را سفید کرد")
+if icon_problems:
+    bullets(icon_problems, limit=15)
+
+
+# ═══════════════════════════════════════════════════════════
 print(f"\n{D}{'─' * 54}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

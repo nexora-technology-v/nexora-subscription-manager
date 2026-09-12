@@ -61,6 +61,7 @@ jobs:
           python tools/test-billing.py
           python tools/test-monitor.py
           python tools/test-firewall.py
+          python tools/test-fw-safety.py
           python tools/test-maintenance.py
           python tools/test-intrusion.py
           python tools/test-expenses.py

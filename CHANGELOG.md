@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.5.2]
+
+### Fixed — The firewall offered to cut the tunnel
+
+On a real server the panel suggested closing port 7777 with the note "nothing to
+do with your service — process: backpack". backpack **was** the tunnel. Ticking
+that box would have cut every customer whose traffic comes through Iran.
+
+The keep-list was a hardcoded set of process names that knew about xray and nginx
+but nothing about tunnel engines. It now uses the same list as everything else,
+and a tunnel port is treated like SSH: it cannot be ticked, and `apply_plan`
+refuses to close it even when asked directly.
+
+Suggestions now have a third bucket. A port with no process name — a UDP port on
+this server, which could easily have been the tunnel — used to be confidently
+filed under "close". Guessing on the admin's behalf is worse than saying nothing,
+so those go to "we don't know what this is" with the command to find out.
+
+### Added — Turning the firewall on without risking lockout
+
+Enabling ufw on a remote server is a bet: one missing rule and the connection
+dies with no way back except the provider's console. Most people therefore never
+enable it, which is the worst outcome.
+
+The new page removes the bet. It lists exactly what would be cut, refuses to
+proceed while SSH or a tunnel is uncovered, and then enables with a rollback
+timer. If the admin does not confirm within the chosen window — because they got
+cut off — the server disables the firewall itself and everything returns to how
+it was.
+
+### Fixed — Blocked addresses did not appear in the list
+
+`ufw status` prints no rules at all while the firewall is inactive, even though
+rules added then are stored and take effect the moment it is enabled. So blocking
+an address reported success and then showed an empty list. Those rules are read
+from `ufw show added` now and marked as pending.
+
+### Fixed — The panel went white again, for the same reason as before
+
+`Power` was used in the navigation without being imported — exactly the shape of
+the `Activity` bug from 1.5.0. A sixth seam test now compares every component and
+icon used against what each file imports, so this class cannot reach a release a
+third time.
+
 ## [1.5.1]
 
 ### Fixed — The black screen had a second, simpler cause

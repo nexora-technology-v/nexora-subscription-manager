@@ -85,6 +85,8 @@ export function FirewallSuggest({ password, onApplied }) {
       // پیش‌فرض: همه‌ی پیشنهادهای «ببند» تیک می‌خورند، چون همان‌ها
       // دلیل وجود این بخش‌اند. «باز بماند» تیک نمی‌خورد تا کسی
       // ناخواسته دری را که بسته بوده باز نکند.
+      // فقط «ببند»های قطعی تیک می‌خورند. «نامشخص» عمداً تیک نمی‌خورد
+      // چون ممکن است تانل باشد، و «باز بماند» هم نه.
       const p = {};
       (j.close || []).forEach((x) => { p[`${x.port}/${x.proto}`] = true; });
       setPicked(p);
@@ -95,7 +97,8 @@ export function FirewallSuggest({ password, onApplied }) {
   useEffect(() => { if (open && !d) load(); }, [open]);
   useEffect(() => { if (msg) { const t = setTimeout(() => setMsg(null), 5000); return () => clearTimeout(t); } }, [msg]);
 
-  const all = [...((d && d.close) || []), ...((d && d.keep) || [])];
+  const all = [...((d && d.close) || []), ...((d && d.keep) || []),
+               ...((d && d.unknown) || [])];
   const chosen = all.filter((x) => picked[`${x.port}/${x.proto}`]);
 
   // یک سرور معمولی ده‌ها پورت باز دارد. نشان‌دادن همه‌شان یعنی
@@ -108,10 +111,13 @@ export function FirewallSuggest({ password, onApplied }) {
   };
   const closeList = ((d && d.close) || []).filter(match);
   const keepList = ((d && d.keep) || []).filter(match);
+  const unknownList = ((d && d.unknown) || []).filter(match);
   const shownClose = showAll ? closeList : closeList.slice(0, 8);
   const shownKeep = showAll ? keepList : keepList.slice(0, 6);
+  const shownUnknown = showAll ? unknownList : unknownList.slice(0, 6);
   const more = (closeList.length - shownClose.length)
-             + (keepList.length - shownKeep.length);
+             + (keepList.length - shownKeep.length)
+             + (unknownList.length - shownUnknown.length);
 
   const apply = async () => {
     setBusy(true);
@@ -134,14 +140,19 @@ export function FirewallSuggest({ password, onApplied }) {
   const Row = ({ x, tone }) => {
     const key = `${x.port}/${x.proto}`;
     const on = !!picked[key];
-    const col = tone === "close" ? "var(--danger)" : "var(--ok)";
+    const col = tone === "close" ? "var(--danger)"
+      : tone === "unknown" ? "var(--warn)" : "var(--ok)";
+    // پورت تانل اصلاً نباید قابل تیک‌خوردن برای بستن باشد
+    const locked = !!x.tunnel || !!x.critical;
     return (
       <label className="flex items-start gap-3 p-3 rounded-xl mb-2 cursor-pointer"
         style={{
           background: on ? "var(--accent-soft)" : "var(--surface-3)",
           border: `1px solid ${on ? "var(--accent-2)" : "var(--border)"}`,
         }}>
-        <input type="checkbox" checked={on} style={{ accentColor: "var(--accent)", marginTop: 3 }}
+        <input type="checkbox" checked={on && !locked} disabled={locked}
+          style={{ accentColor: "var(--accent)", marginTop: 3,
+                   opacity: locked ? 0.4 : 1 }}
           onChange={(e) => setPicked({ ...picked, [key]: e.target.checked })} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
@@ -151,8 +162,19 @@ export function FirewallSuggest({ password, onApplied }) {
               <span dir="ltr" className="text-[12px]" style={{ color: "var(--dim)" }}>{esc0(x.process)}</span>
             )}
             <span className="fx-pill" style={{ background: "rgba(255,255,255,.04)", color: col }}>
-              {tone === "close" ? "ببند" : "باز بماند"}
+              {tone === "close" ? "ببند"
+                : tone === "unknown" ? "نامشخص" : "باز بماند"}
             </span>
+            {x.tunnel && (
+              <span className="fx-pill" style={{
+                background: "rgba(52,211,153,.14)", color: "var(--ok)",
+              }}>تانل — نبندید</span>
+            )}
+            {x.critical && (
+              <span className="fx-pill" style={{
+                background: "rgba(52,211,153,.14)", color: "var(--ok)",
+              }}>حیاتی</span>
+            )}
           </div>
           <div className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--muted)" }}>
             {esc0(x.why)}
@@ -198,6 +220,7 @@ export function FirewallSuggest({ password, onApplied }) {
                 </div>
                 <span className="text-[12px]" style={{ color: "var(--muted)" }}>
                   {faNum(closeList.length)} پیشنهاد بستن ·
+                  {" "}{faNum(unknownList.length)} نامشخص ·
                   {" "}{faNum(keepList.length)} باید باز بماند
                 </span>
               </div>
@@ -209,6 +232,17 @@ export function FirewallSuggest({ password, onApplied }) {
                   </div>
                   {shownClose.map((x) => (
                     <Row key={`c${x.port}${x.proto}`} x={x} tone="close" />
+                  ))}
+                </>
+              )}
+
+              {shownUnknown.length > 0 && (
+                <>
+                  <div className="text-[13px] mt-4 mb-2" style={{ color: "var(--warn)" }}>
+                    نمی‌دانیم این‌ها چیستند — خودتان تصمیم بگیرید
+                  </div>
+                  {shownUnknown.map((x) => (
+                    <Row key={`u${x.port}${x.proto}`} x={x} tone="unknown" />
                   ))}
                 </>
               )}
@@ -595,8 +629,11 @@ export function FirewallBlocked({ password }) {
 
   if (!d) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
 
+  // قاعده‌هایی که با فایروالِ خاموش ثبت شده‌اند هم واقعی‌اند و
+  // باید دیده شوند؛ فقط هنوز اعمال نمی‌شوند.
   const blocked = (d.rules || []).filter(
     (r) => r.action === "DENY" && r.source && r.source !== "Anywhere");
+  const pendingCount = blocked.filter((r) => r.pending).length;
 
   return (
     <div className="fx-anim">
@@ -628,8 +665,9 @@ export function FirewallBlocked({ password }) {
         </div>
         {!d.active && (
           <InfoBox tone="warn">
-            فایروال خاموش است، پس این قاعده‌ها فعلاً اثری ندارند. از صفحه‌ی
-            «قواعد فایروال» روشنش کنید.
+            <b>فایروال خاموش است.</b> آدرس‌هایی که می‌بندید ذخیره می‌شوند و
+            در فهرست پایین دیده می‌شوند، ولی تا روشن‌شدن فایروال هیچ
+            ترافیکی را سد نمی‌کنند. از صفحه‌ی «قواعد فایروال» روشنش کنید.
           </InfoBox>
         )}
       </div>
@@ -640,14 +678,27 @@ export function FirewallBlocked({ password }) {
           <span className="text-[13px] font-normal" style={{ color: "var(--muted)" }}>
             ({faNum(blocked.length)})
           </span>
+          {pendingCount > 0 && (
+            <span className="text-[12px] font-normal" style={{ color: "var(--warn)" }}>
+              {faNum(pendingCount)} مورد در انتظار روشن‌شدن فایروال
+            </span>
+          )}
         </div>
         {!blocked.length ? (
           <EmptyState icon={ShieldCheck} text="هیچ آی‌پی‌ای بسته نشده" />
         ) : blocked.map((r) => (
           <div key={r.num} className="flex items-center justify-between gap-3 p-3 rounded-xl mb-2"
             style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
-            <span dir="ltr" className="text-[13px]" style={{ fontFamily: "var(--mono)", color: "var(--dim)" }}>
-              {r.source}
+            <span className="flex items-center gap-2 flex-wrap">
+              <span dir="ltr" className="text-[13px]"
+                style={{ fontFamily: "var(--mono)", color: "var(--dim)" }}>
+                {r.source}
+              </span>
+              {r.pending && (
+                <span className="fx-pill" style={{
+                  background: "rgba(251,191,36,.12)", color: "var(--warn)",
+                }}>ثبت شده — با روشن‌شدن فایروال اعمال می‌شود</span>
+              )}
             </span>
             <button
               onClick={() => call("/api/admin/firewall/block-ip", {

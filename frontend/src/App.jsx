@@ -24,6 +24,7 @@ import { BotPreviewSection, BotTextsSection } from "./sections/bot/texts";
 import { ThemesSection } from "./sections/bot/themes";
 import { BotUsersSection } from "./sections/bot/users";
 import { FirewallBlocked, FirewallRules } from "./sections/firewall";
+import { FirewallEnable } from "./sections/firewall-enable";
 import { FirewallIntrusion } from "./sections/intrusion";
 import { BillingExpenses, BillingLedger } from "./sections/expenses";
 import { NodesMonitor } from "./sections/nodes-monitor";
@@ -300,6 +301,7 @@ export default function App() {
           {active === "tun-nodes" && <TunnelNodes password={password} />}
           {active === "tun-list" && <TunnelList password={password} />}
           {active === "monitor" && <MonitorSection password={password} />}
+          {active === "fw-enable" && <FirewallEnable password={password} />}
           {active === "fw-rules" && <FirewallRules password={password} />}
           {active === "nodes-monitor" && <NodesMonitor password={password} />}
           {active === "bill-ledger" && <BillingLedger password={password} />}

@@ -7268,3 +7268,62 @@ def health_check_node(node_id: int, x_admin_password: str = Header(...)):
 @app.get("/api/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/api/admin/firewall/preflight")
+def firewall_preflight(x_admin_password: str = Header(...)):
+    """
+    قبل از روشن‌کردن فایروال: چه چیزی قطع می‌شود؟
+
+    ترس از روشن‌کردن فایروال روی سرور راه دور کاملاً بجاست — یک
+    قاعده‌ی جاافتاده یعنی قطع‌شدن SSH یا تانل، و بعد راهی برای
+    برگشتن نیست مگر کنسول ارائه‌دهنده. این‌جا فهرست می‌شود.
+    """
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    return fw.preflight()
+
+
+@app.post("/api/admin/firewall/safe-enable")
+def firewall_safe_enable(payload: dict, x_admin_password: str = Header(...)):
+    """
+    روشن‌کردن فایروال با بازگشت خودکار.
+
+    اگر مدیر ظرف مهلت تعیین‌شده تایید نکند — یعنی اگر ارتباطش قطع
+    شده باشد — فایروال خودش خاموش می‌شود.
+    """
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    p = payload or {}
+    ok, note, data = fw.safe_enable(
+        confirm=bool(p.get("confirm")),
+        rollback_minutes=int(p.get("rollbackMinutes") or 5),
+        force=bool(p.get("force")))
+    if not ok:
+        raise HTTPException(status_code=400,
+                            detail=note, headers={"X-Preflight": "1"})
+    return {"ok": True, "note": note, **(data or {})}
+
+
+@app.post("/api/admin/firewall/confirm-enabled")
+def firewall_confirm_enabled(x_admin_password: str = Header(...)):
+    """
+    «هنوز وصلم» — ساعت‌شمار بازگشت لغو می‌شود.
+
+    اینکه این درخواست اصلاً رسیده، خودش ثابت می‌کند ارتباط برقرار
+    است؛ پس همین تایید کافی است.
+    """
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    ok, note = fw.confirm_enabled()
+    if not ok:
+        raise HTTPException(status_code=400, detail=note)
+    return {"ok": True, "note": note}
+
+
+@app.get("/api/admin/firewall/rollback-state")
+def firewall_rollback_state(x_admin_password: str = Header(...)):
+    """آیا ساعت‌شمار بازگشت هنوز فعال است؟"""
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    return fw.rollback_state()

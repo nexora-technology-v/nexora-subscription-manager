@@ -10,9 +10,11 @@
 قطع کند. هر مسیری که به فعال‌کردن فایروال یا حذف قاعده می‌رسد، اول
 از این نگهبان رد می‌شود.
 """
+import os
 import re
 import shutil
 import subprocess
+import time
 
 #: پورت‌هایی که بستنشان یعنی قطع دسترسی خودِ مدیر یا خوابیدن سرویس.
 #: این‌ها بدون تایید صریح حذف نمی‌شوند.
@@ -34,6 +36,65 @@ def _run(cmd, timeout=15):
 def available():
     """آیا ufw روی این سرور هست؟"""
     return shutil.which("ufw") is not None
+
+
+
+def _parse_added(out):
+    """
+    قاعده‌های ذخیره‌شده را از خروجی `ufw show added` می‌خواند.
+
+    این خروجی شکل دیگری دارد: هر خط یک دستور کامل ufw است، نه یک
+    سطر جدول. مثال:
+
+        ufw deny from 91.99.12.4 to any
+        ufw allow 22/tcp
+
+    شماره‌ی قاعده ندارد چون هنوز فعال نشده؛ برای حذف هم همان دستور
+    با delete لازم است، نه شماره. پس num را None می‌گذاریم و رابط
+    می‌داند که هنوز اعمال نشده.
+    """
+    rules = []
+    for line in (out or "").splitlines():
+        line = line.strip()
+        if not line.startswith("ufw "):
+            continue
+        body = line[4:].strip()
+
+        action = "ALLOW"
+        for word, label in (("deny", "DENY"), ("reject", "REJECT"),
+                            ("limit", "LIMIT"), ("allow", "ALLOW")):
+            if body.startswith(word + " "):
+                action = label
+                body = body[len(word) + 1:].strip()
+                break
+
+        source = "Anywhere"
+        m = re.search(r"from\s+(\S+)", body)
+        if m:
+            source = m.group(1)
+
+        target, port, proto = "Anywhere", None, None
+        m = re.search(r"(?:to\s+any\s+)?port\s+(\d+)", body)
+        if not m:
+            m = re.match(r"^(\d+)(?:/(tcp|udp))?", body)
+        if m:
+            try:
+                port = int(m.group(1))
+                target = str(port)
+            except (TypeError, ValueError):
+                port = None
+        pm = re.search(r"/(tcp|udp)", body)
+        if pm:
+            proto = pm.group(1)
+            if port:
+                target = f"{port}/{proto}"
+
+        rules.append({
+            "num": None, "target": target, "action": action,
+            "source": source, "port": port, "proto": proto,
+            "pending": True, "raw": line,
+        })
+    return rules
 
 
 def _parse_status(text):
@@ -86,6 +147,14 @@ def status():
 
     active = "Status: active" in out
     rules = _parse_status(out)
+
+    # وقتی ufw خاموش است، `ufw status` هیچ قاعده‌ای چاپ نمی‌کند — ولی
+    # قاعده‌ها واقعاً ذخیره شده‌اند و به‌محض روشن‌شدن اعمال می‌شوند.
+    #
+    # بدون این، کاربر یک آی‌پی را می‌بست، پیام موفقیت می‌گرفت، و بعد
+    # فهرست «بسته‌شده‌ها» را خالی می‌دید — انگار هیچ اتفاقی نیفتاده.
+    if not active:
+        rules = _parse_added(_run(["ufw", "show", "added"])[1]) or rules
 
     # قاعده‌های v6 تکراری‌اند و فقط فهرست را شلوغ می‌کنند
     seen, uniq = set(), []
@@ -217,17 +286,81 @@ def delete_rule(num, confirm_critical=False):
     return ok, (out.strip()[:200] or ("حذف شد" if ok else "ناموفق"))
 
 
+def _tunnel_procs():
+    """
+    نام پردازه‌های تانل — از netid، با جایگزین محلی.
+
+    firewall.py گاهی بدون بقیه‌ی پروژه اجرا می‌شود (تست، اسکریپت)،
+    پس نبودن netid نباید بشکندش.
+    """
+    try:
+        import netid
+        return tuple(netid.TUNNEL_PROCS)
+    except Exception:
+        pass
+    try:
+        import importlib.util
+        import pathlib
+        p = pathlib.Path(__file__).resolve().parent / "netid.py"
+        if p.exists():
+            spec = importlib.util.spec_from_file_location("netid", p)
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            return tuple(m.TUNNEL_PROCS)
+    except Exception:
+        pass
+    return ("backhaul", "backpack", "chisel", "rathole", "gost", "frpc",
+            "frps", "wireguard", "wg-quick", "wstunnel", "hysteria", "tuic",
+            "udp2raw", "iodine", "socat", "haproxy", "stunnel", "openvpn")
+
+
+#: سرویس‌هایی که خودِ محصول است و باید باز بماند
+SERVICE_PROCS = ("xray", "x-ui", "nginx", "sing-box", "caddy", "apache")
+
+
+def tunnel_ports_in_use():
+    """
+    پورت‌هایی که همین حالا یک پردازه‌ی تانل صاحبشان است.
+
+    بستن این‌ها یعنی قطع‌شدن کامل تانل — و چون تمام ترافیک مشتری‌های
+    ایران از همین‌جا رد می‌شود، یعنی قطع‌شدن سرویس. پس این‌ها مثل SSH
+    محافظت‌شده‌اند، نه فقط «پیشنهاد نمی‌شوند».
+    """
+    ports = {}
+    procs = _tunnel_procs()
+    ok, out = _run(["ss", "-tunlp"], timeout=12)
+    if not ok:
+        return ports
+    for line in out.splitlines():
+        low = line.lower()
+        eng = next((e for e in procs if e in low), None)
+        if not eng:
+            continue
+        m = re.search(r"[:.](\d+)\s", line)
+        if m:
+            try:
+                ports[int(m.group(1))] = eng
+            except ValueError:
+                pass
+    return ports
+
+
 def suggest(listening_ports=None):
     """
     پیشنهاد قواعد، بر اساس چیزی که واقعاً روی سرور گوش می‌دهد.
 
     مدیر نباید از حفظ بداند کدام پورت‌ها لازم‌اند. این تابع سرویس‌های
     در حال اجرا را می‌بیند و برای هر کدام می‌گوید باید باز بماند یا
-    بسته شود — و *چرا*. تصمیم نهایی با مدیر است؛ این‌جا فقط پیشنهاد
-    ساخته می‌شود، هیچ قاعده‌ای اعمال نمی‌شود.
+    بسته شود — و *چرا*. تصمیم نهایی با مدیر است.
 
-    listening_ports: خروجی monitor.listening()؛ اگر داده نشود خودمان
-    می‌خوانیم.
+    سه دسته، نه دو تا:
+      keep     مطمئنیم باید باز بماند — سرویس، تانل، SSH
+      close    مطمئنیم به سرویس ربطی ندارد
+      unknown  نام پردازه در دسترس نیست، پس نمی‌دانیم
+
+    دسته‌ی سوم به این دلیل اضافه شد که یک پورت UDP بی‌نام به‌عنوان
+    «ببند» پیشنهاد می‌شد، در حالی که می‌توانست همان تانل باشد. حدس
+    را به‌جای مدیر زدن، خطرناک‌تر از نگفتن است.
     """
     if listening_ports is None:
         listening_ports = _read_listening()
@@ -238,7 +371,10 @@ def suggest(listening_ports=None):
         if r.get("port"):
             existing[int(r["port"])] = r["action"]
 
-    keep, close, already = [], [], []
+    tun = tunnel_ports_in_use()
+    tprocs = _tunnel_procs()
+
+    keep, close, unknown, already = [], [], [], []
     seen = set()
 
     for p in listening_ports or []:
@@ -253,40 +389,50 @@ def suggest(listening_ports=None):
         proc = (p.get("process") or "").lower()
         known = p.get("known") or ""
         public = bool(p.get("public"))
+        row = {"port": port, "proto": p.get("proto") or "tcp",
+               "process": p.get("process") or ""}
 
         if port in existing:
-            already.append({"port": port, "proto": p.get("proto") or "tcp",
-                            "process": p.get("process") or "",
-                            "action": existing[port], "why": known or "قاعده دارد"})
+            already.append({**row, "action": existing[port],
+                            "why": known or "قاعده دارد"})
             continue
 
         if not public:
             # فقط روی لوپ‌بک گوش می‌دهد — از بیرون قابل دسترسی نیست
             continue
 
+        # ── تانل: قبل از هر چیز دیگری ──
+        eng = tun.get(port) or next((e for e in tprocs if e in proc), None)
+        if eng:
+            keep.append({**row, "action": "allow", "tunnel": True,
+                         "why": f"تانل {eng} روی این پورت کار می‌کند. "
+                                "اگر ببندیدش، تانل و همه‌ی مشتری‌هایی که "
+                                "از آن رد می‌شوند قطع می‌شوند."})
+            continue
+
         if port in CRITICAL_PORTS:
-            keep.append({"port": port, "proto": p.get("proto") or "tcp",
-                         "process": p.get("process") or "",
-                         "action": "allow",
+            keep.append({**row, "action": "allow", "critical": True,
                          "why": CRITICAL_PORTS[port]})
         elif known:
-            keep.append({"port": port, "proto": p.get("proto") or "tcp",
-                         "process": p.get("process") or "",
-                         "action": "allow",
+            keep.append({**row, "action": "allow",
                          "why": f"{known} — سرویس شناخته‌شده‌ی این پنل"})
-        elif any(s in proc for s in ("xray", "x-ui", "nginx", "sing-box",
-                                     "hysteria", "wireguard")):
-            keep.append({"port": port, "proto": p.get("proto") or "tcp",
-                         "process": p.get("process") or "",
-                         "action": "allow",
-                         "why": f"پردازه‌ی {p.get('process')} — بخشی از سرویس شماست"})
+        elif any(s in proc for s in SERVICE_PROCS):
+            keep.append({**row, "action": "allow",
+                         "why": f"پردازه‌ی {p.get('process')} — بخشی از "
+                                "سرویس شماست"})
+        elif not proc:
+            # بدون نام پردازه نمی‌شود گفت این چیست. ممکن است تانل باشد،
+            # ممکن است چیزی که فراموش شده. پیشنهاد نمی‌دهیم.
+            unknown.append({**row, "action": "deny",
+                            "why": "نام پردازه در دسترس نیست، پس نمی‌دانیم "
+                                   "این پورت مال چیست. اگر تانل یا سرویسی "
+                                   "دارید که روی این پورت کار می‌کند، "
+                                   "نبندیدش. برای دیدن نامش روی سرور: "
+                                   f"ss -tulpn | grep {port}"})
         else:
-            close.append({"port": port, "proto": p.get("proto") or "tcp",
-                          "process": p.get("process") or "",
-                          "action": "deny",
-                          "why": ("رو به اینترنت باز است و به سرویس شما ربطی "
-                                  "ندارد" + (f" — پردازه: {p.get('process')}"
-                                             if p.get("process") else ""))})
+            close.append({**row, "action": "deny",
+                          "why": "رو به اینترنت باز است و به سرویس شما ربطی "
+                                 f"ندارد — پردازه: {p.get('process')}"})
 
     return {
         "ready": st.get("ready", False),
@@ -294,7 +440,9 @@ def suggest(listening_ports=None):
         "active": st.get("active", False),
         "keep": keep,
         "close": close,
+        "unknown": unknown,
         "already": already,
+        "tunnelPorts": sorted(tun),
         "sshCovered": st.get("sshProtected", False),
     }
 
@@ -325,17 +473,46 @@ def apply_plan(rules, confirm=False):
     if not available():
         return False, "ufw نصب نیست", []
 
+    # بستن پورت تانل یعنی قطع‌شدن همه‌ی مشتری‌هایی که از آن رد
+    # می‌شوند. مثل SSH، این را بدون تایید جداگانه انجام نمی‌دهیم —
+    # حتی اگر خودِ پیشنهاد از همین‌جا آمده باشد.
+    tun = tunnel_ports_in_use()
     results = []
     for r in rules or []:
         port = r.get("port")
         action = r.get("action") or "allow"
         proto = r.get("proto") or "tcp"
-        ok, note = add_rule(port, proto=proto, action=action,
+
+        try:
+            pnum = int(port)
+        except (TypeError, ValueError):
+            results.append({"port": port, "action": action, "ok": False,
+                            "note": "پورت نامعتبر"})
+            continue
+
+        if action == "deny" and pnum in tun and not r.get("confirmTunnel"):
+            results.append({
+                "port": pnum, "action": action, "ok": False, "blocked": True,
+                "note": f"پورت {pnum} را تانل {tun[pnum]} استفاده می‌کند. "
+                        "بستنش تانل را قطع می‌کند، پس انجام نشد."})
+            continue
+
+        if action == "deny" and pnum in CRITICAL_PORTS and not r.get("confirmCritical"):
+            results.append({
+                "port": pnum, "action": action, "ok": False, "blocked": True,
+                "note": f"{CRITICAL_PORTS[pnum]} — بسته نشد"})
+            continue
+
+        ok, note = add_rule(pnum, proto=proto, action=action,
                             comment="پیشنهاد پنل نکسورا")
-        results.append({"port": port, "action": action, "ok": ok, "note": note})
+        results.append({"port": pnum, "action": action, "ok": ok, "note": note})
 
     good = sum(1 for x in results if x["ok"])
-    return True, f"{good} از {len(results)} قاعده اعمال شد", results
+    stopped = sum(1 for x in results if x.get("blocked"))
+    msg = f"{good} از {len(results)} قاعده اعمال شد"
+    if stopped:
+        msg += f" — {stopped} مورد برای محافظت از تانل یا SSH انجام نشد"
+    return True, msg, results
 
 
 def block_ip(ip, comment=None):
@@ -358,3 +535,208 @@ def unblock_ip(ip):
     ok, out = _run(["ufw", "delete", "deny", "from", str(ip), "to", "any"],
                    timeout=20)
     return ok, (out.strip()[:200] or ("باز شد" if ok else "ناموفق"))
+
+
+# ═══════════════════════════════════════════════════════════
+#  روشن‌کردن امن، با بازگشت خودکار
+# ═══════════════════════════════════════════════════════════
+
+#: جایی که نشانه‌ی «تایید شد» گذاشته می‌شود
+_ARM_FLAG = "/run/nexora-fw-armed"
+_ARM_LOG = "/var/log/nexora-firewall-rollback.log"
+
+
+def preflight():
+    """
+    قبل از روشن‌کردن، هر چیزی که ممکن است قطع شود را فهرست می‌کند.
+
+    ترس از روشن‌کردن فایروال بی‌دلیل نیست: یک قاعده‌ی جاافتاده یعنی
+    قطع‌شدن SSH، یا تانل، یا خود پنل — و بعدش راهی برای برگشتن نیست
+    مگر از کنسول ارائه‌دهنده.
+
+    این تابع به‌جای «امیدوارم درست باشد»، فهرست می‌دهد: چه چیزی الان
+    گوش می‌دهد، کدامشان قاعده دارد، و کدام‌ها با روشن‌شدن قطع می‌شوند.
+    """
+    st = status()
+    if not st.get("installed"):
+        return {"ready": False, "error": "ufw نصب نیست"}
+
+    allowed = set()
+    for r in st.get("rules") or []:
+        if r.get("port") and r.get("action") in ("ALLOW", "LIMIT"):
+            allowed.add(int(r["port"]))
+
+    listening = _read_listening() or []
+    tun = tunnel_ports_in_use()
+
+    at_risk, covered = [], []
+    for p in listening:
+        try:
+            port = int(p.get("port"))
+        except (TypeError, ValueError):
+            continue
+        if not p.get("public"):
+            continue
+
+        why = ""
+        critical = False
+        if port in CRITICAL_PORTS:
+            why, critical = CRITICAL_PORTS[port], True
+        elif port in tun:
+            why = f"تانل {tun[port]} — تمام مشتری‌های ایران از این رد می‌شوند"
+            critical = True
+        elif p.get("known"):
+            why = p["known"]
+        elif p.get("process"):
+            why = f"پردازه‌ی {p['process']}"
+
+        row = {"port": port, "proto": p.get("proto") or "tcp",
+               "process": p.get("process") or "", "why": why,
+               "critical": critical}
+        (covered if port in allowed else at_risk).append(row)
+
+    blockers = [r for r in at_risk if r["critical"]]
+
+    return {
+        "ready": True,
+        "active": st.get("active", False),
+        "atRisk": at_risk,
+        "covered": covered,
+        "blockers": blockers,
+        "safe": not blockers,
+        "note": ("همه‌چیز پوشش دارد" if not at_risk else
+                 f"{len(at_risk)} سرویس قاعده ندارد و با روشن‌شدن قطع می‌شود"),
+    }
+
+
+def _schedule_rollback(minutes):
+    """
+    یک ساعت‌شمار می‌گذارد که اگر تایید نیاید، فایروال را خاموش کند.
+
+    این همان چیزی است که روشن‌کردن فایروال از راه دور را بی‌خطر
+    می‌کند: اگر قاعده‌ای جا افتاده باشد و ارتباطتان قطع شود، لازم
+    نیست به کنسول ارائه‌دهنده بروید — چند دقیقه صبر می‌کنید و سرور
+    خودش برمی‌گردد به حالت قبل.
+
+    اول systemd-run را امتحان می‌کنیم چون مستقل از پردازه‌ی پنل
+    زندگی می‌کند؛ اگر نبود، یک پردازه‌ی جداشده با nohup.
+    """
+    secs = max(60, int(minutes) * 60)
+    script = (
+        f"sleep {secs}; "
+        f"if [ ! -f {_ARM_FLAG} ]; then "
+        f"  ufw --force disable >> {_ARM_LOG} 2>&1; "
+        f"  echo \"$(date -Is) فایروال به‌دلیل نیامدن تایید خاموش شد\" "
+        f">> {_ARM_LOG}; "
+        f"fi; rm -f {_ARM_FLAG}"
+    )
+
+    if shutil.which("systemd-run"):
+        ok, out = _run(["systemd-run", "--quiet", "--collect",
+                        "--unit", "nexora-fw-rollback",
+                        "/bin/sh", "-c", script], timeout=15)
+        if ok:
+            return True, "systemd"
+
+    try:
+        subprocess.Popen(["/bin/sh", "-c", script],
+                         stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+        return True, "background"
+    except Exception as e:
+        return False, str(e)[:120]
+
+
+def safe_enable(confirm=False, rollback_minutes=5, force=False):
+    """
+    روشن‌کردن فایروال با تور نجات.
+
+    مراحل:
+      ۱. بررسی می‌کند چه چیزی قطع می‌شود
+      ۲. اگر چیز حیاتی‌ای (SSH یا تانل) قاعده ندارد، رد می‌کند
+      ۳. یک ساعت‌شمار بازگشت می‌گذارد
+      ۴. فایروال را روشن می‌کند
+
+    بعد از این، مدیر باید ظرف مهلت تعیین‌شده confirm_enabled() را
+    صدا بزند. اگر نزند — یعنی اگر ارتباطش قطع شده باشد — فایروال
+    خودش خاموش می‌شود.
+
+    force: رد کردن هشدارها. فقط وقتی مدیر صریحاً بداند چه می‌کند.
+    """
+    if not confirm:
+        return False, "برای روشن‌کردن فایروال باید confirm بفرستید", {}
+
+    pre = preflight()
+    if not pre.get("ready"):
+        return False, pre.get("error") or "بررسی اولیه ناموفق", pre
+
+    if pre["blockers"] and not force:
+        names = "، ".join(
+            f"{b['port']} ({b['why']})" for b in pre["blockers"][:4])
+        return False, (f"روشن نشد — این‌ها قاعده ندارند و قطع می‌شوند: "
+                       f"{names}. اول برایشان قاعده‌ی allow بسازید."), pre
+
+    minutes = max(2, min(int(rollback_minutes or 5), 60))
+
+    # نشانه‌ی قبلی را پاک می‌کنیم تا ساعت‌شمار تازه معتبر باشد
+    try:
+        if os.path.exists(_ARM_FLAG):
+            os.remove(_ARM_FLAG)
+    except Exception:
+        pass
+
+    sched_ok, how = _schedule_rollback(minutes)
+    if not sched_ok and not force:
+        return False, (f"ساعت‌شمار بازگشت گذاشته نشد ({how}) — بدون آن "
+                       "روشن‌کردن از راه دور خطرناک است"), pre
+
+    ok, out = _run(["ufw", "--force", "enable"], timeout=30)
+    if not ok:
+        # ساعت‌شمار را بی‌اثر می‌کنیم چون اصلاً روشن نشد
+        _touch_flag()
+        return False, f"روشن نشد: {out.strip()[:160]}", pre
+
+    return True, (f"فایروال روشن شد. اگر تا {minutes} دقیقه‌ی دیگر تایید "
+                  "نکنید، خودش خاموش می‌شود — پس اگر ارتباطتان قطع شد، "
+                  "فقط صبر کنید."), {
+        **pre, "rollbackMinutes": minutes, "scheduler": how, "armed": True}
+
+
+def _touch_flag():
+    try:
+        d = os.path.dirname(_ARM_FLAG)
+        if not os.path.isdir(d):
+            d = "/tmp"
+        path = os.path.join(d, os.path.basename(_ARM_FLAG))
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(str(int(time.time())))
+        return True
+    except Exception:
+        return False
+
+
+def confirm_enabled():
+    """
+    «همه‌چیز کار می‌کند» — ساعت‌شمار بازگشت لغو می‌شود.
+
+    اینکه این درخواست اصلاً به پنل رسیده، خودش ثابت می‌کند ارتباط
+    برقرار است. به همین دلیل تاییدِ دستی کافی و درست است.
+    """
+    if not _touch_flag():
+        return False, "ثبت تایید ناموفق بود"
+    if shutil.which("systemctl"):
+        _run(["systemctl", "stop", "nexora-fw-rollback.service"], timeout=10)
+    return True, "تایید شد — فایروال روشن می‌ماند"
+
+
+def rollback_state():
+    """وضعیت ساعت‌شمار بازگشت، برای نمایش در پنل."""
+    armed = False
+    if shutil.which("systemctl"):
+        ok, out = _run(["systemctl", "is-active",
+                        "nexora-fw-rollback.service"], timeout=8)
+        armed = (out or "").strip() == "active"
+    confirmed = os.path.exists(_ARM_FLAG) or os.path.exists(
+        os.path.join("/tmp", os.path.basename(_ARM_FLAG)))
+    return {"armed": armed and not confirmed, "confirmed": confirmed}
