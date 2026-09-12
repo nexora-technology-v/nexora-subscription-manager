@@ -458,6 +458,31 @@ check("متن بی‌معنی خطا نمی‌دهد",
 
 
 # ═══════════════════════════════════════════════════════════
+head("گرد کردن ماه — نیم‌ماه همیشه به بالا")
+
+# پایتون «گرد کردن بانکی» می‌کند: round(9.5)==10 ولی round(10.5)==10.
+# یعنی دو کانفیگ که هر دو دقیقاً نیم‌ماه اضافه دارند، بسته به زوج یا
+# فرد بودنِ عدد ماه، دو جور حساب می‌شدند.
+check("۹.۵ ماه → ۱۰", APP._months_from_days(285) == 10,
+      str(APP._months_from_days(285)))
+check("۱۰.۵ ماه → ۱۱ (نه ۱۰)", APP._months_from_days(315) == 11,
+      f"{APP._months_from_days(315)} — round(10.5) در پایتون ۱۰ می‌دهد")
+check("۱۱.۵ ماه → ۱۲", APP._months_from_days(345) == 12)
+check("زیر نیم پایین می‌رود", APP._months_from_days(284) == 9,
+      str(APP._months_from_days(284)))
+check("یک ماه کف است", APP._months_from_days(1) == 1)
+check("صفر و منفی هم یک ماه", APP._months_from_days(0) == 1
+      and APP._months_from_days(-10) == 1,
+      "کانفیگی که وجود دارد دست‌کم یک دوره کار کرده")
+
+check("یک ثانیه اختلاف، ماه را عوض نمی‌کند",
+      APP._months_from_days(285) == APP._months_from_days(285 - 1 / 86400.0)
+      == APP._months_from_days(285 + 1 / 86400.0),
+      "مرزِ دقیق نیم‌ماه نباید به کسری از ثانیه حساس باشد")
+check("ورودی بی‌معنی یک ماه می‌دهد",
+      APP._months_from_days(None) == 1 and APP._months_from_days("x") == 1)
+
+
 head("عدد صورتحساب نباید به شکل ذخیره‌سازی x-ui وابسته باشد")
 
 # این بلوک برای همین کلاس از باگ نوشته شده: کدی که فرض می‌کند
@@ -483,7 +508,9 @@ def _build(as_text):
      down INTEGER, expiry_time INTEGER, enable INTEGER);
     """)
     for n, age in enumerate(_AGES, start=1):
-        born = _d2.now() - _t2(days=age)
+        # ثانیه‌ی گرد: متنِ x-ui دقت ثانیه دارد، پس اگر عددی را با
+        # میلی‌ثانیه بسازیم دو ورودیِ واقعاً متفاوت مقایسه می‌کنیم.
+        born = (_d2.now() - _t2(days=age)).replace(microsecond=0)
         created = (born.isoformat(sep=" ", timespec="seconds") if as_text
                    else int(born.timestamp() * 1000))
         exp = NOW_MS + 25 * 86400000

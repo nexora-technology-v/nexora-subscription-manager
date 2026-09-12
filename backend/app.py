@@ -4138,6 +4138,34 @@ def _epoch_ms(v):
         return None
 
 
+def _months_from_days(days):
+    """
+    تعداد ماه‌های صورتحساب از تعداد روز. نیم‌ماه به بالا.
+
+    چرا round() ساده کافی نبود:
+
+        round(9.5)  == 10
+        round(10.5) == 10      ← همین
+        round(11.5) == 12
+
+    پایتون «گرد کردن بانکی» می‌کند و نیم را به نزدیک‌ترین عدد زوج
+    می‌برد. یعنی دو کانفیگ که هر دو دقیقاً نیم‌ماه اضافه دارند،
+    بسته به اینکه عدد ماهشان زوج است یا فرد، دو جور حساب می‌شوند.
+    برای صورتحساب این قابل دفاع نیست.
+
+    اپسیلون هم لازم است: مرزِ دقیق نیم‌ماه با اختلاف کسری از ثانیه
+    این‌ور و آن‌ور می‌شود (۲۸۵ روز = دقیقاً ۹.۵ ماه)، و بدون آن یک
+    ثانیه فرقِ بی‌اهمیت در تاریخ ساخت، یک ماه کم یا زیاد می‌کرد.
+    """
+    import math
+    if days is None:
+        return 1
+    try:
+        return max(1, int(math.floor(float(days) / 30.0 + 0.5 + 1e-6)))
+    except (TypeError, ValueError):
+        return 1
+
+
 def _date_ms(d):
     """
     نیمه‌شبِ یک تاریخ به میلی‌ثانیه — بدون وابستگی به منطقه‌ی زمانی ماشین.
@@ -4237,7 +4265,7 @@ def _renewal_dates(cl, logged_rows):
     if not c0 or not e0:
         return []
     days = (e0 - c0) / 86400000.0
-    months = max(1, round(days / 30))
+    months = _months_from_days(days)
 
     out = []
     for i in range(1, months):
@@ -4339,10 +4367,10 @@ def _months_for(cl, logged, since=None, first_seen=None):
         days = (_dt.now().timestamp() * 1000 - created) / 86400000.0
         if days <= 0:
             return 1, "منقضی", 0
-        months = max(1, round(days / 30))
+        months = _months_from_days(days)
         return months, source + " (منقضی)", 0
 
-    months = max(1, round(days / 30))
+    months = _months_from_days(days)
     drift = abs(days - months * 30)
     if source == "ساخت" and drift <= 2:
         return months, "قطعی", 0

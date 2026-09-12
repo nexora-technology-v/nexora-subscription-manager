@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.9.9]
+
+### Fixed — A config on an exact half-month boundary billed unpredictably
+
+The new text-vs-numeric test from 1.9.8 failed on Python 3.10 and passed on 3.12,
+which turned out not to be a version difference at all. Month counts came from
+`round(days / 30)`, and Python's `round` is banker's rounding:
+
+    round(9.5)  == 10
+    round(10.5) == 10      <- this one
+    round(11.5) == 12
+
+Half goes to the nearest *even* number. So two configs each sitting exactly half
+a month over billed differently depending on whether their month count was odd or
+even. 285 days is exactly 9.5 months, and one second either side of it flipped
+the answer by a whole month.
+
+`_months_from_days` rounds half up, with a tolerance so sub-second differences in
+a creation date cannot change the result. The only bills that change are the ones
+that landed exactly on a boundary with an even month count — those now round up,
+like the odd ones always did.
+
+### Fixed — The 1.9.8 test compared two different instants
+
+It stored the text timestamp truncated to seconds and the numeric one with
+milliseconds, so the two sides were up to a second apart. Both are built from the
+same whole second now, which is what makes the comparison meaningful.
+
 ## [1.9.8]
 
 ### Fixed — Subscription length was blank for every client
