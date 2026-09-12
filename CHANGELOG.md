@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.10.8]
+
+Agent 1.5.2.
+
+### Fixed — A half-finished download stayed cached until the panel changed version
+
+The agent fetches `monitor.py` and `firewall.py` from the panel and caches them
+next to itself, re-fetching only when the panel's version changes. `download`
+wrote straight to the destination file, so a connection that dropped mid-copy
+left a truncated Python file in place.
+
+From then on the file existed and the version matched, so it was never fetched
+again. Every monitoring job on that node failed with a `SyntaxError` until the
+panel happened to be updated.
+
+Downloads are atomic now — written to a temporary file and moved into place — so
+a failed transfer leaves the previous working copy untouched and no partial file
+behind.
+
+### Fixed — A cached module that will not load is now thrown away
+
+The same stuck state could arrive any other way: a truncated file from an older
+version, a disk problem, a bad write. Whatever the cause, the agent kept loading
+the same broken file and reporting the same error.
+
+If a cached module fails to load, it is deleted along with its version stamp and
+fetched once more. A module that loads fine is still not re-downloaded — a fetch
+on every check-in would be pointless traffic.
+
+### Added — The agent's module cache is tested
+
+`tools/test-agent.py` now drives `remote_module` directly: a healthy fetch, a
+transfer that dies mid-copy, a syntactically broken cached file, and the two
+cases that must *not* re-download. The real `download` is tested separately
+against a stream that fails halfway, checking that the previous file survives and
+no `.part` file is left.
+
+Confirmed against the previous agent, where four of these fail.
+
 ## [1.10.7]
 
 ### Fixed — Rolling back could destroy the bot database

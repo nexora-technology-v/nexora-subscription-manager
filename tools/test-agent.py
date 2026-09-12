@@ -336,7 +336,7 @@ check("ولی آدرس بیرونی را هم قبول نمی‌کند",
       'own = f"{PANEL_URL}/api/agent/agent.py"' in AGSRC,
       "نگهبان سر جایش می‌ماند — فایل اجرایی فقط از پنل خودش")
 check("نسخه‌ی ایجنت بالا رفت",
-      'VERSION = "1.5.1"' in AGSRC)
+      'VERSION = "1.5.2"' in AGSRC)
 
 
 def _update_url(given, panel):
@@ -361,6 +361,148 @@ check("آدرس درست دست‌نخورده می‌ماند",
 check("سایت ناشناس هیچ‌وقت دانلود نمی‌شود",
       _update_url("https://evil.example/agent.py", PANEL).startswith(PANEL),
       "به آدرس خودِ پنل برمی‌گردد، نه به آن‌که فرستاده شده")
+
+
+
+# ═══════════════════════════════════════════════════════════
+head("ماژول نیمه‌دانلودشده نباید تا ابد بماند")
+
+# remote_module ماژول پنل را کنار خودش کش می‌کند و فقط وقتی نسخه‌ی
+# پنل عوض شود دوباره می‌گیرد. ولی download مستقیم روی فایل مقصد
+# می‌نوشت: اگر اتصال وسط کپی قطع می‌شد، یک فایل *ناقص* جا می‌ماند.
+#
+# دفعه‌ی بعد mod_path.exists() درست است و نسخه هم عوض نشده، پس
+# دوباره گرفته نمی‌شود — و exec_module روی پایتونِ نصفه SyntaxError
+# می‌دهد. مانیتورینگ آن نود تا نسخه‌ی بعدیِ پنل خراب می‌ماند.
+
+import tempfile as _tf
+from pathlib import Path as _P
+
+AGBASE = _P(_tf.mkdtemp())
+AGSRC2 = io.open(os.path.join(ROOT, "agent/nexora-agent.py"),
+                 encoding="utf-8").read()
+ag.BASE = AGBASE
+ag.PANEL_URL = "http://panel.invalid"
+
+DL = {"calls": 0, "mode": "good"}
+GOOD = "def snapshot():\n    return {'ok': True}\n"
+
+
+def fake_download(url, dest):
+    DL["calls"] += 1
+    if DL["mode"] == "partial":
+        # اتصال وسط کپی قطع می‌شود — فایل ناقص جا می‌ماند
+        with open(dest, "wb") as f:
+            f.write(b"def snapshot():\n    return {'ok'")
+        raise ConnectionError("اتصال قطع شد")
+    with open(dest, "wb") as f:
+        f.write(GOOD.encode())
+
+
+_REAL_DOWNLOAD = ag.download
+ag.download = fake_download
+
+# ۱) دانلود سالم
+DL["mode"] = "good"
+ok1, out1 = ag.remote_module("monitor", "snapshot", {"panelVersion": "1.0.0"})
+check("دانلود سالم کار می‌کند", ok1, str(out1)[:60])
+
+# ۲) حالا کش را پاک می‌کنیم و یک دانلود ناقص می‌سازیم
+for f in AGBASE.iterdir():
+    if f.is_file():
+        f.unlink()
+DL["mode"] = "partial"
+DL["calls"] = 0
+ok2, out2 = ag.remote_module("monitor", "snapshot", {"panelVersion": "1.0.0"})
+check("دانلود ناقص خطا می‌دهد", not ok2, str(out2)[:60])
+
+check("فایل ناقص فقط تا وقتی تلاش بعدی نیامده می‌ماند",
+      DL["calls"] == 1, f"{DL['calls']} دانلود")
+
+# ۳) تلاش بعدی — با اتصال سالم — باید خودش را ترمیم کند
+DL["mode"] = "good"
+DL["calls"] = 0
+ok3, out3 = ag.remote_module("monitor", "snapshot", {"panelVersion": "1.0.0"})
+check("تلاش بعدی خودش را ترمیم می‌کند", ok3, str(out3)[:60])
+check("و واقعاً دوباره دانلود شد", DL["calls"] >= 1,
+      f"{DL['calls']} دانلود")
+
+head("خودِ download اتمی است")
+
+# بالا download استاب شده بود، پس اتمی‌بودنش آن‌جا سنجیده نمی‌شود.
+# این‌جا نسخه‌ی واقعی را با یک جریانِ نصفه‌کاره امتحان می‌کنیم.
+
+class _HalfStream:
+    """جریانی که وسط خواندن قطع می‌شود — مثل اتصال پاره‌شده."""
+
+    def __init__(self):
+        self._sent = False
+
+    def read(self, n=-1):
+        if not self._sent:
+            self._sent = True
+            return b"def snapshot():\n    return {'ok'"
+        raise ConnectionError("اتصال وسط دانلود قطع شد")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+import urllib.request as _ur  # noqa: E402
+
+_real_urlopen = _ur.urlopen
+_ur.urlopen = lambda *a, **k: _HalfStream()
+
+DEST = AGBASE / "atomic.py"
+DEST.write_text("def snapshot():\n    return {'old': True}\n", encoding="utf-8")
+before_txt = DEST.read_text(encoding="utf-8")
+
+failed_dl = None
+try:
+    _REAL_DOWNLOAD("http://panel.invalid/x.py", DEST)
+except Exception as e:
+    failed_dl = type(e).__name__
+
+_ur.urlopen = _real_urlopen
+
+check("دانلود نصفه خطا می‌دهد", failed_dl is not None, str(failed_dl))
+check("فایل قبلی دست‌نخورده می‌ماند",
+      DEST.read_text(encoding="utf-8") == before_txt,
+      "نسخه‌ی سالم نباید قربانی یک دانلود ناموفق شود")
+check("فایل موقت هم باقی نمی‌ماند",
+      not (AGBASE / "atomic.py.part").exists(),
+      "وگرنه با هر تلاش ناموفق یک فایل زباله می‌ماند")
+
+check("کد از جابه‌جایی اتمی استفاده می‌کند",
+      "os.replace(tmp, dest)" in AGSRC2,
+      "نوشتن مستقیم روی مقصد یعنی فایل ناقص")
+
+
+head("ماژول خرابِ کش‌شده هم گیر نمی‌کند")
+
+# فایلی که نحوش خراب است — مثلاً از یک دانلود ناقصِ قدیمی‌تر
+(AGBASE / "monitor.py").write_text("def snapshot(:\n", encoding="utf-8")
+(AGBASE / ".monitor.version").write_text("1.0.0", encoding="utf-8")
+DL["mode"] = "good"
+DL["calls"] = 0
+ok4, out4 = ag.remote_module("monitor", "snapshot", {"panelVersion": "1.0.0"})
+check("فایل خراب دوباره گرفته می‌شود", ok4, str(out4)[:60])
+check("یعنی کشِ خراب دور ریخته شد", DL["calls"] >= 1,
+      "بدون این، همان خطا تا نسخه‌ی بعدی تکرار می‌شود")
+
+head("ولی دانلودِ الکی هم نمی‌کند")
+
+DL["calls"] = 0
+ag.remote_module("monitor", "snapshot", {"panelVersion": "1.0.0"})
+check("ماژول سالمِ کش‌شده دوباره دانلود نمی‌شود", DL["calls"] == 0,
+      f"{DL['calls']} دانلود — هر چک‌این یک دانلود یعنی بار بی‌دلیل")
+
+DL["calls"] = 0
+ag.remote_module("monitor", "snapshot", {"panelVersion": "2.0.0"})
+check("ولی با عوض‌شدن نسخه‌ی پنل دوباره می‌گیرد", DL["calls"] >= 1)
 
 
 

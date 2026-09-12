@@ -32,7 +32,7 @@ from pathlib import Path
 #: نسخه‌ی ایجنت. پنل از روی همین می‌فهمد که آیا این ایجنت دستورهای
 #: تازه را می‌شناسد یا نه — پس با هر قابلیت جدید باید بالا برود،
 #: وگرنه پنل فکر می‌کند ایجنت قدیمی است و بی‌دلیل به‌روزرسانی می‌خواهد.
-VERSION = "1.5.1"
+VERSION = "1.5.2"
 
 PANEL_URL = os.getenv("NEXORA_PANEL", "").rstrip("/")
 TOKEN = os.getenv("NEXORA_TOKEN", "")
@@ -194,9 +194,26 @@ def arch_tag():
 
 
 def download(url, dest):
+    """
+    دانلود اتمی: اول به فایل موقت، بعد جابه‌جایی.
+
+    قبلاً مستقیم روی مقصد نوشته می‌شد، پس قطع‌شدن اتصال وسط کپی یک
+    فایل *ناقص* جا می‌گذاشت. برای ماژول‌های پنل این یعنی پایتونِ
+    نصفه که تا نسخه‌ی بعدیِ پنل همان‌جا می‌ماند.
+    """
+    dest = Path(dest)
+    tmp = dest.with_name(dest.name + ".part")
     req = urllib.request.Request(url, headers={"User-Agent": "nexora-agent"})
-    with urllib.request.urlopen(req, timeout=180) as r, open(dest, "wb") as f:
-        shutil.copyfileobj(r, f)
+    try:
+        with urllib.request.urlopen(req, timeout=180) as r, open(tmp, "wb") as f:
+            shutil.copyfileobj(r, f)
+        os.replace(tmp, dest)
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
 
 
 def latest_release(repo):
@@ -630,9 +647,32 @@ def remote_module(name, func, payload):
         # تا ماژول بتواند وابستگی‌اش را import کند
         if str(BASE) not in sys.path:
             sys.path.insert(0, str(BASE))
-        spec = importlib.util.spec_from_file_location(f"nx_{name}", mod_path)
-        m = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(m)
+        def _load():
+            spec = importlib.util.spec_from_file_location(f"nx_{name}", mod_path)
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            return m
+
+        try:
+            m = _load()
+        except Exception:
+            # ماژولِ کش‌شده بارگذاری نمی‌شود — نحوش خراب است یا از
+            # دانلودی نیمه‌کاره مانده. دور می‌ریزیمش و یک‌بار دوباره
+            # می‌گیریم؛ وگرنه همین خطا تا نسخه‌ی بعدیِ پنل هر بار
+            # تکرار می‌شود و مانیتورینگ آن نود خاموش می‌ماند.
+            for p in (mod_path, stamp):
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+            download(f"{PANEL_URL}/api/agent/{name}.py", mod_path)
+            if want:
+                try:
+                    stamp.write_text(want, encoding="utf-8")
+                except Exception:
+                    pass
+            m = _load()
+
         fn = getattr(m, func, None)
         if not fn:
             return False, f"تابع {func} در {name} نیست"
