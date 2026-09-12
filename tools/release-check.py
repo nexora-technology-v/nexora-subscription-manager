@@ -186,6 +186,7 @@ def frontend_checks(fast):
                      ("test-panel-runtime.js", "اجرای پنل"),
                      ("test-subpage.js", "صفحه‌ی اشتراک"),
                      ("tools/test-components.cjs", "رندر کامپوننت‌ها"),
+                     ("tools/test-hooks.cjs", "ترتیب هوک‌ها"),
                      ("tools/test-jalali.cjs", "تقویم شمسی")]:
         try:
             p = subprocess.run(["node", f], cwd=ROOT, env=env, timeout=400,

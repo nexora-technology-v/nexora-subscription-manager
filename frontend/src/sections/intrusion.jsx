@@ -82,15 +82,11 @@ export function FirewallIntrusion({ password }) {
     }
   }, [msg]);
 
-  if (!d) {
-    return (
-      <div className="flex justify-center py-16">
-        <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
-      </div>
-    );
-  }
-
-  const ssh = d.ssh || {};
+  // این محاسبه‌ها *قبل* از هر return شرطی می‌آیند، چون usePager هوک
+  // است. اگر بعد از «if (!d) return» می‌نشست، رندر اولِ خالی هوک را
+  // اجرا نمی‌کرد و رندر بعدی می‌کرد — و React با خطای #310 کل صفحه
+  // را سیاه می‌کرد. قاعده‌ی هوک‌ها: همیشه همه، همیشه به یک ترتیب.
+  const ssh = (d && d.ssh) || {};
   const list = ssh.attempts || [];
   const attackers = list.filter((a) => a.severity !== "noise" && !a.known);
   const customers = list.filter((a) => a.known);
@@ -105,6 +101,14 @@ export function FirewallIntrusion({ password }) {
   // ردیف یک‌جا چاپ می‌شد — یعنی صفحه‌ای که باید تا ته اسکرول شود، و
   // بقیه‌ی ردیف‌ها اصلاً دیده نمی‌شدند.
   const { shown: pageRows, pager } = usePager(shown, 15);
+
+  if (!d) {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
+      </div>
+    );
+  }
 
   const post = async (body, okMsg) => {
     setBusy(true);

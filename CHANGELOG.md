@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.10.6]
+
+### Fixed — The intrusion page went black (React #310)
+
+My own regression, introduced with the pagination work in 1.9.7.
+
+`usePager` was called *after* the component's `if (!d) return <spinner/>` guard.
+On the first render, before the data arrives, that guard returns early and the
+hook never runs. On the next render the data exists, the guard is skipped, and
+the hook runs — so React sees more hooks than the render before and tears the
+whole tree down. Not a broken section: a black page.
+
+All the derived values and the hook moved above the guard, which is where hooks
+have to be.
+
+### Added — `tools/test-hooks.cjs`
+
+The component render test did not catch this, and could not: it mounts each
+component once with data, so the empty-to-loaded transition that triggers the
+error never happens.
+
+This one reads the source instead. For every component it finds the early-return
+guards and flags any hook called after one. No browser needed.
+
+It was written wrong the first time — the pattern stopped at `=`, so it missed
+`const { shown, pager } = usePager(...)`, which is exactly the line that caused
+the bug. Verified now by running it against the broken file and watching it fail
+with the file, line, component and code, then against the fix and watching it
+pass.
+
 ## [1.10.5]
 
 ### Fixed — When the panel session expired, renewals silently did nothing
