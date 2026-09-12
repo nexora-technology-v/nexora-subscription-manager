@@ -1,0 +1,270 @@
+/**
+ * ربات: آمار، قیف و گزارش فروش.
+ *
+ * از App.jsx جدا شد؛ آن فایل ۱۱۴۰۰ خط بود و پیداکردن یک کامپوننت
+ * در آن عملاً ناممکن.
+ */
+import React, { useState, useEffect } from "react";
+import {
+  Download, Loader2, RefreshCw, TrendingUp, Users,
+} from "lucide-react";
+import { API_URL } from "../../lib/constants";
+import { esc0, faNum } from "../../lib/format";
+import { CountUp, EmptyState, SectionHead, Segmented, StatTile } from "../../ui/index";
+
+export function BotStatsSection({ password }) {
+  const [d, setD] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/bot/funnel`, {
+        headers: { "X-Admin-Password": password } }).then((x) => x.json());
+      setD(r);
+    } catch { /* بی‌صدا */ }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, [password]);
+
+  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+
+  if (!d?.ready) {
+    return (
+      <div className="fx-anim">
+        <SectionHead title="آمار و قیف تبدیل" desc="وقتی ربات راه بیفتد، آمار اینجا نمایش داده می‌شود." />
+        <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
+          <TrendingUp size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
+          <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز داده‌ای نیست</div>
+        </div>
+      </div>
+    );
+  }
+
+  const seg = d.segments || {};
+  const cards = [
+    ["استارت‌زده", d.started, "کل کسانی که ربات را باز کردند", "var(--accent-2)"],
+    ["خرید کرده", seg.paid, d.started ? `${Math.round(seg.paid * 100 / d.started)}٪ نرخ تبدیل` : "", "var(--ok)"],
+    ["فقط تست گرفته", seg.trialOnly, "هدف خوبی برای پیگیری", "var(--warn)"],
+    ["بدون هیچ اقدام", seg.idle, "نه خرید، نه تست", "var(--muted)"],
+  ];
+
+  return (
+    <div className="fx-anim">
+      <SectionHead title="آمار و قیف تبدیل"
+        desc="از باز کردن ربات تا خرید — کجا مشتری را از دست می‌دهید."
+        action={
+          <button onClick={load} className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+            <RefreshCw size={13} /> تازه‌سازی
+          </button>
+        } />
+
+      <div className="fx-g4 grid grid-cols-4 gap-4 mb-5">
+        {cards.map(([l, v, sub, c], i) => (
+          <div key={i} className="fx-card p-5">
+            <div className="fx-stat-num" style={{ color: c }}><CountUp value={v ?? 0} /></div>
+            <div className="text-[13px] mt-2" style={{ color: "var(--dim)" }}>{l}</div>
+            {sub && <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>{sub}</div>}
+          </div>
+        ))}
+      </div>
+
+      <div className="fx-card p-5">
+        <div className="text-[14px] font-semibold text-white mb-4">قیف تبدیل</div>
+        {(d.steps || []).map((s, i) => {
+          const colors = ["var(--accent-2)", "var(--purple)", "var(--warn)", "var(--ok)"];
+          const c = colors[i] || "var(--accent-2)";
+          return (
+            <div key={i} className="mb-3">
+              <div className="flex justify-between mb-1.5">
+                <span className="text-[13px]" style={{ color: "var(--dim)" }}>{s.label}</span>
+                <span className="text-[13px] font-bold" style={{ color: c, fontFamily: "var(--mono)" }}>
+                  {s.n} <span style={{ color: "var(--muted)", fontSize: 10 }}>({s.pct}٪)</span>
+                </span>
+              </div>
+              <div className="h-[7px] rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.05)" }}>
+                <div style={{ width: `${s.pct}%`, height: "100%", borderRadius: 99, background: c, opacity: .85 }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export const REPORT_RANGES = [[7, "۷ روز"], [30, "۳۰ روز"], [90, "۹۰ روز"], [365, "یک سال"]];
+
+/**
+ * گزارش فروش ربات.
+ *
+ * حسابداری می‌گوید از هر واسطه چقدر طلب دارید؛ این می‌گوید فروش
+ * مستقیم ربات در یک دوره چه شکلی بوده — چند نفر آمدند، چند درصدشان
+ * خریدند، و چه کسانی بیشترین سهم را داشتند.
+ */
+export function BotReportSection({ password }) {
+  const [days, setDays] = useState(30);
+  const [d, setD] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    fetch(`${API_URL}/api/admin/bot/users/report?days=${days}`, {
+      headers: { "X-Admin-Password": password },
+    }).then((r) => r.json())
+      .then((j) => { if (alive) { setD(j); setLoading(false); } })
+      .catch(() => { if (alive) { setD({ ready: false }); setLoading(false); } });
+    return () => { alive = false; };
+  }, [password, days]);
+
+  const download = () => {
+    const a = document.createElement("a");
+    a.href = `${API_URL}/api/admin/bot/users/export`;
+    a.click();
+  };
+
+  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+
+  if (!d?.ready) {
+    return (
+      <div className="fx-anim">
+        <SectionHead title="گزارش فروش" desc="خلاصه‌ی عملکرد ربات در یک بازه." />
+        <div className="fx-card p-5">
+          <p className="text-[13px]" style={{ color: "var(--dim)" }}>
+            {d?.error || "دیتابیس ربات در دسترس نیست."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const o = d.orders || {};
+  const u = d.users || {};
+  const s = d.subs || {};
+  const maxDay = Math.max(...(d.daily || []).map((x) => x.sum), 1);
+
+  return (
+    <div className="fx-anim">
+      <SectionHead title="گزارش فروش"
+        desc="عملکرد ربات در بازه‌ی انتخابی — چند نفر آمدند، چند نفر خریدند، چقدر فروش رفت."
+        action={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Segmented value={days} onChange={setDays}
+              items={REPORT_RANGES.map(([v, l]) => [v, l])} />
+            <button onClick={download}
+              className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+              <Download size={13} /> خروجی اکسل
+            </button>
+          </div>
+        } />
+
+      <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
+        <StatTile label="فروش دوره" value={faNum(o.revenue || 0)} unit="تومان"
+          color="var(--ok)"
+          hint={o.approved ? `${faNum(o.approved)} سفارش · میانگین ${faNum(o.avg)}` : "سفارشی نبوده"} />
+        <StatTile label="کاربر جدید" value={faNum(u.newUsers || 0)} unit="نفر"
+          hint={`از ${faNum(u.users || 0)} کاربر کل`} />
+        <StatTile label="خریدار" value={faNum(d.buyerCount || 0)} unit="نفر"
+          color="var(--accent-2)"
+          hint={d.conversion !== null && d.conversion !== undefined
+            ? `نرخ تبدیل ${faNum(d.conversion)}٪ از کاربران جدید`
+            : "کاربر جدیدی نبوده"} />
+        <StatTile label="اشتراک فعال" value={faNum(s.active || 0)}
+          color={s.expiringSoon ? "var(--warn)" : "var(--text)"}
+          hint={s.expiringSoon
+            ? `${faNum(s.expiringSoon)} تا کمتر از ۳ روز اعتبار دارد`
+            : `از ${faNum(s.total || 0)} اشتراک کل`} />
+      </div>
+
+      {(o.pending > 0 || o.rejected > 0) && (
+        <div className="fx-card p-5 mb-4">
+          <div className="flex gap-4 flex-wrap text-[13px]">
+            {o.pending > 0 && (
+              <span style={{ color: "var(--warn)" }}>
+                ⏳ <b>{faNum(o.pending)}</b> رسید منتظر بررسی شماست
+              </span>
+            )}
+            {o.rejected > 0 && (
+              <span style={{ color: "var(--muted)" }}>
+                {faNum(o.rejected)} سفارش در این دوره رد شده
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(d.daily || []).length > 1 && (
+        <div className="fx-card p-5 mb-4">
+          <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
+            <TrendingUp size={15} style={{ color: "var(--accent-2)" }} /> فروش روزانه
+          </div>
+          <div className="flex items-end gap-[3px]" style={{ height: 90 }}>
+            {d.daily.map((x) => (
+              <div key={x.day} className="flex-1 rounded-t-[3px]"
+                title={`${x.day} — ${faNum(x.sum)} تومان از ${faNum(x.n)} سفارش`}
+                style={{
+                  height: `${Math.max(4, (x.sum / maxDay) * 100)}%`,
+                  background: "var(--accent-2)", opacity: 0.75,
+                }} />
+            ))}
+          </div>
+          <div className="flex justify-between text-[12px] mt-2" style={{ color: "var(--muted)" }}>
+            <span>{d.daily[0].day}</span>
+            <span>بیشترین روز: {faNum(maxDay)} تومان</span>
+            <span>{d.daily[d.daily.length - 1].day}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="fx-card p-5">
+        <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+          <div className="text-[14px] font-semibold text-white flex items-center gap-2">
+            <Users size={15} style={{ color: "var(--accent-2)" }} /> بهترین خریداران
+          </div>
+          <span className="text-[13px]" style={{ color: "var(--muted)" }}>
+            {faNum(u.withPhone || 0)} کاربر شماره تماس داده‌اند
+          </span>
+        </div>
+        <p className="text-[13px] mb-3" style={{ color: "var(--muted)" }}>
+          مرتب بر اساس مجموع خرید در همین دوره.
+        </p>
+
+        {!(d.buyers || []).length ? (
+          <EmptyState icon={Users} text="در این بازه خریدی ثبت نشده" />
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="fx-table">
+              <thead>
+                <tr><th>کاربر</th><th>شماره تماس</th><th>سفارش</th>
+                  <th>مجموع خرید</th><th>آخرین خرید</th></tr>
+              </thead>
+              <tbody>
+                {d.buyers.map((b) => (
+                  <tr key={b.tg_id}>
+                    <td>
+                      {esc0(b.first_name) || "—"}
+                      {b.username && (
+                        <span dir="ltr" className="mr-2" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                          @{b.username}
+                        </span>
+                      )}
+                    </td>
+                    <td dir="ltr" style={{ fontFamily: "var(--mono)", color: b.phone ? "var(--dim)" : "var(--muted)" }}>
+                      {b.phone || "—"}
+                    </td>
+                    <td style={{ fontFamily: "var(--mono)" }}>{faNum(b.orders)}</td>
+                    <td style={{ fontFamily: "var(--mono)", color: "var(--ok)" }}>
+                      {faNum(b.spent)}
+                    </td>
+                    <td style={{ color: "var(--muted)" }}>{String(b.lastBuy || "").slice(0, 10)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

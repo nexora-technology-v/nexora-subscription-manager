@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+### Changed — App.jsx was 11,418 lines in one file
+
+Every panel change meant searching a file with 110 components in it. That is the
+reason the firewall suggestion UI stayed missing for two releases: the backend
+endpoint existed, nothing called it, and nobody could see the gap.
+
+It is now 24 modules in four layers, each importing only downward:
+
+    lib/        constants, formatting, shared hooks
+    ui/         base components, no domain logic
+    sections/   one file per domain — bot/ is split again by page
+    shell/      the workspace switch
+    App.jsx     334 lines: state, routing, layout
+
+The split was done mechanically rather than by hand — a script mapped every
+top-level declaration, worked out which identifiers each module actually uses,
+and generated the imports from that map. Two bugs in the script were caught by
+the tests before anything was committed: the app component being swallowed into
+the wrong module, and the first icon in the lucide import list going missing,
+which the build did not catch but `test-panel-runtime.js` did.
+
+Behaviour is unchanged; the bundle is the same size to within a kilobyte, and
+all 487 tests pass.
+
 ### Added — CI, so the tests actually run
 
 The project had 475 tests that only ran when someone typed the command by hand.

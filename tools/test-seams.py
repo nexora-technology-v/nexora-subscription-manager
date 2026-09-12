@@ -57,9 +57,29 @@ def bullets(items, limit=12):
 
 
 APP_PY = rd("backend", "app.py")
-APP_JSX = rd("frontend", "src", "App.jsx")
 HANDLERS = rd("bot", "handlers.py")
 DB_PY = rd("bot", "db.py")
+
+
+def _frontend_src():
+    """
+    همه‌ی سورس فرانت‌اند، به هم چسبیده.
+
+    تا وقتی پنل یک فایل ۱۱۴۰۰ خطی بود، خواندن App.jsx کافی بود. حالا
+    که به ماژول شکسته شده، باید کل درخت را بخوانیم وگرنه این تست فکر
+    می‌کند نصف پنل ناپدید شده.
+    """
+    base = os.path.join(ROOT, "frontend", "src")
+    parts = []
+    for dirpath, _dirs, files in os.walk(base):
+        for f in sorted(files):
+            if f.endswith((".jsx", ".js")):
+                parts.append(io.open(os.path.join(dirpath, f),
+                                     encoding="utf-8").read())
+    return "\n".join(parts)
+
+
+APP_JSX = _frontend_src()
 
 print(f"\n{D}{'═' * 54}{X}")
 print("  تست درزها — دو سمت هر اتصال باید با هم بخوانند")
