@@ -9,7 +9,7 @@ import {
   AlertTriangle, CheckCircle2, Circle, Layers, Loader2, Network, RefreshCw, Save,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
-import { faNum } from "../../lib/format";
+import { errText, faNum } from "../../lib/format";
 import { EmptyState, InfoBox, Msg, SectionHead, StatusChip } from "../../ui/index";
 
 // سه حالت انتخاب اینباند. متن‌ها عمداً توضیحی‌اند تا مدیر
@@ -115,7 +115,7 @@ export function BotInboundsSection({ password }) {
         setSel(j.ids ?? sel);
         setMsg({ t: "ok", m: "تنظیم اینباندها ذخیره شد" });
       } else {
-        setMsg({ t: "err", m: j.detail || "ذخیره ناموفق بود" });
+        setMsg({ t: "err", m: errText(j.detail, "ذخیره ناموفق بود") });
       }
     } catch {
       setMsg({ t: "err", m: "اتصال برقرار نشد" });

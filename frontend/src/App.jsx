@@ -32,7 +32,7 @@ import { AppsSection, BannersSection, FaqSection, LinksSection, OverviewSection,
 import { LivePreview, SystemSection } from "./sections/system";
 import { SystemHealth, TunnelEvents, TunnelList, TunnelNodes, TunnelOverview } from "./sections/tunnel";
 import { WorkspaceSwitch } from "./shell/workspace";
-import { ConfirmModal, LoginScreen, StatusChip, Toast } from "./ui/index";
+import { ConfirmModal, ErrorBoundary, LoginScreen, StatusChip, Toast } from "./ui/index";
 
 
 const ALL_NAV = Object.values(WORKSPACES).flatMap((w) => w.groups.flatMap((g) => g.items));
@@ -275,6 +275,7 @@ export default function App() {
         </header>
 
         <main className="fx-main flex-1 p-7 overflow-y-auto w-full mx-auto">
+          <ErrorBoundary key={active}>
           {active === "overview" && <OverviewSection config={config} stats={stats} navigate={navigate} dirty={dirty} />}
           {active === "preview" && <LivePreview dirty={dirty} onSave={save} saving={saving} />}
           {active === "apps" && <AppsSection config={config} setConfig={setConfig} requestDelete={setConfirmTarget} />}
@@ -319,6 +320,7 @@ export default function App() {
           {active === "settings" && <SettingsSection config={config} setConfig={setConfig} password={password} wsMode={wsMode} setWsMode={setWsMode} onPasswordChanged={handlePasswordChanged} onRestored={() => fetchAll(password)} />}
           {active === "themes" && <ThemesSection config={config} setConfig={setConfig} password={password} />}
           {active === "system" && <SystemSection password={password} />}
+          </ErrorBoundary>
         </main>
       </div>
 

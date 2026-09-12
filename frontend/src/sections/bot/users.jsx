@@ -10,7 +10,7 @@ import {
   AlertTriangle, ChevronLeft, Loader2, Package, RefreshCw, Search, Send, Users, X,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
-import { daysLeft, faNum, fmtBytes, fmtDate } from "../../lib/format";
+import { daysLeft, errText, faNum, fmtBytes, fmtDate } from "../../lib/format";
 import { EmptyState, InfoBox, Modal, Msg, SectionHead, StatusPill } from "../../ui/index";
 
 // فیلترهای بخش کاربران — کلیدها باید عیناً با _USER_FILTERS در
@@ -255,7 +255,7 @@ export function MessageUserModal({ user, password, onClose }) {
         setText("");
         setTimeout(onClose, 1200);
       } else {
-        setMsg({ t: "err", m: j.detail || "ارسال ناموفق بود" });
+        setMsg({ t: "err", m: errText(j.detail, "ارسال ناموفق بود") });
       }
     } catch {
       setMsg({ t: "err", m: "اتصال برقرار نشد" });
@@ -305,7 +305,7 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
         });
         const body = await res.json();
         if (res.ok) setD(body);
-        else setErr(body.detail || "دریافت اطلاعات ناموفق بود");
+        else setErr(errText(body.detail, "دریافت اطلاعات ناموفق بود"));
       } catch { setErr("اتصال به سرور برقرار نشد"); }
       finally { setLoading(false); }
     })();

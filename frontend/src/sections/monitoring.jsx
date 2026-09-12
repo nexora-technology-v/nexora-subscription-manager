@@ -9,7 +9,7 @@ import {
   Activity, AlertTriangle, CheckCircle2, ChevronDown, HelpCircle, Loader2, Network, Package, RefreshCw, Save, Search, Server, ShieldCheck, TrendingUp, Users, XCircle, Zap,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { esc0, faNum, fmtSize, fmtUptime, toFaDigits } from "../lib/format";
+import { errText, esc0, faNum, fmtSize, fmtUptime, toFaDigits } from "../lib/format";
 import { usePolling } from "../lib/hooks";
 import { ConfirmModal, CountChip, EmptyState, Field, InfoBox, Msg, SectionHead, Segmented, Toggle } from "../ui/index";
 
@@ -61,9 +61,9 @@ export function MetricCard({ m }) {
 
       {m.pct !== null && m.pct !== undefined && <Gauge pct={m.pct} color={s.c} />}
 
-      {m.detail && (
+      {errText(m.detail) && (
         <div className="text-[12px] mt-2 leading-relaxed" style={{ color: "var(--muted)" }}>
-          {m.detail}
+          {errText(m.detail)}
         </div>
       )}
 
@@ -680,7 +680,7 @@ export function MaintenanceCard({ password }) {
       });
       const j = await res.json().catch(() => ({}));
       if (res.ok) { setM(j); setMsg({ t: "ok", m: "زمان‌بندی ذخیره شد" }); await load(); }
-      else setMsg({ t: "err", m: j.detail || "ذخیره ناموفق" });
+      else setMsg({ t: "err", m: errText(j.detail, "ذخیره ناموفق") });
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setSaving(false); }
   };
@@ -694,7 +694,7 @@ export function MaintenanceCard({ password }) {
         body: JSON.stringify({ action: "xray" }),
       });
       const j = await res.json().catch(() => ({}));
-      setMsg({ t: j.ok ? "ok" : "err", m: j.note || j.detail || "انجام شد" });
+      setMsg({ t: j.ok ? "ok" : "err", m: j.note || errText(j.detail, "انجام شد") });
       await load();
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setSaving(false); }
@@ -854,7 +854,7 @@ export function MonitorSection({ password }) {
       const j = await res.json().catch(() => ({}));
       setBlockMsg(res.ok
         ? { t: "ok", m: `${ip} بسته شد` }
-        : { t: "err", m: j.detail || "بستن ناموفق بود" });
+        : { t: "err", m: errText(j.detail, "بستن ناموفق بود") });
     } catch {
       setBlockMsg({ t: "err", m: "اتصال برقرار نشد" });
     }
@@ -864,7 +864,7 @@ export function MonitorSection({ password }) {
     const r = await fetch(`${API_URL}/api/admin/monitor?sections=${sections}`,
       { headers: { "X-Admin-Password": password } });
     const j = await r.json();
-    if (!r.ok) throw new Error(j.detail || "خطای سرور");
+    if (!r.ok) throw new Error(errText(j.detail, "خطای سرور"));
     return j;
   };
 

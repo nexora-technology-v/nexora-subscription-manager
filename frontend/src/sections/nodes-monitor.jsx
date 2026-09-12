@@ -15,7 +15,7 @@ import {
   Activity, Loader2, RefreshCw, Server, ShieldCheck,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { faNum } from "../lib/format";
+import { errText, faNum } from "../lib/format";
 import { EmptyState, InfoBox, Msg, SectionHead } from "../ui/index";
 import { MetricCard, PortsCard, ConnectionsCard } from "./monitoring";
 
@@ -80,7 +80,7 @@ export function NodesMonitor({ password }) {
       );
       const j = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setMsg({ t: "err", m: j.detail || "درخواست ناموفق" });
+        setMsg({ t: "err", m: errText(j.detail, "درخواست ناموفق") });
         setWaiting(false);
         return;
       }
@@ -110,6 +110,22 @@ export function NodesMonitor({ password }) {
       setMsg({ t: "err", m: "اتصال برقرار نشد" });
       setWaiting(false);
     } finally { setBusy(false); }
+  };
+
+  /** ایجنت قدیمی را از همین‌جا به‌روز می‌کند — بدون SSH زدن. */
+  const updateAgent = async () => {
+    if (!sel) return;
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/api/admin/tunnel/node/${sel}/update-agent`,
+        { method: "POST", headers: { "X-Admin-Password": password } },
+      );
+      const j = await res.json().catch(() => ({}));
+      setMsg(res.ok ? { t: "ok", m: j.note || "در صف قرار گرفت" }
+        : { t: "err", m: errText(j.detail, "ناموفق") });
+    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+    finally { setBusy(false); }
   };
 
   useEffect(() => {
@@ -199,6 +215,29 @@ export function NodesMonitor({ password }) {
             </div>
           )}
         </div>
+      )}
+
+      {snap && snap.staleAgent && (
+        <InfoBox tone="warn">
+          <b>ایجنت این سرور قدیمی است</b> (نسخه‌ی {snap.staleAgent}). دستور
+          مانیتورینگ از نسخه‌ی ۱.۴.۰ اضافه شده، پس تا به‌روز نشود گزارشی
+          نمی‌آید — حتی اگر سرور بدون مشکل وصل باشد.
+          <div className="mt-2">
+            <button onClick={updateAgent} disabled={busy}
+              className="fx-btn px-3 py-2 text-[13px] flex items-center gap-1.5">
+              <RefreshCw size={13} className={busy ? "animate-spin" : ""} />
+              به‌روزرسانی ایجنت
+            </button>
+          </div>
+        </InfoBox>
+      )}
+
+      {snap && snap.lastError && !snap.staleAgent && (
+        <InfoBox tone="warn">
+          <b>آخرین تلاش ناموفق بود:</b>
+          <div dir="ltr" className="mt-1 text-[12px]"
+            style={{ fontFamily: "var(--mono)" }}>{snap.lastError}</div>
+        </InfoBox>
       )}
 
       {!snap || !snap.ready ? (

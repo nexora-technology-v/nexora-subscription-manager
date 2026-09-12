@@ -9,7 +9,7 @@ import {
   AlertTriangle, CheckCircle2, Coins, DollarSign, Eye, EyeOff, Loader2, Plus as PlusIcon, Sliders, Trash2,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
-import { faNum } from "../../lib/format";
+import { errText, faNum } from "../../lib/format";
 import { Field, InfoBox, Modal, Msg, SectionHead } from "../../ui/index";
 
 export function BotAffiliates({ password }) {
@@ -232,7 +232,7 @@ export function AffiliateForm({ password, affiliate, onClose, onDone }) {
       });
       const d = await res.json();
       if (res.ok) onDone(editing ? "ذخیره شد" : `همکار اضافه شد — کد ${d.code}`);
-      else setErr(d.detail || "ناموفق");
+      else setErr(errText(d.detail, "ناموفق"));
     } catch { setErr("اتصال برقرار نشد"); }
     finally { setBusy(false); }
   };

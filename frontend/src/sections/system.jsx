@@ -8,6 +8,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   AlertTriangle, Check, CheckCircle2, Download, ExternalLink, Github, HardDrive, History, Loader2, Minus, Monitor, Plus, RefreshCw, Save, Server, Smartphone, Terminal, Users,
 } from "lucide-react";
+import { errText } from "../lib/format";
 import { API_URL } from "../lib/constants";
 import { ConfirmModal, Field, InfoBox, Msg, SectionHead } from "../ui/index";
 
@@ -42,7 +43,7 @@ export function RollbackCard({ password }) {
       if (res.ok) {
         setMsg({ t: "ok", m: "بازگشت شروع شد — صفحه تا لحظاتی دیگر بارگذاری می‌شود" });
         setTimeout(() => window.location.reload(), 45000);
-      } else setMsg({ t: "err", m: d.detail || "بازگشت ناموفق" });
+      } else setMsg({ t: "err", m: errText(d.detail, "بازگشت ناموفق") });
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
   };
 
@@ -144,7 +145,7 @@ export function GithubCard({ password }) {
           ? `متصل شد — آخرین نسخه: ${d.latestTag}`
           : "ذخیره شد" });
       } else {
-        setMsg({ t: "err", m: d.detail || "ذخیره ناموفق بود" });
+        setMsg({ t: "err", m: errText(d.detail, "ذخیره ناموفق بود") });
       }
     } catch { setMsg({ t: "err", m: "اتصال به سرور برقرار نشد" }); }
     finally { setBusy(false); }

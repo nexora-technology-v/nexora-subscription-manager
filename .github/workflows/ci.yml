@@ -66,6 +66,8 @@ jobs:
           python tools/test-expenses.py
           python tools/test-nodes.py
           python tools/test-slowdoctor.py
+          python tools/test-netid.py
+          python tools/test-ui-safety.py
 
       - name: تست‌های اتصال
         # اینها باگ‌هایی را می‌گیرند که تست معمولی نمی‌بیند:

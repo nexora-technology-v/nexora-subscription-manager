@@ -10,7 +10,7 @@ import {
   AlertTriangle, Check, CheckCircle2, ChevronLeft, Circle, Clock, Database, Download, FileText, Loader2, Plus as PlusIcon, RefreshCw, Save, Search, Send, ShieldCheck, Trash2, TrendingUp, Upload, Users, Wallet, X, XCircle,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { faNum } from "../lib/format";
+import { errText, faNum } from "../lib/format";
 import { Field, InfoBox, Modal, Msg, SectionHead, Toggle } from "../ui/index";
 
 export function BillingPeriod({ password }) {
@@ -957,7 +957,7 @@ export function BillingSettings({ password }) {
       });
       const d = await res.json();
       if (res.ok) setMsg({ t: "ok", m: `بازیابی شد — ${d.restored?.payments || 0} پرداخت` });
-      else setMsg({ t: "err", m: d.detail || "بازیابی ناموفق" });
+      else setMsg({ t: "err", m: errText(d.detail, "بازیابی ناموفق") });
     } catch { setMsg({ t: "err", m: "فایل معتبر نبود" }); }
     finally { setBusy(null); if (fileRef.current) fileRef.current.value = ""; }
   };
@@ -1225,10 +1225,10 @@ export function BillingUnavailable({ info, password }) {
             <div className="min-w-0 flex-1">
               <div className="text-[13px] font-semibold"
                 style={{ color: s.ok ? "var(--text)" : "var(--danger)" }}>{s.title}</div>
-              {s.detail && (
+              {errText(s.detail) && (
                 <div className="text-[12px] mt-1 break-all" dir="auto"
                   style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                  {s.detail}
+                  {errText(s.detail)}
                 </div>
               )}
               {s.hint && (
@@ -1648,7 +1648,7 @@ export function BillingInvoice({ password }) {
         { headers: { "X-Admin-Password": password } });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
-        alert(d.detail || "ساخت PDF ناموفق بود");
+        alert(errText(d.detail, "ساخت PDF ناموفق بود"));
         return;
       }
       const blob = await res.blob();

@@ -17,12 +17,79 @@
 اجرای مستقیم برای دیباگ:
     python3 backend/monitor.py
 """
+import ipaddress
 import json
 import os
 import re
 import shutil
 import subprocess
 import time
+
+
+def _load_netid():
+    """
+    ماژول شناسایی آی‌پی، با جایگزین داخلی.
+
+    این فایل را agent روی سرورهای دیگر به‌تنهایی دانلود و اجرا
+    می‌کند، جایی که netid.py ممکن است کنارش نباشد. پس نبودنش نباید
+    مانیتورینگ را از کار بیندازد — یک نسخه‌ی کوچک از همان کارها
+    این‌جا هست تا دست‌کم لوپ‌بک درست کنار گذاشته شود.
+    """
+    try:
+        import netid
+        return netid
+    except ImportError:
+        pass
+    try:
+        import importlib.util
+        from pathlib import Path
+        p = Path(__file__).resolve().parent / "netid.py"
+        if p.exists():
+            spec = importlib.util.spec_from_file_location("netid", p)
+            m = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(m)
+            return m
+    except Exception:
+        pass
+
+    class _Fallback:
+        TUNNEL_PROCS = ("backhaul", "backpack", "chisel", "rathole", "gost",
+                        "frpc", "frps", "wireguard", "wg-quick", "wstunnel",
+                        "hysteria", "tuic", "socat", "haproxy", "stunnel")
+
+        @staticmethod
+        def normalize(ip):
+            s = str(ip or "").strip().strip("[]")
+            if not s:
+                return ""
+            try:
+                a = ipaddress.ip_address(s)
+            except ValueError:
+                return s
+            if isinstance(a, ipaddress.IPv6Address) and a.ipv4_mapped:
+                return str(a.ipv4_mapped)
+            return str(a)
+
+        @classmethod
+        def is_local(cls, ip):
+            s = cls.normalize(ip)
+            if not s or s in ("*", "0.0.0.0", "::"):
+                return True
+            try:
+                a = ipaddress.ip_address(s)
+            except ValueError:
+                return False
+            return bool(a.is_loopback or a.is_private or a.is_link_local
+                        or a.is_multicast or a.is_unspecified)
+
+        @staticmethod
+        def tunnel_peers(extra=None):
+            return dict(extra or {})
+
+    return _Fallback
+
+
+_NET = _load_netid()
 
 OK, WARN, CRIT = "ok", "warn", "crit"
 
@@ -435,9 +502,10 @@ def _tunnel_peers():
     return peers
 
 
-#: نام پردازه‌ی موتورهای تانلی که پنل نصب می‌کند
-TUNNEL_ENGINES = ("backhaul", "chisel", "rathole", "gost", "frpc", "frps",
-                  "wireguard", "wg-quick")
+#: نام پردازه‌ی موتورهای تانلی که پنل نصب می‌کند.
+#: فهرست کامل‌تر در netid.TUNNEL_PROCS است؛ این‌جا فقط برای
+#: سازگاری با کدی که از قبل به آن ارجاع می‌دهد باقی مانده.
+TUNNEL_ENGINES = _NET.TUNNEL_PROCS
 
 
 def connections(top=8):
@@ -481,9 +549,13 @@ def connections(top=8):
         if not lm or not pm:
             continue
 
-        ip = pm.group(1).strip("[]")
-        # اتصال‌های داخلی خودِ سرور، مصرف مشتری نیستند
-        if ip in ("127.0.0.1", "::1", "*", "0.0.0.0"):
+        ip = _NET.normalize(pm.group(1))
+        # اتصال‌های داخلی خودِ سرور، مصرف مشتری نیستند.
+        #
+        # صافیِ قبلی فهرست ثابتی از آدرس‌ها بود و ::ffff:127.0.0.1 را
+        # نمی‌گرفت — روی سرور واقعی همان یک مورد ۲۶٪ کل اتصال‌ها را
+        # به‌عنوان «پرمصرف‌ترین آی‌پی» بالای فهرست می‌نشاند.
+        if _NET.is_local(ip):
             continue
 
         total += 1
@@ -497,9 +569,13 @@ def connections(top=8):
     ranked = sorted(by_ip.items(), key=lambda kv: kv[1], reverse=True)
 
     try:
-        peers = _tunnel_peers()
+        # نودهای ثبت‌شده در پنل + هر پردازه‌ی تانلی که واقعاً اجرا می‌شود
+        peers = _NET.tunnel_peers(extra=_tunnel_peers())
     except Exception:
-        peers = {}
+        try:
+            peers = _tunnel_peers()
+        except Exception:
+            peers = {}
 
     tunnels = [{"ip": ip, "name": peers[ip], "count": n,
                 "pct": round(n * 100.0 / total, 1)}

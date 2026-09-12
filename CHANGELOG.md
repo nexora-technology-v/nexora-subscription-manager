@@ -1,5 +1,80 @@
 # Changelog
 
+## [1.5.0]
+
+### Fixed — Blocking an IP blanked the whole panel
+
+FastAPI returns a validation error's `detail` as an **array of objects**. Forty-five
+places in the panel rendered `j.detail` straight into JSX, and React refuses to
+render an object as a child — it tears down the tree and the screen goes black
+until a refresh.
+
+`errText()` now normalises any detail shape into a readable string, and every one
+of those places goes through it. An `ErrorBoundary` wraps the page content as a
+second line of defence, so the next unknown crash costs one section rather than
+the whole panel, with the menu still usable.
+
+### Fixed — "ناعدد" in the accounting pages
+
+`Number("...").toLocaleString("fa-IR")` returns the literal string **ناعدد** when
+the input is not a number, and that is what was printed where an amount belonged.
+
+`faNum` now separates three cases: nothing recorded gives an em dash, a real
+number is formatted, and a non-numeric string (a clock time, a kernel version)
+just has its digits converted. No path reaches that word any more.
+
+### Fixed — Boxes with no gap between them
+
+Spacing came only from a hand-written `mb-4` on each card, so wherever it was
+forgotten two boxes touched. Sibling blocks inside a section now get automatic
+spacing; existing margins collapse with it rather than doubling, and grid cells
+keep their own gap.
+
+### Fixed — Loopback counted as the busiest customer
+
+`ss` reports local traffic as `::ffff:127.0.0.1`, which the loopback filter did
+not match. On the live server that single entry held **751 connections — 26.7%
+of everything** — and sat at the top of the "busiest peers" list as though it
+were a customer. Addresses are normalised before any comparison now, so mapped
+IPv4, private ranges and link-local are all excluded.
+
+### Fixed — Only some tunnels were recognised
+
+Tunnel detection matched a short list of process names and depended on `ss`
+reporting them, which needs privileges it often does not have. **backpack** was
+missing entirely. `netid.py` now identifies tunnels from the process table,
+falls back to the ports those processes own, and knows eighteen engines.
+
+### Added — Is this attacker a customer of mine?
+
+Many attacking addresses are themselves VPN exits. The real address behind a VPN
+cannot be discovered from outside — by this panel or anything else — and the
+page says so rather than pretending otherwise.
+
+The useful question has an answer: every attempting address is checked against
+the addresses your own clients connect from, drawn from x-ui's IP records, the
+Xray access log, and current connections. A match means a customer is sitting
+behind that VPN, and blocking it cuts them off.
+
+While wiring this up: `_connected_ips()` read a key named `top` that
+`connections()` has never returned, so customer detection had silently never
+worked at all.
+
+### Fixed — Node monitoring never arrived
+
+The `sysmon` command shipped in 1.4.0, but a node running an older agent simply
+leaves the job queued for ever — the panel showed an empty page and no reason.
+It now reads the agent's reported version, says plainly that it is too old, and
+offers a button to update it without opening an SSH session. A failed job's
+error is shown too.
+
+### Changed — Accounting is separate from the bot
+
+Bot customers are your direct customers; accounting exists to bill resellers.
+Clients the bot sold are identified from the bot's own database — not guessed
+from a name pattern — and are never billed to a reseller, even if they end up
+inside a group. Each group reports how many of its clients came from the bot.
+
 ## [1.4.2]
 
 ### Fixed — slow-doctor treated resellers as if they did not exist

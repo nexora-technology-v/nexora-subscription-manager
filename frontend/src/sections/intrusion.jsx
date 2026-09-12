@@ -12,7 +12,7 @@ import {
   AlertTriangle, Loader2, RefreshCw, ShieldCheck,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { esc0, faNum } from "../lib/format";
+import { errText, esc0, faNum } from "../lib/format";
 import {
   ConfirmModal, EmptyState, InfoBox, Msg, SectionHead,
 } from "../ui/index";
@@ -78,7 +78,7 @@ export function FirewallIntrusion({ password }) {
       });
       const j = await res.json().catch(() => ({}));
       setMsg(res.ok ? { t: "ok", m: j.note || okMsg }
-        : { t: "err", m: j.detail || "ناموفق" });
+        : { t: "err", m: errText(j.detail, "ناموفق") });
       if (res.ok) await load();
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setBusy(false); setConfirmBlock(null); }

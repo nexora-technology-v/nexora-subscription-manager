@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import {
   AlertTriangle, Check, CheckCircle2, Loader2, Palette as PaletteIcon, Plus as PlusIcon, Trash2, X,
 } from "lucide-react";
+import { errText } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
 import { ConfirmModal, Field, InfoBox, SectionHead } from "../../ui/index";
 
@@ -303,7 +304,7 @@ export function AddPaletteModal({ password, onClose, onAdded }) {
       });
       const d = await res.json();
       if (res.ok) onAdded({ t: "ok", m: `پالت «${name}» اضافه شد` });
-      else setErr(d.detail || "افزودن ناموفق بود");
+      else setErr(errText(d.detail, "افزودن ناموفق بود"));
     } catch { setErr("اتصال به سرور برقرار نشد"); }
     finally { setBusy(false); }
   };

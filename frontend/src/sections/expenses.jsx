@@ -15,7 +15,7 @@ import {
   Trash2, TrendingUp, Wallet,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { faNum } from "../lib/format";
+import { errText, faNum } from "../lib/format";
 import {
   ConfirmModal, EmptyState, Field, InfoBox, Msg, SectionHead,
 } from "../ui/index";
@@ -94,7 +94,7 @@ function ExpenseForm({ password, onDone, setMsg }) {
         setMsg({ t: "ok", m: j.note || "ثبت شد" });
         setF({ ...f, label: "", amount: "", gb: "", note: "" });
         onDone();
-      } else setMsg({ t: "err", m: j.detail || "ثبت ناموفق" });
+      } else setMsg({ t: "err", m: errText(j.detail, "ثبت ناموفق") });
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setBusy(false); }
   };

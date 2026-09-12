@@ -180,6 +180,29 @@ input, select, textarea, button, optgroup {
   position: relative;
 }
 
+/*
+ * فاصله‌ی خودکار بین بلوک‌های هم‌سطح یک بخش.
+ *
+ * تا امروز فاصله فقط با کلاس دستی mb-4 روی هر کارت می‌آمد، و هرجا
+ * کسی یادش می‌رفت، دو باکس کاملاً به هم می‌چسبیدند. این قاعده همان
+ * را جبران می‌کند.
+ *
+ * تداخلی با mb-* موجود ندارد: در جریان بلوکیِ عادی، margin-bottom
+ * یک عنصر با margin-top عنصر بعدی ادغام می‌شود (collapse) و نتیجه
+ * همان ۱۶ پیکسل می‌ماند، نه ۳۲.
+ *
+ * عمداً فقط فرزندان مستقیم .fx-anim را می‌گیرد تا خانه‌های گرید —
+ * که خودشان gap دارند — دست‌نخورده بمانند.
+ */
+.fx-anim > .fx-card + .fx-card,
+.fx-anim > .fx-card + [class*="fx-g"],
+.fx-anim > [class*="fx-g"] + .fx-card,
+.fx-anim > [class*="fx-g"] + [class*="fx-g"],
+.fx-anim > .fx-card + table,
+.fx-anim > table + .fx-card {
+  margin-top: 16px;
+}
+
 .fx-card-i:hover {
   border-color: rgba(90,169,230,.34);
   box-shadow: 0 4px 16px rgba(0,0,0,.32);

@@ -8,6 +8,7 @@ import React, { useState, useEffect } from "react";
 import {
   Download, Loader2, Upload,
 } from "lucide-react";
+import { errText } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
 import { ConfirmModal, InfoBox, Msg, SectionHead } from "../../ui/index";
 
@@ -23,7 +24,7 @@ export function BotBackupSection({ password }) {
       const res = await fetch(`${API_URL}/api/admin/bot/backup`, {
         headers: { "X-Admin-Password": password } });
       const d = await res.json();
-      if (!res.ok) { setMsg({ t: "err", m: d.detail || "دریافت ناموفق" }); return; }
+      if (!res.ok) { setMsg({ t: "err", m: errText(d.detail, "دریافت ناموفق") }); return; }
 
       const blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });
       const a = document.createElement("a");
@@ -65,7 +66,7 @@ export function BotBackupSection({ password }) {
       if (res.ok) {
         const total = Object.values(d.restored || {}).reduce((x, y) => x + y, 0);
         setMsg({ t: "ok", m: `${total} رکورد بازیابی شد` });
-      } else setMsg({ t: "err", m: d.detail || "بازیابی ناموفق" });
+      } else setMsg({ t: "err", m: errText(d.detail, "بازیابی ناموفق") });
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setBusy(null); }
   };

@@ -8,6 +8,7 @@ import React, { useState, useEffect } from "react";
 import {
   Activity, AlertTriangle, ArrowUpRight, Bell, Check, CheckCircle2, ChevronLeft, Clock, Copy, Download, ExternalLink, Eye, Gift, Globe, HelpCircle, Key, Layers, LayoutGrid, Loader2, MessageCircle, MessageSquare, Package, Palette, PlayCircle, Plus, Search, Settings, ShieldCheck, Sliders, Smartphone, Star, Trash2, Type, Upload, UserPlus, Users, Video,
 } from "lucide-react";
+import { errText } from "../lib/format";
 import { API_URL, LANG_TABS, OS_TABS, SCHEME_ICON, SCHEME_OPTIONS, WS_MODES } from "../lib/constants";
 import { WsModePreview } from "../shell/workspace";
 import { CountUp, EmptyState, Field, InfoBox, NumberStepper, SectionHead, Sparkline, StatusChip, Tabs, Toggle } from "../ui/index";
@@ -1026,7 +1027,7 @@ export function BackupCard({ password, onRestored }) {
         setMsg({ type: "ok", text: "تنظیمات بازیابی شد" });
         onRestored();
       } else {
-        setMsg({ type: "error", text: data.detail || "بازیابی ناموفق بود" });
+        setMsg({ type: "error", text: errText(data.detail, "بازیابی ناموفق بود") });
       }
     } catch {
       setMsg({ type: "error", text: "فایل معتبر نیست" });
@@ -1111,7 +1112,7 @@ export function ChangePasswordCard({ password, onPasswordChanged }) {
         setCurrent(""); setNext(""); setConfirm("");
         onPasswordChanged(next);
       } else {
-        setMsg({ type: "error", text: data.detail || "تغییر رمز ناموفق بود" });
+        setMsg({ type: "error", text: errText(data.detail, "تغییر رمز ناموفق بود") });
       }
     } catch {
       setMsg({ type: "error", text: "اتصال به سرور برقرار نشد" });

@@ -9,7 +9,7 @@ import {
   AlertTriangle, ChevronDown, Loader2, Plus, Search, ShieldCheck, Sparkles, Trash2, XCircle,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { esc0, faNum } from "../lib/format";
+import { errText, esc0, faNum } from "../lib/format";
 import { ConfirmModal, EmptyState, Field, InfoBox, Msg, SectionHead } from "../ui/index";
 
 export const FW_ACTIONS = [
@@ -46,7 +46,7 @@ export function useFirewall(password) {
         },
       });
       const j = await res.json().catch(() => ({}));
-      if (!res.ok) { setMsg({ t: "err", m: j.detail || "عملیات ناموفق" }); return null; }
+      if (!res.ok) { setMsg({ t: "err", m: errText(j.detail, "عملیات ناموفق") }); return null; }
       setMsg({ t: "ok", m: j.note || "انجام شد" });
       if (j.rules) setD(j); else await load();
       return j;
@@ -109,7 +109,7 @@ export function FirewallSuggest({ password, onApplied }) {
         setMsg({ t: "ok", m: j.note || "اعمال شد" });
         await load();
         onApplied && onApplied();
-      } else setMsg({ t: "err", m: j.detail || "اعمال ناموفق" });
+      } else setMsg({ t: "err", m: errText(j.detail, "اعمال ناموفق") });
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setBusy(false); }
   };

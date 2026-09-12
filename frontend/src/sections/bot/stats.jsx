@@ -9,7 +9,7 @@ import {
   FileText, Download, Loader2, RefreshCw, TrendingUp, Users,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
-import { esc0, faNum } from "../../lib/format";
+import { errText, esc0, faNum } from "../../lib/format";
 import { CountUp, EmptyState, SectionHead, Segmented, StatTile } from "../../ui/index";
 
 export function BotStatsSection({ password }) {
@@ -136,7 +136,7 @@ export function BotReportSection({ password }) {
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        alert(j.detail || "ساخت فایل ناموفق بود");
+        alert(errText(j.detail, "ساخت فایل ناموفق بود"));
         return;
       }
       const blob = await res.blob();

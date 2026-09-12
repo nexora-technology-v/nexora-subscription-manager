@@ -1,4 +1,5 @@
 /**
+import { errText } from "../../lib/format";
  * هوک مشترک صداکردن API ربات.
  *
  * از App.jsx جدا شد؛ آن فایل ۱۱۴۰۰ خط بود و پیداکردن یک کامپوننت
@@ -18,7 +19,7 @@ export function useBotApi(password) {
       headers: { "Content-Type": "application/json", "X-Admin-Password": password, ...(opts.headers || {}) },
     });
     const d = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(d.detail || "خطای سرور");
+    if (!res.ok) throw new Error(errText(d.detail, "خطای سرور"));
     return d;
   };
 

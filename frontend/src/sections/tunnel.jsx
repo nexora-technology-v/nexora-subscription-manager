@@ -9,7 +9,7 @@ import {
   Activity, AlertTriangle, Check, CheckCircle2, Circle, Clock, Copy, FileText, Loader2, Network, Plus as PlusIcon, RefreshCw, Server, ShieldCheck, Trash2, UploadCloud, X, XCircle,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { faNum } from "../lib/format";
+import { errText, faNum } from "../lib/format";
 import { usePolling } from "../lib/hooks";
 import { Field, InfoBox, Modal, Msg, SectionHead } from "../ui/index";
 
@@ -199,7 +199,7 @@ export function TunnelNodes({ password }) {
         setAdding(false);
         setName(""); setNote("");
         reload();
-      } else setMsg({ t: "err", m: d.detail || "افزودن ناموفق" });
+      } else setMsg({ t: "err", m: errText(d.detail, "افزودن ناموفق") });
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setBusy(false); }
   };
@@ -373,9 +373,9 @@ export function NodeDiagnoseModal({ nodeId, password, onClose }) {
               <div className="min-w-0 flex-1">
                 <div className="text-[13px] font-semibold"
                   style={{ color: s.ok ? "var(--text)" : "var(--danger)" }}>{s.title}</div>
-                {s.detail && (
+                {errText(s.detail) && (
                   <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
-                    {s.detail}
+                    {errText(s.detail)}
                   </div>
                 )}
                 {s.hint && (
@@ -473,7 +473,7 @@ export function TunnelList({ password }) {
     const d = await res.json().catch(() => ({}));
     setMsg(res.ok
       ? { t: "ok", m: what === "deploy" ? "در صف اعمال قرار گرفت" : "دستور فرستاده شد" }
-      : { t: "err", m: d.detail || "ناموفق" });
+      : { t: "err", m: errText(d.detail, "ناموفق") });
     reload();
   };
 
@@ -624,7 +624,7 @@ export function TunnelForm({ password, nodes, engines, onClose, onDone }) {
       });
       const d = await res.json();
       if (res.ok) onDone();
-      else setErr(d.detail || "ساخت ناموفق");
+      else setErr(errText(d.detail, "ساخت ناموفق"));
     } catch { setErr("اتصال برقرار نشد"); }
     finally { setBusy(false); }
   };
@@ -1180,7 +1180,7 @@ export function SystemHealth({ password }) {
                   <span className="text-[14px] font-semibold"
                     style={{ color: HEALTH_COLOR[c.level] }}>{c.title}</span>
                   <span className="text-[13px]" style={{ color: "var(--dim)" }}>
-                    {c.detail}
+                    {errText(c.detail)}
                   </span>
                 </div>
                 {c.hint && (
@@ -1195,7 +1195,7 @@ export function SystemHealth({ password }) {
                 {fine.map((c, j) => (
                   <span key={j} className="text-[12px] px-2 py-1 rounded-lg"
                     style={{ background: "var(--surface-3)", color: "var(--muted)" }}
-                    title={c.detail}>
+                    title={errText(c.detail)}>
                     ✓ {c.title}
                   </span>
                 ))}

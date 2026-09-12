@@ -132,7 +132,9 @@ def test_checks(fast):
                            "tools/test-intrusion.py",
                            "tools/test-expenses.py",
                            "tools/test-nodes.py",
-                           "tools/test-slowdoctor.py"]),
+                           "tools/test-slowdoctor.py",
+                           "tools/test-netid.py",
+                           "tools/test-ui-safety.py"]),
         ("اتصال‌ها", ["tools/test-bot-buttons.py", "tools/test-seams.py",
                       "tools/check-api-contract.py"]),
     ]

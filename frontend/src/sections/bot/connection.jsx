@@ -8,6 +8,7 @@ import React, { useState, useEffect } from "react";
 import {
   AlertTriangle, Bot, CheckCircle2, Circle, CreditCard, Eye, HelpCircle, Key, Loader2, Plus as PlusIcon, Power, Radio, RefreshCw, Save, Server, ShieldCheck, Trash2, Users, XCircle, Zap,
 } from "lucide-react";
+import { errText } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
 import { Field, InfoBox, Msg, SectionHead, Toggle } from "../../ui/index";
 
@@ -28,7 +29,7 @@ export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
         method: "POST", headers: { "X-Admin-Password": password },
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) setErr(d.detail || "اجرای دستور ناموفق بود");
+      if (!res.ok) setErr(errText(d.detail, "اجرای دستور ناموفق بود"));
       onChange?.();
     } catch { setErr("اتصال به سرور برقرار نشد"); }
     finally { setBusy(null); }
@@ -42,7 +43,7 @@ export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
       });
       const d = await res.json().catch(() => ({}));
       if (res.ok) { setApplied(true); onApplied?.(); }
-      else setErr(d.detail || "اعمال ناموفق بود");
+      else setErr(errText(d.detail, "اعمال ناموفق بود"));
     } catch { setErr("اتصال به سرور برقرار نشد"); }
     finally { setBusy(null); }
   };
@@ -177,7 +178,7 @@ export function ConnectionTest({ password, tenant }) {
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
         setResult({ ok: false, steps: [{ key: "e", title: "تست انجام نشد",
-                    ok: false, detail: d.detail || "خطای سرور", hint: "" }] });
+                    ok: false, detail: errText(d.detail, "خطای سرور"), hint: "" }] });
       } else {
         setResult(d);
       }
@@ -245,9 +246,9 @@ export function ConnectionTest({ password, tenant }) {
               <div className="min-w-0 flex-1">
                 <div className="text-[13px] font-semibold"
                   style={{ color: s.ok ? "var(--text)" : "var(--danger)" }}>{s.title}</div>
-                {s.detail && (
+                {errText(s.detail) && (
                   <div className="text-[13px] mt-1 leading-relaxed break-words" style={{ color: "var(--muted)" }}>
-                    {s.detail}
+                    {errText(s.detail)}
                   </div>
                 )}
                 {s.hint && (
@@ -342,7 +343,7 @@ export function BotSection({ password, dirty }) {
       });
       const d = await res.json();
       if (res.ok) { setMsg({ t: "ok", m: "تنظیمات ربات ذخیره شد" }); load(); }
-      else setMsg({ t: "err", m: d.detail || "ذخیره ناموفق بود" });
+      else setMsg({ t: "err", m: errText(d.detail, "ذخیره ناموفق بود") });
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setSaving(false); }
   };

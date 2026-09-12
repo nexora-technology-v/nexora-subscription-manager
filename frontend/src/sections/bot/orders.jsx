@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import {
   AlertTriangle, CheckCircle2, CreditCard, Loader2, RefreshCw, Search, X,
 } from "lucide-react";
+import { errText } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
 import { Field, Msg, SectionHead, StatusPill, Tabs } from "../../ui/index";
 
@@ -55,7 +56,7 @@ export function BotOrdersSection({ password }) {
       if (res.ok) {
         setMsg({ t: "ok", m: "سفارش رد شد — دلیل برای مشتری فرستاده می‌شود" });
         load(filter);
-      } else setMsg({ t: "err", m: d.detail || "عملیات ناموفق" });
+      } else setMsg({ t: "err", m: errText(d.detail, "عملیات ناموفق") });
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setBusy(null); }
   };
@@ -70,7 +71,7 @@ export function BotOrdersSection({ password }) {
       if (res.ok) {
         setMsg({ t: "ok", m: action === "approve" ? "تایید شد — ربات کانفیگ را می‌سازد" : "سفارش رد شد" });
         load(filter);
-      } else setMsg({ t: "err", m: d.detail || "عملیات ناموفق" });
+      } else setMsg({ t: "err", m: errText(d.detail, "عملیات ناموفق") });
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setBusy(null); }
   };

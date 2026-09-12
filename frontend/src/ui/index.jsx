@@ -358,3 +358,59 @@ export function Modal({ title, onClose, children, footer, width = "440px" }) {
 
 
 /* ── همکاری در فروش ── */
+
+/**
+ * مرز خطا — یک بخش خراب نباید کل پنل را سیاه کند.
+ *
+ * React وقتی یک کامپوننت خطا بدهد، به‌طور پیش‌فرض کل درخت را جدا
+ * می‌کند و صفحه سفید/سیاه می‌شود. این دقیقاً همان چیزی بود که موقع
+ * بستن آی‌پی اتفاق می‌افتاد: سرور خطای اعتبارسنجی می‌داد، detail
+ * یک آرایه از آبجکت بود، React سعی می‌کرد رندرش کند و می‌افتاد.
+ *
+ * علت اصلی جداگانه رفع شده (errText)، ولی این لایه می‌ماند: هر
+ * باگ ناشناخته‌ی بعدی هم باید فقط همان بخش را از کار بیندازد، نه
+ * کل پنل را. کاربر دست‌کم منو را دارد و می‌تواند جای دیگری برود.
+ */
+export class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { err: null };
+  }
+
+  static getDerivedStateFromError(err) {
+    return { err };
+  }
+
+  componentDidCatch(err, info) {
+    // در کنسول می‌ماند تا اگر لازم شد بشود دنبالش را گرفت
+    console.error("بخش پنل خطا داد:", err, info);
+  }
+
+  render() {
+    if (!this.state.err) return this.props.children;
+    return (
+      <div className="fx-card p-6 fx-anim">
+        <div className="text-[15px] font-semibold mb-2"
+          style={{ color: "var(--danger)" }}>
+          این بخش باز نشد
+        </div>
+        <p className="text-[13px] leading-relaxed mb-3"
+          style={{ color: "var(--dim)" }}>
+          بقیه‌ی پنل سالم است — از منو به بخش دیگری بروید. اگر این خطا
+          تکرار شد، متن زیر را برای پشتیبانی بفرستید.
+        </p>
+        <pre dir="ltr" className="text-[12px] p-3 rounded-lg" style={{
+          fontFamily: "var(--mono)", color: "var(--muted)",
+          background: "var(--surface-3)", border: "1px solid var(--border)",
+          whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 180,
+          overflow: "auto",
+        }}>{String(this.state.err && (this.state.err.stack
+          || this.state.err.message || this.state.err))}</pre>
+        <button onClick={() => this.setState({ err: null })}
+          className="fx-btn px-4 py-2.5 text-[13px] mt-3">
+          دوباره تلاش کن
+        </button>
+      </div>
+    );
+  }
+}

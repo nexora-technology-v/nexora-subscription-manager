@@ -2333,26 +2333,55 @@ def _fw_or_die():
     return FIREWALL
 
 
+try:
+    import netid as NETID
+except Exception:
+    try:
+        import importlib.util as _ind
+        _ns = _ind.spec_from_file_location(
+            "netid", Path(__file__).resolve().parent / "netid.py")
+        NETID = _ind.module_from_spec(_ns)
+        _ns.loader.exec_module(NETID)
+    except Exception:
+        NETID = None
+
+
 def _connected_ips():
     """
-    آی‌پی‌هایی که همین حالا به سرویس وصل‌اند.
+    آی‌پی‌هایی که «آشنا»یند — تانل خودمان یا مشتری.
 
-    این فهرست تنها چیزی است که «مهاجم» را از «مشتریِ من که رمز را
-    اشتباه می‌زند» جدا می‌کند. بدون آن، مدیر ممکن است آی‌پی مشتری
-    خودش را ببندد و تازه وقتی شکایت آمد بفهمد.
+    این تنها چیزی است که «مهاجم» را از «مشتریِ من که رمز را اشتباه
+    می‌زند» جدا می‌کند. بدون آن، مدیر ممکن است آی‌پی مشتری خودش را
+    ببندد و تازه وقتی شکایت آمد بفهمد.
+
+    نکته‌ی مهم: خیلی از این آدرس‌ها خودشان VPN‌اند. آدرس واقعیِ پشت
+    یک VPN از بیرون قابل کشف نیست — ولی لازم هم نیست. اگر همان آدرس
+    را کلاینت‌های خودمان استفاده می‌کنند، پشتش مشتری نشسته و بستنش
+    یعنی قطع‌کردن او.
     """
-    if not MONITOR:
-        return set()
-    try:
-        data = MONITOR.connections(top=200) or {}
-    except Exception:
-        return set()
     ips = set()
-    for key in ("top", "heavy", "tunnels"):
-        for row in (data.get(key) or []):
-            ip = (row or {}).get("ip")
-            if ip:
-                ips.add(ip)
+
+    if NETID:
+        try:
+            ips |= set(NETID.client_ips().keys())
+        except Exception:
+            log.debug("خواندن آی‌پی کلاینت‌ها ناموفق", exc_info=True)
+        try:
+            ips |= set(NETID.tunnel_peers().keys())
+        except Exception:
+            log.debug("خواندن آی‌پی تانل‌ها ناموفق", exc_info=True)
+
+    if MONITOR:
+        try:
+            data = MONITOR.connections(top=200) or {}
+            for key in ("byIp", "heavy", "tunnels"):
+                for row in (data.get(key) or []):
+                    ip = (row or {}).get("ip")
+                    if ip:
+                        ips.add(ip)
+        except Exception:
+            log.debug("خواندن اتصال‌ها ناموفق", exc_info=True)
+
     return ips
 
 
@@ -2367,7 +2396,32 @@ def firewall_intrusion(hours: int = 24, x_admin_password: str = Header(...)):
     if not INTRUSION:
         raise HTTPException(status_code=500, detail="ماژول تشخیص نفوذ بارگذاری نشد")
     hours = max(1, min(int(hours or 24), 168))
-    return INTRUSION.summary(known_ips=_connected_ips(), hours=hours)
+
+    res = INTRUSION.summary(known_ips=_connected_ips(), hours=hours)
+
+    # هر آدرس را دسته‌بندی می‌کنیم: داخلی، تانل خودمان، مشتری، یا ناشناس.
+    # بدون این، مدیر فقط یک عدد می‌بیند و نمی‌داند بستنش چه هزینه‌ای دارد.
+    if NETID:
+        try:
+            tun = NETID.tunnel_peers()
+            cl = NETID.client_ips()
+            for a in (res.get("ssh") or {}).get("attempts") or []:
+                info = NETID.identify(a.get("ip"), tunnels=tun, clients=cl)
+                a["kind"] = info.get("kind")
+                a["why"] = info.get("why")
+                if info.get("clients"):
+                    a["clients"] = info["clients"]
+                # «آشنا» یعنی تانل یا مشتری — هر دو نباید بسته شوند
+                if info.get("kind") in ("tunnel", "customer", "local"):
+                    a["known"] = True
+            res["vpnNote"] = NETID.explain_vpn()
+        except Exception:
+            log.debug("دسته‌بندی آی‌پی‌ها ناموفق", exc_info=True)
+
+    # customers را دوباره می‌سازیم چون known بالا ممکن است عوض شده باشد
+    att = (res.get("ssh") or {}).get("attempts") or []
+    res.setdefault("ssh", {})["customers"] = [a for a in att if a.get("known")]
+    return res
 
 
 @app.post("/api/admin/firewall/block-attackers")
@@ -4237,10 +4291,37 @@ def billing_overview(x_admin_password: str = Header(...)):
                 "error": f"محاسبه ناموفق: {type(e).__name__}: {str(e)[:150]}"}
 
 
+def _bot_sold_emails():
+    """
+    شناسه‌ی کلاینت‌هایی که ربات فروخته.
+
+    حسابداری برای واسطه‌هاست. کلاینت‌های ربات مشتری مستقیم خودتان‌اند
+    و صورت‌حسابی برایشان صادر نمی‌شود — اگر در همان جدول بنشینند،
+    عدد بدهی واسطه‌ها اشتباه می‌شود و مدیر از کسی طلب می‌کند که
+    بدهکار نیست.
+
+    از خود دیتابیس ربات خوانده می‌شود، نه از روی الگوی نام — الگو
+    با عوض‌شدن پیشوند می‌شکند و بی‌صدا اشتباه می‌کند.
+    """
+    con = _bot_conn()
+    if not con:
+        return set()
+    try:
+        return {r["client_email"] for r in con.execute(
+            "SELECT client_email FROM subscriptions "
+            "WHERE client_email IS NOT NULL") if r["client_email"]}
+    except Exception:
+        return set()
+    finally:
+        con.close()
+
+
 def _billing_overview_impl():
     clients, known_groups, err = _read_xui_clients()
     if clients is None:
         return {"ready": False, "error": err, "xuiPath": str(_xui_db_path()), "groups": []}
+
+    bot_emails = _bot_sold_emails()
 
     bcon = _billing_conn()
     try:
@@ -4280,10 +4361,14 @@ def _billing_overview_impl():
                 "configs": 0, "active": 0, "months": 0, "renewals": 0,
                 "used": 0, "quota": 0, "due": 0,
                 "paid": pays.get(g, 0), "unpriced": 0, "estimated": 0,
+                # کلاینت‌هایی که ربات فروخته — مشتری مستقیم، نه واسطه
+                "botOwned": 0,
             }
 
         G = groups[g]
         G["configs"] += 1
+        if cl["email"] in bot_emails:
+            G["botOwned"] += 1
         if cl["enable"]:
             G["active"] += 1
         G["used"] += cl["used"]
@@ -4295,7 +4380,9 @@ def _billing_overview_impl():
         if kind == "تخمینی":
             G["estimated"] += 1
 
-        if G["billable"]:
+        # کلاینت ربات هرگز به واسطه صورت‌حساب نمی‌شود، حتی اگر
+        # تصادفی در گروهی نشسته باشد.
+        if G["billable"] and cl["email"] not in bot_emails:
             gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
 
             if G.get("perGb"):
@@ -4329,6 +4416,7 @@ def _billing_overview_impl():
                 "configs": 0, "active": 0, "months": 0, "renewals": 0,
                 "used": 0, "quota": 0, "due": 0,
                 "paid": pays.get(gname, 0), "unpriced": 0, "estimated": 0,
+                "botOwned": 0,
             }
 
     out = sorted(groups.values(), key=lambda g: (-g["billable"], -g["configs"]))
@@ -6605,13 +6693,91 @@ def node_sysmon_get(node_id: int, x_admin_password: str = Header(...)):
     """
     check_auth(x_admin_password)
     _need_tunnels()
+
+    # نسخه‌ی ایجنت مهم است: دستور sysmon از ۱.۴.۰ اضافه شده. اگر
+    # ایجنتِ روی سرور قدیمی باشد، کار در صف می‌ماند و هیچ‌وقت جواب
+    # نمی‌آید — و کاربر فقط یک صفحه‌ی خالی می‌بیند بدون هیچ توضیحی.
+    stale_agent = None
+    last_error = None
+    try:
+        c = TUN.conn()
+        try:
+            row = c.execute(
+                "SELECT agent_version, last_seen FROM nodes WHERE id = ?",
+                (node_id,)).fetchone()
+            if row:
+                ver = (row["agent_version"] or "").strip()
+                if ver and _older_than(ver, "1.4.0"):
+                    stale_agent = ver
+            bad = c.execute(
+                """SELECT result FROM jobs
+                   WHERE node_id = ? AND action IN ('sysmon','firewall')
+                     AND status = 'failed'
+                   ORDER BY id DESC LIMIT 1""", (node_id,)).fetchone()
+            if bad and bad["result"]:
+                last_error = str(bad["result"])[:200]
+        finally:
+            c.close()
+    except Exception:
+        log.debug("خواندن نسخه‌ی ایجنت ناموفق", exc_info=True)
+
     saved = TUN.get_sysmon(node_id)
     if not saved:
-        return {"ready": False,
-                "note": "هنوز گزارشی از این سرور نرسیده است"}
+        note = "هنوز گزارشی از این سرور نرسیده است"
+        if stale_agent:
+            note = (f"ایجنت این سرور نسخه‌ی {stale_agent} است و دستور "
+                    "مانیتورینگ را نمی‌شناسد — باید به‌روز شود")
+        elif last_error:
+            note = f"آخرین تلاش ناموفق بود: {last_error}"
+        return {"ready": False, "note": note,
+                "staleAgent": stale_agent, "lastError": last_error}
+
     return {"ready": True, "at": saved.get("at"),
             "kind": (saved.get("data") or {}).get("kind"),
-            "data": (saved.get("data") or {}).get("data")}
+            "data": (saved.get("data") or {}).get("data"),
+            "staleAgent": stale_agent, "lastError": last_error}
+
+
+def _older_than(ver, floor):
+    """
+    مقایسه‌ی نسخه‌های x.y.z.
+
+    نسخه‌ی نامفهوم «قدیمی» حساب نمی‌شود: ادعای نادرست بدتر از
+    نگفتن است — کاربر را دنبال به‌روزرسانیِ بی‌دلیل می‌فرستد.
+    """
+    if not re.match(r"^\s*\d+(\.\d+)*", str(ver or "")):
+        return False
+
+    def parts(v):
+        out = []
+        for chunk in str(v).strip().split("."):
+            digits = "".join(ch for ch in chunk if ch.isdigit())
+            out.append(int(digits) if digits else 0)
+        return (out + [0, 0, 0])[:3]
+
+    try:
+        return parts(ver) < parts(floor)
+    except Exception:
+        return False
+
+
+@app.post("/api/admin/tunnel/node/{node_id}/update-agent")
+def node_update_agent(node_id: int, x_admin_password: str = Header(...)):
+    """
+    به‌روزرسانی ایجنت یک سرور از روی همین پنل.
+
+    بدون این، مدیر باید دستی SSH بزند و اسکریپت نصب را دوباره اجرا
+    کند — کاری که بیشتر آدم‌ها انجام نمی‌دهند و در نتیجه سرورهایشان
+    برای همیشه روی نسخه‌ی قدیمی می‌ماند.
+    """
+    check_auth(x_admin_password)
+    _need_tunnels()
+    base = os.getenv("NEXORA_PANEL_URL", "").rstrip("/")
+    url = f"{base}/api/agent/agent.py" if base else "/api/agent/agent.py"
+    jid = TUN.queue_job(node_id, "update_agent", {"url": url})
+    return {"ok": True, "jobId": jid,
+            "note": "به‌روزرسانی در صف قرار گرفت — ایجنت بعد از "
+                    "چک‌این بعدی خودش را به‌روز و ری‌استارت می‌کند"}
 
 
 @app.post("/api/admin/tunnel/node")

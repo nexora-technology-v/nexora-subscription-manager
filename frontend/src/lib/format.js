@@ -49,4 +49,71 @@ export function fmtSize(n) {
 /** نام کاربر ممکن است HTML داشته باشد — React خودش امن می‌کند، این فقط تمیزکاری است. */
 export const esc0 = (s) => (s == null ? "" : String(s));
 
-export const faNum = (n) => Number(n || 0).toLocaleString("fa-IR");
+/**
+ * عدد با رقم فارسی و جداکننده‌ی هزارگان.
+ *
+ * نسخه‌ی قبلی `Number(n||0).toLocaleString("fa-IR")` بود. مشکل این
+ * است که `Number("۱۲ مهر")` برابر NaN می‌شود و `NaN.toLocaleString`
+ * با محلی فارسی رشته‌ی **«ناعدد»** برمی‌گرداند — که در صفحه‌ی
+ * حسابداری به‌جای مبلغ چاپ می‌شد و هیچ معنایی برای کاربر نداشت.
+ *
+ * حالا سه حالت جدا می‌شوند:
+ *   · خالی یا تعریف‌نشده  →  خط تیره؛ یعنی «مقداری ثبت نشده»
+ *   · عدد واقعی           →  قالب‌بندی فارسی
+ *   · متنِ غیرعددی        →  فقط رقم‌هایش فارسی می‌شود
+ *
+ * هیچ مسیری به «ناعدد» نمی‌رسد.
+ */
+export const faNum = (n, empty = "—") => {
+  if (n === null || n === undefined || n === "") return empty;
+  if (typeof n === "number") {
+    return Number.isFinite(n) ? n.toLocaleString("fa-IR") : empty;
+  }
+  if (typeof n === "boolean") return n ? "بله" : "خیر";
+
+  const s = String(n).trim();
+  if (!s) return empty;
+
+  // رشته‌ای که کاملاً یک عدد است (با یا بدون جداکننده) عدد حساب می‌شود
+  const bare = s.replace(/[,،\s]/g, "");
+  if (/^-?\d+(\.\d+)?$/.test(bare)) {
+    const v = Number(bare);
+    if (Number.isFinite(v)) return v.toLocaleString("fa-IR");
+  }
+
+  // وگرنه متن است — «۱۳:۴۵:۲۲»، «۶.۸.۰-۱۰۰۲»، هرچه — فقط رقم‌ها
+  return toFaDigits(s);
+};
+
+/**
+ * پیام خطای سرور را به یک رشته‌ی قابل نمایش تبدیل می‌کند.
+ *
+ * FastAPI برای خطای اعتبارسنجی، detail را به‌شکل آرایه‌ای از آبجکت
+ * برمی‌گرداند. اگر همان را مستقیم در JSX بگذاریم، React خطای
+ * «Objects are not valid as a React child» می‌دهد و **کل صفحه سیاه
+ * می‌شود** — دقیقاً همان چیزی که موقع بستن آی‌پی اتفاق می‌افتاد.
+ *
+ * پس هیچ‌جا detail خام رندر نمی‌شود؛ همه از این رد می‌شوند.
+ */
+export function errText(detail, fallback = "عملیات ناموفق بود") {
+  if (!detail) return fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((d) => {
+        if (typeof d === "string") return d;
+        if (d && typeof d === "object") {
+          const where = Array.isArray(d.loc) ? d.loc.filter(
+            (x) => x !== "body" && typeof x === "string").join(".") : "";
+          return where ? `${where}: ${d.msg || ""}` : (d.msg || "");
+        }
+        return "";
+      })
+      .filter(Boolean);
+    return parts.length ? parts.join(" · ") : fallback;
+  }
+  if (typeof detail === "object") {
+    return detail.msg || detail.message || detail.detail || fallback;
+  }
+  return String(detail);
+}

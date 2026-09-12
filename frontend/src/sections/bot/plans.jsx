@@ -8,6 +8,7 @@ import React, { useState, useEffect } from "react";
 import {
   Gift, Loader2, Package, Plus as PlusIcon, Save, Trash2,
 } from "lucide-react";
+import { errText } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
 import { Field, Msg, SectionHead, Toggle } from "../../ui/index";
 
@@ -40,7 +41,7 @@ export function BotPlansSection({ password }) {
       });
       const d = await res.json();
       if (res.ok) { setMsg({ t: "ok", m: `${d.count} پلن ذخیره شد` }); load(); }
-      else setMsg({ t: "err", m: d.detail || "ذخیره ناموفق" });
+      else setMsg({ t: "err", m: errText(d.detail, "ذخیره ناموفق") });
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setSaving(false); }
   };
