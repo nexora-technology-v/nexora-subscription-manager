@@ -184,7 +184,8 @@ def frontend_checks(fast):
     for f, label in [("tools/test-render.cjs", "ظاهر پنل"),
                      ("test-panel-runtime.js", "اجرای پنل"),
                      ("test-subpage.js", "صفحه‌ی اشتراک"),
-                     ("tools/test-components.cjs", "رندر کامپوننت‌ها")]:
+                     ("tools/test-components.cjs", "رندر کامپوننت‌ها"),
+                     ("tools/test-jalali.cjs", "تقویم شمسی")]:
         try:
             p = subprocess.run(["node", f], cwd=ROOT, env=env, timeout=400,
                                capture_output=True, text=True,

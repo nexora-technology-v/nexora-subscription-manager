@@ -184,6 +184,27 @@ check("پنل آدرس مطلق می‌سازد", "request.base_url" in APP)
 check("ایجنت بدون نسخه قدیمی حساب می‌شود", 'stale_agent = "نامشخص"' in APP)
 
 
+# ═══════════════════════════════════════════════════════════
+head("تشخیص: چرا گزارشی نمی‌آید")
+
+check("مسیر تشخیص وجود دارد", "/diagnose" in APP)
+check("چک‌این ایجنت بررسی می‌شود", "چک‌این ایجنت" in APP)
+check("نسخه‌ی ایجنت بررسی می‌شود", "نسخه‌ی ایجنت" in APP)
+check("برداشتن کار بررسی می‌شود", "برداشتن کار" in APP)
+check("اجرای کار بررسی می‌شود", "اجرای کار" in APP)
+check("گزارش ذخیره‌شده بررسی می‌شود", "گزارش ذخیره‌شده" in APP)
+check("برای هر مرحله راه‌حل می‌دهد", APP.count('"fix"') >= 5,
+      f"{APP.count(chr(34) + 'fix' + chr(34))} راه‌حل")
+check("تاریخچه‌ی کارها برمی‌گردد", '"jobs": jobs' in APP)
+check("کار مانده در صف تشخیص داده می‌شود", 'st == "queued"' in APP)
+check("کار برداشته‌شده ولی بی‌نتیجه هم", 'st == "taken"' in APP)
+check("کار شکست‌خورده متن خطا را نشان می‌دهد", 'st == "failed"' in APP)
+check("رابط تشخیص را نشان می‌دهد",
+      "NodeDiagnose" in io.open(
+          os.path.join(ROOT, "frontend", "src", "sections",
+                       "nodes-monitor.jsx"), encoding="utf-8").read())
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

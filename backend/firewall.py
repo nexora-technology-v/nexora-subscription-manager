@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import time
+from datetime import datetime
 
 #: پورت‌هایی که بستنشان یعنی قطع دسترسی خودِ مدیر یا خوابیدن سرویس.
 #: این‌ها بدون تایید صریح حذف نمی‌شوند.
@@ -740,3 +741,173 @@ def rollback_state():
     confirmed = os.path.exists(_ARM_FLAG) or os.path.exists(
         os.path.join("/tmp", os.path.basename(_ARM_FLAG)))
     return {"armed": armed and not confirmed, "confirmed": confirmed}
+
+
+# ═══════════════════════════════════════════════════════════
+#  بستن آی‌پی بدون فایروال
+# ═══════════════════════════════════════════════════════════
+
+#: جایی که آدرس‌های بسته‌شده نگه داشته می‌شوند تا بعد از ریبوت
+#: دوباره اعمال شوند. مسیر روتینگ در حافظه است و با ریستارت می‌رود.
+BLOCKLIST = "/etc/nexora/blocked-ips.txt"
+
+
+def _ip_ok(ip):
+    """آدرس یا رنج معتبر — همان صافی‌ای که block_ip دارد."""
+    return bool(re.match(r"^[0-9a-fA-F:.]+(/\d{1,3})?$", str(ip or "").strip()))
+
+
+def blackhole_available():
+    """آیا دستور ip هست. تقریباً روی هر لینوکسی هست، ولی فرض نمی‌کنیم."""
+    return shutil.which("ip") is not None
+
+
+def blackhole_list():
+    """
+    آدرس‌هایی که همین حالا سیاه‌چاله شده‌اند.
+
+    از خود کرنل می‌خوانیم، نه از فایل — فایل فقط برای بازگرداندن
+    بعد از ریبوت است و ممکن است با واقعیت یکی نباشد.
+    """
+    out_set = []
+    ok, out = _run(["ip", "route", "show", "type", "blackhole"], timeout=10)
+    if ok:
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[0] == "blackhole":
+                out_set.append(parts[1])
+    return out_set
+
+
+def blackhole_add(ip, note=None):
+    """
+    بستن یک آدرس بدون فایروال.
+
+    چرا این روش:
+        روشن‌کردن ufw روی سرور راه دور ریسک دارد و خیلی‌ها — به‌درستی —
+        حاضر نیستند بپذیرندش. ولی «این آدرس دارد سرور را می‌خورد و
+        می‌خواهم همین حالا قطعش کنم» یک نیاز فوری است که نباید منتظر
+        آن تصمیم بماند.
+
+        مسیر blackhole کاری با فایروال ندارد: کرنل هر بسته‌ای را که
+        *به* آن آدرس برود دور می‌اندازد. یعنی دست‌دادن TCP هیچ‌وقت
+        کامل نمی‌شود و اتصال از همان اول می‌میرد.
+
+        فوری است، هیچ سرویسی را لمس نمی‌کند، و برگشتش یک دستور است.
+
+    محدودیتش را هم صریح بگوییم: این ترافیک ورودی را «فیلتر» نمی‌کند،
+    فقط جواب را قطع می‌کند. برای اسکنر و حدس‌زن رمز کافی است؛ برای
+    حمله‌ی حجمی، فایروال لازم است.
+    """
+    ip = str(ip or "").strip()
+    if not _ip_ok(ip):
+        return False, "آدرس نامعتبر"
+    if not blackhole_available():
+        return False, "دستور ip روی این سرور نیست"
+
+    if ip in blackhole_list():
+        return True, "از قبل بسته بود"
+
+    ok, out = _run(["ip", "route", "add", "blackhole", ip], timeout=15)
+    if not ok and "File exists" not in out:
+        return False, out.strip()[:180] or "ناموفق"
+
+    _blocklist_write(ip, note, remove=False)
+    return True, f"{ip} بسته شد — بدون نیاز به فایروال"
+
+
+def blackhole_remove(ip):
+    """بازکردن یک آدرس سیاه‌چاله‌شده."""
+    ip = str(ip or "").strip()
+    if not _ip_ok(ip):
+        return False, "آدرس نامعتبر"
+    if not blackhole_available():
+        return False, "دستور ip روی این سرور نیست"
+
+    ok, out = _run(["ip", "route", "del", "blackhole", ip], timeout=15)
+    _blocklist_write(ip, None, remove=True)
+    if not ok and "No such process" not in out:
+        return False, out.strip()[:180] or "ناموفق"
+    return True, f"{ip} باز شد"
+
+
+def _blocklist_write(ip, note, remove):
+    """
+    فهرست ماندگار را به‌روز می‌کند.
+
+    مسیر روتینگ در حافظه است و با ریبوت پاک می‌شود. بدون این فایل،
+    آدرسی که مدیر بسته، بعد از اولین ریستارت بی‌سروصدا باز می‌شود —
+    و او فکر می‌کند هنوز بسته است.
+    """
+    try:
+        d = os.path.dirname(BLOCKLIST)
+        os.makedirs(d, exist_ok=True)
+        rows = []
+        if os.path.exists(BLOCKLIST):
+            with open(BLOCKLIST, "r", encoding="utf-8") as f:
+                rows = [l.rstrip("\n") for l in f if l.strip()]
+        rows = [r for r in rows if r.split("|")[0].strip() != ip]
+        if not remove:
+            stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            rows.append(f"{ip} | {stamp} | {(note or '').replace('|', ' ')[:60]}")
+        with open(BLOCKLIST, "w", encoding="utf-8") as f:
+            f.write("\n".join(rows) + ("\n" if rows else ""))
+    except Exception:
+        # نوشتن فایل نباید مانع بستن آدرس شود
+        pass
+
+
+def blackhole_restore():
+    """
+    بعد از ریبوت، آدرس‌های ذخیره‌شده را دوباره می‌بندد.
+
+    پنل این را موقع بالا آمدن صدا می‌زند.
+    """
+    if not blackhole_available() or not os.path.exists(BLOCKLIST):
+        return 0
+    done = 0
+    live = set(blackhole_list())
+    try:
+        with open(BLOCKLIST, "r", encoding="utf-8") as f:
+            for line in f:
+                ip = line.split("|")[0].strip()
+                if not ip or ip in live or not _ip_ok(ip):
+                    continue
+                ok, _ = _run(["ip", "route", "add", "blackhole", ip], timeout=10)
+                if ok:
+                    done += 1
+    except Exception:
+        pass
+    return done
+
+
+def blocked_overview():
+    """
+    همه‌ی آدرس‌های بسته — از هر دو راه.
+
+    مدیر نباید دو جای جدا را نگاه کند تا بفهمد یک آدرس بسته هست یا
+    نه. این‌جا هر دو کنار هم می‌آیند، با ذکر اینکه هرکدام از کدام
+    راه بسته شده.
+    """
+    rows = []
+
+    for ip in blackhole_list():
+        rows.append({"ip": ip, "via": "blackhole", "active": True,
+                     "how": "مسیر سیاه‌چاله‌ی کرنل — بدون فایروال کار می‌کند"})
+
+    st = status()
+    for r in st.get("rules") or []:
+        src = (r.get("source") or "").strip()
+        if r.get("action") == "DENY" and src and src != "Anywhere":
+            rows.append({
+                "ip": src, "via": "ufw",
+                "active": bool(st.get("active")),
+                "pending": bool(r.get("pending")),
+                "num": r.get("num"),
+                "how": ("قاعده‌ی فایروال" if st.get("active")
+                        else "قاعده‌ی فایروال — تا روشن‌شدن ufw اثری ندارد"),
+            })
+
+    return {"blocked": rows,
+            "firewallActive": bool(st.get("active")),
+            "blackholeAvailable": blackhole_available()}

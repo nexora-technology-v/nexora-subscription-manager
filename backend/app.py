@@ -7574,3 +7574,156 @@ def agent_netid_module():
         raise HTTPException(status_code=404, detail="ماژول netid پیدا نشد")
     return Response(content=p.read_text(encoding="utf-8"),
                     media_type="text/x-python")
+
+
+@app.get("/api/admin/firewall/blocked")
+def firewall_blocked_all(x_admin_password: str = Header(...)):
+    """
+    همه‌ی آدرس‌های بسته — از هر دو راه، در یک فهرست.
+
+    مدیر نباید دو جای جدا نگاه کند تا بفهمد آدرسی بسته هست یا نه.
+    """
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    return fw.blocked_overview()
+
+
+@app.post("/api/admin/firewall/blackhole")
+def firewall_blackhole(payload: dict, x_admin_password: str = Header(...)):
+    """
+    بستن یک آدرس بدون روشن‌کردن فایروال.
+
+    روشن‌کردن ufw روی سرور راه دور تصمیم بزرگی است و خیلی‌ها —
+    به‌درستی — با احتیاط با آن برخورد می‌کنند. ولی «این آدرس دارد
+    سرور را می‌خورد و می‌خواهم همین حالا قطعش کنم» نباید منتظر آن
+    تصمیم بماند.
+
+    مسیر blackhole کاری با فایروال ندارد و فوری اثر می‌کند.
+    """
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    p = payload or {}
+    ip = str(p.get("ip") or "").strip()
+
+    if p.get("unblock"):
+        ok, note = fw.blackhole_remove(ip)
+    else:
+        ok, note = fw.blackhole_add(ip, note=p.get("note") or "از پنل نکسورا")
+
+    if not ok:
+        raise HTTPException(status_code=400, detail=note)
+    return {"ok": True, "note": note}
+
+
+@app.get("/api/admin/tunnel/node/{node_id}/diagnose")
+def node_diagnose(node_id: int, x_admin_password: str = Header(...)):
+    """
+    چرا از این سرور گزارشی نمی‌آید.
+
+    چرا این وجود دارد:
+        دو بار برای همین مشکل حدس زدم و هر دو بار اشتباه بود، چون
+        هیچ‌جا دیده نمی‌شد کار کجا می‌ایستد. صف کار چهار مرحله دارد —
+        ثبت، برداشتن، اجرا، نتیجه — و هر کدام می‌تواند جای گیرکردن
+        باشد.
+
+        این‌جا هر چهار مرحله با زمان و متن خطا نشان داده می‌شود، پس
+        دفعه‌ی بعد به‌جای حدس، جواب هست.
+    """
+    check_auth(x_admin_password)
+    _need_tunnels()
+
+    c = TUN.conn()
+    try:
+        node = c.execute("SELECT * FROM nodes WHERE id = ?",
+                         (node_id,)).fetchone()
+        if not node:
+            raise HTTPException(status_code=404, detail="نود پیدا نشد")
+        node = dict(node)
+
+        jobs = [dict(r) for r in c.execute(
+            """SELECT id, action, status, created_at, taken_at, done_at, result
+               FROM jobs WHERE node_id = ? ORDER BY id DESC LIMIT 15""",
+            (node_id,))]
+    finally:
+        c.close()
+
+    last_seen = node.get("last_seen")
+    age = None
+    if last_seen:
+        try:
+            age = int((datetime.now()
+                       - datetime.fromisoformat(str(last_seen))).total_seconds())
+        except Exception:
+            age = None
+
+    ver = (node.get("agent_version") or "").strip()
+
+    steps = []
+
+    # ۱) ایجنت اصلاً خبر می‌دهد؟
+    if age is None:
+        steps.append({"step": "چک‌این ایجنت", "ok": False,
+                      "note": "این نود هرگز به پنل وصل نشده",
+                      "fix": "اسکریپت نصب ایجنت را روی آن سرور اجرا کنید"})
+    elif age > 180:
+        steps.append({"step": "چک‌این ایجنت", "ok": False,
+                      "note": f"آخرین خبر {age // 60} دقیقه پیش بود",
+                      "fix": "روی آن سرور: systemctl status nexora-agent"})
+    else:
+        steps.append({"step": "چک‌این ایجنت", "ok": True,
+                      "note": f"{age} ثانیه پیش"})
+
+    # ۲) نسخه‌ی ایجنت
+    if not ver:
+        steps.append({"step": "نسخه‌ی ایجنت", "ok": False,
+                      "note": "ایجنت نسخه‌اش را گزارش نمی‌کند — یعنی خیلی قدیمی است",
+                      "fix": "دکمه‌ی «به‌روزرسانی ایجنت» را بزنید"})
+    elif _older_than(ver, "1.5.0"):
+        steps.append({"step": "نسخه‌ی ایجنت", "ok": False,
+                      "note": f"نسخه‌ی {ver} دستور مانیتورینگ را نمی‌شناسد",
+                      "fix": "دکمه‌ی «به‌روزرسانی ایجنت» را بزنید"})
+    else:
+        steps.append({"step": "نسخه‌ی ایجنت", "ok": True, "note": ver})
+
+    # ۳) کار مانیتورینگ به کجا رسید
+    mon = [j for j in jobs if j["action"] in ("sysmon", "firewall")]
+    if not mon:
+        steps.append({"step": "درخواست مانیتورینگ", "ok": False,
+                      "note": "هیچ درخواستی برای این نود ثبت نشده",
+                      "fix": "دکمه‌ی «گزارش تازه» را بزنید"})
+    else:
+        last = mon[0]
+        st = last["status"]
+        if st == "queued":
+            steps.append({"step": "برداشتن کار", "ok": False,
+                          "note": "کار در صف مانده و ایجنت برش نداشته",
+                          "fix": "یعنی ایجنت وصل نیست — مرحله‌ی اول را ببینید"})
+        elif st == "taken":
+            steps.append({"step": "اجرای کار", "ok": False,
+                          "note": "ایجنت کار را برداشته ولی نتیجه‌ای نفرستاده",
+                          "fix": "روی آن سرور: journalctl -u nexora-agent -n 50"})
+        elif st == "failed":
+            steps.append({"step": "اجرای کار", "ok": False,
+                          "note": str(last.get("result") or "")[:300],
+                          "fix": "اگر می‌گوید تابعی پیدا نشد، ایجنت را به‌روز کنید"})
+        else:
+            steps.append({"step": "اجرای کار", "ok": True,
+                          "note": f"کار #{last['id']} انجام شد"})
+
+    # ۴) گزارش ذخیره‌شده
+    saved = TUN.get_sysmon(node_id)
+    if not saved:
+        steps.append({"step": "گزارش ذخیره‌شده", "ok": False,
+                      "note": "هیچ گزارشی ذخیره نشده"})
+    else:
+        steps.append({"step": "گزارش ذخیره‌شده", "ok": True,
+                      "note": f"آخرین گزارش: {saved.get('at')}"})
+
+    return {
+        "node": {"id": node["id"], "name": node.get("name"),
+                 "host": node.get("host"), "version": ver or None,
+                 "lastSeen": last_seen, "ageSeconds": age},
+        "steps": steps,
+        "healthy": all(s["ok"] for s in steps),
+        "jobs": jobs,
+    }

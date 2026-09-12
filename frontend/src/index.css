@@ -468,6 +468,44 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   outline: 2px solid var(--accent-2); outline-offset: 2px;
 }
 
+/* وقتی خودِ *کادر* حالت فوکوس را نشان می‌دهد، input داخلش نباید
+   outline دومی اضافه کند.
+   
+   نتیجه‌ی دو تا با هم این بود: حلقه‌ی نرم کادر، و یک خط سخت ۲ پیکسلی
+   دور input داخلی که چند پیکسل با لبه فاصله داشت — دو مرز تودرتو که
+   بد به نظر می‌رسید. نشانه‌ی فوکوس حذف نمی‌شود؛ فقط یکی می‌ماند. */
+.fx-search:focus-within,
+.fx-stepper:focus-within {
+  outline: none;
+}
+.fx-search input:focus,
+.fx-search input:focus-visible,
+.fx-stepper input:focus,
+.fx-stepper input:focus-visible {
+  outline: none;
+}
+
+/* ===== فیلد عدد بدون فلش‌های بالا/پایین =====
+   فلش‌های پیش‌فرض مرورگر گوشه‌ی راست فیلد می‌نشینند، با هر تم
+   ناهماهنگ‌اند، و در چیدمان راست‌به‌چپ درست جایی می‌افتند که چشم
+   انتظار عدد دارد.
+   
+   هرجا واقعاً کم‌وزیاد کردن لازم است، NumberStepper دکمه‌های خودش
+   را دارد که با بقیه‌ی پنل یکی است. */
+.fx-input[type="number"]::-webkit-outer-spin-button,
+.fx-input[type="number"]::-webkit-inner-spin-button,
+.fx-stepper input::-webkit-outer-spin-button,
+.fx-stepper input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+.fx-input[type="number"],
+.fx-stepper input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* لینک اشتراک، uuid و ایمیل کانفیگ رشته‌های بلندِ بدون فاصله‌اند و
    جایی برای شکستن ندارند، پس از عرض کارت بیرون می‌زدند. anywhere
    فقط وقتی می‌شکند که لازم باشد — برخلاف break-all که وسط کلمه‌های

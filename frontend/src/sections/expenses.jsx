@@ -19,6 +19,7 @@ import { errText, faNum } from "../lib/format";
 import {
   ConfirmModal, EmptyState, Field, InfoBox, Msg, SectionHead,
 } from "../ui/index";
+import { JalaliDate } from "../ui/jalali";
 
 const KIND_META = {
   server_abroad: { label: "سرور خارج", icon: Server, color: "var(--accent-2)" },
@@ -143,8 +144,8 @@ function ExpenseForm({ password, onDone, setMsg }) {
           </select>
         </Field>
         <Field label="تاریخ">
-          <input className="fx-input" dir="ltr" type="date" value={f.spentAt}
-            onChange={(e) => setF({ ...f, spentAt: e.target.value })} />
+          <JalaliDate value={f.spentAt}
+            onChange={(v) => setF({ ...f, spentAt: v })} />
         </Field>
         {f.kind === "traffic" ? (
           <Field label="حجم (گیگابایت)">

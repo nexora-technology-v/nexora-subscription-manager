@@ -240,6 +240,46 @@ check("لوپ‌بک به فایروال نمی‌رسد", 9090 not in seen_port
       "از بیرون در دسترس نیست، پس قاعده لازم ندارد")
 
 
+# ═══════════════════════════════════════════════════════════
+head("بستن آی‌پی بدون فایروال")
+
+check("blackhole_add وجود دارد", hasattr(FW, "blackhole_add"))
+check("blackhole_remove وجود دارد", hasattr(FW, "blackhole_remove"))
+check("فهرست ماندگار نگه داشته می‌شود", "BLOCKLIST" in SRC,
+      "مسیر روتینگ با ریبوت پاک می‌شود")
+check("بعد از ریبوت بازگردانده می‌شود", hasattr(FW, "blackhole_restore"))
+
+# آدرس نامعتبر باید قبل از رسیدن به هر دستوری رد شود
+for bad in ("; rm -rf /", "not-an-ip", "", "1.2.3.4; ls"):
+    okb, note = FW.blackhole_add(bad)
+    check(f"«{bad[:18] or 'خالی'}» رد می‌شود", okb is False, note[:40])
+
+# دستور ساخته‌شده باید دقیقاً همان چیزی باشد که انتظار داریم
+cmds = []
+FW._run = lambda cmd, timeout=15: (cmds.append(cmd) or (True, ""))
+FW.blackhole_available = lambda: True
+FW.blackhole_list = lambda: []
+FW._blocklist_write = lambda ip, note, remove: None
+
+FW.blackhole_add("91.99.12.4")
+check("دستور درست ساخته می‌شود",
+      cmds and cmds[-1] == ["ip", "route", "add", "blackhole", "91.99.12.4"],
+      " ".join(cmds[-1]) if cmds else "")
+check("هیچ رشته‌ای به شل نمی‌رود", all(isinstance(c, list) for c in cmds),
+      "فهرست، نه رشته — پس تزریق دستور ممکن نیست")
+
+cmds.clear()
+FW.blackhole_remove("91.99.12.4")
+check("بازکردن دستور درست دارد",
+      cmds and cmds[-1] == ["ip", "route", "del", "blackhole", "91.99.12.4"])
+
+cmds.clear()
+okr, _ = FW.blackhole_add("91.99.12.0/24")
+check("رنج هم پذیرفته می‌شود", okr and "91.99.12.0/24" in (cmds[-1] or []))
+
+check("هر دو راه در یک فهرست می‌آیند", hasattr(FW, "blocked_overview"))
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

@@ -114,6 +114,7 @@ jobs:
           node test-panel-runtime.js
           node test-subpage.js
           node tools/test-components.cjs
+          node tools/test-jalali.cjs
 
       - name: تست سرو کردن پنل ساخته‌شده
         # به frontend/dist نیاز دارد، پس بعد از build اجرا می‌شود.

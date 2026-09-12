@@ -624,94 +624,207 @@ export function r_note(d) {
 }
 
 export function FirewallBlocked({ password }) {
-  const { d, busy, msg, call } = useFirewall(password);
+  const [d, setD] = useState(null);
   const [ip, setIp] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(null);
 
-  if (!d) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  const load = useCallback(async () => {
+    try {
+      const j = await fetch(`${API_URL}/api/admin/firewall/blocked`, {
+        headers: { "X-Admin-Password": password },
+      }).then((r) => r.json());
+      setD(j);
+    } catch { setD({ blocked: [], error: "اتصال برقرار نشد" }); }
+  }, [password]);
 
-  // قاعده‌هایی که با فایروالِ خاموش ثبت شده‌اند هم واقعی‌اند و
-  // باید دیده شوند؛ فقط هنوز اعمال نمی‌شوند.
-  const blocked = (d.rules || []).filter(
-    (r) => r.action === "DENY" && r.source && r.source !== "Anywhere");
-  const pendingCount = blocked.filter((r) => r.pending).length;
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (msg) {
+      const t = setTimeout(() => setMsg(null), 6000);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [msg]);
+
+  const call = async (path, body) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Password": password,
+        },
+        body: JSON.stringify(body),
+      });
+      const j = await res.json().catch(() => ({}));
+      setMsg(res.ok ? { t: "ok", m: j.note || "انجام شد" }
+        : { t: "err", m: errText(j.detail, "ناموفق") });
+      await load();
+      return res.ok;
+    } catch {
+      setMsg({ t: "err", m: "اتصال برقرار نشد" });
+      return false;
+    } finally { setBusy(false); }
+  };
+
+  if (!d) {
+    return (
+      <div className="flex justify-center py-16">
+        <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
+      </div>
+    );
+  }
+
+  const rows = d.blocked || [];
+  const viaHole = rows.filter((r) => r.via === "blackhole");
+  const viaUfw = rows.filter((r) => r.via === "ufw");
 
   return (
     <div className="fx-anim">
       <SectionHead title="آی‌پی‌های بسته‌شده"
-        desc="آی‌پی‌هایی که کامل از سرور کنار گذاشته شده‌اند." />
+        desc="آدرس‌هایی که از سرور کنار گذاشته شده‌اند — از هر دو راه." />
 
       <Msg msg={msg} />
 
-      <div className="fx-card p-5 mb-4">
-        <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
+      <div className="fx-card p-5">
+        <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
           <XCircle size={15} style={{ color: "var(--danger)" }} /> بستن یک آی‌پی
         </div>
+        <p className="text-[13px] mb-3" style={{ color: "var(--muted)" }}>
+          بدون نیاز به روشن‌کردن فایروال — کرنل بسته‌های این آدرس را همان
+          لحظه دور می‌اندازد.
+        </p>
+
         <div className="flex gap-2 flex-wrap items-end">
           <div className="flex-1" style={{ minWidth: 200 }}>
-            <Field label="آدرس آی‌پی" hint="مثلاً ۹۱٫۹۹٫۱۲٫۴ یا یک رنج مثل 91.99.12.0/24">
+            <Field label="آدرس آی‌پی" hint="یک آدرس یا یک رنج مثل 91.99.12.0/24">
               <input className="fx-input" dir="ltr" value={ip}
                 onChange={(e) => setIp(e.target.value)} placeholder="91.99.12.4"
                 style={{ fontFamily: "var(--mono)" }} />
             </Field>
           </div>
           <button
-            onClick={() => call("/api/admin/firewall/block-ip", {
-              method: "POST", body: JSON.stringify({ ip }),
-            }).then((j) => { if (j) setIp(""); })}
-            disabled={busy || !ip.trim()}
+            onClick={() => call("/api/admin/firewall/blackhole", { ip })
+              .then((done) => { if (done) setIp(""); })}
+            disabled={busy || !ip.trim() || !d.blackholeAvailable}
             className="fx-btn px-4 py-2.5 text-[13px] flex items-center gap-1.5">
-            <XCircle size={14} /> ببند
+            <XCircle size={14} /> همین حالا ببند
+          </button>
+          <button
+            onClick={() => call("/api/admin/firewall/block-ip", { ip })
+              .then((done) => { if (done) setIp(""); })}
+            disabled={busy || !ip.trim()}
+            className="fx-btn-g px-4 py-2.5 text-[13px]">
+            قاعده‌ی فایروال بساز
           </button>
         </div>
-        {!d.active && (
+
+        {!d.blackholeAvailable && (
           <InfoBox tone="warn">
-            <b>فایروال خاموش است.</b> آدرس‌هایی که می‌بندید ذخیره می‌شوند و
-            در فهرست پایین دیده می‌شوند، ولی تا روشن‌شدن فایروال هیچ
-            ترافیکی را سد نمی‌کنند. از صفحه‌ی «قواعد فایروال» روشنش کنید.
+            دستور <code>ip</code> روی این سرور نیست، پس بستن فوری ممکن نیست —
+            فقط قاعده‌ی فایروال می‌شود ساخت.
           </InfoBox>
         )}
+
+        <InfoBox>
+          <b>تفاوت این دو:</b> «همین حالا ببند» فوری اثر می‌کند و به فایروال
+          کاری ندارد — برای اسکنر و حدس‌زن رمز کافی است. «قاعده‌ی فایروال» تا
+          وقتی ufw روشن نشده اثری ندارد، ولی در برابر حمله‌ی حجمی قوی‌تر است.
+        </InfoBox>
       </div>
 
-      <div className="fx-card p-5">
-        <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
-          <XCircle size={15} style={{ color: "var(--muted)" }} /> فهرست بسته‌شده‌ها
-          <span className="text-[13px] font-normal" style={{ color: "var(--muted)" }}>
-            ({faNum(blocked.length)})
-          </span>
-          {pendingCount > 0 && (
-            <span className="text-[12px] font-normal" style={{ color: "var(--warn)" }}>
-              {faNum(pendingCount)} مورد در انتظار روشن‌شدن فایروال
+      {viaHole.length > 0 && (
+        <div className="fx-card p-5">
+          <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
+            <ShieldCheck size={15} style={{ color: "var(--ok)" }} />
+            بسته‌شده بدون فایروال
+            <span className="text-[13px] font-normal" style={{ color: "var(--muted)" }}>
+              ({faNum(viaHole.length)})
             </span>
-          )}
-        </div>
-        {!blocked.length ? (
-          <EmptyState icon={ShieldCheck} text="هیچ آی‌پی‌ای بسته نشده" />
-        ) : blocked.map((r) => (
-          <div key={r.num} className="flex items-center justify-between gap-3 p-3 rounded-xl mb-2"
-            style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
-            <span className="flex items-center gap-2 flex-wrap">
-              <span dir="ltr" className="text-[13px]"
-                style={{ fontFamily: "var(--mono)", color: "var(--dim)" }}>
-                {r.source}
-              </span>
-              {r.pending && (
-                <span className="fx-pill" style={{
-                  background: "rgba(251,191,36,.12)", color: "var(--warn)",
-                }}>ثبت شده — با روشن‌شدن فایروال اعمال می‌شود</span>
-              )}
-            </span>
-            <button
-              onClick={() => call("/api/admin/firewall/block-ip", {
-                method: "POST",
-                body: JSON.stringify({ ip: r.source, unblock: true }),
-              })}
-              disabled={busy}
-              className="fx-btn-g px-3 py-2 text-[13px]">
-              باز کن
-            </button>
           </div>
-        ))}
-      </div>
+          <p className="text-[12px] mb-3" style={{ color: "var(--muted)" }}>
+            این‌ها همین حالا فعال‌اند.
+          </p>
+          {viaHole.map((r) => (
+            <div key={`h${r.ip}`}
+              className="flex items-center justify-between gap-3 p-3 rounded-xl mb-2"
+              style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
+              <div className="min-w-0">
+                <div dir="ltr" className="text-[13px]"
+                  style={{ fontFamily: "var(--mono)", color: "var(--dim)" }}>
+                  {r.ip}
+                </div>
+                <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>
+                  {r.how}
+                </div>
+              </div>
+              <button onClick={() => setConfirmOpen({ ip: r.ip, via: "blackhole" })}
+                disabled={busy}
+                className="fx-btn-g px-3 py-2 text-[12px] shrink-0">باز کن</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {viaUfw.length > 0 && (
+        <div className="fx-card p-5">
+          <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
+            <ShieldCheck size={15} style={{ color: "var(--muted)" }} />
+            قاعده‌های فایروال
+            <span className="text-[13px] font-normal" style={{ color: "var(--muted)" }}>
+              ({faNum(viaUfw.length)})
+            </span>
+          </div>
+          {!d.firewallActive && (
+            <p className="text-[12px] mb-3" style={{ color: "var(--warn)" }}>
+              فایروال خاموش است، پس این قاعده‌ها ذخیره شده‌اند ولی هنوز چیزی
+              را سد نمی‌کنند.
+            </p>
+          )}
+          {viaUfw.map((r) => (
+            <div key={`u${r.ip}${r.num}`}
+              className="flex items-center justify-between gap-3 p-3 rounded-xl mb-2"
+              style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
+              <div className="min-w-0">
+                <div dir="ltr" className="text-[13px]"
+                  style={{ fontFamily: "var(--mono)", color: "var(--dim)" }}>
+                  {r.ip}
+                </div>
+                <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>
+                  {r.how}
+                </div>
+              </div>
+              <button onClick={() => setConfirmOpen({ ip: r.ip, via: "ufw" })}
+                disabled={busy}
+                className="fx-btn-g px-3 py-2 text-[12px] shrink-0">باز کن</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!rows.length && (
+        <EmptyState icon={ShieldCheck} text="هیچ آدرسی بسته نشده"
+          hint="اگر آدرسی دارد سرور را می‌خورد، از بالا ببندیدش — فوری و بدون فایروال." />
+      )}
+
+      {confirmOpen && (
+        <ConfirmModal
+          title="بازکردن این آدرس"
+          desc={`${confirmOpen.ip} دوباره می‌تواند به سرور وصل شود.`}
+          confirmLabel="باز کن"
+          onCancel={() => setConfirmOpen(null)}
+          onConfirm={() => {
+            const c = confirmOpen;
+            setConfirmOpen(null);
+            call(c.via === "blackhole"
+              ? "/api/admin/firewall/blackhole"
+              : "/api/admin/firewall/block-ip",
+            { ip: c.ip, unblock: true });
+          }} />
+      )}
     </div>
   );
 }

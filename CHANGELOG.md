@@ -1,5 +1,63 @@
 # Changelog
 
+## [1.7.0]
+
+### Added — Blocking an address without turning the firewall on
+
+Enabling ufw on a remote server is a real decision, and treating it with caution
+is right. But "this address is eating my server and I want it gone now" should
+not have to wait for that decision.
+
+A blackhole route does not involve the firewall at all: the kernel drops every
+packet destined for that address, so the TCP handshake never completes and the
+connection dies at the first step. It takes effect immediately, touches no
+service, and is undone with one command.
+
+Its limit is stated on the page rather than hidden: it kills the reply, it does
+not filter the inbound flood. Enough for a scanner or a password guesser; a
+volumetric attack still needs the firewall.
+
+Blocked addresses persist across reboots — a routing table lives in memory, so
+without a saved list an address the admin blocked would quietly reopen after the
+next restart while they believed it was still shut.
+
+### Added — Why a node sends no report
+
+Twice I guessed at this and twice I was wrong, because nothing showed where the
+job stopped. The queue has four stages — recorded, taken, executed, returned —
+and any of them can be the one that stalls.
+
+The diagnose panel now shows all four with timestamps and the actual error text,
+plus the last fifteen jobs. A job stuck at "queued" means the agent is not
+connected; stuck at "taken" means it is running and not answering; "failed"
+shows what it said. Each state comes with the command to run next.
+
+### Added — Jalali date picker
+
+`<input type="date">` shows a Gregorian calendar. Someone recalling when they
+started working with a reseller remembers it as "اول مهر ۱۴۰۳", not
+"2024-09-22" — and converting in your head is where the error enters, on a field
+that feeds straight into an invoice.
+
+The picker is Jalali; the value sent to the backend is still ISO Gregorian, so
+nothing changed on that side. The conversion is tested against known dates
+including leap years and a thousand consecutive days round-tripped.
+
+The first leap-year formula I wrote was wrong for 1403 — which is a leap year —
+and the test caught it immediately.
+
+### Fixed — Two focus rings stacked on every search box
+
+A global `input:focus-visible` outline applied to the input inside the search
+box, which already shows focus on its container. The result was a soft ring plus
+a hard 2px outline a few pixels inside it. One indicator now, not two.
+
+### Fixed — Number fields showed the browser's spinner arrows
+
+They sit in the corner, match no theme, and in a right-to-left layout land
+exactly where the eye expects the number. Where stepping is genuinely useful,
+NumberStepper has its own buttons that match the rest of the panel.
+
 ## [1.6.2]
 
 ### Fixed — Accounting was throwing on every page load

@@ -9,6 +9,7 @@ import { createPortal } from "react-dom";
 import {
   AlertTriangle, Check, CheckCircle2, ChevronLeft, Circle, Clock, Database, Download, FileText, Loader2, Plus as PlusIcon, RefreshCw, Save, Search, Send, ShieldCheck, Trash2, TrendingUp, Upload, Users, Wallet, X, XCircle,
 } from "lucide-react";
+import { JalaliDate } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { Field, InfoBox, Modal, Msg, SectionHead, Toggle } from "../ui/index";
@@ -1350,9 +1351,9 @@ function NeedStartBanner({ groups, password, onDone }) {
         <div className="flex gap-2 items-end flex-wrap">
           <div style={{ minWidth: 180 }}>
             <Field label="همکاری از چه تاریخی شروع شد؟"
-              hint="میلادی — همین یک بار لازم است">
-              <input className="fx-input" type="date" dir="ltr" value={date}
-                onChange={(e) => setDate(e.target.value)} />
+              hint="تقویم شمسی — همین یک بار لازم است">
+              <JalaliDate value={date} onChange={setDate}
+                placeholder="انتخاب تاریخ شروع" />
             </Field>
           </div>
           <button onClick={apply} disabled={busy || !date}

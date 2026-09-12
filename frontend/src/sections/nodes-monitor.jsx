@@ -12,12 +12,159 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Activity, Loader2, RefreshCw, Server, ShieldCheck,
+  Activity, AlertTriangle, CheckCircle2, Loader2, RefreshCw, Search, Server, ShieldCheck, Stethoscope,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { EmptyState, InfoBox, Msg, SectionHead } from "../ui/index";
 import { MetricCard, PortsCard, ConnectionsCard } from "./monitoring";
+
+/**
+ * چرا از این سرور گزارشی نمی‌آید.
+ *
+ * چرا وجود دارد:
+ *     دو بار برای همین مشکل حدس زدم و هر دو بار اشتباه بود، چون
+ *     هیچ‌جا دیده نمی‌شد کار کجا می‌ایستد. صف کار چهار مرحله دارد و
+ *     هر کدام می‌تواند جای گیرکردن باشد — بدون دیدنشان، رفع مشکل
+ *     یعنی تیر در تاریکی.
+ */
+function NodeDiagnose({ nodeId, password, onFix }) {
+  const [d, setD] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const run = useCallback(async () => {
+    if (!nodeId) return;
+    setBusy(true);
+    try {
+      const j = await fetch(
+        `${API_URL}/api/admin/tunnel/node/${nodeId}/diagnose`,
+        { headers: { "X-Admin-Password": password } },
+      ).then((r) => r.json());
+      setD(j);
+    } catch { setD({ steps: [], error: "اتصال برقرار نشد" }); }
+    finally { setBusy(false); }
+  }, [nodeId, password]);
+
+  useEffect(() => { if (open) run(); }, [open, run]);
+
+  return (
+    <div className="fx-card p-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-[14px] font-semibold text-white flex items-center gap-2">
+          <Stethoscope size={15} style={{ color: "var(--accent-2)" }} />
+          چرا گزارشی نمی‌آید؟
+        </div>
+        <button onClick={() => setOpen(!open)} disabled={busy || !nodeId}
+          className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+          {busy ? <Loader2 size={13} className="animate-spin" />
+            : <Search size={13} />}
+          {open ? "بستن" : "بررسی کن"}
+        </button>
+      </div>
+      <p className="text-[13px] mt-1" style={{ color: "var(--muted)" }}>
+        هر چهار مرحله‌ی مسیر را نشان می‌دهد و می‌گوید کجا ایستاده.
+      </p>
+
+      {open && d && (
+        <div className="mt-3">
+          {d.error && <InfoBox tone="warn">{d.error}</InfoBox>}
+
+          {(d.steps || []).map((s, i) => (
+            <div key={i} className="flex items-start gap-3 p-3 rounded-xl mb-2"
+              style={{
+                background: s.ok ? "rgba(52,211,153,.06)" : "rgba(251,191,36,.06)",
+                border: `1px solid ${s.ok ? "rgba(52,211,153,.22)"
+                  : "rgba(251,191,36,.28)"}`,
+              }}>
+              {s.ok
+                ? <CheckCircle2 size={16} className="shrink-0 mt-0.5"
+                    style={{ color: "var(--ok)" }} />
+                : <AlertTriangle size={16} className="shrink-0 mt-0.5"
+                    style={{ color: "var(--warn)" }} />}
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-semibold"
+                  style={{ color: s.ok ? "var(--ok)" : "var(--warn)" }}>
+                  {s.step}
+                </div>
+                <div className="text-[12px] mt-1 leading-relaxed"
+                  style={{ color: "var(--dim)", wordBreak: "break-word" }}>
+                  {s.note}
+                </div>
+                {s.fix && (
+                  <div className="text-[12px] mt-1.5" style={{ color: "var(--accent-2)" }}>
+                    راه‌حل: {s.fix}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {d.healthy && (
+            <InfoBox tone="ok">
+              هر چهار مرحله سالم است — گزارش باید بیاید.
+            </InfoBox>
+          )}
+
+          {(d.jobs || []).length > 0 && (
+            <details className="mt-3">
+              <summary className="text-[13px] cursor-pointer"
+                style={{ color: "var(--muted)" }}>
+                آخرین کارها ({faNum(d.jobs.length)})
+              </summary>
+              <div className="mt-2" style={{ overflowX: "auto" }}>
+                <table className="fx-table" style={{ minWidth: 520 }}>
+                  <thead>
+                    <tr>
+                      <th>#</th><th>دستور</th><th>وضعیت</th>
+                      <th>ثبت</th><th>نتیجه</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d.jobs.map((j) => (
+                      <tr key={j.id}>
+                        <td style={{ fontFamily: "var(--mono)" }}>{j.id}</td>
+                        <td dir="ltr">{j.action}</td>
+                        <td style={{
+                          color: j.status === "done" ? "var(--ok)"
+                            : j.status === "failed" ? "var(--danger)"
+                              : "var(--warn)",
+                        }}>{j.status}</td>
+                        <td className="text-[12px]" dir="ltr">
+                          {String(j.created_at || "").slice(5, 16)}
+                        </td>
+                        <td className="text-[12px]" style={{
+                          maxWidth: 240, overflow: "hidden",
+                          textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          color: "var(--muted)",
+                        }} title={j.result || ""}>{j.result || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          )}
+
+          <div className="flex gap-2 mt-3 flex-wrap">
+            <button onClick={run} disabled={busy}
+              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
+              <RefreshCw size={13} className={busy ? "animate-spin" : ""} />
+              دوباره بررسی کن
+            </button>
+            {onFix && !d.healthy && (
+              <button onClick={onFix} disabled={busy}
+                className="fx-btn px-3 py-2 text-[13px]">
+                به‌روزرسانی ایجنت
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 export function NodesMonitor({ password }) {
   const [nodes, setNodes] = useState(null);
@@ -241,9 +388,14 @@ export function NodesMonitor({ password }) {
       )}
 
       {!snap || !snap.ready ? (
-        <EmptyState icon={Activity}
-          text={(snap && snap.note)
-            || "هنوز گزارشی از این سرور نرسیده — دکمه‌ی «گزارش تازه» را بزنید"} />
+        <>
+          <EmptyState icon={Activity}
+            text={(snap && snap.note)
+              || "هنوز گزارشی از این سرور نرسیده — دکمه‌ی «گزارش تازه» را بزنید"} />
+          {/* وقتی گزارش نمی‌آید، اولین سؤال «چرا» است — نه اینکه
+              دوباره همان دکمه را بزنیم. */}
+          <NodeDiagnose nodeId={sel} password={password} onFix={updateAgent} />
+        </>
       ) : d ? (
         <>
           {(d.metrics || []).length > 0 && (
