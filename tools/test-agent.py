@@ -248,6 +248,64 @@ except Exception as e:
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("ایجنت قبل از ری‌استارت نتیجه را می‌فرستد")
+
+# کار ۱۸۴۰ روی «taken» مانده بود: systemctl restart همین پردازه را
+# می‌کشد، و چون نتیجه بعد از return فرستاده می‌شد، هیچ‌وقت نمی‌رسید.
+check("ری‌استارت داخل update_self انجام نمی‌شود",
+      "RESTART_AFTER.append" in AGENT,
+      "وگرنه کار تا ابد روی taken می‌ماند")
+check("پرچم ری‌استارت وجود دارد", "RESTART_AFTER = []" in AGENT)
+check("حلقه بعد از فرستادن نتیجه ری‌استارت می‌کند",
+      AGENT.index('api("job-result"') < AGENT.index("if RESTART_AFTER:"),
+      "ترتیب مهم است")
+check("بعد از ری‌استارت حلقه تمام می‌شود",
+      "RESTART_AFTER.clear()" in AGENT)
+
+head("نام معکوس صفحه را معطل نمی‌کند")
+
+NET = io.open(os.path.join(ROOT, "backend", "netid.py"),
+              encoding="utf-8").read()
+check("نسخه‌ی کش‌خوان وجود دارد", "def rdns_cached" in NET,
+      "صفحه فقط از کش می‌خواند")
+check("پرکردن کش در پس‌زمینه است", "def rdns_warm" in NET)
+check("نخ پس‌زمینه daemon است", "daemon=True" in NET,
+      "تا بستن سرویس را معطل نکند")
+check("نسخه‌ی موازی سقف زمانی دارد", "budget=" in NET)
+check("صفحه دیگر مستقیم owner صدا نمی‌زند",
+      "NETID.rdns_cached(top)" in APP,
+      "شصت آدرس × ۱.۵ ثانیه یعنی نود ثانیه انتظار")
+
+head("ابزار تشخیص سرور")
+
+DOC = os.path.join(ROOT, "nexora-doctor.sh")
+check("فایل تشخیص وجود دارد", os.path.exists(DOC))
+if os.path.exists(DOC):
+    D2 = io.open(DOC, encoding="utf-8").read()
+    for what, needle in (
+        ("نسخه‌ی روی دیسک و نسخه‌ی در حال اجرا", "panel code is newer"),
+        ("کار گیرکرده روی taken", "taken by the agent with no answer"),
+        ("کار مانده در صف", "waiting with no agent"),
+        ("دید فایروال به پورت‌ها", "listening ports and their owners"),
+        ("پردازه‌های تانل", "tunnel process"),
+        ("خواندن x-ui", "x-ui database"),
+        ("گروه بدون تاریخ شروع", "have no start date"),
+        ("موجودی منفی", "negative balance"),
+        ("رزرو سکه‌ی آزادنشده", "coin hold"),
+    ):
+        check("بررسی می‌کند: " + what, needle in D2)
+
+    persian_out = re.findall(r'^\s*(?:echo|info|warn|bad|ok|fix)\s+.*[؀-ۿ]',
+                             D2, re.M)
+    check("خروجی انگلیسی است", not persian_out,
+          "متن فارسی در شل با جهت‌دهی ترمینال تداخل می‌کند")
+    check("به CLI وصل شده",
+          "check|diagnose" in io.open(
+              os.path.join(ROOT, "nexora-cli.sh"), encoding="utf-8").read())
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

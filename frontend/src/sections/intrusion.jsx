@@ -9,7 +9,7 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, Loader2, RefreshCw, ShieldCheck,
+  AlertTriangle, Download, Loader2, RefreshCw, ShieldCheck,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum } from "../lib/format";
@@ -42,7 +42,43 @@ export function FirewallIntrusion({ password }) {
   useEffect(() => {
     if (msg) {
       const t = setTimeout(() => setMsg(null), 5000);
-      return () => clearTimeout(t);
+    
+  /**
+   * فهرست آدرس‌های مهاجم را به فایل می‌دهد.
+   *
+   * قالبش همان است که بخش «بستن دسته‌ای» می‌خواند، پس بدون هیچ
+   * ویرایشی مستقیم وارد می‌شود.
+   *
+   * onlyUnknown: تانل‌ها و آدرس‌هایی که مشتری‌های خودتان با آن‌ها
+   * وصل می‌شوند کنار گذاشته می‌شوند — بستن آن‌ها یعنی قطع‌کردن
+   * مشتری خودتان.
+   */
+  const exportIps = (onlyUnknown) => {
+    const rows = (d.ssh?.attempts || []).filter(
+      (a) => (onlyUnknown ? !a.known : true) && a.ip);
+    if (!rows.length) {
+      setMsg({ t: "err", m: "آدرسی برای خروجی نیست" });
+      return;
+    }
+    const lines = [
+      "# آدرس‌های مهاجم — از صفحه‌ی تلاش برای نفوذ",
+      `# ${new Date().toISOString().slice(0, 16).replace("T", " ")}`,
+      `# ${rows.length} آدرس`
+        + (onlyUnknown ? " (تانل‌ها و مشتری‌ها کنار گذاشته شدند)" : ""),
+      "",
+      ...rows.map((a) => a.ip),
+    ];
+    const blob = new Blob([lines.join("\n") + "\n"], { type: "text/plain" });
+    const el = document.createElement("a");
+    el.href = URL.createObjectURL(blob);
+    el.download = onlyUnknown
+      ? "nexora-attackers-unknown.txt" : "nexora-attackers.txt";
+    el.click();
+    URL.revokeObjectURL(el.href);
+    setMsg({ t: "ok", m: `${rows.length} آدرس در فایل ذخیره شد` });
+  };
+
+  return () => clearTimeout(t);
     }
   }, [msg]);
 
@@ -125,6 +161,22 @@ export function FirewallIntrusion({ password }) {
         )} />
 
       <Msg msg={msg} />
+
+      {(ssh.attempts || []).length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => exportIps(false)}
+            className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+            <Download size={13} /> خروجی همه‌ی مهاجم‌ها
+          </button>
+          <button onClick={() => exportIps(true)}
+            className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+            <Download size={13} /> فقط ناشناس‌ها
+          </button>
+          <span className="text-[12px]" style={{ color: "var(--muted)" }}>
+            فایل را در «آی‌پی‌های بسته‌شده» وارد کنید
+          </span>
+        </div>
+      )}
 
       {d.vpnNote && (
         <InfoBox>

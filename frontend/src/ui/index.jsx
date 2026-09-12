@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, CheckCircle2, Info, Loader2, Minus, Plus, Search, X,
+  AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Loader2, Minus, Plus, Search, X,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { faNum } from "../lib/format";
@@ -531,12 +531,37 @@ export function AreaChart({
  * children یک تابع است که برای هر آیتم JSX برمی‌گرداند — این‌طور
  * ردیف‌ها همان شکلی می‌مانند که هر صفحه می‌خواهد.
  */
+/**
+ * شماره‌های صفحه با «…» وقتی زیادند.
+ *
+ * سی دکمه‌ی صفحه خودش یک مشکل اسکرول تازه است؛ اول، آخر، و چندتای
+ * اطراف صفحه‌ی جاری کافی است.
+ */
+function pageNumbers(cur, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const out = [1];
+  const from = Math.max(2, cur - 1);
+  const to = Math.min(total - 1, cur + 1);
+  if (from > 2) out.push("…");
+  for (let i = from; i <= to; i++) out.push(i);
+  if (to < total - 1) out.push("…");
+  out.push(total);
+  return out;
+}
+
+
 export function LongList({
   items, children, initial = 8, searchable = false,
   match, empty = "چیزی نیست", label = "مورد",
 }) {
-  const [showAll, setShowAll] = useState(false);
+  const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
+
+  // با عوض‌شدن جست‌وجو باید به صفحه‌ی اول برگردیم، وگرنه کاربر روی
+  // صفحه‌ی پنجمِ نتیجه‌ای می‌ماند که فقط دو صفحه دارد
+  useEffect(() => { setPage(1); }, [q]);
 
   const all = Array.isArray(items) ? items : [];
   const filtered = (!searchable || !q.trim()) ? all : all.filter((it) => {
@@ -546,8 +571,15 @@ export function LongList({
     } catch { return true; }
   });
 
-  const shown = showAll ? filtered : filtered.slice(0, initial);
-  const more = filtered.length - shown.length;
+  // صفحه‌بندی عددی، نه فقط «نمایش بیشتر».
+  //
+  // «نمایش بیشتر» فهرست را بلندتر می‌کند و صفحه را بزرگ‌تر — دقیقاً
+  // همان چیزی که قرار بود حل شود. با صفحه‌بندی، ارتفاع صفحه ثابت
+  // می‌ماند هر چقدر داده باشد.
+  const perPage = initial;
+  const pages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const cur = Math.min(page, pages);
+  const shown = filtered.slice((cur - 1) * perPage, cur * perPage);
 
   if (!all.length) {
     return <div className="text-[13px] py-4 text-center"
@@ -582,19 +614,41 @@ export function LongList({
         </div>
       )}
 
-      {more > 0 && (
-        <button onClick={() => setShowAll(true)}
-          className="fx-btn-ghost w-full py-2.5 text-[13px] mt-1"
-          style={{ color: "var(--accent-2)" }}>
-          نمایش {faNum(more)} {label} دیگر
-        </button>
-      )}
-      {showAll && filtered.length > initial && (
-        <button onClick={() => setShowAll(false)}
-          className="fx-btn-ghost w-full py-2.5 text-[13px] mt-1"
-          style={{ color: "var(--muted)" }}>
-          جمع کردن
-        </button>
+      {pages > 1 && (
+        <div className="flex items-center justify-between gap-2 mt-3 flex-wrap">
+          <span className="text-[12px]" style={{ color: "var(--muted)" }}>
+            {faNum((cur - 1) * perPage + 1)}–
+            {faNum(Math.min(cur * perPage, filtered.length))}
+            {" از "}{faNum(filtered.length)}
+          </span>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setPage(cur - 1)} disabled={cur <= 1}
+              className="fx-ico-btn" style={{ width: 28, height: 28 }}
+              aria-label="صفحه‌ی قبل">
+              <ChevronRight size={14} />
+            </button>
+            {pageNumbers(cur, pages).map((n, idx) => (
+              n === "…" ? (
+                <span key={`g${idx}`} className="px-1 text-[12px]"
+                  style={{ color: "var(--muted)" }}>…</span>
+              ) : (
+                <button key={n} onClick={() => setPage(n)}
+                  className="rounded-lg text-[12px]"
+                  style={{
+                    minWidth: 28, height: 28,
+                    background: n === cur ? "var(--accent)" : "var(--surface-3)",
+                    color: n === cur ? "#fff" : "var(--dim)",
+                    border: `1px solid ${n === cur ? "var(--accent)" : "var(--border)"}`,
+                  }}>{faNum(n)}</button>
+              )
+            ))}
+            <button onClick={() => setPage(cur + 1)} disabled={cur >= pages}
+              className="fx-ico-btn" style={{ width: 28, height: 28 }}
+              aria-label="صفحه‌ی بعد">
+              <ChevronLeft size={14} />
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

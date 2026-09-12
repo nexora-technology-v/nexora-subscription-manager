@@ -2405,15 +2405,32 @@ def firewall_intrusion(hours: int = 24, x_admin_password: str = Header(...)):
         try:
             tun = NETID.tunnel_peers()
             cl = NETID.client_ips()
-            # جست‌وجوی نام معکوس کند است، پس فقط برای آن‌هایی که
-            # واقعاً روی صفحه دیده می‌شوند انجام می‌شود.
+            # نام معکوس فقط از کش خوانده می‌شود.
+            #
+            # نسخه‌ی قبلی برای هر آدرس یک جست‌وجوی DNS می‌زد و صفحه‌ی
+            # «تلاش برای نفوذ» تا یک دقیقه‌ونیم باز نمی‌شد. حالا صفحه
+            # فوری می‌آید و نام‌ها در پس‌زمینه پر می‌شوند — دفعه‌ی بعد
+            # که صفحه باز شود، از کش می‌آیند.
             attempts = (res.get("ssh") or {}).get("attempts") or []
+            top = [a.get("ip") for a in attempts[:60] if a.get("ip")]
+
+            cached = NETID.rdns_cached(top)
             for a in attempts[:60]:
-                own = NETID.owner(a.get("ip"))
+                ptr = cached.get(NETID.normalize(a.get("ip")))
+                if ptr is None:
+                    continue          # هنوز پرسیده نشده
+                own = NETID.owner(a.get("ip"), ptr=ptr)
                 a["owner"] = own.get("label") or ""
                 a["ownerKind"] = own.get("kind")
                 a["ptr"] = own.get("ptr") or ""
                 a["ownerWhy"] = own.get("why") or ""
+
+            # آنچه در کش نبود، در پس‌زمینه پرسیده می‌شود
+            missing = [i for i in top
+                       if NETID.normalize(i) not in cached]
+            if missing:
+                NETID.rdns_warm(missing)
+                res["lookupPending"] = len(missing)
             for a in attempts:
                 info = NETID.identify(a.get("ip"), tunnels=tun, clients=cl)
                 a["kind"] = info.get("kind")

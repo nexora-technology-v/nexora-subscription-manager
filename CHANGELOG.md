@@ -1,5 +1,55 @@
 # Changelog
 
+## [1.9.0]
+
+### Added — `nexora check`, so the guessing stops
+
+Three separate problems in this project were each chased twice before the real
+cause turned up in a log that happened to get pasted. That is a waste of the
+maintainer's time and it is on me.
+
+`nexora check` collects, in one pass, everything those investigations needed:
+the version on disk against the version actually running, the agent job queue
+and exactly where it stalls, which ports the firewall can see and who owns them,
+whether accounting can read x-ui, and whether any balance went negative.
+
+The version comparison alone answers a question that came up repeatedly — a
+panel that was updated but never restarted keeps serving the old code, and every
+symptom then looks like "the fix did not work".
+
+### Fixed — The agent restarted before reporting, so updates looked stuck
+
+`update_self` ran `systemctl restart` and returned. The restart killed the
+process before the result was posted, so the job sat on `taken` forever and the
+panel showed an update that never finished — job 1840 in the reported log.
+
+The result goes out first now; the restart happens after.
+
+### Fixed — The intrusion page took over a minute to open
+
+The owner lookup I added in 1.5.1 made one blocking DNS query per address, up to
+sixty of them at 1.5 seconds each. The page now renders from cache immediately
+and fills the names in behind it, so the second visit has them and the first
+does not wait.
+
+### Changed — Long lists are paginated, not expanded
+
+"Show more" made the list longer, which is the problem it was meant to solve.
+Numbered pages keep the page height fixed no matter how much data there is, with
+first/last and a window around the current page once there are more than seven.
+
+### Added — Export attacking addresses straight into the blocklist
+
+Two buttons on the intrusion page: every attacker, or only the unknown ones —
+the second skips tunnels and addresses your own clients connect from, because
+blocking those means cutting your own customers. The file is in the format the
+bulk blocker reads.
+
+### Changed — The accounting date filters are Jalali too
+
+The client filter's date range used bare Gregorian text fields. Anyone working
+in a Persian panel holds the range in their head as Jalali.
+
 ## [1.8.1]
 
 ### Changed — The bot's messages now use the layout you asked for

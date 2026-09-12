@@ -532,17 +532,17 @@ export function BillingClients({ password }) {
             <span className="text-[12px] shrink-0" style={{ color: "var(--muted)" }}>
               ساخته‌شده بین
             </span>
-            <input className="fx-input" dir="ltr" value={dates.from}
-              onChange={(e) => { setDates({ ...dates, from: e.target.value }); setPage(0); }}
-              placeholder="2026-08-01"
-              style={{ width: 130, fontFamily: "var(--mono)",
-                       fontSize: 11.5, padding: "7px 10px" }} />
+            {/* فیلتر هم باید شمسی باشد — کسی که در پنل فارسی کار
+                می‌کند، بازه را شمسی در ذهن دارد نه میلادی */}
+            <div style={{ width: 150 }}>
+              <JalaliDate value={dates.from} placeholder="از تاریخ"
+                onChange={(v) => { setDates({ ...dates, from: v }); setPage(0); }} />
+            </div>
             <span className="text-[12px]" style={{ color: "var(--muted)" }}>تا</span>
-            <input className="fx-input" dir="ltr" value={dates.to}
-              onChange={(e) => { setDates({ ...dates, to: e.target.value }); setPage(0); }}
-              placeholder="2026-08-31"
-              style={{ width: 130, fontFamily: "var(--mono)",
-                       fontSize: 11.5, padding: "7px 10px" }} />
+            <div style={{ width: 150 }}>
+              <JalaliDate value={dates.to} placeholder="تا تاریخ"
+                onChange={(v) => { setDates({ ...dates, to: v }); setPage(0); }} />
+            </div>
 
             {[["۷ روز", 7], ["۳۰ روز", 30]].map(([l, n]) => (
               <button key={n}

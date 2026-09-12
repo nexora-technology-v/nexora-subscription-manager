@@ -740,6 +740,11 @@ def handle(job, panel_version=""):
     return False, f"دستور ناشناخته: {action}"
 
 
+#: اگر چیزی این‌جا گذاشته شود، حلقه‌ی اصلی بعد از فرستادن نتیجه
+#: خودش را ری‌استارت می‌کند.
+RESTART_AFTER = []
+
+
 def update_self(url):
     """
     به‌روزرسانی خود agent — فقط از همان پنلی که به آن وصل است.
@@ -762,8 +767,16 @@ def update_self(url):
         shutil.copy2(target, str(target) + ".bak")
         shutil.move(str(tmp), target)
         os.chmod(target, 0o755)
-        run(["systemctl", "restart", "nexora-agent"])
-        return True, "به‌روزرسانی شد"
+
+        # ری‌استارت این‌جا انجام *نمی‌شود*.
+        #
+        # systemctl restart همین پردازه را می‌کشد، و چون نتیجه‌ی کار
+        # بعد از return فرستاده می‌شود، آن پیام هیچ‌وقت نمی‌رسد: کار
+        # تا ابد روی «taken» می‌ماند و پنل فکر می‌کند ایجنت جواب نداده.
+        #
+        # حلقه‌ی اصلی اول نتیجه را می‌فرستد، بعد ری‌استارت می‌کند.
+        RESTART_AFTER.append(True)
+        return True, "به‌روزرسانی شد — ایجنت در حال ری‌استارت"
     except Exception as e:
         return False, f"{type(e).__name__}: {str(e)[:120]}"
 
@@ -807,6 +820,14 @@ def main():
                 api("job-result", {"job_id": jid, "ok": ok, "action": action,
                                    "tunnel_id": (job.get("payload") or {}).get("tunnel_id"),
                                    "result": _result_text(out)})
+
+                # حالا که نتیجه رسیده، اگر به‌روزرسانی شده بود
+                # می‌شود خودمان را ری‌استارت کرد
+                if RESTART_AFTER:
+                    RESTART_AFTER.clear()
+                    log("Restarting after update")
+                    run(["systemctl", "restart", "nexora-agent"], timeout=20)
+                    return
 
         except KeyboardInterrupt:
             log("Exiting")

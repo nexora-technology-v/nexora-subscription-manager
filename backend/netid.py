@@ -390,6 +390,52 @@ _RDNS_CACHE = {}
 _RDNS_TTL = 3600.0
 
 
+def rdns_many(ips, timeout=1.2, workers=16, budget=3.0):
+    """
+    نام معکوس چند آدرس، موازی و با سقف زمانی.
+
+    چرا لازم شد:
+        نسخه‌ی سریالی برای هر آدرس تا ۱.۵ ثانیه صبر می‌کرد. صفحه‌ی
+        «تلاش برای نفوذ» شصت آدرس دارد، یعنی تا نود ثانیه انتظار —
+        صفحه عملاً باز نمی‌شد.
+
+        حالا همه با هم پرسیده می‌شوند و کل کار یک سقف زمانی دارد:
+        هرچه تا آن لحظه رسیده استفاده می‌شود و بقیه بدون نام می‌مانند.
+        نام معکوس یک اطلاعات کمکی است؛ ارزش معطل‌کردن صفحه را ندارد.
+    """
+    from concurrent.futures import ThreadPoolExecutor, wait
+
+    out, todo = {}, []
+    now = time.time()
+    for ip in ips:
+        n = normalize(ip)
+        if not n or is_local(n):
+            continue
+        hit = _RDNS_CACHE.get(n)
+        if hit and now - hit[0] <= _RDNS_TTL:
+            out[n] = hit[1]
+        elif n not in todo:
+            todo.append(n)
+
+    if not todo:
+        return out
+
+    with ThreadPoolExecutor(max_workers=min(workers, len(todo))) as pool:
+        futures = {pool.submit(rdns, n, timeout): n for n in todo}
+        done, pending = wait(futures, timeout=budget)
+        for f in done:
+            n = futures[f]
+            try:
+                out[n] = f.result() or ""
+            except Exception:
+                out[n] = ""
+        for f in pending:
+            # وقت تمام شد — این آدرس بدون نام می‌ماند، ولی صفحه باز می‌شود
+            f.cancel()
+            out.setdefault(futures[f], "")
+    return out
+
+
 def rdns(ip, timeout=1.5):
     """
     نام معکوس یک آدرس، با کش.
@@ -461,3 +507,58 @@ def owner(ip, ptr=None):
 
     return {"kind": "unknown", "label": "", "ptr": "",
             "why": "نام معکوس ندارد — درباره‌ی صاحبش چیزی نمی‌دانیم."}
+
+
+def rdns_cached(ips):
+    """
+    فقط آنچه در کش هست — بدون هیچ پرس‌وجوی شبکه.
+
+    صفحه با این ساخته می‌شود تا فوری باز شود. آدرسی که هنوز پرسیده
+    نشده اصلاً در خروجی نمی‌آید، پس صدازننده می‌فهمد باید بعداً
+    دوباره بپرسد.
+    """
+    now = time.time()
+    out = {}
+    for ip in ips:
+        n = normalize(ip)
+        if not n:
+            continue
+        hit = _RDNS_CACHE.get(n)
+        if hit and now - hit[0] <= _RDNS_TTL:
+            out[n] = hit[1]
+    return out
+
+
+def rdns_warm(ips, timeout=1.2, workers=12):
+    """
+    کش را در پس‌زمینه پر می‌کند و فوری برمی‌گردد.
+
+    صفحه منتظر نمی‌ماند؛ دفعه‌ی بعد که باز شود نام‌ها آماده‌اند.
+    یک نخ daemon است، پس اگر سرویس بسته شود مانع نمی‌شود.
+    """
+    import threading
+
+    todo = []
+    now = time.time()
+    for ip in ips:
+        n = normalize(ip)
+        if not n or is_local(n):
+            continue
+        hit = _RDNS_CACHE.get(n)
+        if (not hit or now - hit[0] > _RDNS_TTL) and n not in todo:
+            todo.append(n)
+    if not todo:
+        return 0
+
+    def work():
+        from concurrent.futures import ThreadPoolExecutor
+        try:
+            with ThreadPoolExecutor(max_workers=min(workers, len(todo))) as p:
+                for n in todo:
+                    p.submit(rdns, n, timeout)
+        except Exception:
+            pass
+
+    t = threading.Thread(target=work, daemon=True)
+    t.start()
+    return len(todo)

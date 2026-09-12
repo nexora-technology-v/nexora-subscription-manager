@@ -777,6 +777,17 @@ PY
     ok "Accounting can read x-ui now"
     ;;
 
+  check|diagnose)
+    # گزارش کامل: نسخه‌ها، صف کارها، دید فایروال، حسابداری، ربات.
+    # وقتی چیزی کار نمی‌کند، این اولین چیزی است که باید اجرا شود.
+    if [ -f "$INSTALL_DIR/nexora-doctor.sh" ]; then
+      bash "$INSTALL_DIR/nexora-doctor.sh" "${2:-}"
+    else
+      err "nexora-doctor.sh not found — run: nexora update"
+      exit 1
+    fi
+    ;;
+
   doctor)
     logo
     echo -e "  ${C_BOLD}System Check${C_RESET}"
