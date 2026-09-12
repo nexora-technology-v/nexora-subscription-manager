@@ -262,6 +262,71 @@ check("آزادسازی دو بار انجام نمی‌شود", "kind='released
       "تراکنش بعد از بازگشت نام عوض می‌کند")
 
 
+# ═══════════════════════════════════════════════════════════
+head("تمدید همان اشتراکی را تمدید می‌کند که انتخاب شده")
+
+# دو باگ با هم:
+#
+#   ۱. دکمه‌های «تمدید» همان chk و wpay خرید جدید بودند و create_order
+#      پیش‌فرض kind="new" دارد — پس مشتری پول تمدید می‌داد و کانفیگ
+#      *دوم* می‌گرفت، در حالی که اولی همچنان منقضی می‌شد.
+#
+#   ۲. تمدید خودکار kind="renew" می‌ساخت ولی provision با subs[0] کار
+#      می‌کرد — تازه‌ترین اشتراک، نه آن‌که پول برایش داده شده بود.
+
+u = new_user(0)
+
+pid = d.exec(
+    "INSERT INTO plans (tenant_id, name, gb, days, price) VALUES (?,?,?,?,?)",
+    (tid, "یک‌ماهه", 50, 30, 190000))
+
+sub_ids = []
+for n in ("aaa", "bbb", "ccc"):
+    sub_ids.append(d.exec(
+        "INSERT INTO subscriptions (tenant_id, user_id, plan_id, client_email,"
+        " gb, expires_at) VALUES (?,?,?,?,?,?)",
+        (tid, u["id"], pid, f"e_{n}", 50, "2026-12-01T00:00:00")))
+
+o = d.create_order(u["id"], pid, 190000, 190000,
+                   kind="renew", renew_sub_id=sub_ids[1])
+check("سفارش تمدید مقصد را نگه می‌دارد",
+      o.get("renew_sub_id") == sub_ids[1],
+      f"{o.get('renew_sub_id')} در برابر {sub_ids[1]}")
+
+o2 = d.create_order(u["id"], pid, 190000, 190000)
+check("سفارش عادی مقصد ندارد", not o2.get("renew_sub_id"))
+check("و نوعش new می‌ماند", o2["kind"] == "new", o2["kind"])
+
+SRC = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "handlers.py"), encoding="utf-8").read()
+
+check("دکمه‌ی تمدید شناسه‌ی اشتراک را حمل می‌کند",
+      'f"chk:{plan[\'id\']}:0:{sub[\'id\']}"' in SRC,
+      "وگرنه دقیقاً مثل خرید جدید عمل می‌کند")
+check("دکمه‌ی کیف پول هم همین‌طور",
+      'f"wpay:{plan[\'id\']}:{sub[\'id\']}"' in SRC)
+check("مسیریاب بخش سوم را می‌خواند", "renew_sub_id=rid" in SRC)
+check("سفارش با مقصد، نوعش renew می‌شود",
+      'kind=("renew" if renew_sub_id else "new")' in SRC)
+check("provision مقصد را از سفارش می‌خواند",
+      'order.get("renew_sub_id")' in SRC,
+      "نه subs[0] که تازه‌ترین است")
+check("مقصد به همان کاربر محدود است", 'AND user_id=?' in SRC,
+      "تا کسی اشتراک دیگری را تمدید نکند")
+
+# مقصدِ متعلق به کاربر دیگر نباید پیدا شود
+other = new_user(0)
+osid = d.exec(
+    "INSERT INTO subscriptions (tenant_id, user_id, plan_id, client_email,"
+    " gb, expires_at) VALUES (?,?,?,?,?,?)",
+    (tid, other["id"], pid, "e_other", 50, "2026-12-01T00:00:00"))
+found = d.q("SELECT * FROM subscriptions WHERE tenant_id=? AND id=? AND user_id=?",
+            (tid, osid, u["id"]), one=True)
+check("اشتراک کاربر دیگر پیدا نمی‌شود", found is None,
+      "همان شرطی که جلوی تمدید اشتراک دیگران را می‌گیرد")
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

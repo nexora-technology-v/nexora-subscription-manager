@@ -418,7 +418,8 @@ def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
     _reply(ctx, chat_id, message_id, "\n".join(lines), kb(rows))
 
 
-def checkout(ctx, user, chat_id, message_id, plan_id, use_coins):
+def checkout(ctx, user, chat_id, message_id, plan_id, use_coins,
+             renew_sub_id=None):
     """ساخت سفارش و نمایش اطلاعات کارت."""
     p = ctx.db.get_plan(plan_id)
     if not p:
@@ -441,7 +442,11 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins):
     ttl = int(ctx.s.get("order_ttl_minutes") or 30)
     order = ctx.db.create_order(
         user["id"], plan_id, p["price"], pr["final"],
-        coins_used=pr["coins_used"], ttl_minutes=ttl
+        coins_used=pr["coins_used"], ttl_minutes=ttl,
+        # اگر تمدید است، مقصد از همین‌جا ثبت می‌شود — وگرنه provision
+        # نمی‌داند کدام اشتراک را باید تمدید کند و کانفیگ تازه می‌سازد
+        kind=("renew" if renew_sub_id else "new"),
+        renew_sub_id=renew_sub_id,
     )
 
     # سکه همین حالا رزرو می‌شود، نه موقع تایید.
@@ -511,7 +516,8 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins):
                [("✖️ لغو سفارش", f"cancel:{order['id']}")]]))
 
 
-def wallet_pay(ctx, user, chat_id, message_id, plan_id):
+def wallet_pay(ctx, user, chat_id, message_id, plan_id,
+               renew_sub_id=None):
     """پرداخت مستقیم از کیف پول — بدون نیاز به تایید ادمین."""
     p = ctx.db.get_plan(plan_id)
     if not p:
@@ -531,7 +537,9 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id):
     # کسر اول، سفارش بعد. اگر ترتیب برعکس باشد و کسر نگیرد، یک
     # سفارش بی‌پرداخت می‌ماند که هیچ‌کس بعداً نمی‌فهمد چه بوده.
     order = ctx.db.create_order(fresh["id"], plan_id, p["price"], p["price"],
-                                paid_from="wallet")
+                                paid_from="wallet",
+                                kind=("renew" if renew_sub_id else "new"),
+                                renew_sub_id=renew_sub_id)
     paid, left = ctx.db.spend_balance(fresh["id"], p["price"], "spend",
                                       f"خرید {p['name']}", order["id"])
     if not paid:
@@ -1019,9 +1027,22 @@ def provision(ctx, order_id):
     try:
         # تمدید اشتراک موجود یا ساخت جدید
         if order["kind"] == "renew":
-            subs = ctx.db.user_subs(user["id"])
-            if subs:
-                sub = subs[0]
+            # مقصد را از خود سفارش می‌خوانیم.
+            #
+            # قبلاً subs[0] گرفته می‌شد — تازه‌ترین اشتراک، نه آن‌که
+            # مشتری برای تمدیدش پول داده بود. کسی که سه اشتراک داشت،
+            # اشتباهی یکی دیگر را تمدیدشده می‌دید و همان که می‌خواست
+            # منقضی می‌شد.
+            sub = None
+            target = order.get("renew_sub_id")
+            if target:
+                sub = ctx.db.q(
+                    "SELECT * FROM subscriptions WHERE tenant_id=? AND id=? "
+                    "AND user_id=?", (ctx.tid, int(target), user["id"]), one=True)
+            if not sub:
+                subs = ctx.db.user_subs(user["id"])
+                sub = subs[0] if subs else None
+            if sub:
                 # ایمیل را هم می‌دهیم: در 3x-ui نسخه‌ی ۳ شناسه‌ی اصلی
                 # کلاینت ایمیل است و جست‌وجو با آن مطمئن‌تر از uuid است
                 ctx.xui.extend_subscription(sub["inbound_id"], sub["client_uuid"],
@@ -1397,9 +1418,10 @@ def show_renew(ctx, user, chat_id, message_id, sub_id):
             "بعد از تمدید، همین کانفیگ ادامه پیدا می‌کند — لازم نیست "
             "چیزی را در برنامه‌تان عوض کنید."))
         if user["balance"] >= plan["price"]:
-            rows.append([("👛 تمدید آنی از کیف پول", f"wpay:{plan['id']}")])
+            rows.append([("👛 تمدید آنی از کیف پول",
+                          f"wpay:{plan['id']}:{sub['id']}")])
         rows.append([(f"💳 تمدید — {core.toman(plan['price'])} تومان",
-                      f"chk:{plan['id']}:0")])
+                      f"chk:{plan['id']}:0:{sub['id']}")])
     else:
         lines += ["", "پلن این اشتراک دیگر موجود نیست — از فهرست پلن‌ها "
                   "یکی انتخاب کنید."]
@@ -2718,10 +2740,18 @@ def _on_callback(ctx, cq):
         if action == "plan":
             return show_plan_detail(ctx, user, chat_id, mid, int(arg))
         if action == "chk":
-            pid, _, flag = arg.partition(":")
-            return checkout(ctx, user, chat_id, mid, int(pid), flag == "1")
+            # chk:<plan>:<coins>[:<sub>] — بخش سوم فقط در تمدید می‌آید
+            parts = arg.split(":")
+            pid = int(parts[0])
+            use_coins = len(parts) > 1 and parts[1] == "1"
+            rid = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
+            return checkout(ctx, user, chat_id, mid, pid, use_coins,
+                            renew_sub_id=rid)
         if action == "wpay":
-            return wallet_pay(ctx, user, chat_id, mid, int(arg))
+            parts = arg.split(":")
+            rid = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None
+            return wallet_pay(ctx, user, chat_id, mid, int(parts[0]),
+                              renew_sub_id=rid)
         if action == "topup":
             return wallet_topup_amount(ctx, user, chat_id, mid, int(arg))
         if action == "cancel":

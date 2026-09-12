@@ -302,6 +302,11 @@ def _migrate(con):
         # به‌جای «یک‌ماهه پرسرعت» فقط نام اینباند را می‌بیند — چیزی
         # که هیچ‌وقت نخریده. این ستون همان نام را نگه می‌دارد.
         ("subscriptions", "plan_name", "TEXT"),
+        # کدام اشتراک قرار است تمدید شود.
+        #
+        # sub_id موجود *بعد* از ساخت پر می‌شود و نتیجه را نگه می‌دارد؛
+        # این یکی مقصد را از همان لحظه‌ی ثبت سفارش مشخص می‌کند.
+        ("orders", "renew_sub_id", "INTEGER"),
     ]
     for table, col, spec in adds:
         try:
@@ -693,15 +698,18 @@ class TenantDB:
     # ---------- سفارش ----------
     def create_order(self, user_id, plan_id, base_amount, amount,
                      coins_used=0, discount_pct=0, discount_code=None,
-                     kind="new", paid_from="card", ttl_minutes=30):
+                     kind="new", paid_from="card", ttl_minutes=30,
+                     renew_sub_id=None):
         exp = (datetime.now() + timedelta(minutes=ttl_minutes)).isoformat(timespec="seconds")
         oid = self.exec(
             """INSERT INTO orders (tenant_id, user_id, plan_id, kind, amount,
                                    base_amount, coins_used, discount_pct,
-                                   discount_code, paid_from, expires_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                                   discount_code, paid_from, expires_at,
+                                   renew_sub_id)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (self.tid, user_id, plan_id, kind, amount, base_amount,
-             coins_used, discount_pct, discount_code, paid_from, exp)
+             coins_used, discount_pct, discount_code, paid_from, exp,
+             renew_sub_id)
         )
         return self.get_order(oid)
 

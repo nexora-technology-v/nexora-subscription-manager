@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.9.1]
+
+### Fixed — Paying to renew created a second config instead
+
+The renew screen's buttons were `chk:` and `wpay:` — the same callbacks a new
+purchase uses. `create_order` defaults to `kind="new"`, so pressing **تمدید**
+built a brand new subscription: the customer paid to renew, received a second
+config, and watched the one they meant to renew expire anyway.
+
+### Fixed — Auto-renewal extended whichever subscription was newest
+
+The renewal path did `subs[0]` — the most recently created subscription, not the
+one that had triggered the renewal. A customer with three subscriptions saw the
+wrong one extended while the expiring one lapsed.
+
+Orders carry `renew_sub_id` now, set when the order is created and read back at
+provisioning time. The lookup is scoped to the paying user, so an order can only
+ever extend a subscription that belongs to them.
+
+`bot/test_wallet.py` builds three real subscriptions, renews the middle one, and
+checks the order carries that id — and that a subscription belonging to another
+user cannot be found by the same query.
+
 ## [1.9.0]
 
 ### Added — `nexora check`, so the guessing stops
