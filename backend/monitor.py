@@ -388,6 +388,15 @@ def network():
     return out
 
 
+
+def _is_loopback(host):
+    """فقط ۱۲۷.x و ::۱ — نه هر آدرس خصوصی."""
+    try:
+        return ipaddress.ip_address(str(host).strip("[]")).is_loopback
+    except ValueError:
+        return str(host).strip("[]").lower() in ("localhost", "")
+
+
 def listening():
     """
     پورت‌های باز رو به اینترنت — سطح حمله‌ی شما.
@@ -418,7 +427,32 @@ def listening():
             continue
         port = int(m.group(1))
         host = local[:m.start()]
-        public = host in ("0.0.0.0", "*", "[::]", "::")
+
+        # «عمومی» یعنی از بیرون این ماشین قابل دسترسی — نه فقط
+        # ۰.۰.۰.۰ و *.
+        #
+        # فهرست ثابت قبلی هر سرویسی را که به آی‌پی مشخصِ خود سرور
+        # بسته شده بود «غیرعمومی» می‌دید، و چون suggest و preflight
+        # پورت‌های غیرعمومی را رد می‌کنند، آن سرویس‌ها اصلاً در
+        # فایروال دیده نمی‌شدند. تانل‌ها دقیقاً همین‌طور بسته
+        # می‌شوند — پس درست همان‌هایی که بیشتر اهمیت داشتند غایب
+        # بودند.
+        bare = host.strip("[]")
+        if bare in ("0.0.0.0", "*", "::", ""):
+            public = True
+            scope = "همه‌ی رابط‌ها"
+        elif _is_loopback(bare):
+            # فقط لوپ‌بک واقعاً بیرون از این ماشین در دسترس نیست.
+            #
+            # آدرس خصوصی (۱۰.x یا ۱۹۲.۱۶۸.x) را ufw هم فیلتر می‌کند،
+            # پس اگر «غیرعمومی» حسابش کنیم، بررسی پیش از روشن‌کردن
+            # فایروال آن را نمی‌بیند و همان سرویس قطع می‌شود.
+            public = False
+            scope = "فقط روی خود سرور"
+        else:
+            public = True
+            scope = f"روی {bare}"
+
         proc = ""
         pm = re.search(r'users:\(\("([^"]+)"', line)
         if pm:
@@ -428,7 +462,8 @@ def listening():
             continue
         seen.add(key)
         rows.append({"port": port, "proto": proto, "process": proc,
-                     "public": public, "known": known.get(port, ""),
+                     "public": public, "bind": bare, "scope": scope,
+                     "known": known.get(port, ""),
                      "risk": "high" if (public and port not in known
                                         and port < 1024) else
                              ("medium" if public and port not in known else "low")})

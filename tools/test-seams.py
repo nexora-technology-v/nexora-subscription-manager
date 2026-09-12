@@ -394,6 +394,60 @@ if icon_problems:
 
 
 # ═══════════════════════════════════════════════════════════
+#  درز ۷ — ماژولی که استفاده شده ولی import نشده (پایتون)
+# ═══════════════════════════════════════════════════════════
+head("درز ۷ · نام ناموجود در پایتون")
+
+# app.py ماژول re را با نام _re وارد می‌کند. دو تابع تازه `re.match`
+# نوشتند — کامپایل بی‌صدا رد می‌شود، چون پایتون نام آزاد را فقط موقع
+# اجرا حل می‌کند. NameError وقتی رخ می‌داد که کاربر دکمه را می‌زد.
+py_problems = []
+STDLIB = ("re", "os", "sys", "json", "time", "math", "random", "socket",
+          "sqlite3", "shutil", "subprocess", "hashlib", "hmac", "base64",
+          "ipaddress", "tempfile", "logging", "secrets", "string", "uuid")
+
+for rel in ("backend/app.py", "backend/monitor.py", "backend/firewall.py",
+            "backend/netid.py", "backend/tunnels.py", "bot/handlers.py",
+            "bot/db.py", "bot/core.py", "bot/xui.py", "bot/tg.py",
+            "bot/run.py", "agent/nexora-agent.py"):
+    path = os.path.join(ROOT, rel)
+    if not os.path.exists(path):
+        continue
+    src = io.open(path, encoding="utf-8").read()
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        continue
+
+    bound = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                bound.add((a.asname or a.name).split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            for a in node.names:
+                bound.add(a.asname or a.name)
+
+    for mod in STDLIB:
+        if mod in bound:
+            continue
+        hit = re.search(r"(?<![\w.])" + mod + r"\.[a-z_]+\(", src)
+        if not hit:
+            continue
+        # ممکن است داخل خود تابع import شده باشد
+        if re.search(r"^\s+import " + mod + r"\b", src, re.M):
+            continue
+        line = src[:hit.start()].count("\n") + 1
+        py_problems.append(f"{rel}:{line} — {mod}. بدون import")
+
+check("هر ماژولی که استفاده می‌شود import شده", not py_problems,
+      f"{len(py_problems)} مورد" if py_problems
+      else "همان NameError که فقط موقع کلیک کاربر رخ می‌داد")
+if py_problems:
+    bullets(py_problems)
+
+
+# ═══════════════════════════════════════════════════════════
 print(f"\n{D}{'─' * 54}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

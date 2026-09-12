@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.6.2]
+
+### Fixed — Accounting was throwing on every page load
+
+Adding the month-source breakdown in 1.6.0 needed a `sources` field on each
+group row. That edit silently failed and I did not notice, so the aggregation
+wrote into a key that was never created: `KeyError: 'sources'` on every call to
+the billing overview. The whole accounting section was down.
+
+Two more faults were underneath it, both found by the end-to-end test written
+to reproduce the first:
+
+`app.py` imports the regex module as `_re`. Two functions added in 1.6.0 wrote
+`re.match` instead — which compiles fine, because Python resolves free names at
+call time, and only throws `NameError` when a user actually presses the button.
+
+And the bulk start-date call asked the billing overview for its group list while
+holding an open write connection. The overview opens its own connection and
+writes to `client_seen`, so SQLite deadlocked and the page stopped with
+"database is locked".
+
+### Fixed — `۱۴۰۳-۰۶-۱۰` was accepted as a date
+
+`\d` in Python matches Persian and Arabic digits too, so a Jalali date passed
+the format check and was stored as if it were Gregorian. Every calculation on
+it afterwards was meaningless. The pattern is `[0-9]` now.
+
+### Fixed — The start-date banner disappeared after one visit
+
+Once the panel records that it has seen a client, the month source changes from
+"default" to "first seen" — but first-seen is today, which still gives one
+month. The banner only looked for "default", so it vanished after the first page
+load while the billing stayed wrong. Both sources count now.
+
+### Fixed — The firewall could not see ports bound to a specific address
+
+A port counted as public only when bound to `0.0.0.0` or `*`. Anything bound to
+the server's own address — which is how tunnels are usually configured — was
+treated as unreachable and skipped by both the suggestions and the pre-flight
+check. The ports that mattered most were the ones missing.
+
+Only loopback is exempt now. A private address is not: ufw filters those too, so
+calling them safe would have let the pre-flight miss a service that enabling the
+firewall then cut.
+
+### Fixed — `nexora fix-xui` printed scrambled output
+
+Seven of its messages had Persian and English mixed on one line, and the Persian
+had been mangled in the file itself — leaving fragments like `ok "mode from and"`
+and `ok " Service "`. Rewritten in English, the same way slow-doctor was.
+
 ## [1.6.1]
 
 ### Fixed — The wallet could be spent twice

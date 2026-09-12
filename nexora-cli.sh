@@ -705,7 +705,7 @@ BOTEOF
     NEWPATH="${2:-}"
 
     if [ -z "$NEWPATH" ]; then
- echo -e "${C_DIM}and x-ui database...${C_RESET}"
+    echo -e "${C_DIM}Looking for the x-ui database...${C_RESET}"
       for p in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db /opt/x-ui/x-ui.db /etc/x-ui/db/x-ui.db; do
         [ -f "$p" ] && { NEWPATH="$p"; break; }
       done
@@ -714,11 +714,11 @@ BOTEOF
 
     if [ -z "$NEWPATH" ] || [ ! -f "$NEWPATH" ]; then
       err "دیتابیس x-ui پیدا نشد"
- info "path : nexora fix-xui /path/to/x-ui.db"
+    info "Pass it yourself: nexora fix-xui /path/to/x-ui.db"
       exit 1
     fi
 
- ok " : $NEWPATH"
+    ok "Found: $NEWPATH"
 
     # مجوز خواندن — فایل اصلی و فایل‌های جانبی WAL
     #
@@ -730,13 +730,13 @@ BOTEOF
         chmod +r "$f" 2>/dev/null && { ok "mode fixed: $(basename "$f")"; FIXED=1; }
       fi
     done
- [ "$FIXED" = "0" ] && ok "mode from and"
+    [ "$FIXED" = "0" ] && ok "Permissions were already fine"
 
     # پوشه هم باید قابل ورود باشد
     chmod o+x "$(dirname "$NEWPATH")" 2>/dev/null
 
     if [ -f "$NEWPATH-wal" ]; then
- info "Database is in WAL mode — check "
+      info "WAL mode is on — the -wal and -shm files must stay readable"
     fi
 
     # ۱. در سرویس
@@ -748,7 +748,7 @@ BOTEOF
         sed -i "/^\[Service\]/a Environment=\"XUI_DB_PATH=$NEWPATH\"" "$SVC"
       fi
       systemctl daemon-reload
- ok " Service "
+      ok "Service updated"
     fi
 
     # ۲. در تنظیمات پنل
@@ -769,12 +769,12 @@ if not isinstance(adv, dict):
 adv["xuiDbPath"] = path
 json.dump(d, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
 PY
- ok " settings Panel save "
+      ok "Saved to panel settings"
     fi
 
- systemctl restart nexora-panel 2>/dev/null && ok "Panel restarted"
+    systemctl restart nexora-panel 2>/dev/null && ok "Panel restarted"
     echo
- ok " Billing from "
+    ok "Accounting can read x-ui now"
     ;;
 
   doctor)

@@ -60,6 +60,7 @@ jobs:
         run: |
           python tools/test-admin-api.py
           python tools/test-billing.py
+          python tools/test-billing-e2e.py
           python tools/test-monitor.py
           python tools/test-firewall.py
           python tools/test-fw-safety.py

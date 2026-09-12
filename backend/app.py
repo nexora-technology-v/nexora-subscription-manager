@@ -4475,6 +4475,9 @@ def _billing_overview_impl():
                 "periodDays": conf.get("period_days") or 30,
                 "periodStart": conf.get("period_start"),
                 "settledUntil": conf.get("settled_until"),
+                # از کجا معلوم شد چند ماه — تا مدیر بفهمد چرا عدد
+                # این است و چه چیزی لازم است تا دقیق‌تر شود
+                "sources": {},
                 "configs": 0, "active": 0, "months": 0, "renewals": 0,
                 "used": 0, "quota": 0, "due": 0,
                 "paid": pays.get(g, 0), "unpriced": 0, "estimated": 0,
@@ -4568,6 +4571,22 @@ def _billing_overview_impl():
         "groups": out,
         "totalClients": total_clients,
         "botClients": sum(g.get("botOwned", 0) for g in out),
+
+        # گروه‌هایی که تاریخ شروع ندارند و به همین دلیل ماه‌هایشان
+        # حدسی است.
+        #
+        # «اولین‌دید» هم این‌جا می‌آید: آن تاریخِ شروعِ همکاری نیست،
+        # فقط روزی است که پنل کلاینت را دید. اگر حسابش نکنیم، بنر
+        # بعد از اولین اجرا برای همیشه ناپدید می‌شود در حالی که
+        # صورت‌حساب هنوز از امروز حساب می‌شود.
+        "needStart": [
+            g["key"] for g in out
+            if g["billable"] and not g["periodStart"]
+            and (g["sources"].get("پیش‌فرض", 0)
+                 + sum(n for k, n in g["sources"].items()
+                       if k.startswith("اولین‌دید"))) > 0
+        ],
+
         "totals": {
             "due": sum(g["due"] for g in billed),
             "paid": sum(g["paid"] for g in billed),
@@ -7027,7 +7046,7 @@ def _older_than(ver, floor):
     نسخه‌ی نامفهوم «قدیمی» حساب نمی‌شود: ادعای نادرست بدتر از
     نگفتن است — کاربر را دنبال به‌روزرسانیِ بی‌دلیل می‌فرستد.
     """
-    if not re.match(r"^\s*\d+(\.\d+)*", str(ver or "")):
+    if not _re.match(r"^\s*\d+(\.\d+)*", str(ver or "")):
         return False
 
     def parts(v):
@@ -7499,20 +7518,27 @@ def billing_bulk_start(payload: dict, x_admin_password: str = Header(...)):
     check_auth(x_admin_password)
     p = payload or {}
     start = str(p.get("start") or "").strip()[:10]
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", start):
+    # [0-9] و نه \d — در پایتون \d رقم فارسی و عربی را هم می‌گیرد، پس
+    # «۱۴۰۳-۰۶-۱۰» از این صافی رد می‌شد و به‌عنوان تاریخ میلادی ذخیره
+    # می‌شد؛ بعدش هر محاسبه‌ای روی آن بی‌معنا بود.
+    if not _re.match(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$", start):
         raise HTTPException(status_code=400,
                             detail="تاریخ باید به شکل ۲۰۲۴-۰۹-۰۱ باشد")
 
     keys = p.get("groups")
     overwrite = bool(p.get("overwrite"))
 
+    # نمای کلی خودش یک اتصال باز می‌کند و در client_seen می‌نویسد.
+    # اگر وسط یک اتصال بازِ دیگر صدایش بزنیم، SQLite قفل می‌کند و کل
+    # صفحه‌ی حسابداری با «database is locked» می‌ایستد. پس قبل از
+    # بازکردن اتصال نوشتن حسابش می‌کنیم.
+    if not keys:
+        keys = (_billing_overview_impl().get("needStart") or [])
+
     con = _billing_conn()
     try:
         have = {r["group_key"]: r["period_start"] for r in
                 con.execute("SELECT group_key, period_start FROM group_config")}
-        if not keys:
-            ov = _billing_overview_impl()
-            keys = ov.get("needStart") or []
 
         changed, skipped = [], []
         for k in keys:

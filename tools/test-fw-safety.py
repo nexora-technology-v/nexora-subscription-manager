@@ -187,6 +187,59 @@ check("بدون ساعت‌شمار روشن نمی‌کند مگر force",
 check("systemd اول امتحان می‌شود", "systemd-run" in SRC)
 check("جایگزین پس‌زمینه هم هست", "start_new_session=True" in SRC)
 
+# ═══════════════════════════════════════════════════════════
+head("پورتی که به آی‌پی مشخص بسته شده هم دیده می‌شود")
+
+import importlib.util as _iu  # noqa: E402
+_sp = _iu.spec_from_file_location("mon", os.path.join(ROOT, "backend", "monitor.py"))
+MON = _iu.module_from_spec(_sp)
+_sp.loader.exec_module(MON)
+
+# خروجی واقعی ss: سرویس‌ها همیشه به 0.0.0.0 بسته نمی‌شوند. تانل‌ها
+# معمولاً به آی‌پی مشخص سرور بسته می‌شوند — و همان‌ها بودند که
+# فایروال اصلاً نمی‌دیدشان.
+SS = "\n".join([
+    'tcp   LISTEN 0 4096  0.0.0.0:22    0.0.0.0:*  users:(("sshd",pid=1,fd=3))',
+    'tcp   LISTEN 0 4096  65.108.213.175:7777 0.0.0.0:*  users:(("backpack",pid=9,fd=5))',
+    'tcp   LISTEN 0 4096  127.0.0.1:9090 0.0.0.0:*  users:(("panel",pid=7,fd=4))',
+    'udp   UNCONN 0 0     10.0.0.5:47995 0.0.0.0:*  users:(("backhaul",pid=8,fd=6))',
+    'tcp   LISTEN 0 4096  [::]:443      [::]:*     users:(("xray",pid=5,fd=9))',
+    'tcp   LISTEN 0 4096  [::1]:6010    [::]:*     users:(("sshd",pid=1,fd=11))',
+])
+
+MON._has = lambda b: True
+MON._run = lambda cmd, timeout=8: (True, SS)
+rows = {r["port"]: r for r in MON.listening()}
+
+check("پورت روی همه‌ی رابط‌ها عمومی است", rows[22]["public"] is True)
+check("پورت بسته‌شده به آی‌پی سرور هم عمومی است",
+      rows[7777]["public"] is True,
+      "همان تانلی که فایروال نمی‌دیدش")
+check("پورت UDP روی آدرس خصوصی هم عمومی است",
+      rows[47995]["public"] is True,
+      "ufw آدرس خصوصی را هم فیلتر می‌کند")
+check("IPv6 روی همه‌ی رابط‌ها عمومی است", rows[443]["public"] is True)
+check("لوپ‌بک عمومی نیست", rows[9090]["public"] is False)
+check("لوپ‌بک IPv6 هم عمومی نیست", rows[6010]["public"] is False)
+check("آدرس اتصال گزارش می‌شود", rows[7777]["bind"] == "65.108.213.175",
+      rows[7777].get("scope", ""))
+check("نام پردازه خوانده می‌شود", rows[7777]["process"] == "backpack")
+
+# و همین‌ها باید به دست فایروال برسند
+FW.status = lambda: {"ready": True, "installed": True, "active": False,
+                     "rules": [], "sshProtected": False}
+FW.tunnel_ports_in_use = lambda: {7777: "backpack", 47995: "backhaul"}
+res2 = FW.suggest(list(rows.values()))
+seen_ports = ({r["port"] for r in res2["keep"]}
+              | {r["port"] for r in res2["close"]}
+              | {r["port"] for r in res2.get("unknown") or []})
+check("تانلِ بسته‌شده به آی‌پی مشخص به فایروال می‌رسد", 7777 in seen_ports)
+check("و در «باز بماند» است",
+      7777 in {r["port"] for r in res2["keep"]})
+check("لوپ‌بک به فایروال نمی‌رسد", 9090 not in seen_ports,
+      "از بیرون در دسترس نیست، پس قاعده لازم ندارد")
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
