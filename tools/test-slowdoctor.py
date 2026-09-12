@@ -82,8 +82,9 @@ check("دیتابیس x-ui را در چند مسیر می‌گردد",
 check("تعداد کلاینت‌های x-ui را می‌شمارد",
       "client_traffics" in SRC)
 check("کلاینت‌های فعال را جدا می‌شمارد", "WHERE enable=1" in SRC)
-check("اختلاف با فروش ربات را گزارش می‌دهد",
-      "never sold" in SRC)
+check("کلاینت‌های بدون کانال را گزارش می‌دهد",
+      "not accounted for by any channel" in SRC,
+      "نه هر کلاینتی که ربات نفروخته — واسطه هم می‌فروشد")
 check("سنگین‌ترین کلاینت‌ها را نشان می‌دهد",
       "ORDER BY (up+down) DESC" in SRC)
 check("نبود دیتابیس x-ui خطا نمی‌دهد",
@@ -108,10 +109,30 @@ check("از $NF استفاده می‌کند نه ستون ثابت", "$NF" in S
 check("لوپ‌بک کنار گذاشته می‌شود",
       re.search(r"127\\\.0\\\.0\\\.1", SRC) is not None,
       "در همان grep -vE که آدرس‌های بی‌معنا را می‌اندازد")
-check("اتصال به ازای هر اشتراک را حساب می‌کند",
-      "connections per active subscription" in SRC)
+check("اتصال به ازای هر کلاینت را حساب می‌کند",
+      "connections per active client" in SRC)
 check("تقسیم بر صفر محافظت شده",
-      re.search(r'\[ "\$\{S:-0\}" -gt 0 \]', SRC) is not None)
+      re.search(r'\[ "\$\{ACTIVE:-0\}" -gt 0 \]', SRC) is not None)
+
+head("واسطه‌ها هم یک کانال فروش‌اند")
+
+# ربات تنها کانال نیست. تقسیم ۲۲۵۰ اتصال بر ۶ اشتراکِ ربات عددی
+# ترسناک می‌ساخت که هیچ معنایی نداشت، چون کلاینت واسطه‌ها شمرده نمی‌شد.
+check("مخرج همه‌ی کلاینت‌های فعال است، نه فقط ربات",
+      "FROM client_traffics WHERE enable=1" in SRC
+      and "clients across all channels" in SRC)
+check("اگر x-ui خوانده نشد، صریح می‌گوید مبنا چیست",
+      "bot subscriptions only" in SRC)
+check("تفکیک بر اساس گروه واسطه دارد",
+      "Clients per reseller group" in SRC)
+check("کلاینت گروه‌دار را «ناشناخته» حساب نمی‌کند",
+      "belong to a reseller group" in SRC)
+check("فقط بدون‌گروه‌ها را هشدار می‌دهد",
+      "no reseller group and were not sold by the bot" in SRC)
+check("نسخه‌ی بدون ستون گروه بی‌خطر است",
+      "has no group column" in SRC)
+check("ترافیک پخش‌شده را از کانفیگ اشتراکی جدا می‌کند",
+      "spread evenly means simply many real users" in SRC)
 
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R

@@ -199,25 +199,47 @@ if command -v ss >/dev/null 2>&1; then
 
   # Connections per active subscription tells you whether the count is
   # normal customer usage or something else entirely.
-  if [ -n "${S:-}" ] && [ "${S:-0}" -gt 0 ] 2>/dev/null; then
-    PER=$(awk -v c="$TOT" -v s="$S" 'BEGIN{printf "%.0f", c/s}')
+  # The denominator has to be every enabled client in x-ui, not just the
+  # bot's subscriptions. Resellers sell too, and dividing 2250 connections
+  # by only the bot's 6 subscriptions produced a scary number that meant
+  # nothing. XE is filled in by the x-ui section below; when it is not
+  # available we fall back to the bot count and say so.
+  XDB_EARLY=""
+  for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db \
+           /opt/x-ui/x-ui.db /usr/local/x-ui/bin/x-ui.db; do
+    [ -r "$c" ] && XDB_EARLY="$c" && break
+  done
+  ACTIVE=""
+  if [ -n "$XDB_EARLY" ] && command -v sqlite3 >/dev/null 2>&1; then
+    ACTIVE=$(sqlite3 "$XDB_EARLY" \
+      "SELECT COUNT(*) FROM client_traffics WHERE enable=1;" 2>/dev/null)
+  fi
+  BASIS="clients across all channels"
+  if [ -z "${ACTIVE:-}" ] || [ "${ACTIVE:-0}" -le 0 ]; then
+    ACTIVE="${S:-0}"
+    BASIS="bot subscriptions only — x-ui not readable"
+  fi
+
+  if [ -n "${ACTIVE:-}" ] && [ "${ACTIVE:-0}" -gt 0 ] 2>/dev/null; then
+    PER=$(awk -v c="$TOT" -v s="$ACTIVE" 'BEGIN{printf "%.0f", c/s}')
     echo ""
-    echo "  ${W}${PER}${X} connections per active subscription  ${D}(${TOT} / ${S})${X}"
+    echo "  ${W}${PER}${X} connections per active client  ${D}(${TOT} / ${ACTIVE})${X}"
+    info "basis: ${BASIS}"
     if [ "$PER" -gt 200 ]; then
-      bad "far more connections than your subscriptions can explain"
-      info "likely a scan, or configs in use that the bot does not know about"
+      bad "far more connections than your clients can explain"
+      info "likely a scan, or one config shared very widely"
     elif [ "$PER" -gt 60 ]; then
-      warn "high per subscription — normal for heavy use, worth a look"
+      warn "high per client — normal for heavy use, worth a look"
     else
       ok "in the normal range for VPN traffic"
     fi
-    info "note: clients added directly in x-ui are not counted here"
   fi
 
-  # The bot only knows about subscriptions it sold. x-ui may hold many
-  # more clients added by hand, and those are the usual explanation for
-  # a connection count that looks impossible. Counting them turns
-  # "something is wrong" into an actual answer.
+  # The bot is only one of the sales channels. Resellers have their own
+  # clients in x-ui, grouped by group_name, and those are billed through
+  # the panel's accounting — not by the bot. So "clients the bot did not
+  # sell" is normal and expected; what matters is whether every client
+  # belongs to a channel you can account for.
   XDB=""
   for c in /etc/x-ui/x-ui.db /usr/local/x-ui/x-ui.db \
            /opt/x-ui/x-ui.db /usr/local/x-ui/bin/x-ui.db; do
@@ -237,17 +259,52 @@ if command -v ss >/dev/null 2>&1; then
     echo "       enabled:         ${W}${XE:-?}${X}"
     echo "       with traffic:    ${W}${XU:-?}${X}"
 
-    if [ -n "${XE:-}" ] && [ -n "${S:-}" ] && [ "${XE:-0}" -gt "${S:-0}" ]; then
-      EXTRA=$(( XE - S ))
+    # Clients per reseller group. This is the number that explains a
+    # large connection count on a panel that sells through resellers.
+    HAS_GROUP=$(sqlite3 "$XDB" \
+      "SELECT COUNT(*) FROM pragma_table_info('clients') WHERE name='group_name';" \
+      2>/dev/null)
+
+    if [ "${HAS_GROUP:-0}" = "1" ]; then
       echo ""
-      bad "${EXTRA} enabled clients exist in x-ui that the bot never sold"
-      info "these are real users. they explain the connection count,"
-      info "and none of them are being billed by the bot"
-      info "see them in the panel under: Billing > All clients"
-    elif [ -n "${XE:-}" ] && [ "${XE:-0}" -le "${S:-0}" ]; then
-      ok "x-ui client count matches what the bot sold"
-      info "so the connections come from the clients you know about —"
-      info "either heavy real use, or one config shared with many people"
+      echo "  ${D}Clients per reseller group:${X}"
+      sqlite3 -separator '|' "$XDB" \
+        "SELECT CASE WHEN group_name IS NULL OR TRIM(group_name)=''
+                     THEN '(no group)' ELSE group_name END AS g,
+                COUNT(*)
+         FROM clients GROUP BY g ORDER BY COUNT(*) DESC LIMIT 12;" \
+        2>/dev/null \
+        | awk -F'|' '{printf "       %-28s %6s clients\n", $1, $2}'
+
+      UNGROUPED=$(sqlite3 "$XDB" \
+        "SELECT COUNT(*) FROM clients
+         WHERE group_name IS NULL OR TRIM(group_name)='';" 2>/dev/null)
+      GROUPED=$(sqlite3 "$XDB" \
+        "SELECT COUNT(*) FROM clients
+         WHERE group_name IS NOT NULL AND TRIM(group_name)<>'';" 2>/dev/null)
+
+      echo ""
+      echo "       ${W}${GROUPED:-0}${X} clients belong to a reseller group"
+      echo "       ${W}${UNGROUPED:-0}${X} clients have no group"
+
+      # Only ungrouped clients beyond the bot's own subscriptions are
+      # genuinely unaccounted. Reseller clients are billed by the panel,
+      # so counting them as "unknown" would be wrong and alarming.
+      if [ -n "${UNGROUPED:-}" ] && [ -n "${S:-}" ] \
+         && [ "${UNGROUPED:-0}" -gt "${S:-0}" ]; then
+        LOOSE=$(( UNGROUPED - S ))
+        echo ""
+        warn "${LOOSE} clients have no reseller group and were not sold by the bot"
+        info "these are the only ones not accounted for by any channel"
+        info "put them in a group so accounting can bill them:"
+        info "panel > Billing > All clients"
+      else
+        ok "every client belongs to the bot or to a reseller group"
+        info "so the connection count is explained by real customers"
+      fi
+    else
+      info "this x-ui version has no group column — per-reseller"
+      info "breakdown is not available, see panel > Billing"
     fi
 
     # Traffic per client separates "one shared link" from "many users".
@@ -258,6 +315,7 @@ if command -v ss >/dev/null 2>&1; then
        ORDER BY (up+down) DESC LIMIT 8;" 2>/dev/null \
       | awk -F'|' '{printf "       %-28s %6s GB\n", $1, $2}'
     info "one client far above the rest usually means a shared config"
+    info "traffic spread evenly means simply many real users"
   elif [ -z "$XDB" ]; then
     info "x-ui database not found — cannot compare with panel clients"
   fi

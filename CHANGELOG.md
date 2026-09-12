@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.4.2]
+
+### Fixed — slow-doctor treated resellers as if they did not exist
+
+The previous patch compared x-ui's client list against the bot's subscriptions
+and reported everything else as unaccounted. That is wrong for anyone selling
+through resellers: those clients are real, they belong to a group, and the
+panel bills them through accounting. The script was calling normal business
+"a problem".
+
+It now breaks clients down per reseller group and only warns about clients that
+belong to no group *and* were not sold by the bot — the only ones genuinely
+outside every channel.
+
+The connections-per-client figure had the same fault. Dividing 2250 connections
+by the bot's 6 subscriptions produced 375 and a red BAD line, when the real
+denominator is every enabled client in x-ui. The basis is now printed alongside
+the number, and says so explicitly when x-ui cannot be read.
+
 ## [1.4.1]
 
 ### Fixed — slow-doctor printed its own separator lines as data
