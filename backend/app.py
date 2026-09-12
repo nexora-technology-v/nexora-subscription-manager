@@ -358,6 +358,25 @@ def check_auth(x_admin_password: str = Header(...)):
         raise HTTPException(status_code=401, detail="رمز عبور نادرست است")
 
 
+#: کلیدهایی که به مرورگر مشتری فرستاده می‌شوند.
+#
+#  این عمداً فهرستِ «مجاز» است، نه فهرستِ «حذف کن».
+#
+#  قبلاً برعکس بود: هر چیزی جز resellers و bot عمومی می‌شد. یعنی هر
+#  کلیدِ تازه‌ای که به تنظیمات اضافه می‌شد، خودبه‌خود روی صفحه‌ی
+#  عمومی می‌نشست — maintenance (ساعت ری‌استارت سرور، آستانه‌ی شلوغی،
+#  آخرین خطا) دقیقاً همین‌طور بیرون می‌رفت.
+#
+#  با فهرست مجاز، جهتِ اشتباه بی‌خطر است: فراموش‌کردن یک کلید یعنی
+#  قابلیتی نمایش داده نمی‌شود، نه اینکه چیزی درز کند. اگر قابلیت
+#  تازه‌ای لازم دارد روی صفحه دیده شود، همین‌جا اضافه‌اش کنید.
+PUBLIC_CONFIG_KEYS = {
+    "downloadApps", "faq", "banners", "referral", "links",
+    "videoTutorialUrl", "videos", "advanced", "popup",
+    "template", "palette", "customPalettes",
+}
+
+
 @app.get("/api/public/config")
 def get_public_config(request: Request, response: Response, email: str = None, host: str = None):
     """
@@ -384,14 +403,16 @@ def get_public_config(request: Request, response: Response, email: str = None, h
 
     reseller = find_reseller(cfg, email=email, host=host)
 
-    # اطلاعات حساس هرگز نباید به بیرون درز کند:
-    # - resellers: لیست واسطه‌ها و شرایطشان (اطلاعات تجاری)
-    # - bot: توکن ربات و آیدی ادمین (اگر لو برود، کنترل ربات از دست می‌رود)
-    SENSITIVE_KEYS = {"resellers", "bot"}
-    public_cfg = {k: v for k, v in cfg.items() if k not in SENSITIVE_KEYS}
+    # فقط چیزهایی که صفحه‌ی اشتراک واقعاً لازم دارد.
+    public_cfg = {k: v for k, v in cfg.items() if k in PUBLIC_CONFIG_KEYS}
 
     if reseller:
-        public_cfg = deep_merge(public_cfg, reseller.get("overrides", {}))
+        # overrides هم از همان صافی رد می‌شود. این‌ها را مدیر می‌نویسد
+        # نه مهاجم، ولی یک کلیدِ اشتباهی در overrides نباید بتواند
+        # چیزی را که بالا حذف شده دوباره برگرداند.
+        merged = deep_merge(public_cfg, reseller.get("overrides", {}))
+        public_cfg = {k: v for k, v in merged.items()
+                      if k in PUBLIC_CONFIG_KEYS}
         public_cfg["_resellerId"] = reseller.get("id")
 
     # قالب فعال را به‌صورت کامل ضمیمه می‌کنیم تا صفحه‌ی اشتراک

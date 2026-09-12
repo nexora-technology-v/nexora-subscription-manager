@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.10.3]
+
+### Fixed — The public config endpoint leaked keys nobody added to the filter
+
+`/api/public/config` is served without authentication — every customer's browser
+fetches it each time the subscription page opens.
+
+Its filter was a denylist: strip `resellers` and `bot`, publish everything else.
+So any key added to the config later became public automatically, because nobody
+remembered to add it to the list. `maintenance` went out that way: the server's
+scheduled reboot time, the busy threshold, and the text of its last error.
+
+That is the wrong shape for a filter that guards secrets. Forgetting a key in a
+denylist leaks it; forgetting one in an allowlist only hides a feature. The
+direction you fail in should be the safe one.
+
+It is an allowlist now — the twelve keys the subscription page actually reads.
+A future config key stays private until someone adds it deliberately.
+
+Reseller `overrides` were merged *after* the filter, so an override could put a
+stripped key back. The merge result goes through the same filter now. These are
+written by the admin rather than an attacker, but a filter with a hole in it is
+not a filter.
+
+### Added — `tools/test-public-config.py`
+
+23 checks. Among them: a config carrying a bot token, a reseller list, the
+maintenance schedule and an invented `smsGateway.apiKey`, asserting none of it
+reaches the response — including a plain string search of the whole payload for
+the secret values.
+
 ## [1.10.2]
 
 ### Fixed — Backups were missing four tables, including every affiliate record
