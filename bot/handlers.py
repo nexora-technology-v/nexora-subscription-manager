@@ -145,7 +145,9 @@ class Ctx:
         """
         parts = []
         if with_plan:
-            parts.append(str(plan_name or sub.get("plan_name") or "اشتراک"))
+            # نام ثبت‌شده‌ی خود اشتراک اول می‌آید — همان چیزی که
+            # مشتری خریده. اگر پلن بعداً حذف شود، این می‌ماند.
+            parts.append(str(sub.get("plan_name") or plan_name or "اشتراک"))
 
         server = None
         iid = sub.get("inbound_id")
@@ -1071,11 +1073,14 @@ def provision(ctx, order_id):
 
         sid = ctx.db.exec(
             """INSERT INTO subscriptions (tenant_id, user_id, order_id, plan_id,
-                                          client_email, client_uuid, sub_url,
-                                          inbound_id, gb, expires_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            (ctx.tid, user["id"], order_id, plan["id"], email, res["uuid"],
-             res["sub_url"], inbound, plan["gb"], exp_iso)
+                                          plan_name, client_email, client_uuid,
+                                          sub_url, inbound_id, gb, expires_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            # نام پلن همین‌جا ثبت می‌شود، نه فقط شناسه‌اش. اگر مدیر
+            # بعداً پلن را حذف یا عوض کند، مشتری همچنان نام چیزی را
+            # می‌بیند که واقعاً خریده.
+            (ctx.tid, user["id"], order_id, plan["id"], plan["name"], email,
+             res["uuid"], res["sub_url"], inbound, plan["gb"], exp_iso)
         )
         ctx.db.exec("UPDATE orders SET sub_id=? WHERE tenant_id=? AND id=?",
                     (sid, ctx.tid, order_id))
@@ -1147,25 +1152,26 @@ def deliver(ctx, user, sub):
     d = core.days_left(sub.get("expires_at"))
 
     lines = [
-        F.title(f"اشتراک شما {title}", "✅"),
+        # نام ثبت‌شده‌ی اشتراک زیر عنوان می‌آید: اگر مشتری چند اشتراک
+        # داشته باشد باید همین‌جا بفهمد این کدام است.
+        F.header(f"اشتراک شما {title}", "✅", F.b(ctx.sub_label(sub))),
         "",
-        # نام سرور هم می‌آید: اگر مشتری چند اشتراک داشته باشد باید
-        # همین‌جا بفهمد این یکی کدام است.
-        f"📦 {F.b(ctx.sub_label(sub))}",
-        f"💾 {core.fmt_gb(sub.get('gb'))} ترافیک",
+        F.section("مشخصات", "📊"),
+        F.row("حجم", core.fmt_gb(sub.get("gb")), "💾"),
     ]
     if d is not None:
-        line = f"⏳ {F.b(f'{core.fa(d)} روز')} اعتبار"
+        val = f"{core.fa(d)} روز"
         if sub.get("expires_at"):
-            line += f" — تا {core.fa_date(sub['expires_at'])}"
-        lines.append(line)
+            val += f" — تا {core.fa_date(sub['expires_at'])}"
+        lines.append(F.row("اعتبار", val, "⏳"))
     if sub.get("client_email"):
-        lines.append(f"🏷 {F.code(sub['client_email'])}")
+        lines += ["", F.section("شناسه‌ی کانفیگ", "🏷"),
+                  F.code(sub["client_email"])]
 
     if url:
         lines += [
             "",
-            F.title("لینک اشتراک شما", "🔗"),
+            F.section("لینک اشتراک شما", "🔑"),
             F.code(url),
             "",
             F.quote_more(
@@ -1364,25 +1370,29 @@ def show_renew(ctx, user, chat_id, message_id, sub_id):
     # نام پلن را صریح می‌دهیم چون این ردیف از SELECT خام آمده.
     label = ctx.sub_label(sub, plan_name=(plan or {}).get("name")
                           if plan else sub.get("plan_name"))
-    lines = [F.title(f"تمدید · {label}", "🔄"), ""]
+    lines = [F.header("تمدید اشتراک", "🔄", F.b(label)), ""]
+    lines.append(F.section("وضعیت فعلی", "📊"))
+
     if plan:
-        lines.append(f"📦 {core.fmt_gb(plan['gb'])} · {core.fmt_days(plan['days'])}")
+        lines.append(F.row("پلن", core.fmt_gb(plan["gb"]) + " · "
+                           + core.fmt_days(plan["days"]), "📦"))
 
     if left is None:
-        lines.append("⏳ بدون محدودیت زمانی")
+        lines.append(F.row("اعتبار", "بدون محدودیت زمانی", "⏳"))
     elif left <= 0:
-        lines.append(f"⛔ {F.b('اعتبارش تمام شده')}")
+        lines.append(F.row("اعتبار", "تمام شده", "⛔"))
     else:
-        lines.append(f"⏳ {F.b(f'{core.fa(left)} روز')} باقی مانده")
+        lines.append(F.row("باقی‌مانده", f"{core.fa(left)} روز", "⏳"))
 
     if sub.get("client_email"):
-        lines.append(f"🏷 {F.code(sub['client_email'])}")
+        lines += ["", F.section("شناسه‌ی کانفیگ", "🏷"),
+                  F.code(sub["client_email"])]
 
     rows = []
     if plan:
-        amount = F.b(core.toman(plan["price"]) + " تومان")
-        lines += ["", f"💰 مبلغ تمدید: {amount}"]
-        lines.append("")
+        lines += ["", F.hr(),
+                  F.row("مبلغ تمدید",
+                        core.toman(plan["price"]) + " تومان", "💰"), ""]
         lines.append(F.quote(
             "بعد از تمدید، همین کانفیگ ادامه پیدا می‌کند — لازم نیست "
             "چیزی را در برنامه‌تان عوض کنید."))

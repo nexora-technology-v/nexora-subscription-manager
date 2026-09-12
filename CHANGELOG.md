@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.8.1]
+
+### Changed — The bot's messages now use the layout you asked for
+
+A bold title under an emoji anchor, a rule beneath it, then sections with their
+own thin rule, label-value rows, and copyable values in monospace. The delivery
+and renewal screens lead the way.
+
+The separator lines are back, but fixed at twenty characters. That was the
+original objection and it was a real one — a long decorative line wraps on a
+narrow phone and shreds the message. Twenty fits the narrowest screen there is.
+
+### Fixed — A subscription showed the inbound's name instead of what was bought
+
+`plan_id` is declared `ON DELETE SET NULL`, so the moment a plan is edited away
+or replaced, the subscription loses the name of the thing the customer actually
+paid for — and the label falls back to the inbound's remark, a server name the
+customer never chose.
+
+The plan name is written onto the subscription at purchase now and preferred
+everywhere the subscription is named. Existing rows are backfilled from the
+plans table on upgrade, for as long as those plans still exist.
+
 ## [1.8.0]
 
 ### Fixed — The monitoring report was cut in half before it arrived

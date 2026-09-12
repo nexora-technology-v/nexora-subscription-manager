@@ -170,6 +170,59 @@ else:
     check("فایل خام پیش‌نمایش ساخته شد", False, ".preview-raw.txt نبود")
 
 
+
+
+# ═══════════════════════════════════════════════════════════
+head("سربرگ و جداکننده")
+
+check("خط اصلی تعریف شده", hasattr(F, "RULE"))
+check("خط نازک تعریف شده", hasattr(F, "THIN"))
+check("خط اصلی روی موبایل نمی‌شکند", len(F.RULE) <= 24,
+      f"{len(F.RULE)} کاراکتر — بلندتر از این می‌شکند")
+check("خط نازک کوتاه‌تر است", len(F.THIN) < len(F.RULE),
+      f"{len(F.THIN)} در برابر {len(F.RULE)}")
+check("هر دو یک‌کاراکتری تکرارشده‌اند",
+      len(set(F.RULE)) == 1 and len(set(F.THIN)) == 1)
+
+h = F.header("پنل کاربری", "👑", "خوش آمدید")
+check("سربرگ عنوان پررنگ دارد", "<b>پنل کاربری</b>" in h)
+check("سربرگ اموجی دارد", h.startswith("👑"))
+check("سربرگ خط جداکننده دارد", F.RULE in h)
+check("زیرعنوان بعد از خط می‌آید",
+      h.index(F.RULE) < h.index("خوش آمدید"))
+check("بدون زیرعنوان هم کار می‌کند",
+      F.header("تنها", "📦").count("\n") == 1)
+
+sec = F.section("مشخصات", "📊")
+check("عنوان بخش پررنگ است", "<b>مشخصات</b>" in sec)
+check("زیرش خط نازک دارد", sec.endswith(F.THIN))
+
+check("hr خط اصلی می‌دهد", F.hr() == F.RULE)
+check("hr(thin) خط نازک می‌دهد", F.hr(thin=True) == F.THIN)
+
+head("چیدمان کامل هنوز HTML معتبر است")
+
+full = F.lines(
+    F.header("پنل کاربری نکسورا", "👑", "سلام " + F.b("علی")),
+    "",
+    F.section("وضعیت", "📊"),
+    F.row("اعتبار", "۲۴ روز", "⏳"),
+    F.row("حجم", "۴۲.۸ گیگ", "📉"),
+    "",
+    F.section("لینک", "🔑"),
+    F.code("vless://abc@host:443"),
+    F.i("برای کپی لمس کنید"),
+    F.hr(),
+    F.link("پشتیبانی", "https://t.me/nexora"),
+)
+problems = F.check(full)
+check("کل پیام از اعتبارسنجی رد می‌شود", not problems,
+      "؛ ".join(problems[:2]))
+check("زیر سقف طول تلگرام است", not F.too_long(full),
+      f"{len(full)} کاراکتر")
+check("متن ساده‌اش خوانا می‌ماند", "پنل کاربری نکسورا" in F.plain(full))
+
+
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

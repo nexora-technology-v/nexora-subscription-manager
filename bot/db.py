@@ -295,6 +295,13 @@ def _migrate(con):
         # حالت پیش‌فرض: all | default | custom
         ("tenants", "inbound_mode", "TEXT DEFAULT 'all'"),
         ("tenants", "inbound_ids", "TEXT"),
+        # نام پلن، همان‌طور که لحظه‌ی خرید بود.
+        #
+        # plan_id با ON DELETE SET NULL وصل است، پس اگر مدیر پلنی را
+        # حذف یا جایگزین کند، نام آن اشتراک از بین می‌رود و مشتری
+        # به‌جای «یک‌ماهه پرسرعت» فقط نام اینباند را می‌بیند — چیزی
+        # که هیچ‌وقت نخریده. این ستون همان نام را نگه می‌دارد.
+        ("subscriptions", "plan_name", "TEXT"),
     ]
     for table, col, spec in adds:
         try:
@@ -303,6 +310,19 @@ def _migrate(con):
                 con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {spec}")
         except sqlite3.Error:
             pass
+
+    # نام پلن اشتراک‌های قدیمی را از جدول پلن‌ها پر می‌کنیم.
+    #
+    # تا وقتی پلن هنوز هست این کار شدنی است؛ بعد از حذفش دیگر هیچ
+    # جایی آن نام را ندارد. پس همین یک بار، برای هرچه موجود است.
+    try:
+        con.execute(
+            "UPDATE subscriptions SET plan_name = ("
+            "  SELECT name FROM plans WHERE plans.id = subscriptions.plan_id) "
+            "WHERE (plan_name IS NULL OR plan_name = '') "
+            "  AND plan_id IS NOT NULL")
+    except sqlite3.Error:
+        pass
 
 
 # ═══════════════════════════════════════════════════════════
