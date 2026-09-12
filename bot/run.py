@@ -175,10 +175,34 @@ def expire_stale_orders():
                  AND expires_at IS NOT NULL AND expires_at < ?""",
             (t["id"], datetime.now().isoformat())
         )
+        tg = Bot(t["bot_token"]) if t["bot_token"] else None
         for r in rows:
             d.exec("UPDATE orders SET status='expired' WHERE tenant_id=? AND id=?",
                    (t["id"], r["id"]))
+
+            # رزرو سکه باید همین‌جا آزاد شود. سه مسیر دستی این کار را
+            # می‌کردند، ولی این جاروکش هر دو دقیقه می‌دود و همیشه
+            # زودتر از مشتری به سفارش می‌رسد — پس در عمل سکه‌ها هیچ
+            # وقت برنمی‌گشتند.
+            back = d.release_coins(r["id"])
             n += 1
+
+            if tg and back:
+                # مشتری باید بداند چرا سکه‌هایش برگشت، وگرنه فقط یک
+                # عدد عوض‌شده می‌بیند.
+                try:
+                    row = d.q("SELECT u.tg_id FROM orders o JOIN users u"
+                              " ON u.id=o.user_id WHERE o.tenant_id=?"
+                              " AND o.id=?", (t["id"], r["id"]), one=True)
+                    if row and row["tg_id"]:
+                        tg.send(row["tg_id"],
+                                "⌛️ <b>مهلت پرداخت این سفارش تمام شد</b>\n\n"
+                                "سکه‌هایی که استفاده کرده بودید به حسابتان "
+                                "برگشت و دوباره قابل استفاده‌اند.\n\n"
+                                "اگر واریز کرده‌اید نگران نباشید — "
+                                "رسیدتان را برای پشتیبانی بفرستید.")
+                except Exception:
+                    log.debug("اطلاع انقضای سفارش ناموفق", exc_info=True)
     if n:
         log.info("%s سفارش منقضی شد", n)
 

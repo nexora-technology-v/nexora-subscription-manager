@@ -26,6 +26,7 @@ import os
 import sys
 import tempfile
 import threading
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -258,7 +259,13 @@ check("رد شدن فقط رزرو را آزاد می‌کند",
       "قبلاً بی‌قید add_coins مثبت می‌زد — سکه‌ی رایگان")
 check("انقضا هم آزاد می‌کند", SRC.count("_release_coins(") >= 3,
       f"{SRC.count('_release_coins(')} جا")
-check("آزادسازی دو بار انجام نمی‌شود", "kind='released'" in SRC,
+DBSRC = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "db.py"), encoding="utf-8").read()
+check("منطق آزادسازی یک جا بیشتر نیست",
+      "def release_coins(" in DBSRC
+      and "return ctx.db.release_coins(order_id)" in SRC,
+      "جاروکش خودکار ربات ندارد و نمی‌تواند Ctx بسازد")
+check("آزادسازی دو بار انجام نمی‌شود", "kind='released'" in DBSRC,
       "تراکنش بعد از بازگشت نام عوض می‌کند")
 
 
@@ -382,6 +389,108 @@ check("هر سه مسیر پوشش داده شدند",
 check("خطای پورسانت تحویل را متوقف نمی‌کند",
       "log.debug(\"ثبت پورسانت ناموفق\"" in SRC,
       "فروش انجام شده و مشتری منتظر است")
+
+
+
+# ═══════════════════════════════════════════════════════════
+head("سفارشی که خودکار منقضی می‌شود، سکه‌ها را پس می‌دهد")
+
+# سکه هنگام ثبت سفارش رزرو می‌شود. مستند spend_coins می‌گوید «فقط در
+# رد، انقضا یا لغو برمی‌گردد» — و سه مسیر دستی (دکمه‌ی لغو، بازکردن
+# سفارشِ گذشته، رد توسط ادمین) واقعاً برش می‌گردانند.
+#
+# ولی جاروکشِ خودکار، همانی که هر دو دقیقه می‌دود و عملاً *همیشه*
+# زودتر از مشتری به سفارش می‌رسد، یک UPDATE خام می‌زد:
+#
+#     UPDATE orders SET status='expired' WHERE ...
+#
+# بدون آزادکردن رزرو. یعنی هر مشتری که سکه‌هایش را روی سفارشی خرج
+# کند و سر وقت پول نریزد، سکه‌ها را برای همیشه از دست می‌دهد — بی‌صدا،
+# بدون خطا، بدون اینکه چیزی گرفته باشد.
+
+from bot import run as RUN2   # noqa: E402
+
+pid_c = d.exec(
+    "INSERT INTO plans (tenant_id, name, gb, days, price) VALUES (?,?,?,?,?)",
+    (tid, "پلن سکه", 50, 30, 200000))
+
+
+def order_with_coins(coins, ttl=30):
+    """مشتری با سکه سفارش می‌دهد — دقیقاً مثل مسیر واقعی خرید."""
+    u = new_user(0)
+    d.add_coins(u["id"], coins, "bonus", "برای تست")
+    o = d.create_order(u["id"], pid_c, 200000, 200000 - coins * 1000,
+                       coins_used=coins, ttl_minutes=ttl)
+    ok, _ = d.spend_coins(u["id"], coins, "hold", "رزرو سفارش",
+                          order_id=o["id"])
+    return u, o, ok
+
+
+def coins_of(uid):
+    return d.q("SELECT coins FROM users WHERE tenant_id=? AND id=?",
+               (tid, uid), one=True)["coins"]
+
+
+def expire_now(oid):
+    """مهلت پرداخت را به گذشته می‌بریم، مثل مشتری‌ای که پول نریخته."""
+    d.exec("UPDATE orders SET expires_at=? WHERE tenant_id=? AND id=?",
+           ((datetime.now() - timedelta(minutes=5)).isoformat(), tid, oid))
+
+
+u1, o1, held = order_with_coins(12)
+check("سکه هنگام ثبت سفارش رزرو می‌شود", held and coins_of(u1["id"]) == 0,
+      f"{coins_of(u1['id'])} سکه")
+
+expire_now(o1["id"])
+RUN2.expire_stale_orders()
+
+st = d.get_order(o1["id"])["status"]
+check("جاروکش سفارش را منقضی می‌کند", st == "expired", st)
+check("و سکه‌ها برمی‌گردند", coins_of(u1["id"]) == 12,
+      f"{coins_of(u1['id'])} از ۱۲ سکه")
+
+rel = d.q("SELECT kind FROM coin_tx WHERE tenant_id=? AND order_id=?"
+          " AND kind='hold'", (tid, o1["id"]))
+check("رزرو دیگر باز نیست", not rel,
+      "وگرنه دفعه‌ی بعد دوباره برمی‌گرداند")
+
+head("بازگشت سکه دوبار انجام نمی‌شود")
+
+RUN2.expire_stale_orders()
+RUN2.expire_stale_orders()
+check("جاروکش‌های بعدی سکه‌ی اضافه نمی‌دهند", coins_of(u1["id"]) == 12,
+      f"{coins_of(u1['id'])} سکه — باید ۱۲ بماند")
+
+head("سفارش‌هایی که نباید دست بخورند")
+
+u2, o2, _ = order_with_coins(7)
+RUN2.expire_stale_orders()
+check("سفارشی که مهلتش نگذشته منقضی نمی‌شود",
+      d.get_order(o2["id"])["status"] == "pending")
+check("و سکه‌هایش همچنان رزرو است", coins_of(u2["id"]) == 0,
+      f"{coins_of(u2['id'])} سکه")
+
+u3, o3, _ = order_with_coins(5)
+d.exec("UPDATE orders SET status='approved' WHERE tenant_id=? AND id=?",
+       (tid, o3["id"]))
+expire_now(o3["id"])
+RUN2.expire_stale_orders()
+check("سفارش تاییدشده با گذشتن مهلت منقضی نمی‌شود",
+      d.get_order(o3["id"])["status"] == "approved",
+      "مشتری پولش را داده و کانفیگش را گرفته")
+check("و سکه‌های خرج‌شده‌اش برنمی‌گردند", coins_of(u3["id"]) == 0,
+      f"{coins_of(u3['id'])} سکه — فروش انجام شده")
+
+head("سفارش بدون سکه هم سالم منقضی می‌شود")
+
+u4 = new_user(0)
+o4 = d.create_order(u4["id"], pid_c, 200000, 200000)
+expire_now(o4["id"])
+RUN2.expire_stale_orders()
+check("بدون رزرو هم خطا نمی‌دهد",
+      d.get_order(o4["id"])["status"] == "expired")
+check("و سکه‌ی بی‌دلیل نمی‌سازد", coins_of(u4["id"]) == 0,
+      f"{coins_of(u4['id'])} سکه")
 
 
 

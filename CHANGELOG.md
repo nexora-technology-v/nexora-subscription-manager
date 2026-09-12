@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.9.6]
+
+### Fixed — Coins spent on an unpaid order were lost for good
+
+Coins are reserved when the order is created. `spend_coins` documents the
+contract: they come back on rejection, expiry, or cancellation. Three paths
+honoured it — the cancel button, opening a lapsed order, and admin rejection.
+
+The automatic sweeper did not. It ran a bare UPDATE:
+
+    UPDATE orders SET status='expired' WHERE ...
+
+and left the reservation open. That sweeper runs every two minutes, so it
+reaches a lapsed order long before the customer touches it — which made it the
+path that actually handles expiry almost every time. The three correct paths were
+effectively unreachable.
+
+So a customer who applied coins to an order and then did not pay in time lost
+those coins permanently. Silently, with no error, having received nothing.
+
+The release logic moved to `TenantDB.release_coins` because the sweeper holds no
+bot and cannot build a `Ctx` — which is why the logic was out of its reach in the
+first place. `handlers._release_coins` now delegates to it, so there is one
+implementation. The customer also gets a message saying the deadline passed and
+their coins are back; otherwise the balance changes with no explanation.
+
+Orders that are already approved are untouched, as before: that sale happened.
+
 ## [1.9.5]
 
 Everything here came out of one `nexora check` run on the production server.

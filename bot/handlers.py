@@ -959,16 +959,7 @@ def _release_coins(ctx, order_id):
     دو بار برگرداندن ممکن نیست: تراکنش رزرو بعد از بازگشت به
     «released» تغییر نام می‌دهد، پس دفعه‌ی بعد پیدا نمی‌شود.
     """
-    held = ctx.db.q(
-        "SELECT * FROM coin_tx WHERE tenant_id=? AND order_id=? AND kind='hold'",
-        (ctx.tid, order_id))
-    for tx in held:
-        ctx.db.add_coins(tx["user_id"], abs(int(tx["amount"])), "refund",
-                         f"بازگشت سکه — سفارش #{order_id}", order_id=order_id)
-        ctx.db.exec(
-            "UPDATE coin_tx SET kind='released' WHERE tenant_id=? AND id=?",
-            (ctx.tid, tx["id"]))
-    return len(held)
+    return ctx.db.release_coins(order_id)
 
 
 def _reward_referrer(ctx, user, order_id):

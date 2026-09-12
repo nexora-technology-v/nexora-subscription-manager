@@ -597,6 +597,31 @@ class TenantDB:
                 (self.tid, user_id)).fetchone()
             return True, (row["coins"] if row else 0)
 
+    def release_coins(self, order_id):
+        """
+        سکه‌های رزروشده‌ی یک سفارش را برمی‌گرداند. تعدادِ رزروهای
+        آزادشده را می‌دهد.
+
+        این‌جا زندگی می‌کند، نه در handlers، چون جاروکشِ خودکارِ
+        سفارش‌های منقضی هیچ رباتی در دست ندارد و نمی‌تواند Ctx بسازد.
+        وقتی این منطق فقط در handlers بود، آن جاروکش یک UPDATE خام
+        می‌زد و رزرو را باز می‌گذاشت — و چون جاروکش همیشه زودتر از
+        مشتری به سفارش می‌رسد، عملاً *مسیر اصلیِ* انقضا همان بود.
+
+        دو بار برگرداندن ممکن نیست: رزرو بعد از بازگشت به «released»
+        تغییر نام می‌دهد، پس دفعه‌ی بعد پیدا نمی‌شود.
+        """
+        held = self.q(
+            "SELECT * FROM coin_tx WHERE tenant_id=? AND order_id=? "
+            "AND kind='hold'", (self.tid, order_id))
+        for tx in held:
+            self.add_coins(tx["user_id"], abs(int(tx["amount"])), "refund",
+                           f"بازگشت سکه — سفارش #{order_id}",
+                           order_id=order_id)
+            self.exec("UPDATE coin_tx SET kind='released' "
+                      "WHERE tenant_id=? AND id=?", (self.tid, tx["id"]))
+        return len(held)
+
     def add_coins(self, user_id, amount, kind, note=None, ref_user_id=None, order_id=None):
         """
         تغییر موجودی سکه — برای پاداش، بازگشت و تنظیم دستی ادمین.
