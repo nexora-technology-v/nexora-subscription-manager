@@ -164,6 +164,12 @@ class Handler(BaseHTTPRequestHandler):
             # expired عددی است: هر بار یکی کم می‌شود، پس می‌شود حالتی
             # ساخت که فقط *یک بار* صفحه‌ی ورود بیاید و بعد درست شود
             STATE["expired"] -= 1
+            # بدنه باید خوانده شود، وگرنه سرور سوکت را با داده‌ی
+            # خوانده‌نشده می‌بندد و سیستم‌عامل RST می‌فرستد — کلاینت
+            # آن را ConnectionAborted می‌بیند. بقیه‌ی مسیرهای این
+            # handler همین کار را می‌کنند؛ این یکی جا افتاده بود و
+            # تست را حدود یک بار در هر ده اجرا می‌انداخت.
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
             return self._login_page()
         p = unquote(self.path.split("?")[0])
 

@@ -151,14 +151,24 @@ def test_checks(fast):
                                    capture_output=True, text=True, timeout=400,
                                    encoding="utf-8", errors="replace")
                 if p.returncode != 0:
-                    broken.append((f, (p.stdout or p.stderr or "")[-400:]))
+                    # stderr اول می‌آید: وقتی تستی با استثنا می‌افتد،
+                    # traceback آن‌جاست و stdout فقط خروجی تا لحظه‌ی
+                    # سقوط است. الگوی قبلی «stdout or stderr» بود، پس
+                    # تا وقتی stdout چیزی داشت — همیشه داشت — علت
+                    # واقعی هیچ‌وقت چاپ نمی‌شد.
+                    tail = ""
+                    if p.stderr and p.stderr.strip():
+                        tail = "stderr: " + p.stderr.strip()[-500:]
+                    else:
+                        tail = (p.stdout or "")[-400:]
+                    broken.append((f, tail))
             except Exception as e:
                 broken.append((f, str(e)))
         check(f"تست‌های {label}", not broken,
               f"{len(files)} سوییت" if not broken else f"{len(broken)} شکست")
         for f, detail in broken:
             print(f"      {Y}▸{X} {f}")
-            for line in detail.strip().splitlines()[-4:]:
+            for line in detail.strip().splitlines()[-8:]:
                 print(f"        {D}{line}{X}")
 
     # پیش‌نمایش متن‌ها: اگر صفحه‌ای بشکند این‌جا traceback می‌دهد

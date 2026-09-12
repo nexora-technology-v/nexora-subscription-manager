@@ -24,6 +24,25 @@ snapshot either, so the bot stayed on the rolled-back version permanently.
 Both call sites now use one `snapshot_to` function. Two lists cannot drift when
 there is only one.
 
+### Fixed — A flaky test of my own, and the reason it stayed hidden
+
+`bot/test_xui.py` failed about one run in ten, but only on Windows. It blocked
+the release gate twice today while passing every CI run on Linux.
+
+The cause was the expired-session branch I added to the fake panel in 1.10.5. It
+answered with a login page without first reading the request body. The server
+then closed a socket with unread bytes still buffered, the OS sent RST, and the
+client saw `ConnectionAborted`. Every other POST path in that handler drains the
+body; that one did not. One line.
+
+It stayed hidden because the gate printed `p.stdout or p.stderr` — and stdout was
+never empty, so the traceback was never shown. All it displayed was output that
+stopped mid-section. The gate prints stderr first now, and eight lines instead of
+four.
+
+Verified over 30 consecutive runs with no failures, against a measured 2–4 in 20
+before.
+
 ### Added — `tools/test-snapshot.py`
 
 Runs the function for real against a fake install tree rather than reading the
