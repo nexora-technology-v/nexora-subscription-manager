@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.10.9]
+
+### Fixed — An expense could be recorded at last week's exchange rate
+
+When tgju cannot be reached, `live()` falls back to the last successful rate and
+marks it `stale`. For displaying a number that is reasonable. For recording an
+expense it is not — the whole reason the toman amount is stored on the row is to
+preserve the rate *at the time of purchase*.
+
+The cache never expired, so if the rate site stayed down the fallback kept
+returning the same figure indefinitely. And the expense endpoint never looked at
+`stale` at all: the row went in with `fx_source: tgju` and nothing to say the
+rate was hours or days old.
+
+Two changes. Past a day old, a cached rate is no longer returned as usable — the
+number is still there for display, but `ok` is cleared so nothing calculates with
+it, and the hint says to enter the rate by hand. Below that, the expense is still
+accepted — the site may be down for a few minutes and the work should not stop —
+but the response carries the rate's age, and the panel shows it as a warning that
+stays on screen instead of disappearing after four seconds.
+
+The age now travels from `live` through `to_toman` to the endpoint, so the
+warning can say how old: "the exchange rate from 3 hours ago was used".
+
+A manual rate still wins over everything and is never marked stale.
+
 ## [1.10.8]
 
 Agent 1.5.2.

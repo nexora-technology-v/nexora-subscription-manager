@@ -92,7 +92,11 @@ function ExpenseForm({ password, onDone, setMsg }) {
       });
       const j = await res.json().catch(() => ({}));
       if (res.ok) {
-        setMsg({ t: "ok", m: j.note || "ثبت شد" });
+        // هشدار نرخ کهنه باید دیده شود. هزینه ثبت شده، ولی با نرخی که
+        // لحظه‌ی خرید نبوده — و کل دلیل ذخیره‌ی مبلغ تومانی همین بود.
+        setMsg(j.warning
+          ? { t: "warn", m: j.warning, keep: true }
+          : { t: "ok", m: j.note || "ثبت شد" });
         setF({ ...f, label: "", amount: "", gb: "", note: "" });
         onDone();
       } else setMsg({ t: "err", m: errText(j.detail, "ثبت ناموفق") });
@@ -214,6 +218,7 @@ export function BillingExpenses({ password }) {
 
   useEffect(() => {
     if (msg) {
+      if (msg.keep) return;          // هشدار نرخ می‌ماند تا خوانده شود
       const t = setTimeout(() => setMsg(null), 4000);
       return () => clearTimeout(t);
     }

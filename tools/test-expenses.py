@@ -14,6 +14,7 @@
 اجرا:  python3 tools/test-expenses.py
 """
 import importlib.util
+import io
 import os
 import sys
 
@@ -22,6 +23,9 @@ spec = importlib.util.spec_from_file_location(
     "fx", os.path.join(ROOT, "backend", "fx.py"))
 FX = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(FX)
+FXSRC = io.open(os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "backend", "fx.py"), encoding="utf-8").read()
 
 G, R, D, X = "\033[38;5;42m", "\033[38;5;203m", "\033[38;5;245m", "\033[0m"
 _ok = _fail = 0
@@ -158,6 +162,90 @@ check("هزینه بدون مبلغ تومانی رد می‌شود",
 check("دفتر کل سود را از پرداختی حساب می‌کند",
       '"profit": paid - spent' in src)
 check("دفتر کل بدهکاران را جدا می‌کند", '"owing"' in src)
+
+# ═══════════════════════════════════════════════════════════
+head("نرخ کهنه نباید بی‌صدا در هزینه ثبت شود")
+
+# وقتی tgju در دسترس نباشد، live() آخرین نرخ موفق را برمی‌گرداند و
+# stale علامتش می‌زند — که برای *نمایش* درست است. ولی _cache هیچ‌وقت
+# منقضی نمی‌شد، پس اگر tgju یک هفته پایین می‌ماند، همان نرخِ
+# یک‌هفته‌ای برگردانده می‌شد. و نقطه‌ی پایانی هزینه‌ها stale را اصلاً
+# نگاه نمی‌کرد.
+#
+# کل دلیلِ ذخیره‌کردن amount_irt این است که نرخِ *لحظه‌ی خرید* را نگه
+# دارد. ثبت‌کردنش با نرخ هفته‌ی پیش همان چیزی را خراب می‌کند که
+# قرار بود حفظ کند.
+
+import time as _t
+
+FX._cache.clear()
+FX._cache["EUR"] = {"at": _t.time(), "data": {
+    "ok": True, "currency": "EUR", "toman": 90000, "rial": 900000,
+    "source": "tgju", "cached": False}}
+
+
+def _boom(timeout=12):
+    raise OSError("tgju در دسترس نیست")
+
+
+_real_fetch = FX._fetch_tgju
+FX._fetch_tgju = _boom
+
+# تازه — از کش برمی‌دارد و اصلاً کهنه نیست
+r = FX.live("EUR")
+check("نرخ تازه‌ی کش‌شده کهنه علامت نمی‌خورد", not r.get("stale"),
+      str(r.get("stale")))
+
+# حالا کش را کهنه می‌کنیم
+FX._cache["EUR"]["at"] = _t.time() - 3 * 3600
+r = FX.live("EUR")
+check("نرخ کهنه برگردانده می‌شود", r.get("toman") == 90000)
+check("و صریح کهنه علامت می‌خورد", r.get("stale") is True)
+check("سنش گزارش می‌شود", r.get("ageMinutes", 0) >= 175,
+      f"{r.get('ageMinutes')} دقیقه")
+
+conv = FX.to_toman(10, "EUR")
+check("to_toman هم کهنه بودن را منتقل می‌کند", conv.get("stale") is True,
+      str(conv.get("stale")))
+check("و سن را هم", conv.get("ageMinutes", 0) >= 175,
+      f"{conv.get('ageMinutes')} دقیقه")
+check("مبلغ همچنان محاسبه می‌شود", conv.get("toman") == 900000,
+      str(conv.get("toman")))
+
+head("نرخ خیلی کهنه اصلاً قابل استفاده نیست")
+
+FX._cache["EUR"]["at"] = _t.time() - 40 * 3600
+r2 = FX.live("EUR")
+check("بعد از سقفِ سن، دیگر ok نیست", not r2.get("ok"),
+      f"سن {r2.get('ageMinutes')} دقیقه")
+check("و راهنمای دستی می‌دهد", "دستی" in (r2.get("hint") or ""),
+      r2.get("hint") or "")
+
+conv2 = FX.to_toman(10, "EUR")
+check("to_toman مبلغ نمی‌سازد", conv2.get("toman") is None,
+      str(conv2.get("toman")))
+
+head("نرخ دستی همیشه برنده است")
+
+conv3 = FX.to_toman(10, "EUR", manual_rate=95000)
+check("با نرخ دستی کار می‌کند حتی وقتی سایت پایین است",
+      conv3.get("toman") == 950000, str(conv3.get("toman")))
+check("و منبعش «دستی» ثبت می‌شود", conv3.get("source") == "manual")
+check("کهنه علامت نمی‌خورد", not conv3.get("stale"))
+
+FX._fetch_tgju = _real_fetch
+FX._cache.clear()
+
+head("نقطه‌ی پایانی هزینه، کهنه بودن را به کاربر می‌گوید")
+
+check("پاسخ ثبت هزینه هشدار کهنه دارد",
+      'conv.get("stale")' in src,
+      "وگرنه مدیر نمی‌فهمد با چه نرخی ثبت شده")
+check("و نرخِ خیلی کهنه رد می‌شود",
+      "STALE_MAX" in FXSRC or "MAX_STALE" in FXSRC,
+      "سقف سن در fx تعریف شده باشد")
+
+
 
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R

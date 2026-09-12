@@ -38,6 +38,17 @@ _TGJU_KEYS = {"EUR": "price_eur", "USD": "price_dollar_rl", "GBP": "price_gbp"}
 #: نرخ بیش از این مدت کهنه حساب می‌شود (ثانیه)
 TTL = 900
 
+#: از چه سنی به بعد، نرخِ کهنه دیگر قابل استفاده نیست (دقیقه).
+#
+#  نرخِ کهنه برای *نمایش* اشکالی ندارد — «۹۰٬۰۰۰ تومان، سه ساعت پیش»
+#  اطلاعات است. ولی برای *ثبت هزینه* نه: کل دلیل ذخیره‌کردن مبلغ
+#  تومانی این است که نرخِ لحظه‌ی خرید را نگه دارد، و ثبتش با نرخ
+#  دیروز همان چیزی را خراب می‌کند که قرار بود حفظ کند.
+#
+#  کش هیچ‌وقت خودش پاک نمی‌شد، پس بدون این سقف، یک هفته پایین‌بودن
+#  tgju یعنی نرخِ یک‌هفته‌ای که بی‌صدا مثل نرخ زنده رفتار می‌کند.
+STALE_MAX_MINUTES = 24 * 60
+
 _cache = {}
 
 
@@ -106,10 +117,15 @@ def live(currency="EUR", timeout=12):
         # آخرین نرخ موفق، حتی اگر کهنه باشد، از هیچ بهتر است —
         # ولی صریح می‌گوییم که کهنه است تا کسی رویش حساب باز نکند.
         if hit:
+            age = int((now - hit["at"]) / 60)
             stale = dict(hit["data"])
-            stale.update(cached=True, stale=True,
-                         ageMinutes=int((now - hit["at"]) / 60),
-                         error=str(e))
+            stale.update(cached=True, stale=True, ageMinutes=age, error=str(e))
+            if age > STALE_MAX_MINUTES:
+                # آن‌قدر کهنه که دیگر نرخ نیست. عدد را نگه می‌داریم تا
+                # صفحه بتواند نشانش بدهد، ولی ok را برمی‌داریم تا هیچ
+                # محاسبه‌ای رویش انجام نشود.
+                stale.update(ok=False,
+                             hint="نرخ خیلی کهنه است — نرخ را دستی وارد کنید")
             return stale
         return {"ok": False, "currency": cur, "toman": None,
                 "error": f"نرخ خوانده نشد: {e}",
@@ -145,7 +161,10 @@ def to_toman(amount, currency, manual_rate=None):
         return {"toman": int(round(amt * rate["toman"])),
                 "rate": rate["toman"],
                 "source": rate.get("source", "live"),
-                "stale": rate.get("stale", False)}
+                "stale": rate.get("stale", False),
+                # سن هم منتقل می‌شود تا صداکننده بتواند به مدیر بگوید
+                # این عدد با نرخ چند ساعت پیش حساب شده
+                "ageMinutes": rate.get("ageMinutes")}
 
     return {"toman": None, "rate": None, "source": None,
             "error": rate.get("error") or "نرخ در دسترس نیست"}

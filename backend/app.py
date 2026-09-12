@@ -5032,9 +5032,20 @@ def expenses_add(payload: dict, x_admin_password: str = Header(...)):
     finally:
         con.close()
 
-    return {"ok": True, "id": new_id, "toman": conv["toman"],
-            "rate": conv.get("rate"), "source": conv.get("source"),
-            "note": f"{label} ثبت شد"}
+    out = {"ok": True, "id": new_id, "toman": conv["toman"],
+           "rate": conv.get("rate"), "source": conv.get("source"),
+           "note": f"{label} ثبت شد"}
+    # نرخ کهنه رد نمی‌شود — ممکن است سایت چند دقیقه پایین باشد و مدیر
+    # منتظر است. ولی باید بداند با چه نرخی ثبت شد، وگرنه بعداً عددی
+    # می‌بیند که با هیچ چیزی جور در نمی‌آید.
+    if conv.get("stale"):
+        age = conv.get("ageMinutes") or 0
+        out["stale"] = True
+        out["warning"] = (
+            f"نرخ ارز از {_re.sub(r'.0$', '', str(round(age / 60, 1)))} ساعت "
+            "پیش استفاده شد — سایت نرخ در دسترس نبود. اگر مهم است، "
+            "هزینه را حذف کنید و با نرخ دستی دوباره ثبت کنید.")
+    return out
 
 
 @app.delete("/api/admin/billing/expenses/{exp_id}")
