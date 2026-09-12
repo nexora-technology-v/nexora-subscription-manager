@@ -560,6 +560,8 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
 
     ok, result = provision(ctx, order["id"])
     if ok:
+        # فروش با کیف پول هم فروش است — همکار باید سهمش را بگیرد
+        _pay_commission(ctx, fresh, order["id"], p["price"])
         _reply(ctx, chat_id, message_id,
                f"✅ <b>{core.toman(p['price'])}</b> تومان از کیف پولتان کم شد.\n\n"
                "اشتراک آماده است — همین پایین برایتان فرستادیم.", None)
@@ -741,6 +743,55 @@ def show_order_status(ctx, user, chat_id, message_id, order_id):
     return _reply(ctx, chat_id, message_id, txt, _waiting_kb(ctx, order_id))
 
 
+
+def _pay_commission(ctx, user, order_id, amount):
+    """
+    ثبت پورسانت همکار فروش برای یک فروش موفق.
+
+    همه‌ی مسیرهای فروش این را صدا می‌زنند — کارت، کیف پول، و تمدید
+    خودکار. قبلاً فقط مسیر کارت صدایش می‌زد، و همکاری که مشتری آورده
+    بود از خریدهای کیف‌پولی و تمدیدهای خودکارِ همان مشتری سهمی
+    نمی‌گرفت.
+
+    ثبت دوباره ممکن نیست: جدول روی (مستاجر، سفارش) یکتاست، پس اگر
+    تاییدی دو بار اجرا شود پورسانت دو بار حساب نمی‌شود.
+
+    خطا این‌جا نباید تحویل کانفیگ را متوقف کند؛ فروش انجام شده و
+    مشتری منتظر است.
+    """
+    try:
+        res = DB.record_commission(ctx.tid, user["id"], order_id, amount or 0)
+    except Exception:
+        log.debug("ثبت پورسانت ناموفق", exc_info=True)
+        return None
+    if not res:
+        return None
+
+    aff = res["affiliate"]
+    try:
+        ctx.notify_group(
+            f"💼 <b>پورسانت همکار</b>\n"
+            f"همکار: {esc(aff['name'])}\n"
+            f"سفارش #{order_id} — {core.toman(amount)} تومان\n"
+            f"پورسانت: {core.toman(res['commission'])} تومان "
+            f"({core.fa(aff['percent'])}٪)")
+        if aff.get("tg_id"):
+            ctx.bot.send(
+                aff["tg_id"],
+                F.lines(
+                    F.header("یک فروش تازه از لینک شما", "💼"),
+                    "",
+                    F.row("مبلغ خرید", core.toman(amount) + " تومان", "🛒"),
+                    F.row("پورسانت شما",
+                          core.toman(res["commission"]) + " تومان", "💰"),
+                    "",
+                    F.quote("مانده‌ی کلتان را از «پنل همکاری در فروش» "
+                            "ببینید.")))
+    except Exception:
+        log.debug("اطلاع پورسانت ناموفق", exc_info=True)
+    return res
+
+
 def approve_order(ctx, order_id, admin_tg_id):
     order = ctx.db.get_order(order_id)
     if not order:
@@ -816,30 +867,7 @@ def approve_order(ctx, order_id, admin_tg_id):
 
     # پورسانت همکار فروش — بعد از ساخت موفق کانفیگ، چون تا وقتی
     # کانفیگ تحویل نشده فروشی اتفاق نیفتاده
-    try:
-        # جدول orders ستون final_price/price ندارد — مبلغ نهایی در
-        # amount است. قبلاً این‌جا همیشه صفر می‌شد و پورسانت هر
-        # فروش صفر ثبت می‌شد.
-        paid_amount = order["amount"] or 0
-        res = DB.record_commission(ctx.tid, user["id"], order_id, paid_amount)
-        if res:
-            aff = res["affiliate"]
-            ctx.notify_group(
-                f"💼 <b>پورسانت همکار</b>\n"
-                f"همکار: {esc(aff['name'])}\n"
-                f"سفارش #{order_id} — {core.toman(paid_amount)} تومان\n"
-                f"پورسانت: {core.toman(res['commission'])} تومان "
-                f"({core.fa(aff['percent'])}٪)")
-            if aff.get("tg_id"):
-                ctx.bot.send(
-                    aff["tg_id"],
-                    "💼 <b>یک فروش تازه از لینک شما</b>\n\n"
-                    f"مبلغ خرید: {core.toman(paid_amount)} تومان\n"
-                    f"پورسانت شما: <b>{core.toman(res['commission'])}</b> تومان\n\n"
-                    "<blockquote>مانده‌ی کلتان را از «پنل همکاری در فروش» ببینید.</blockquote>")
-    except Exception:
-        # نبود پورسانت نباید تحویل سفارش را متوقف کند
-        pass
+    _pay_commission(ctx, user, order_id, order["amount"] or 0)
 
     # سکه هنگام ثبت سفارش رزرو شده — این‌جا فقط نوعش را ثبت می‌کنیم
     # که در تاریخچه «خرج‌شده» دیده شود، نه «رزرو».
@@ -3062,6 +3090,11 @@ def auto_renew_subscription(tenant, bot, sub):
 
     ok, result = provision(ctx, order["id"])
     if ok:
+        # تمدید خودکار هم فروش است — همکار باید سهمش را بگیرد.
+        # قبلاً فقط مسیر کارت پورسانت ثبت می‌کرد، پس همکاری که مشتری
+        # آورده بود از تمدیدهای خودکار او هیچ نمی‌گرفت.
+        _pay_commission(ctx, user, order["id"], plan["price"])
+
         # پرچم‌های یادآوری برای دوره‌ی جدید صفر می‌شوند
         ctx.db.exec(
             """UPDATE subscriptions

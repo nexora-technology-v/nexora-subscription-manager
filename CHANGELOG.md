@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.9.3]
+
+### Fixed — Affiliates were only paid on card purchases
+
+`record_commission` was called from one place: the card-payment approval path.
+Wallet purchases and auto-renewals both provision a config and deliver it, and
+neither recorded a commission.
+
+So an affiliate who brought a customer earned nothing from that customer's
+wallet purchases and nothing from their automatic renewals — every month, for as
+long as the subscription lasted. The money simply never appeared, with no error
+to notice.
+
+All three sale paths share one helper now. The existing uniqueness constraint on
+(tenant, order) still prevents a double payment if an approval runs twice, and a
+failure while recording the commission cannot block delivery — the sale already
+happened and the customer is waiting.
+
 ## [1.9.2]
 
 ### Changed — Only configs that were actually used get charged

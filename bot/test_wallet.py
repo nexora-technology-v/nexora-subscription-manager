@@ -327,6 +327,64 @@ check("اشتراک کاربر دیگر پیدا نمی‌شود", found is None
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("پورسانت همکار — روی هر فروش، نه فقط کارتی")
+
+# باگ: record_commission فقط در approve_order صدا زده می‌شد. خرید با
+# کیف پول و تمدید خودکار هر دو کانفیگ می‌ساختند و تحویل می‌دادند ولی
+# هیچ پورسانتی ثبت نمی‌کردند — همکار بی‌صدا سهمش را از دست می‌داد.
+
+aid = d.exec(
+    "INSERT INTO affiliates (tenant_id, name, code, percent, active)"
+    " VALUES (?,?,?,?,1)", (tid, "همکار تست", "AFF1", 10))
+
+buyer = new_user(0)
+d.exec("UPDATE users SET affiliate_id=? WHERE tenant_id=? AND id=?",
+       (aid, tid, buyer["id"]))
+
+r1 = DB.record_commission(tid, buyer["id"], 5001, 200000)
+check("پورسانت ثبت می‌شود", r1 is not None)
+check("درصد درست حساب می‌شود", r1 and r1["commission"] == 20000,
+      str(r1 and r1["commission"]))
+
+r2 = DB.record_commission(tid, buyer["id"], 5001, 200000)
+check("همان سفارش دوبار پورسانت نمی‌گیرد", r2 is None,
+      "جدول روی (مستاجر، سفارش) یکتاست")
+
+r3 = DB.record_commission(tid, buyer["id"], 5002, 0)
+check("فروش صفر پورسانت ندارد", r3 is None)
+
+# کاربر بدون همکار
+plain = new_user(0)
+r4 = DB.record_commission(tid, plain["id"], 5003, 200000)
+check("کاربر بدون همکار پورسانت نمی‌سازد", r4 is None)
+
+# همکار غیرفعال
+d.exec("UPDATE affiliates SET active=0 WHERE id=?", (aid,))
+r5 = DB.record_commission(tid, buyer["id"], 5004, 200000)
+check("همکار غیرفعال پورسانت نمی‌گیرد", r5 is None)
+d.exec("UPDATE affiliates SET active=1 WHERE id=?", (aid,))
+
+head("هر سه مسیر فروش پورسانت می‌دهند")
+
+check("تابع مشترک وجود دارد", "def _pay_commission(" in SRC)
+check("مسیر کارت صدایش می‌زند",
+      SRC.count("_pay_commission(ctx, user, order_id") >= 1)
+check("خرید با کیف پول صدایش می‌زند",
+      "_pay_commission(ctx, fresh, order[\"id\"]" in SRC,
+      "قبلاً هیچ پورسانتی نمی‌داد")
+check("تمدید خودکار صدایش می‌زند",
+      "_pay_commission(ctx, user, order[\"id\"], plan[\"price\"])" in SRC,
+      "قبلاً هیچ پورسانتی نمی‌داد")
+check("هر سه مسیر پوشش داده شدند",
+      SRC.count("_pay_commission(") >= 4,
+      f"{SRC.count('_pay_commission(')} ارجاع — یک تعریف و سه صدازدن")
+check("خطای پورسانت تحویل را متوقف نمی‌کند",
+      "log.debug(\"ثبت پورسانت ناموفق\"" in SRC,
+      "فروش انجام شده و مشتری منتظر است")
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
