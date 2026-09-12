@@ -22,3 +22,4 @@ data/*.backup*
 *.log
 *.bak
 dist.prev/
+bot/.preview-raw.txt

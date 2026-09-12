@@ -15,6 +15,7 @@ from tg import (kb, esc, TelegramError, Bot, contact_kb, remove_kb,
                 valid_button_url)
 import core
 import db as DB
+import fmt as F          # واژگان قالب‌بندی تلگرام — F.b، F.code، F.quote و…
 from xui import XUI, XUIError
 import qr
 
@@ -59,6 +60,8 @@ class Ctx:
         self._t_at = 0.0
         self._s_cache = None
         self._s_at = 0.0
+        self._in_cache = None
+        self._in_at = 0.0
 
     def invalidate(self):
         """دور ریختن کش — بعد از هر تغییری که خودمان در تنظیمات دادیم."""
@@ -96,6 +99,70 @@ class Ctx:
 
     def brand(self):
         return self.s.get("brand") or self.tenant.get("name") or "VPN"
+
+    #: نام اینباندها با کش بلندتر — روی پنل تقریباً هرگز عوض نمی‌شوند
+    INBOUND_TTL = 300.0
+
+    def inbound_names(self):
+        """
+        {شناسه‌ی اینباند: نام قابل‌خواندن} از پنل ۳x-ui.
+
+        بدون این، مشتری‌ای که سه اشتراک روی سه سرور دارد سه بار
+        «یک‌ماهه پرسرعت» می‌بیند و نمی‌فهمد کدام کدام است. نام اینباند
+        (remark) همان چیزی است که خودِ مدیر روی سرور گذاشته — «آلمان»،
+        «فنلاند» — و دقیقاً همان است که مشتری باید ببیند.
+
+        اگر پنل در دسترس نباشد دیکشنری خالی برمی‌گردد؛ نام سرور یک
+        زینت است و نبودش نباید پیام را از کار بیندازد.
+        """
+        now = time.time()
+        if self._in_cache is not None and now - self._in_at <= self.INBOUND_TTL:
+            return self._in_cache
+        names = {}
+        try:
+            for ib in (self.xui.inbounds() or []):
+                if not isinstance(ib, dict):
+                    continue
+                iid = ib.get("id")
+                remark = (ib.get("remark") or "").strip()
+                if iid is not None and remark:
+                    names[int(iid)] = remark
+        except Exception:
+            log.debug("نام اینباندها خوانده نشد", exc_info=True)
+        self._in_cache, self._in_at = names, now
+        return names
+
+    def sub_label(self, sub, with_plan=True, plan_name=None):
+        """
+        نام یکتا و خوانای یک اشتراک.
+
+        ترتیب اولویت: نام پلن + نام سرور. اگر نام سرور نبود، شماره‌ی
+        کانفیگ از انتهای شناسه (nexora_555_2 → «کانفیگ ۲») می‌آید تا
+        دست‌کم دو اشتراک هم‌پلن از هم جدا شوند.
+
+        plan_name را وقتی می‌دهیم که ردیف اشتراک از یک SELECT خام آمده
+        باشد و ستون plan_name نداشته باشد — وگرنه «اشتراک» می‌نویسد.
+        """
+        parts = []
+        if with_plan:
+            parts.append(str(plan_name or sub.get("plan_name") or "اشتراک"))
+
+        server = None
+        iid = sub.get("inbound_id")
+        if iid is not None:
+            try:
+                server = self.inbound_names().get(int(iid))
+            except (TypeError, ValueError):
+                server = None
+        if server:
+            parts.append(server)
+        else:
+            email = str(sub.get("client_email") or "")
+            tail = email.rsplit("_", 1)[-1] if "_" in email else ""
+            if tail.isdigit():
+                parts.append(f"کانفیگ {core.fa(tail)}")
+
+        return " · ".join(parts)
 
     def is_admin(self, tg_id):
         """
@@ -197,25 +264,31 @@ def welcome_text(ctx, user):
     lines = [f"سلام {name} 👋", f"به {brand} خوش آمدید.", ""]
 
     if subs:
-        s = subs[0]
-        left = core.days_left(s.get("expires_at"))
-        if left is None:
-            status = "بدون محدودیت زمانی"
-        elif left <= 0:
-            status = "اعتبارش تمام شده — وقت تمدید است"
-        elif left == 1:
-            status = "فقط <b>امروز</b> اعتبار دارد"
-        elif left <= 3:
-            status = f"فقط <b>{core.fa(left)} روز</b> باقی مانده"
-        else:
-            status = f"<b>{core.fa(left)} روز</b> باقی مانده"
+        # چند اشتراک یعنی چند سرور. اگر فقط «۱۲ روز باقی مانده» بنویسیم،
+        # مشتری نمی‌داند حرف از کدام است — پس همه را با نامشان می‌آوریم.
+        shown = subs[:3]
+        for s in shown:
+            left = core.days_left(s.get("expires_at"))
+            if left is None:
+                status = "بدون محدودیت زمانی"
+            elif left <= 0:
+                status = f"{F.b('اعتبارش تمام شده')} — وقت تمدید است"
+            elif left == 1:
+                status = f"فقط {F.b('امروز')} اعتبار دارد"
+            elif left <= 3:
+                status = f"فقط {F.b(f'{core.fa(left)} روز')} باقی مانده"
+            else:
+                status = f"{F.b(f'{core.fa(left)} روز')} باقی مانده"
 
-        lines += [
-            f"📦 <b>{esc(s.get('plan_name') or 'اشتراک شما')}</b>",
-            f"⏳ {status}",
-        ]
-        if len(subs) > 1:
-            lines.append(f"<i>و {core.fa(len(subs) - 1)} اشتراک دیگر</i>")
+            dot = "🔴" if (left is not None and left <= 0) else (
+                  "🟡" if (left is not None and left <= 3) else "🟢")
+            lines.append(f"{dot} {F.b(ctx.sub_label(s))}")
+            lines.append(f"⏳ {status}")
+            lines.append("")
+
+        if len(subs) > len(shown):
+            lines.append(F.i(f"و {core.fa(len(subs) - len(shown))} اشتراک دیگر "
+                             "در «اشتراک‌های من»"))
     else:
         lines += [
             "هنوز اشتراکی ندارید.",
@@ -308,30 +381,35 @@ def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
     # هر سطر یک ایموجیِ نشانه دارد تا چشم بتواند اسکن کند. بدون
     # آن‌ها، سطرها در موبایل یک بلوک متن یکنواخت می‌شوند.
     lines = [
-        f"<b>{esc(p['name'])}</b>",
+        F.title(p["name"], "📦"),
         "",
-        f"📦 {core.fmt_gb(p['gb'])} ترافیک",
+        f"💾 {core.fmt_gb(p['gb'])} ترافیک",
         (f"⏳ {core.fa(days)} روز اعتبار" if days else "⏳ بدون محدودیت زمانی"),
         (f"📱 {core.fa(ips)} دستگاه هم‌زمان" if ips else "📱 بدون محدودیت دستگاه"),
     ]
     if p.get("description"):
-        lines += ["", f"<i>{esc(p['description'])}</i>"]
-    lines += ["", f"💰 قیمت: <b>{core.toman(p['price'])}</b> تومان"]
+        lines += ["", F.i(p["description"])]
 
     rows = []
     if has_coin_discount:
-        lines.append(
-            f"🪙 با <b>{core.fa(pr['coins_used'])}</b> سکه‌ی شما: "
-            f"<b>{core.toman(pr['final'])}</b> تومان "
-            f"<i>({core.fa(pr['coin_percent'])}٪ تخفیف)</i>")
+        # قیمت قبلی خط‌خورده کنار قیمت جدید: مشتری خودش مقدار
+        # صرفه‌جویی را می‌بیند، که از نوشتن «۲۰٪ تخفیف» قوی‌تر است.
+        lines += ["", "💰 " + F.price(core.toman(pr["final"]),
+                                     old=core.toman(p["price"]))]
+        lines.append(F.i(f"🪙 {core.fa(pr['coins_used'])} سکه‌ی شما خرج می‌شود "
+                         f"— {core.fa(pr['coin_percent'])}٪ تخفیف"))
         rows.append([(f"🪙 خرید با تخفیف — {core.toman(pr['final'])} تومان",
                       f"chk:{plan_id}:1")])
+    else:
+        lines += ["", "💰 " + F.price(core.toman(p["price"]))]
+
     rows.append([(f"💳 خرید — {core.toman(p['price'])} تومان", f"chk:{plan_id}:0")])
 
     if user["balance"] >= p["price"]:
         lines.append("")
-        lines.append("👛 موجودی کیف پولتان برای این خرید کافی است — "
-                     "با پرداخت از کیف پول، اشتراک <b>بدون معطلی</b> تحویل می‌شود.")
+        lines.append(F.quote(
+            "👛 موجودی کیف پولتان برای این خرید کافی است — با پرداخت از "
+            "کیف پول، اشتراک " + F.b("بدون معطلی") + " تحویل می‌شود."))
         rows.append([("👛 پرداخت آنی از کیف پول", f"wpay:{plan_id}")])
 
     rows.append([("‹ بازگشت", "buy")])
@@ -998,28 +1076,37 @@ def deliver(ctx, user, sub):
     d = core.days_left(sub.get("expires_at"))
 
     lines = [
-        f"✅ <b>اشتراک شما {title}</b>",
+        F.title(f"اشتراک شما {title}", "✅"),
         "",
-        f"📦 <b>{esc(str(sub.get('plan_name') or 'اشتراک'))}</b>",
+        # نام سرور هم می‌آید: اگر مشتری چند اشتراک داشته باشد باید
+        # همین‌جا بفهمد این یکی کدام است.
+        f"📦 {F.b(ctx.sub_label(sub))}",
         f"💾 {core.fmt_gb(sub.get('gb'))} ترافیک",
     ]
     if d is not None:
-        line = f"⏳ <b>{core.fa(d)} روز</b> اعتبار"
+        line = f"⏳ {F.b(f'{core.fa(d)} روز')} اعتبار"
         if sub.get("expires_at"):
             line += f" — تا {core.fa_date(sub['expires_at'])}"
         lines.append(line)
     if sub.get("client_email"):
-        lines.append(f"🏷 <code>{esc(sub['client_email'])}</code>")
+        lines.append(f"🏷 {F.code(sub['client_email'])}")
 
     if url:
         lines += [
             "",
-            "🔗 <b>لینک اشتراک شما</b>",
-            f"<code>{esc(url)}</code>",
+            F.title("لینک اشتراک شما", "🔗"),
+            F.code(url),
             "",
-            "<blockquote>با دکمه‌ی <b>کپی لینک</b> پایین، لینک را بردارید و "
-            "در برنامه‌تان وارد کنید. اگر بلد نیستید، «آموزش نصب» "
-            "قدم‌به‌قدم توضیح داده.</blockquote>",
+            F.quote_more(
+                F.b("چطور وصل شوم؟"),
+                "",
+                "۱. دکمه‌ی «کپی لینک» پایین را بزنید.",
+                "۲. برنامه‌ی VPN را باز کنید.",
+                "۳. گزینه‌ی افزودن از کلیپ‌بورد را بزنید.",
+                "۴. سرور را انتخاب کنید و وصل شوید.",
+                "",
+                "اگر برنامه ندارید، «آموزش نصب» لینک دانلود همه را دارد.",
+            ),
         ]
     elif sub.get("configs"):
         # لینک اشتراک نداریم ولی خود کانفیگ‌ها را داریم — همان‌ها را
@@ -1135,45 +1222,49 @@ def show_subs(ctx, user, chat_id, message_id):
         else:
             status = "🟢"
 
-        lines.append(f"{status} <b>{esc(s.get('plan_name') or 'اشتراک')}</b>")
+        # نام اشتراک = پلن + سرور. بدون نام سرور، سه اشتراک هم‌پلن
+        # سه خط کاملاً یکسان می‌شوند و مشتری گم می‌شود.
+        lines.append(f"{status} {F.b(ctx.sub_label(s))}")
 
         # نوار مصرف — سریع‌ترین راه فهمیدن وضعیت
         if pct is not None:
             filled = round(pct / 10)
             bar = "█" * filled + "░" * (10 - filled)
             left_gb = max(0, round(total_gb - used_gb, 1))
-            lines.append(f"<code>{bar}</code> {core.fa(pct)}٪")
-            lines.append(f"💾 <b>{core.fa(left_gb)} گیگ</b> باقی مانده "
-                         f"<i>({core.fa(used_gb)} از {core.fmt_gb(total_gb)} مصرف شده)</i>")
+            lines.append(f"{F.code(bar)} {core.fa(pct)}٪")
+            lines.append(f"💾 {F.b(f'{core.fa(left_gb)} گیگ')} باقی مانده "
+                         f"{F.i(f'({core.fa(used_gb)} از {core.fmt_gb(total_gb)} مصرف شده)')}")
         elif used_gb is not None:
-            lines.append(f"💾 <b>{core.fa(used_gb)} گیگ</b> مصرف شده — حجم نامحدود")
+            lines.append(f"💾 {F.b(f'{core.fa(used_gb)} گیگ')} مصرف شده — حجم نامحدود")
         else:
             lines.append(f"💾 {core.fmt_gb(total_gb)} ترافیک")
 
         if d is None:
             lines.append("⏳ بدون محدودیت زمانی")
         elif expired:
-            lines.append(f"⛔ <b>{core.fa(abs(d))} روز پیش</b> منقضی شده")
+            lines.append(f"⛔ {F.b(f'{core.fa(abs(d))} روز پیش')} منقضی شده")
         else:
-            line = f"⏳ <b>{core.fa(d)} روز</b> اعتبار"
+            line = f"⏳ {F.b(f'{core.fa(d)} روز')} اعتبار"
             if s.get("expires_at"):
                 line += f" — تا {core.fa_date(s['expires_at'])}"
             lines.append(line)
 
         if s.get("client_email"):
-            lines.append(f"🏷 <code>{esc(s['client_email'])}</code>")
+            lines.append(f"🏷 {F.code(s['client_email'])}")
 
         if s.get("sub_url"):
-            lines.append(f"🔗 <code>{esc(s['sub_url'])}</code>")
+            lines.append(f"🔗 {F.code(s['sub_url'])}")
 
         lines.append("")
 
+        # دکمه هم باید بگوید کدام اشتراک را تمدید می‌کند. «تمدید» تنها،
+        # وقتی سه تا از آن زیر هم باشد، یعنی مشتری شانسی می‌زند.
         label = "🔄 تمدید" if not expired else "⚡ تمدید فوری"
-        rows.append([(f"{label} {s.get('plan_name') or ''}".strip(),
-                      f"renew:{s['id']}")])
+        rows.append([(f"{label} · {ctx.sub_label(s)}", f"renew:{s['id']}")])
 
-    lines.append("<i>لینک را بزنید تا کپی شود، بعد در برنامه‌تان وارد کنید. "
-                 "اگر بلد نیستید، «آموزش نصب» را بزنید.</i>")
+    lines.append(F.quote(
+        "لینک را بزنید تا کپی شود، بعد در برنامه‌تان وارد کنید.",
+        "اگر بلد نیستید، «آموزش نصب» را بزنید."))
     rows.append([("📚 آموزش نصب", "help")])
 
     rows.append([("‹ بازگشت", "menu")])
@@ -1198,30 +1289,32 @@ def show_renew(ctx, user, chat_id, message_id, sub_id):
     plan = ctx.db.get_plan(sub["plan_id"]) if sub.get("plan_id") else None
     left = core.days_left(sub.get("expires_at"))
 
-    lines = ["🔄 <b>تمدید اشتراک</b>", ""]
+    # تیتر خودش می‌گوید کدام اشتراک — نه «تمدید اشتراک» خشک و خالی.
+    # نام پلن را صریح می‌دهیم چون این ردیف از SELECT خام آمده.
+    label = ctx.sub_label(sub, plan_name=(plan or {}).get("name")
+                          if plan else sub.get("plan_name"))
+    lines = [F.title(f"تمدید · {label}", "🔄"), ""]
     if plan:
-        lines += [f"📦 <b>{esc(plan['name'])}</b>",
-                  f"{core.fmt_gb(plan['gb'])} · {core.fmt_days(plan['days'])}"]
-    else:
-        lines.append(f"📦 <b>{esc(sub.get('plan_name') or 'اشتراک شما')}</b>")
+        lines.append(f"📦 {core.fmt_gb(plan['gb'])} · {core.fmt_days(plan['days'])}")
 
     if left is None:
-        lines.append("بدون محدودیت زمانی")
+        lines.append("⏳ بدون محدودیت زمانی")
     elif left <= 0:
-        lines.append("⛔ اعتبارش تمام شده")
+        lines.append(f"⛔ {F.b('اعتبارش تمام شده')}")
     else:
-        lines.append(f"<b>{core.fa(left)} روز</b> باقی مانده")
+        lines.append(f"⏳ {F.b(f'{core.fa(left)} روز')} باقی مانده")
 
     if sub.get("client_email"):
-        lines.append(f"<i>نام کانفیگ:</i> <code>{esc(sub['client_email'])}</code>")
+        lines.append(f"🏷 {F.code(sub['client_email'])}")
 
     rows = []
     if plan:
-        lines += ["", f"مبلغ تمدید: <b>{core.toman(plan['price'])}</b> تومان"]
+        amount = F.b(core.toman(plan["price"]) + " تومان")
+        lines += ["", f"💰 مبلغ تمدید: {amount}"]
         lines.append("")
-        lines.append("<blockquote>بعد از تمدید، همین کانفیگ ادامه پیدا "
-                     "می‌کند — لازم نیست چیزی را در برنامه‌تان عوض کنید."
-                     "</blockquote>")
+        lines.append(F.quote(
+            "بعد از تمدید، همین کانفیگ ادامه پیدا می‌کند — لازم نیست "
+            "چیزی را در برنامه‌تان عوض کنید."))
         if user["balance"] >= plan["price"]:
             rows.append([("👛 تمدید آنی از کیف پول", f"wpay:{plan['id']}")])
         rows.append([(f"💳 تمدید — {core.toman(plan['price'])} تومان",
@@ -1407,21 +1500,34 @@ def show_referral(ctx, user, chat_id, message_id):
     ]
     if link:
         lines += [
-            "🔗 <b>لینک اختصاصی شما</b>",
-            f"<code>{esc(link)}</code>",
+            F.title("لینک اختصاصی شما", "🔗"),
+            F.code(link),
         ]
     else:
         lines += [
-            "🔗 <b>کد دعوت شما</b>",
-            f"<code>{u['ref_code']}</code>",
-            "<i>دوستتان بعد از /start این کد را بفرستد.</i>",
+            F.title("کد دعوت شما", "🔗"),
+            F.code(u["ref_code"]),
+            F.i("دوستتان بعد از /start این کد را بفرستد."),
         ]
+
+    n_inv = (invited or {}).get("c", 0)
+    n_buy = (bought or {}).get("c", 0)
     lines += [
         "",
-        f"دعوت‌شده: <b>{core.fa((invited or {}).get('c', 0))}</b> نفر",
-        f"از این‌ها خرید کرده: <b>{core.fa((bought or {}).get('c', 0))}</b> نفر",
-        f"سکه‌ی شما: <b>{core.fa(u['coins'])}</b>",
+        F.row("دعوت‌شده", f"{core.fa(n_inv)} نفر", "👥"),
+        F.row("از این‌ها خرید کرده", f"{core.fa(n_buy)} نفر", "🛒"),
+        F.row("سکه‌ی شما", core.fa(u["coins"]), "🪙"),
     ]
+
+    # اگر هنوز کسی را نیاورده، مقدار جایزه را به‌شکل کنجکاوی‌برانگیز
+    # نشان می‌دهیم — اسپویلر همان کاری را می‌کند که در تلگرام جواب
+    # می‌دهد: کاربر برای دیدنش می‌زند، و همان زدن یعنی توجه.
+    if not n_inv:
+        nxt = core.next_tier(u["coins"], ctx.s.get("coins"))
+        if nxt:
+            lines += ["", "🎯 با " + F.spoiler(
+                f"{core.fa(nxt['need'])} سکه‌ی دیگر، {core.fa(nxt['percent'])}٪ "
+                "تخفیف") + " باز می‌شود."]
 
     rows = []
     # بدون یوزرنیم ربات لینکی وجود ندارد و دکمه‌ی اشتراک‌گذاری
@@ -1440,14 +1546,34 @@ def show_referral(ctx, user, chat_id, message_id):
 
 
 def show_help(ctx, user, chat_id, message_id):
-    txt = ctx.s.get("help_text") or (
-        "📚 <b>آموزش نصب</b>\n\n"
-        "سه قدم، کمتر از دو دقیقه:\n\n"
-        "<b>۱.</b> برنامه‌ی مناسب دستگاهتان را از دکمه‌های پایین نصب کنید\n"
-        "<b>۲.</b> به «اشتراک‌های من» بروید و روی دکمه‌ی افزودن بزنید\n"
-        "<b>۳.</b> کانفیگ خودش اضافه می‌شود — فقط وصل شوید\n\n"
-        "<blockquote>اگر جایی گیر کردید، از پشتیبانی بپرسید. "
-        "خجالت ندارد، همه اولین بار همین‌طورند.</blockquote>"
+    # جزئیاتِ هر قدم داخل نقل‌قول جمع‌شونده می‌رود: کسی که بلد است سه
+    # خط می‌بیند و رد می‌شود، کسی که نیست بازش می‌کند و کامل می‌خواند.
+    txt = ctx.s.get("help_text") or F.join(
+        F.title("آموزش نصب", "📚"),
+        F.lines(
+            "سه قدم، کمتر از دو دقیقه:",
+            "",
+            f"{F.b('۱.')} برنامه‌ی مناسب دستگاهتان را از دکمه‌های پایین نصب کنید",
+            f"{F.b('۲.')} به «اشتراک‌های من» بروید و لینک اشتراک را کپی کنید",
+            f"{F.b('۳.')} در برنامه، گزینه‌ی افزودن از لینک را بزنید و بچسبانید",
+        ),
+        F.quote_more(
+            F.b("جزئیات هر قدم"),
+            "",
+            F.b("اندروید") + " — برنامه‌ی v2rayNG یا Happ را نصب کنید. بالا "
+            "سمت راست علامت + را بزنید و «Import from clipboard» را انتخاب کنید.",
+            "",
+            F.b("آیفون") + " — برنامه‌ی Streisand یا Happ. روی + بزنید و "
+            "«افزودن از کلیپ‌بورد» را انتخاب کنید.",
+            "",
+            F.b("ویندوز") + " — برنامه‌ی v2rayN. از منوی Servers گزینه‌ی "
+            "«Import from clipboard» را بزنید.",
+            "",
+            "بعد از افزودن، سرور را انتخاب و دکمه‌ی اتصال را بزنید. اگر "
+            "وصل نشد، یک سرور دیگر از همان لیست را امتحان کنید.",
+        ),
+        F.quote("اگر جایی گیر کردید، از پشتیبانی بپرسید. "
+                "خجالت ندارد، همه اولین بار همین‌طورند."),
     )
     rows = []
     apps = ctx.s.get("apps") or []
@@ -2730,17 +2856,26 @@ def send_expiry_notice(tenant, bot, sub, days_left):
             sub["tg_id"] if "tg_id" in sub.keys() else sub.get("tg_id"),
             txt, keyboard=kb([[("♻️ تمدید اشتراک", "buy")], [("‹ منو", "menu")]]))
 
-    # sub گاهی sqlite3.Row است و .get ندارد — پس با keys() چک می‌کنیم
-    plan_name = esc(str(sub["plan_name"] or "")) if "plan_name" in sub.keys() else ""
-    txt = head + "\n\n"
-    if plan_name:
-        txt += f"{plan_name}\n\n"
-    txt += ("اگر تمدید نکنید، اتصالتان قطع می‌شود.\n"
-            "تمدید یک دکمه است و کانفیگ فعلی‌تان <b>همان می‌ماند</b> — "
-            "لازم نیست چیزی را دوباره اضافه کنید.")
+    # sub گاهی sqlite3.Row است و .get ندارد — با یک dict ساده کار
+    # می‌کنیم تا sub_label بتواند مثل بقیه‌جا رفتارش را انجام دهد
+    srow = {k: sub[k] for k in sub.keys()} if hasattr(sub, "keys") else dict(sub)
+    label = ctx.sub_label(srow)
+
+    txt = F.join(
+        head,
+        f"📦 {F.b(label)}",
+        F.lines(
+            "اگر تمدید نکنید، اتصالتان قطع می‌شود.",
+            "تمدید یک دکمه است و کانفیگ فعلی‌تان " + F.b("همان می‌ماند") +
+            " — لازم نیست چیزی را دوباره اضافه کنید.",
+        ),
+    )
+    # دکمه مستقیم همین اشتراک را تمدید می‌کند، نه «خرید» کلی —
+    # وگرنه کاربر دوباره باید حدس بزند کدام را انتخاب کند.
+    renew_cb = f"renew:{srow['id']}" if srow.get("id") else "mysubs"
     try:
         bot.send(sub["tg_id"], txt,
-                 keyboard=kb([[("🔄 تمدید اشتراک", "buy")],
+                 keyboard=kb([[(f"🔄 تمدید · {label}", renew_cb)],
                               [("‹ منوی اصلی", "menu")]]))
     except TelegramError as e:
         log.warning("یادآوری ارسال نشد (%s): %s", sub["tg_id"], e)
@@ -2767,17 +2902,24 @@ def auto_renew_subscription(tenant, bot, sub):
             short = plan["price"] - user["balance"]
             # نام پلن باید بیاید: کاربری که چند اشتراک دارد وگرنه
             # نمی‌داند کدامشان تمدید نشده و دنبال کدام باید بگردد
+            srow = {k: sub[k] for k in sub.keys()} if hasattr(sub, "keys") else dict(sub)
             bot.send(user["tg_id"],
-                     "⚠️ <b>تمدید خودکار انجام نشد</b>\n\n"
-                     f"📦 {esc(plan['name'])}\n"
-                     f"<i>{core.fmt_gb(plan['gb'])} · "
-                     f"{core.fmt_days(plan['days'])}</i>\n\n"
-                     "موجودی کیف پولتان کافی نبود.\n\n"
-                     f"لازم: <b>{core.toman(plan['price'])}</b> تومان\n"
-                     f"موجودی: {core.toman(user['balance'])} تومان\n"
-                     f"کسری: <b>{core.toman(short)}</b> تومان\n\n"
-                     "<blockquote>کیف پول را شارژ کنید تا دفعه‌ی بعد خودکار "
-                     "انجام شود — تمدید خودکارتان هنوز روشن است.</blockquote>",
+                     F.join(
+                         F.title("تمدید خودکار انجام نشد", "⚠️"),
+                         F.lines(
+                             f"📦 {F.b(ctx.sub_label(srow, plan_name=plan['name']))}",
+                             F.i(f"{core.fmt_gb(plan['gb'])} · "
+                                 f"{core.fmt_days(plan['days'])}"),
+                         ),
+                         "موجودی کیف پولتان کافی نبود.",
+                         F.lines(
+                             F.row("لازم", core.toman(plan["price"]) + " تومان", "💰"),
+                             F.row("موجودی", core.toman(user["balance"]) + " تومان", "👛"),
+                             F.row("کسری", core.toman(short) + " تومان", "➖"),
+                         ),
+                         F.quote("کیف پول را شارژ کنید تا دفعه‌ی بعد خودکار "
+                                 "انجام شود — تمدید خودکارتان هنوز روشن است."),
+                     ),
                      keyboard=kb([[("👛 شارژ کیف پول", "wallet")],
                                   [("📊 اشتراک‌های من", "mysubs")]]))
         except TelegramError:
@@ -2802,14 +2944,20 @@ def auto_renew_subscription(tenant, bot, sub):
             (ctx.tid, sub["id"])
         )
         try:
+            srow2 = {k: sub[k] for k in sub.keys()} if hasattr(sub, "keys") else dict(sub)
             bot.send(user["tg_id"],
-                     "✅ <b>اشتراکتان خودکار تمدید شد</b>\n\n"
-                     f"📦 {esc(plan['name'])}\n"
-                     f"<i>{core.fmt_gb(plan['gb'])} · "
-                     f"{core.fmt_days(plan['days'])}</i>\n\n"
-                     f"<b>{core.toman(plan['price'])}</b> تومان از کیف پول کم شد.\n\n"
-                     "<blockquote>کاری لازم نیست بکنید — کانفیگ فعلی‌تان "
-                     "همان است و وصل می‌ماند.</blockquote>",
+                     F.join(
+                         F.title("اشتراکتان خودکار تمدید شد", "✅"),
+                         F.lines(
+                             f"📦 {F.b(ctx.sub_label(srow2, plan_name=plan['name']))}",
+                             F.i(f"{core.fmt_gb(plan['gb'])} · "
+                                 f"{core.fmt_days(plan['days'])}"),
+                         ),
+                         f"💰 {F.b(core.toman(plan['price']) + ' تومان')} "
+                         "از کیف پول کم شد.",
+                         F.quote("کاری لازم نیست بکنید — کانفیگ فعلی‌تان "
+                                 "همان است و وصل می‌ماند."),
+                     ),
                      keyboard=kb([[("📊 اشتراک‌های من", "mysubs")]]))
         except TelegramError:
             pass

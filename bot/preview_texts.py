@@ -8,6 +8,7 @@
 """
 import html
 import json
+import io
 import os
 import re
 import sys
@@ -127,8 +128,19 @@ bot = FakeBot()
 BOX = 62
 
 
+#: وقتی روشن باشد، متن خامِ هر پیام هم کنار پیش‌نمایش ذخیره می‌شود تا
+#: test_fmt بتواند HTML واقعی را بسنجد، نه نسخه‌ی رنگ‌شده‌ی ترمینال را.
+RAW = os.getenv("NEXORA_PREVIEW_RAW") == "1"
+RAW_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        ".preview-raw.txt")
+_raw_blocks = []
+
+
 def render(title, text, kb=None):
     """نمایش پیام همان‌طور که در تلگرام دیده می‌شود."""
+    if RAW:
+        _raw_blocks.append(f"{title}\x01{text or ''}")
+
     print(f"\n\033[38;5;245m{'─' * BOX}\033[0m")
     print(f"\033[38;5;117m{title}\033[0m")
     print(f"\033[38;5;245m{'─' * BOX}\033[0m")
@@ -139,23 +151,36 @@ def render(title, text, kb=None):
     # می‌دهد، و کل دلیل استفاده‌مان از آن همین جداشدنِ دیداری است.
     # اگر اینجا رندر نشود، پیش‌نمایش دقیقاً همان چیزی را نشان
     # نمی‌دهد که مشتری می‌بیند و قضاوت روی آن بی‌معنی است.
-    def _quote(m):
-        body = m.group(1).strip()
-        lines = [ln for ln in body.split("\n")]
-        out = []
-        for ln in lines:
-            out.append(f"\033[38;5;108m▌\033[0m \033[38;5;250m{ln}\033[0m")
-        return "\n".join(out)
+    def _quote(bar, tint):
+        def inner(m):
+            body = m.group(1).strip()
+            return "\n".join(f"\033[38;5;{tint}m{bar}\033[0m "
+                             f"\033[38;5;250m{ln}\033[0m"
+                             for ln in body.split("\n"))
+        return inner
 
-    t = re.sub(r"<blockquote>(.*?)</blockquote>", _quote, t, flags=re.S)
+    # جمع‌شونده اول، وگرنه الگوی ساده آن را هم می‌گیرد و تفاوتشان گم می‌شود
+    t = re.sub(r"<blockquote expandable>(.*?)</blockquote>",
+               _quote("▾", 180), t, flags=re.S)
+    t = re.sub(r"<blockquote>(.*?)</blockquote>", _quote("▌", 108), t, flags=re.S)
+
+    # لینک: در تلگرام فقط متن دیده می‌شود و آدرس زیرش پنهان است
+    t = re.sub(r'<a href="([^"]*)">(.*?)</a>',
+               lambda m: f"\033[4;38;5;117m{m.group(2)}\033[0m"
+                         f"\033[38;5;240m ({m.group(1)})\033[0m",
+               t, flags=re.S)
 
     # تگ‌های تلگرام را به شکل خوانا در ترمینال درمی‌آوریم
     t = re.sub(r"<b>", "\033[1m", t)
     t = re.sub(r"</b>", "\033[0m", t)
     t = re.sub(r"<i>", "\033[3;38;5;245m", t)
     t = re.sub(r"</i>", "\033[0m", t)
+    t = re.sub(r"<u>", "\033[4m", t)
+    t = re.sub(r"</u>", "\033[0m", t)
     t = re.sub(r"<code>", "\033[38;5;222m", t)
     t = re.sub(r"</code>", "\033[0m", t)
+    t = re.sub(r"<pre>", "\033[38;5;222m", t)
+    t = re.sub(r"</pre>", "\033[0m", t)
     t = re.sub(r"<s>", "\033[9;38;5;245m", t)
     t = re.sub(r"</s>", "\033[0m", t)
     t = re.sub(r"<tg-spoiler>", "\033[48;5;238m", t)
@@ -356,3 +381,9 @@ except Exception:
 
 print(f"\n\033[38;5;245m{'─' * BOX}\033[0m")
 print("پایان پیش‌نمایش.\n")
+
+# متن خام برای test_fmt — با \x00 بین پیام‌ها، چون خود پیام‌ها
+# هر نویسه‌ی چاپی دیگری می‌توانند داشته باشند.
+if RAW:
+    with io.open(RAW_PATH, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\x00".join(_raw_blocks))

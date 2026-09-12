@@ -124,10 +124,12 @@ def test_checks(fast):
 
     suites = [
         ("ربات", ["bot/test_bot.py", "bot/test_flow.py",
-                  "bot/test_admin.py", "bot/test_xui.py"]),
+                  "bot/test_admin.py", "bot/test_xui.py",
+                  "bot/test_fmt.py"]),
         ("پنل و ابزارها", ["tools/test-admin-api.py", "tools/test-billing.py",
                            "tools/test-monitor.py", "tools/test-firewall.py",
-                           "tools/test-maintenance.py", "tools/test-serve.py"]),
+                           "tools/test-maintenance.py", "tools/test-serve.py",
+                           "tools/test-intrusion.py"]),
         ("اتصال‌ها", ["tools/test-bot-buttons.py", "tools/test-seams.py",
                       "tools/check-api-contract.py"]),
     ]

@@ -24,6 +24,7 @@ import { BotPreviewSection, BotTextsSection } from "./sections/bot/texts";
 import { ThemesSection } from "./sections/bot/themes";
 import { BotUsersSection } from "./sections/bot/users";
 import { FirewallBlocked, FirewallRules } from "./sections/firewall";
+import { FirewallIntrusion } from "./sections/intrusion";
 import { MonitorSection } from "./sections/monitoring";
 import { AppsSection, BannersSection, FaqSection, LinksSection, OverviewSection, PopupSection, ReferralSection, ResellersSection, SettingsSection, VideosSection } from "./sections/subpage";
 import { LivePreview, SystemSection } from "./sections/system";
@@ -297,6 +298,7 @@ export default function App() {
           {active === "tun-list" && <TunnelList password={password} />}
           {active === "monitor" && <MonitorSection password={password} />}
           {active === "fw-rules" && <FirewallRules password={password} />}
+          {active === "fw-intrusion" && <FirewallIntrusion password={password} />}
           {active === "fw-blocked" && <FirewallBlocked password={password} />}
           {active === "tun-health" && <SystemHealth password={password} />}
           {active === "tun-events" && <TunnelEvents password={password} />}

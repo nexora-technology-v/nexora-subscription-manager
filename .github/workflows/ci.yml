@@ -20,14 +20,22 @@ concurrency:
 
 jobs:
   python:
-    name: تست‌های پایتون
+    name: تست‌های پایتون (${{ matrix.python }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # install.sh هر python3 ای را که توزیع دارد استفاده می‌کند.
+        # اوبونتو ۲۲.۰۴ یعنی ۳.۱۰ — پس پایین‌ترین نسخه‌ای که باید کار
+        # کند همان است. تست‌کردن فقط روی نسخه‌ی جدید یعنی نحوی که در
+        # ۳.۱۰ خطاست بی‌صدا منتشر می‌شود.
+        python: ["3.10", "3.12"]
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
           cache: pip
 
       - name: نصب وابستگی‌ها
@@ -45,6 +53,7 @@ jobs:
           python bot/test_flow.py
           python bot/test_admin.py
           python bot/test_xui.py
+          python bot/test_fmt.py
 
       - name: تست‌های پنل و ابزارها
         run: |
@@ -53,6 +62,7 @@ jobs:
           python tools/test-monitor.py
           python tools/test-firewall.py
           python tools/test-maintenance.py
+          python tools/test-intrusion.py
 
       - name: تست‌های اتصال
         # اینها باگ‌هایی را می‌گیرند که تست معمولی نمی‌بیند:

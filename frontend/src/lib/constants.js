@@ -5,7 +5,7 @@
  * در آن عملاً ناممکن.
  */
 import {
-  Activity, Apple, Bell, Bot, Clock, Coins, CreditCard, Database, Eye, FileText, Gift, HelpCircle, Key, Layers, LayoutGrid, Link2, MessageCircle, MessageSquare, Monitor, Network, Package, Send, Server, ShieldCheck, Sliders, Smartphone, TrendingUp, Users, Video, Wallet, XCircle, Zap,
+  Activity, AlertTriangle, Apple, Bell, Bot, Clock, Coins, CreditCard, Database, Eye, FileText, Gift, HelpCircle, Key, Layers, LayoutGrid, Link2, MessageCircle, MessageSquare, Monitor, Network, Package, Send, Server, ShieldCheck, Sliders, Smartphone, TrendingUp, Users, Video, Wallet, XCircle, Zap,
 } from "lucide-react";
 
 export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8100";
@@ -124,6 +124,7 @@ export const WORKSPACES = {
         title: "امنیت سرور",
         items: [
           { key: "fw-rules", label: "قواعد فایروال", icon: ShieldCheck },
+          { key: "fw-intrusion", label: "تلاش برای نفوذ", icon: AlertTriangle },
           { key: "fw-blocked", label: "آی‌پی‌های بسته‌شده", icon: XCircle },
         ],
       },

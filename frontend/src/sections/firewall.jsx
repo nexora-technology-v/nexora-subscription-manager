@@ -241,6 +241,8 @@ export function FirewallRules({ password }) {
   const [form, setForm] = useState({ port: "", proto: "tcp", action: "allow", comment: "" });
   const [confirmSsh, setConfirmSsh] = useState(false);
   const [q, setQ] = useState("");
+  const [act, setAct] = useState("all");
+  const [only, setOnly] = useState("all");
   const [confirmDel, setConfirmDel] = useState(null);
 
   if (!d) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
@@ -271,11 +273,38 @@ export function FirewallRules({ password }) {
     );
   }
 
-  const rules = (d.rules || []).filter((r) => {
+  // ufw هر قاعده را دو بار می‌آورد: یک‌بار IPv4 و یک‌بار (v6). نمایش
+  // هر دو یعنی فهرست دو برابر بدون یک ذره اطلاعات بیشتر — و همین
+  // اصلی‌ترین دلیل شلوغیِ این صفحه بود. ادغامشان می‌کنیم و در ستون
+  // مبدأ می‌نویسیم که قاعده هر دو نسخه را می‌گیرد.
+  const merged = [];
+  const seen = new Map();
+  for (const r of (d.rules || [])) {
+    const key = `${r.target}|${r.action}|${(r.source || "").replace(" (v6)", "")}`;
+    const prev = seen.get(key);
+    if (prev) {
+      prev.both = true;
+      prev.nums.push(r.num);
+      continue;
+    }
+    const copy = { ...r, nums: [r.num], both: false,
+                   source: (r.source || "").replace(" (v6)", "") };
+    seen.set(key, copy);
+    merged.push(copy);
+  }
+
+  const rules = merged.filter((r) => {
+    if (act !== "all" && r.action.toLowerCase() !== act) return false;
+    if (only === "critical" && !r.critical) return false;
+    if (only === "open" && r.action.toLowerCase() !== "allow") return false;
     if (!q.trim()) return true;
     const s = q.trim().toLowerCase();
-    return `${r.target} ${r.source} ${r.action}`.toLowerCase().includes(s);
+    return `${r.target} ${r.source} ${r.action} ${r.note || ""}`
+      .toLowerCase().includes(s);
   });
+
+  const hidden = merged.length - rules.length;
+  const dupes = (d.rules || []).length - merged.length;
 
   const add = () => {
     if (!form.port) return;
@@ -382,15 +411,47 @@ export function FirewallRules({ password }) {
               ({faNum(rules.length)})
             </span>
           </div>
-          <div className="fx-search" style={{ width: 200 }}>
-            <Search size={14} style={{ color: "var(--muted)" }} />
-            <input value={q} onChange={(e) => setQ(e.target.value)}
-              placeholder="جستجو در قواعد..." />
+          <div className="flex items-center gap-2 flex-wrap">
+            <select className="fx-input" value={act} style={{ width: 120 }}
+              onChange={(e) => setAct(e.target.value)}>
+              <option value="all">همه‌ی عمل‌ها</option>
+              {FW_ACTIONS.map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
+            </select>
+            <select className="fx-input" value={only} style={{ width: 140 }}
+              onChange={(e) => setOnly(e.target.value)}>
+              <option value="all">همه‌ی قواعد</option>
+              <option value="open">فقط درهای باز</option>
+              <option value="critical">فقط حیاتی</option>
+            </select>
+            <div className="fx-search" style={{ width: 180 }}>
+              <Search size={14} style={{ color: "var(--muted)" }} />
+              <input value={q} onChange={(e) => setQ(e.target.value)}
+                placeholder="جستجو..." />
+            </div>
           </div>
         </div>
 
+        {(dupes > 0 || hidden > 0) && (
+          <div className="text-[12px] mb-3 flex items-center gap-3 flex-wrap"
+            style={{ color: "var(--muted)" }}>
+            {dupes > 0 && (
+              <span>{faNum(dupes)} قاعده‌ی تکراری IPv6 با نسخه‌ی IPv4 ادغام شد</span>
+            )}
+            {hidden > 0 && (
+              <button onClick={() => { setAct("all"); setOnly("all"); setQ(""); }}
+                style={{ color: "var(--accent-2)" }}>
+                {faNum(hidden)} قاعده با فیلتر پنهان است — نمایش همه
+              </button>
+            )}
+          </div>
+        )}
+
         {!rules.length ? (
-          <EmptyState icon={ShieldCheck} text={q ? "چیزی پیدا نشد" : "هنوز قاعده‌ای ثبت نشده"} />
+          <EmptyState icon={ShieldCheck}
+            text={q || act !== "all" || only !== "all"
+              ? "با این فیلتر چیزی نیست" : "هنوز قاعده‌ای ثبت نشده"} />
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table className="fx-table">
@@ -416,6 +477,11 @@ export function FirewallRules({ password }) {
                       </td>
                       <td dir="ltr" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                         {r.source}
+                        {r.both && (
+                          <span className="fx-pill mr-2" style={{
+                            background: "var(--surface-3)", color: "var(--muted)",
+                          }}>IPv4 + IPv6</span>
+                        )}
                       </td>
                       <td>
                         <button onClick={() => setConfirmDel(r)} disabled={busy}

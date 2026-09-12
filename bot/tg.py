@@ -101,8 +101,27 @@ class Bot:
         raise TelegramError(f"شبکه در دسترس نبود: {last_err}")
 
     # ---------- پیام ----------
+    @staticmethod
+    def _safe_html(text):
+        """
+        اگر ساختار HTML پیام خراب باشد، تلگرام کل پیام را رد می‌کند و
+        کاربر هیچ چیزی نمی‌بیند. به‌جای آن، این‌جا خطا لاگ می‌شود و
+        پیام بدون قالب‌بندی می‌رود — زشت‌تر، ولی رسیده.
+        """
+        try:
+            from fmt import check, plain
+        except ImportError:
+            return text
+        bad = check(text)
+        if not bad:
+            return text
+        log.error("HTML پیام معیوب بود، بدون قالب فرستاده شد: %s", "; ".join(bad[:3]))
+        return plain(text)
+
     def send(self, chat_id, text, keyboard=None, parse_mode="HTML",
              preview=False, reply_to=None, topic_id=None):
+        if parse_mode == "HTML":
+            text = self._safe_html(text)
         return self.call(
             "sendMessage",
             chat_id=chat_id,
@@ -115,6 +134,8 @@ class Bot:
         )
 
     def edit(self, chat_id, message_id, text, keyboard=None, parse_mode="HTML"):
+        if parse_mode == "HTML":
+            text = self._safe_html(text)
         try:
             return self.call(
                 "editMessageText",

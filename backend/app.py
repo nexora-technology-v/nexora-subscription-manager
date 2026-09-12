@@ -2311,10 +2311,102 @@ except Exception:
         FIREWALL = None
 
 
+try:
+    import intrusion as INTRUSION
+except Exception:
+    try:
+        import importlib.util as _iin
+        _is = _iin.spec_from_file_location(
+            "intrusion", Path(__file__).resolve().parent / "intrusion.py")
+        INTRUSION = _iin.module_from_spec(_is)
+        _is.loader.exec_module(INTRUSION)
+    except Exception:
+        INTRUSION = None
+
+
 def _fw_or_die():
     if not FIREWALL:
         raise HTTPException(status_code=500, detail="ماژول فایروال بارگذاری نشد")
     return FIREWALL
+
+
+def _connected_ips():
+    """
+    آی‌پی‌هایی که همین حالا به سرویس وصل‌اند.
+
+    این فهرست تنها چیزی است که «مهاجم» را از «مشتریِ من که رمز را
+    اشتباه می‌زند» جدا می‌کند. بدون آن، مدیر ممکن است آی‌پی مشتری
+    خودش را ببندد و تازه وقتی شکایت آمد بفهمد.
+    """
+    if not MONITOR:
+        return set()
+    try:
+        data = MONITOR.connections(top=200) or {}
+    except Exception:
+        return set()
+    ips = set()
+    for key in ("top", "heavy", "tunnels"):
+        for row in (data.get(key) or []):
+            ip = (row or {}).get("ip")
+            if ip:
+                ips.add(ip)
+    return ips
+
+
+@app.get("/api/admin/firewall/intrusion")
+def firewall_intrusion(hours: int = 24, x_admin_password: str = Header(...)):
+    """
+    چه کسی دارد به سرور در می‌زند — و کدامشان مشتری خودتان است.
+
+    ساعت را محدود می‌کنیم تا خواندن لاگ روی سرور شلوغ طول نکشد.
+    """
+    check_auth(x_admin_password)
+    if not INTRUSION:
+        raise HTTPException(status_code=500, detail="ماژول تشخیص نفوذ بارگذاری نشد")
+    hours = max(1, min(int(hours or 24), 168))
+    return INTRUSION.summary(known_ips=_connected_ips(), hours=hours)
+
+
+@app.post("/api/admin/firewall/block-attackers")
+def firewall_block_attackers(payload: dict, x_admin_password: str = Header(...)):
+    """
+    بستن دسته‌ای آی‌پی‌های مهاجم، با تایید صریح.
+
+    آی‌پی‌هایی که به سرویس وصل‌اند عمداً رد می‌شوند مگر مدیر صریحاً
+    اسمشان را بیاورد — بستن مشتری بدترین نتیجه‌ی ممکن این صفحه است.
+    """
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    p = payload or {}
+    if not p.get("confirm"):
+        raise HTTPException(status_code=400, detail="بستن آی‌پی نیاز به تایید دارد")
+
+    wanted = [str(x).strip() for x in (p.get("ips") or []) if str(x).strip()]
+    if not wanted:
+        raise HTTPException(status_code=400, detail="فهرست آی‌پی خالی است")
+    if len(wanted) > 100:
+        raise HTTPException(status_code=400, detail="حداکثر ۱۰۰ آی‌پی در هر بار")
+
+    connected = _connected_ips()
+    force = bool(p.get("includeConnected"))
+    done, skipped, failed = [], [], []
+    for ip in wanted:
+        if ip in connected and not force:
+            skipped.append(ip)
+            continue
+        try:
+            ok, note = fw.block_ip(ip, comment="nexora: brute-force")
+            (done if ok else failed).append({"ip": ip, "note": note})
+        except Exception as e:
+            failed.append({"ip": ip, "note": str(e)})
+
+    note = f"{len(done)} آی‌پی بسته شد"
+    if skipped:
+        note += f" · {len(skipped)} آی‌پی چون به سرویس وصل بودند رد شد"
+    if failed:
+        note += f" · {len(failed)} ناموفق"
+    return {"ok": True, "note": note, "blocked": done,
+            "skipped": skipped, "failed": failed}
 
 
 @app.get("/api/admin/firewall")
