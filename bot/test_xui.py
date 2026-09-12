@@ -74,9 +74,26 @@ CLIENTS, ATTACH, SEEN = {}, {}, []
 _row = [14800]
 
 
+#: وضعیت قابل‌تغییر پنل شبیه‌سازی‌شده، برای ساختن حالت‌های خراب
+STATE = {"expired": 0}
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
+
+    def _login_page(self):
+        """
+        همان چیزی که 3x-ui وقتی نشست منقضی شده باشد برمی‌گرداند:
+        ریدایرکت به /login، و چون requests دنبال ریدایرکت می‌رود،
+        نتیجه HTTP 200 با بدنه‌ی HTML است — نه ۴۰۱.
+        """
+        b = b"<!DOCTYPE html><html><body>login</body></html>"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
 
     def _send(self, obj, code=200):
         b = json.dumps(obj, ensure_ascii=False).encode()
@@ -142,6 +159,12 @@ class Handler(BaseHTTPRequestHandler):
         return self._fail(f"no route {p}", 404)
 
     def do_POST(self):
+        # نشست منقضی — تا وقتی دوباره لاگین نشده، همه‌چیز صفحه‌ی ورود
+        if STATE.get("expired") and "/login" not in self.path:
+            # expired عددی است: هر بار یکی کم می‌شود، پس می‌شود حالتی
+            # ساخت که فقط *یک بار* صفحه‌ی ورود بیاید و بعد درست شود
+            STATE["expired"] -= 1
+            return self._login_page()
         p = unquote(self.path.split("?")[0])
 
         if p == "/login":
@@ -291,6 +314,57 @@ check("فعال‌کردن دوباره اعمال شد", CLIENTS[EMAIL]["enable
 # تمدید بدون ایمیل هم باید کار کند — کاربران قدیمی که فقط uuid دارند
 c.extend_subscription(41, res["uuid"], add_days=10)
 check("تمدید فقط با uuid هم کار می‌کند", CLIENTS[EMAIL]["expiryTime"] > 0)
+
+
+# ═══════════════ نشست منقضی ═══════════════
+section("وقتی نشست پنل منقضی می‌شود")
+
+# 3x-ui در این حالت به صفحه‌ی ورود ریدایرکت می‌کند و requests دنبالش
+# می‌رود، پس پاسخ HTTP 200 با بدنه‌ی HTML است — نه ۴۰۱.
+#
+# کد قبلی هر بدنه‌ی غیر JSON با وضعیت ۲xx را «موفق ولی بدون محتوا»
+# حساب می‌کرد و None برمی‌گرداند. یعنی تمدید بی‌صدا هیچ کاری نمی‌کرد
+# و ربات به مشتری می‌گفت «تمدید شد».
+
+before = CLIENTS[EMAIL]["expiryTime"]
+STATE["expired"] = 99
+c._logged_in = True          # کلاینت هنوز فکر می‌کند نشست باز است
+
+failed = None
+try:
+    c.extend_subscription(41, res["uuid"], add_days=30, email=EMAIL)
+except X.XUIError as e:
+    failed = str(e)
+
+STATE["expired"] = 0
+
+check("تمدیدِ ناموفق بی‌صدا «موفق» اعلام نمی‌شود",
+      failed is not None or CLIENTS[EMAIL]["expiryTime"] != before,
+      "یا خطا می‌دهد یا واقعاً انجام می‌شود — سکوت بدترین حالت است")
+check("و تاریخ انقضا دست‌نخورده می‌ماند اگر خطا داد",
+      failed is None or CLIENTS[EMAIL]["expiryTime"] == before,
+      "وگرنه نصفه‌کاره نوشته شده")
+if failed:
+    check("پیام خطا قابل‌فهم است",
+          "JSON" in failed or "ورود" in failed or "نشست" in failed,
+          failed[:70])
+
+# پاسخ خالیِ واقعی (مثل حذف) همچنان باید موفق باشد
+c.set_enabled(41, res["uuid"], True, email=EMAIL)
+check("پاسخ خالیِ معتبر همچنان موفق است", CLIENTS[EMAIL]["enable"] is True,
+      "نباید این اصلاح، حذف و پاسخ‌های ۲۰۴ را بشکند")
+
+
+# وقتی ورود دوباره جواب می‌دهد، عملیات باید خودش کامل شود
+before2 = CLIENTS[EMAIL]["expiryTime"]
+STATE["expired"] = 1          # فقط یک بار صفحه‌ی ورود
+c._logged_in = True
+c.extend_subscription(41, res["uuid"], add_days=7, email=EMAIL)
+check("نشستِ منقضی خودش ترمیم می‌شود",
+      CLIENTS[EMAIL]["expiryTime"] > before2,
+      "یک بار دوباره لاگین می‌کند و کار را تمام می‌کند — نه خطا به مشتری")
+check("و بیش از یک بار تلاش نمی‌کند", STATE["expired"] == 0,
+      "حلقه‌ی بی‌پایانِ لاگین بدتر از خطاست")
 
 # ═══════════════ حذف ═══════════════
 section("حذف")

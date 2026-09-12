@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.10.5]
+
+### Fixed — When the panel session expired, renewals silently did nothing
+
+3x-ui redirects to its login page when a session expires. `requests` follows the
+redirect, so the response arrives as HTTP 200 with an HTML body — not a 401.
+
+`_req` treated any non-JSON body with a 2xx status as "succeeded, no content" and
+returned `None`. That rule exists for endpoints like delete, which legitimately
+answer with an empty body. But the login page is not empty, and it was being
+counted as success.
+
+So `update_client` returned normally, `extend_subscription` reported the new
+expiry date, and the panel had changed nothing. The customer was told their
+subscription was renewed. It was not. Blocking a client failed the same way.
+
+The bot holds one panel connection for as long as it runs, so this is not a rare
+state — it is what happens every time the session ages out.
+
+Empty body with 2xx still means success. A non-empty body that is not JSON now
+triggers one re-login and a retry; if it happens again, it raises with the reason
+rather than pretending.
+
+### Added — Session expiry is covered by the simulated panel
+
+`bot/test_xui.py` can now make the fake panel answer with a login page, once or
+every time. 30 checks, including that a single expiry heals itself and completes
+the renewal, that a persistent one raises instead of reporting success, that the
+expiry date is left untouched when it raises, and that it never tries logging in
+more than once.
+
 ## [1.10.4]
 
 ### Fixed — The SSL certificate check never ran on any server

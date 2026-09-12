@@ -73,7 +73,7 @@ class XUI:
         self._logged_in = True
         return True
 
-    def _req(self, method, path, raw=False, **kw):
+    def _req(self, method, path, raw=False, _retried=False, **kw):
         """
         درخواست به پنل.
 
@@ -98,14 +98,31 @@ class XUI:
         try:
             data = r.json()
         except ValueError:
+            body = (r.text or "").strip()
+
             # بعضی مسیرها — مثل حذف — بدنه‌ی خالی برمی‌گردانند.
             # اگر کد وضعیت موفق بود، این خطا نیست.
-            if 200 <= r.status_code < 300:
+            if 200 <= r.status_code < 300 and not body:
                 return None
-            snippet = (r.text or "")[:120].replace("\n", " ")
+
+            # بدنه‌ی *غیرخالیِ* غیر JSON با وضعیت ۲۰۰ یعنی پنل صفحه‌ی
+            # ورود را برگردانده: نشست منقضی شده و 3x-ui به /login
+            # ریدایرکت کرده، و requests دنبالش رفته.
+            #
+            # قبلاً همین حالت هم «موفق ولی بدون محتوا» حساب می‌شد و
+            # None برمی‌گشت — یعنی تمدید و مسدودکردن بی‌صدا هیچ کاری
+            # نمی‌کردند و ربات به مشتری می‌گفت انجام شد.
+            if 200 <= r.status_code < 300 and not _retried and not self.token:
+                self._logged_in = False
+                self.login()
+                kw.pop("headers", None)
+                return self._req(method, path, raw=raw, _retried=True, **kw)
+
+            snippet = body[:120].replace("\n", " ")
             raise XUIError(
                 f"پاسخ غیر JSON از {path} (HTTP {r.status_code})"
-                + (f": {snippet}" if snippet else ""))
+                + (f": {snippet}" if snippet else "")
+                + " — احتمالاً نشست پنل منقضی شده یا آدرس پنل درست نیست")
 
         if raw:
             return data
