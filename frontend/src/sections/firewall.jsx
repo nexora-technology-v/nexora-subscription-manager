@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, ChevronDown, Loader2, Plus, Search, ShieldCheck, Sparkles, Trash2, XCircle,
+  AlertTriangle, CheckCircle2, ChevronDown, Download, Layers, Loader2, Plus, Search, ShieldCheck, Sparkles, Trash2, Upload, XCircle,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum } from "../lib/format";
@@ -623,6 +623,196 @@ export function r_note(d) {
   );
 }
 
+/**
+ * بستن دسته‌ای آدرس‌ها، و اطمینان از اینکه واقعاً بسته شده‌اند.
+ *
+ * چرا:
+ *     وقتی یک اسکن با صد آدرس می‌آید، واردکردن دستی صدتا نه شدنی
+ *     است نه بی‌خطا. و «پیام موفقیت دیدم» با «بسته شده» یکی نیست —
+ *     تأیید باید از خود کرنل بیاید.
+ */
+function BulkBlock({ password, onDone, setMsg }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState(null);
+
+  const count = text.split(/[\n,]/).map((x) => x.trim())
+    .filter((x) => x && !x.startsWith("#")).length;
+
+  const send = async (unblock) => {
+    setBusy(true);
+    setRes(null);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/firewall/blackhole/bulk`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Password": password,
+        },
+        body: JSON.stringify({ ips: text, unblock }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setMsg({ t: "err", m: errText(j.detail, "ناموفق") });
+        return;
+      }
+      setRes(j);
+      setMsg({ t: "ok", m: j.note || "انجام شد" });
+      onDone && onDone();
+    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+    finally { setBusy(false); }
+  };
+
+  const onFile = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => setText(String(rd.result || ""));
+    rd.readAsText(f);
+    // تا انتخاب دوباره‌ی همان فایل هم رویداد بدهد
+    e.target.value = "";
+  };
+
+  return (
+    <div className="fx-card p-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-[14px] font-semibold text-white flex items-center gap-2">
+          <Layers size={15} style={{ color: "var(--accent-2)" }} />
+          بستن دسته‌ای
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <a href={`${API_URL}/api/admin/firewall/blackhole/export`}
+            onClick={(e) => {
+              // هدر رمز با لینک ساده نمی‌رود، پس خودمان می‌گیریم
+              e.preventDefault();
+              fetch(`${API_URL}/api/admin/firewall/blackhole/export`, {
+                headers: { "X-Admin-Password": password },
+              }).then((r) => r.text()).then((t) => {
+                const blob = new Blob([t], { type: "text/plain" });
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = "nexora-blocked-ips.txt";
+                a.click();
+                URL.revokeObjectURL(a.href);
+              }).catch(() => setMsg({ t: "err", m: "خروجی گرفته نشد" }));
+            }}
+            className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+            <Download size={13} /> خروجی فایل
+          </a>
+          <button onClick={() => setOpen(!open)}
+            className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+            <Upload size={13} /> {open ? "بستن" : "ورود فهرست"}
+          </button>
+        </div>
+      </div>
+      <p className="text-[13px] mt-1" style={{ color: "var(--muted)" }}>
+        فهرست آدرس‌ها را از فایل بگیرید یا بچسبانید — هر خط یک آدرس.
+      </p>
+
+      {open && (
+        <div className="mt-3">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <label className="fx-btn-g px-3 py-2 text-[13px] cursor-pointer
+                              flex items-center gap-1.5">
+              <Upload size={13} /> انتخاب فایل
+              <input type="file" accept=".txt,.csv,text/plain"
+                onChange={onFile} style={{ display: "none" }} />
+            </label>
+            <span className="text-[12px]" style={{ color: "var(--muted)" }}>
+              {count > 0 ? `${faNum(count)} آدرس` : "هنوز چیزی وارد نشده"}
+            </span>
+          </div>
+
+          <textarea className="fx-input" rows={7} dir="ltr" value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={"91.99.12.4\n45.9.148.7\n185.220.101.0/24"}
+            style={{ fontFamily: "var(--mono)", resize: "vertical" }} />
+
+          <div className="flex gap-2 mt-2 flex-wrap">
+            <button onClick={() => send(false)} disabled={busy || !count}
+              className="fx-btn px-4 py-2.5 text-[13px] flex items-center gap-1.5">
+              {busy ? <Loader2 size={13} className="animate-spin" />
+                : <XCircle size={13} />}
+              بستن {count > 0 ? faNum(count) : ""} آدرس
+            </button>
+            <button onClick={() => send(true)} disabled={busy || !count}
+              className="fx-btn-g px-4 py-2.5 text-[13px]">
+              بازکردن همین فهرست
+            </button>
+          </div>
+
+          {res && (
+            <div className="mt-3">
+              <div className="text-[13px] mb-2" style={{ color: "var(--dim)" }}>
+                {faNum(res.done)} موفق
+                {res.failed > 0 && (
+                  <span style={{ color: "var(--warn)" }}>
+                    {" · "}{faNum(res.failed)} ناموفق
+                  </span>
+                )}
+              </div>
+              {res.failed > 0 && (
+                <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                  {res.results.filter((r) => !r.ok).map((r) => (
+                    <div key={r.ip} className="flex items-center gap-2 py-1
+                                               text-[12px] flex-wrap">
+                      <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>
+                        {r.ip}
+                      </span>
+                      <span style={{ color: "var(--warn)" }}>{r.note}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/** دکمه‌ای که از کرنل می‌پرسد این آدرس واقعاً بسته است یا نه. */
+function VerifyBlock({ ip, password }) {
+  const [st, setSt] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    setBusy(true);
+    try {
+      const j = await fetch(
+        `${API_URL}/api/admin/firewall/blackhole/verify`
+        + `?ip=${encodeURIComponent(ip)}`,
+        { headers: { "X-Admin-Password": password } },
+      ).then((r) => r.json());
+      setSt(j);
+    } catch { setSt({ blocked: false, why: "اتصال برقرار نشد" }); }
+    finally { setBusy(false); }
+  };
+
+  if (st) {
+    return (
+      <span className="text-[12px] flex items-center gap-1"
+        title={st.why}
+        style={{ color: st.blocked ? "var(--ok)" : "var(--warn)" }}>
+        {st.blocked ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
+        {st.blocked ? "تأیید شد" : "بسته نیست"}
+      </span>
+    );
+  }
+
+  return (
+    <button onClick={run} disabled={busy}
+      className="fx-btn-ghost px-2 py-1 text-[12px] shrink-0"
+      style={{ color: "var(--muted)" }}>
+      {busy ? "…" : "بررسی"}
+    </button>
+  );
+}
+
+
 export function FirewallBlocked({ password }) {
   const [d, setD] = useState(null);
   const [ip, setIp] = useState("");
@@ -736,6 +926,8 @@ export function FirewallBlocked({ password }) {
         </InfoBox>
       </div>
 
+      <BulkBlock password={password} onDone={load} setMsg={setMsg} />
+
       {viaHole.length > 0 && (
         <div className="fx-card p-5">
           <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
@@ -761,9 +953,12 @@ export function FirewallBlocked({ password }) {
                   {r.how}
                 </div>
               </div>
-              <button onClick={() => setConfirmOpen({ ip: r.ip, via: "blackhole" })}
-                disabled={busy}
-                className="fx-btn-g px-3 py-2 text-[12px] shrink-0">باز کن</button>
+              <div className="flex items-center gap-2 shrink-0">
+                <VerifyBlock ip={r.ip} password={password} />
+                <button onClick={() => setConfirmOpen({ ip: r.ip, via: "blackhole" })}
+                  disabled={busy}
+                  className="fx-btn-g px-3 py-2 text-[12px]">باز کن</button>
+              </div>
             </div>
           ))}
         </div>

@@ -11,7 +11,9 @@ import {
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum, fmtSize, fmtUptime, toFaDigits } from "../lib/format";
 import { usePolling } from "../lib/hooks";
-import { ConfirmModal, CountChip, EmptyState, Field, InfoBox, Msg, SectionHead, Segmented, Toggle } from "../ui/index";
+import {
+  ConfirmModal, CountChip, EmptyState, Field, InfoBox, LongList, Msg, SectionHead, Segmented, Toggle,
+} from "../ui/index";
 
 export const LEVEL_STYLE = {
   ok: { c: "var(--ok)", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.30)",
@@ -980,28 +982,35 @@ export function MonitorSection({ password }) {
             <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
               <Server size={15} style={{ color: "var(--accent-2)" }} /> سرویس‌ها
             </div>
-            {sec.services.map((sv) => {
-              const bad = sv.level !== "ok";
-              return (
-                <div key={sv.name} className="flex items-center justify-between gap-2 py-2"
-                  style={{ borderBottom: "1px solid var(--border)" }}>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="w-1.5 h-1.5 rounded-full shrink-0"
-                      style={{ background: bad ? "var(--danger)" : (sv.flapping ? "var(--warn)" : "var(--ok)") }} />
-                    <span className="text-[13px] truncate" dir="ltr"
-                      style={{ color: bad ? "var(--danger)" : "var(--text)" }}>{sv.name}</span>
-                    {sv.flapping && (
-                      <span className="fx-pill" style={{ background: "rgba(251,191,36,.12)", color: "var(--warn)" }}>
-                        ناپایدار
-                      </span>
-                    )}
+            {/* یک سرور معمولی ده‌ها سرویس دارد. نشان‌دادن همه‌شان یعنی
+                کارت به اندازه‌ی کل صفحه بلند شود و آن دو سرویسی که
+                واقعاً خرابند زیر بقیه گم شوند. */}
+            <LongList items={sec.services} initial={8} label="سرویس" searchable
+              empty="سرویسی پیدا نشد"
+              match={(sv, q) => (sv.name || "").toLowerCase().includes(q)}>
+              {(sv) => {
+                const bad = sv.level !== "ok";
+                return (
+                  <div key={sv.name} className="flex items-center justify-between gap-2 py-2"
+                    style={{ borderBottom: "1px solid var(--border)" }}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-1.5 h-1.5 rounded-full shrink-0"
+                        style={{ background: bad ? "var(--danger)" : (sv.flapping ? "var(--warn)" : "var(--ok)") }} />
+                      <span className="text-[13px] truncate" dir="ltr"
+                        style={{ color: bad ? "var(--danger)" : "var(--text)" }}>{sv.name}</span>
+                      {sv.flapping && (
+                        <span className="fx-pill" style={{ background: "rgba(251,191,36,.12)", color: "var(--warn)" }}>
+                          ناپایدار
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[12px] shrink-0" style={{ color: "var(--muted)" }}>
+                      {sv.active === "active" ? fmtSize(sv.memory) : sv.active}
+                    </span>
                   </div>
-                  <span className="text-[12px] shrink-0" style={{ color: "var(--muted)" }}>
-                    {sv.active === "active" ? fmtSize(sv.memory) : sv.active}
-                  </span>
-                </div>
-              );
-            })}
+                );
+              }}
+            </LongList>
           </div>
         )}
 
@@ -1011,19 +1020,23 @@ export function MonitorSection({ password }) {
             <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
               <Activity size={15} style={{ color: "var(--accent-2)" }} /> سنگین‌ترین پردازه‌ها
             </div>
-            {sec.processes.map((p) => (
-              <div key={p.pid} className="flex items-center justify-between gap-2 py-2"
-                style={{ borderBottom: "1px solid var(--border)" }}>
-                <span className="text-[13px] truncate" dir="ltr">{p.name}</span>
-                <div className="flex items-center gap-3 text-[12px] shrink-0"
-                  style={{ fontFamily: "var(--mono)" }}>
-                  <span style={{ color: p.cpu > 50 ? "var(--warn)" : "var(--muted)" }}>
-                    {faNum(p.cpu)}٪ CPU
-                  </span>
-                  <span style={{ color: "var(--muted)" }}>{faNum(p.mem)}٪ RAM</span>
+            <LongList items={sec.processes} initial={8} label="پردازه" searchable
+              empty="پردازه‌ای پیدا نشد"
+              match={(p, q) => (p.name || "").toLowerCase().includes(q)}>
+              {(p) => (
+                <div key={p.pid} className="flex items-center justify-between gap-2 py-2"
+                  style={{ borderBottom: "1px solid var(--border)" }}>
+                  <span className="text-[13px] truncate" dir="ltr">{p.name}</span>
+                  <div className="flex items-center gap-3 text-[12px] shrink-0"
+                    style={{ fontFamily: "var(--mono)" }}>
+                    <span style={{ color: p.cpu > 50 ? "var(--warn)" : "var(--muted)" }}>
+                      {faNum(p.cpu)}٪ CPU
+                    </span>
+                    <span style={{ color: "var(--muted)" }}>{faNum(p.mem)}٪ RAM</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )}
+            </LongList>
           </div>
         )}
       </div>

@@ -9,7 +9,7 @@ import { createPortal } from "react-dom";
 import {
   AlertTriangle, Check, CheckCircle2, ChevronLeft, Circle, Clock, Database, Download, FileText, Loader2, Plus as PlusIcon, RefreshCw, Save, Search, Send, ShieldCheck, Trash2, TrendingUp, Upload, Users, Wallet, X, XCircle,
 } from "lucide-react";
-import { JalaliDate } from "../ui/jalali";
+import { JalaliDate, isoToJalaliLabel } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { Field, InfoBox, Modal, Msg, SectionHead, Toggle } from "../ui/index";
@@ -242,7 +242,8 @@ export function BillingPeriod({ password }) {
 
                 {inv.settledUntil && (
                   <div className="text-[12px] mt-3" style={{ color: "var(--muted)" }}>
-                    {faNum(inv.skippedSettled)} کانفیگ قبل از {inv.settledUntil} تسویه‌شده
+                    {faNum(inv.skippedSettled)} کانفیگ قبل از
+                    {" "}{isoToJalaliLabel(inv.settledUntil)} تسویه‌شده
                     فرض شده و در محاسبه نیامده
                   </div>
                 )}
@@ -1673,17 +1674,17 @@ export function BillingGroups({ password }) {
                       </div>
 
                       <div className="fx-g3 grid grid-cols-2 gap-3">
-                        <Field label="شروع دوره‌ها" hint="مبنای شمارش">
-                          <input className="fx-input" dir="ltr" value={d.periodStart || ""}
-                            onChange={(e) => set(g, { periodStart: e.target.value })}
-                            placeholder="2026-08-01"
-                            style={{ fontFamily: "var(--mono)" }} />
+                        <Field label="شروع همکاری"
+                          hint="مبنای شمارش ماه‌ها — تقویم شمسی">
+                          <JalaliDate value={d.periodStart || ""}
+                            onChange={(v) => set(g, { periodStart: v })}
+                            placeholder="انتخاب تاریخ شروع" />
                         </Field>
-                        <Field label="تسویه‌شده تا" hint="قبل از این تاریخ حساب نمی‌شود">
-                          <input className="fx-input" dir="ltr" value={d.settledUntil || ""}
-                            onChange={(e) => set(g, { settledUntil: e.target.value })}
-                            placeholder="2026-08-01"
-                            style={{ fontFamily: "var(--mono)" }} />
+                        <Field label="تسویه‌شده تا"
+                          hint="قبل از این تاریخ حساب نمی‌شود">
+                          <JalaliDate value={d.settledUntil || ""}
+                            onChange={(v) => set(g, { settledUntil: v })}
+                            placeholder="هنوز تسویه‌ای نشده" />
                         </Field>
                       </div>
                     </div>
@@ -1934,7 +1935,8 @@ export function BillingPayments({ password }) {
                 <div>
                   <div className="text-[14px] font-semibold text-white">{g?.label || p.group_name}</div>
                   <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
-                    {p.paid_at || p.created_at?.slice(0, 10)}{p.note && ` · ${p.note}`}
+                    {isoToJalaliLabel(p.paid_at || p.created_at?.slice(0, 10))}
+                    {p.note && ` · ${p.note}`}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">

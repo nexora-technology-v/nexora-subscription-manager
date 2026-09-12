@@ -911,3 +911,84 @@ def blocked_overview():
     return {"blocked": rows,
             "firewallActive": bool(st.get("active")),
             "blackholeAvailable": blackhole_available()}
+
+
+def blackhole_verify(ip):
+    """
+    واقعاً بسته شده؟
+
+    «پیام موفقیت دیدم» با «بسته شده» یکی نیست. این تابع از خود کرنل
+    می‌پرسد، نه از فایلی که خودمان نوشته‌ایم — تنها جواب قابل اتکا.
+    """
+    n = str(ip or "").strip()
+    if not _ip_ok(n):
+        return {"ip": n, "blocked": False, "why": "آدرس نامعتبر"}
+    if not blackhole_available():
+        return {"ip": n, "blocked": False, "why": "دستور ip در دسترس نیست"}
+
+    ok, out = _run(["ip", "route", "get", n.split("/")[0]], timeout=10)
+    if ok and "blackhole" in (out or "").lower():
+        return {"ip": n, "blocked": True,
+                "why": "کرنل تأیید می‌کند: مسیر این آدرس سیاه‌چاله است"}
+
+    if n in blackhole_list():
+        return {"ip": n, "blocked": True,
+                "why": "در جدول مسیرهای سیاه‌چاله هست"}
+
+    return {"ip": n, "blocked": False,
+            "why": "کرنل مسیر عادی برایش دارد — بسته نیست"}
+
+
+def blackhole_bulk(ips, note=None, remove=False):
+    """
+    بستن یا بازکردن دسته‌ای.
+
+    وقتی یک اسکن با صد آدرس می‌آید، واردکردن دستی صدتا نه شدنی است
+    نه بی‌خطا. خروجی برای هر آدرس جدا می‌گوید چه شد، چون «۹۷ تا از
+    ۱۰۰ تا» بدون فهرست آن سه‌تا بی‌فایده است.
+    """
+    seen, rows = set(), []
+    for raw in (ips or []):
+        ip = str(raw or "").strip()
+        if not ip or ip.startswith("#"):
+            continue
+        # فایل‌های صادرشده ممکن است ستون‌های دیگری هم داشته باشند
+        ip = ip.split("|")[0].split(",")[0].split()[0].strip()
+        if not ip or ip in seen:
+            continue
+        seen.add(ip)
+
+        if remove:
+            ok, msg = blackhole_remove(ip)
+        else:
+            ok, msg = blackhole_add(ip, note=note)
+        rows.append({"ip": ip, "ok": ok, "note": msg})
+
+    good = sum(1 for r in rows if r["ok"])
+    verb = "باز شد" if remove else "بسته شد"
+    return {
+        "ok": True,
+        "total": len(rows),
+        "done": good,
+        "failed": len(rows) - good,
+        "results": rows,
+        "note": f"{good} از {len(rows)} آدرس {verb}",
+    }
+
+
+def blackhole_export():
+    """
+    فهرست آدرس‌های بسته، به‌شکل متنی قابل ذخیره.
+
+    همان قالبی که bulk می‌خواند، پس خروجی یک سرور مستقیم روی سرور
+    دیگر قابل واردکردن است.
+    """
+    rows = blackhole_list()
+    lines = [
+        "# آدرس‌های بسته‌شده — نکسورا",
+        f"# {datetime.now():%Y-%m-%d %H:%M}",
+        f"# {len(rows)} آدرس",
+        "",
+    ]
+    lines.extend(rows)
+    return "\n".join(lines) + "\n"

@@ -6625,8 +6625,17 @@ def agent_job_result(payload: dict, x_agent_token: str = Header(None)):
         raise HTTPException(status_code=400, detail="شناسه کار نامعتبر")
 
     ok = bool(p.get("ok"))
-    result = str(p.get("result") or "")[:4000]
-    TUN.finish_job(jid, ok, result)
+
+    # نتیجه‌ی کامل برای تحلیل می‌ماند؛ فقط چیزی که در جدول کارها
+    # ذخیره می‌شود کوتاه می‌شود.
+    #
+    # قبلاً همین‌جا به ۴۰۰۰ کاراکتر بریده می‌شد و بعد همان بریده
+    # json.loads می‌شد. گزارش مانیتورینگ از ۴۰۰۰ بزرگ‌تر است، پس
+    # JSON ناقص می‌شد، تجزیه می‌افتاد، و خطا در except بی‌صدا گم
+    # می‌شد — کار «موفق» ثبت می‌شد و هیچ داده‌ای ذخیره نمی‌شد.
+    full = str(p.get("result") or "")
+    TUN.finish_job(jid, ok, full[:4000])
+    result = full
 
     # نتیجه‌ی سنجش را جدا نگه می‌داریم تا روند قابل دیدن باشد
     if ok and p.get("action") == "monitor" and p.get("tunnel_id"):
@@ -7072,6 +7081,46 @@ def _older_than(ver, floor):
         return False
 
 
+
+def _external_base(request):
+    """
+    آدرس بیرونی پنل — همان چیزی که ایجنت با آن وصل می‌شود.
+
+    چرا به این سادگی نیست:
+        پنل پشت nginx اجرا می‌شود، پس request.base_url چیزی مثل
+        http://127.0.0.1:8100 می‌دهد — آدرس داخلی، نه دامنه‌ای که
+        ایجنت می‌شناسد.
+
+        ایجنت هر آدرسی را که با PANEL_URL خودش شروع نشود رد می‌کند،
+        و درست هم می‌کند: نباید فایل اجرایی‌اش را از هر جایی بگیرد.
+        نتیجه این بود که به‌روزرسانی ایجنت همیشه با «آدرس خارج از
+        پنل مجاز نیست» رد می‌شد — و چون ایجنت قدیمی بود، خودش هم
+        نمی‌توانست این را درست کند.
+
+        هدرهایی که nginx می‌گذارد آدرس واقعی را دارند.
+    """
+    env = os.getenv("NEXORA_PANEL_URL", "").strip().rstrip("/")
+    if env:
+        return env
+
+    try:
+        h = request.headers
+        host = (h.get("x-forwarded-host") or h.get("host") or "").split(",")[0]
+        host = host.strip()
+        proto = (h.get("x-forwarded-proto") or "").split(",")[0].strip()
+        if host:
+            if not proto:
+                proto = "https" if not host.startswith(("127.", "localhost")) else "http"
+            return f"{proto}://{host}"
+    except Exception:
+        pass
+
+    try:
+        return str(request.base_url).rstrip("/")
+    except Exception:
+        return ""
+
+
 @app.post("/api/admin/tunnel/node/{node_id}/update-agent")
 def node_update_agent(node_id: int, request: Request,
                       x_admin_password: str = Header(...)):
@@ -7087,12 +7136,7 @@ def node_update_agent(node_id: int, request: Request,
     # آدرس را از خود درخواست می‌سازیم: پنل پشت nginx است و آدرس
     # بیرونی‌اش را در تنظیمات ندارد. اگر خالی بفرستیم هم مشکلی
     # نیست — ایجنت خودش از PANEL_URL خودش می‌سازد.
-    base = os.getenv("NEXORA_PANEL_URL", "").rstrip("/")
-    if not base:
-        try:
-            base = str(request.base_url).rstrip("/")
-        except Exception:
-            base = ""
+    base = _external_base(request)
     url = f"{base}/api/agent/agent.py" if base else ""
     jid = TUN.queue_job(node_id, "update_agent", {"url": url})
     return {"ok": True, "jobId": jid,
@@ -7761,3 +7805,53 @@ def node_diagnose(node_id: int, x_admin_password: str = Header(...)):
         "healthy": all(s["ok"] for s in steps),
         "jobs": jobs,
     }
+
+
+@app.post("/api/admin/firewall/blackhole/bulk")
+def firewall_blackhole_bulk(payload: dict, x_admin_password: str = Header(...)):
+    """
+    بستن یا بازکردن دسته‌ای آدرس‌ها.
+
+    وقتی یک اسکن با صد آدرس می‌آید، واردکردن دستی صدتا نه شدنی است
+    نه بی‌خطا.
+    """
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    p = payload or {}
+
+    raw = p.get("ips")
+    if isinstance(raw, str):
+        raw = [ln for ln in raw.replace(",", "\n").splitlines()]
+    if not isinstance(raw, list) or not raw:
+        raise HTTPException(status_code=400, detail="فهرستی از آدرس‌ها بفرستید")
+    if len(raw) > 2000:
+        raise HTTPException(status_code=400,
+                            detail="حداکثر ۲۰۰۰ آدرس در هر بار")
+
+    return fw.blackhole_bulk(raw, note=p.get("note") or "ورودی دسته‌ای",
+                             remove=bool(p.get("unblock")))
+
+
+@app.get("/api/admin/firewall/blackhole/export")
+def firewall_blackhole_export(x_admin_password: str = Header(...)):
+    """فهرست بسته‌شده‌ها به‌شکل فایل متنی."""
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    return Response(
+        content=fw.blackhole_export(),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition":
+                 "attachment; filename=nexora-blocked-ips.txt"})
+
+
+@app.get("/api/admin/firewall/blackhole/verify")
+def firewall_blackhole_verify(ip: str, x_admin_password: str = Header(...)):
+    """
+    واقعاً بسته شده؟
+
+    از خود کرنل می‌پرسد، نه از فایلی که خودمان نوشته‌ایم — «پیام
+    موفقیت دیدم» با «بسته شده» یکی نیست.
+    """
+    check_auth(x_admin_password)
+    fw = _fw_or_die()
+    return fw.blackhole_verify(ip)

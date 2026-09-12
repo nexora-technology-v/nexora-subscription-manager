@@ -641,6 +641,39 @@ def remote_module(name, func, payload):
         return False, f"{type(e).__name__}: {str(e)[:150]}"
 
 
+
+#: سقف اندازه‌ی نتیجه‌ای که به پنل فرستاده می‌شود.
+#:
+#: قبلاً ۴۰۰۰ بود، و گزارش کامل مانیتورینگ از آن بزرگ‌تر است. نتیجه
+#: این بود که JSON وسط راه بریده می‌شد، پنل نمی‌توانست بخواندش، و
+#: خطا هم بی‌صدا بلعیده می‌شد — کار «موفق» ثبت می‌شد ولی هیچ داده‌ای
+#: ذخیره نمی‌شد. مانیتورینگ سرورهای دیگر دقیقاً به همین دلیل همیشه
+#: خالی بود.
+RESULT_MAX = 200000
+
+
+def _result_text(out):
+    """
+    نتیجه را برای فرستادن آماده می‌کند.
+
+    اگر JSON معتبر باشد دست‌نخورده می‌رود — بریدنش یعنی نابودکردنش.
+    فقط متن آزادِ خیلی بلند (مثل خروجی journalctl) کوتاه می‌شود.
+    """
+    text = str(out)
+    if len(text) <= RESULT_MAX:
+        return text
+    stripped = text.lstrip()
+    if stripped[:1] in ("{", "["):
+        # JSON بریده‌شده بی‌فایده است؛ به‌جای نصفه‌فرستادن، صریح
+        # می‌گوییم چه شد تا در پنل دیده شود
+        return json.dumps({
+            "error": "گزارش از سقف اندازه بزرگ‌تر بود",
+            "size": len(text),
+            "limit": RESULT_MAX,
+        }, ensure_ascii=False)
+    return text[:RESULT_MAX]
+
+
 def handle(job, panel_version=""):
     action = job.get("action")
     p = job.get("payload") or {}
@@ -773,7 +806,7 @@ def main():
                 log(f"  {'✓' if ok else '✗'} {str(out)[:110]}")
                 api("job-result", {"job_id": jid, "ok": ok, "action": action,
                                    "tunnel_id": (job.get("payload") or {}).get("tunnel_id"),
-                                   "result": str(out)[:4000]})
+                                   "result": _result_text(out)})
 
         except KeyboardInterrupt:
             log("Exiting")

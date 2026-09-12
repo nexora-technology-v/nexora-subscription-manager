@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, CheckCircle2, Info, Loader2, Minus, Plus, X,
+  AlertTriangle, CheckCircle2, Info, Loader2, Minus, Plus, Search, X,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { faNum } from "../lib/format";
@@ -511,6 +511,91 @@ export function AreaChart({
           {hover !== null ? format(pts[hover]) : `بیشینه ${format(max)}`}
         </span>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * فهرستی که خودش کوتاه می‌ماند.
+ *
+ * چرا لازم است:
+ *     صفحه‌ای که صد ردیف را پشت سر هم می‌ریزد، عملاً غیرقابل استفاده
+ *     است: کاربر باید متری اسکرول کند تا به بخش بعدی برسد، و همان
+ *     چند ردیفی که مهم‌اند زیر انبوه بقیه گم می‌شوند.
+ *
+ *     این کامپوننت چند ردیف اول را نشان می‌دهد، بقیه را پشت یک دکمه
+ *     نگه می‌دارد، و اگر فهرست به‌قدری بلند باشد که ارزشش را داشته
+ *     باشد یک جست‌وجو هم اضافه می‌کند.
+ *
+ * children یک تابع است که برای هر آیتم JSX برمی‌گرداند — این‌طور
+ * ردیف‌ها همان شکلی می‌مانند که هر صفحه می‌خواهد.
+ */
+export function LongList({
+  items, children, initial = 8, searchable = false,
+  match, empty = "چیزی نیست", label = "مورد",
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const [q, setQ] = useState("");
+
+  const all = Array.isArray(items) ? items : [];
+  const filtered = (!searchable || !q.trim()) ? all : all.filter((it) => {
+    if (match) return match(it, q.trim().toLowerCase());
+    try {
+      return JSON.stringify(it).toLowerCase().includes(q.trim().toLowerCase());
+    } catch { return true; }
+  });
+
+  const shown = showAll ? filtered : filtered.slice(0, initial);
+  const more = filtered.length - shown.length;
+
+  if (!all.length) {
+    return <div className="text-[13px] py-4 text-center"
+      style={{ color: "var(--muted)" }}>{empty}</div>;
+  }
+
+  return (
+    <div>
+      {/* جست‌وجو فقط وقتی می‌آید که فهرست به‌قدری بلند باشد که
+          پیداکردن یک ردیف در آن سخت شود */}
+      {searchable && all.length > initial * 2 && (
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <div className="fx-search" style={{ width: 200 }}>
+            <Search size={14} style={{ color: "var(--muted)" }} />
+            <input value={q} onChange={(e) => setQ(e.target.value)}
+              placeholder="جست‌وجو..." />
+          </div>
+          <span className="text-[12px]" style={{ color: "var(--muted)" }}>
+            {q.trim()
+              ? `${faNum(filtered.length)} از ${faNum(all.length)}`
+              : `${faNum(all.length)} ${label}`}
+          </span>
+        </div>
+      )}
+
+      {shown.map(children)}
+
+      {!filtered.length && (
+        <div className="text-[13px] py-4 text-center"
+          style={{ color: "var(--muted)" }}>
+          با این جست‌وجو چیزی پیدا نشد
+        </div>
+      )}
+
+      {more > 0 && (
+        <button onClick={() => setShowAll(true)}
+          className="fx-btn-ghost w-full py-2.5 text-[13px] mt-1"
+          style={{ color: "var(--accent-2)" }}>
+          نمایش {faNum(more)} {label} دیگر
+        </button>
+      )}
+      {showAll && filtered.length > initial && (
+        <button onClick={() => setShowAll(false)}
+          className="fx-btn-ghost w-full py-2.5 text-[13px] mt-1"
+          style={{ color: "var(--muted)" }}>
+          جمع کردن
+        </button>
+      )}
     </div>
   );
 }

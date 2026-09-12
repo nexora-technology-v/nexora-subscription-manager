@@ -280,6 +280,50 @@ check("رنج هم پذیرفته می‌شود", okr and "91.99.12.0/24" in (cm
 check("هر دو راه در یک فهرست می‌آیند", hasattr(FW, "blocked_overview"))
 
 
+# ═══════════════════════════════════════════════════════════
+head("بستن دسته‌ای، خروجی و تأیید")
+
+check("bulk وجود دارد", hasattr(FW, "blackhole_bulk"))
+check("export وجود دارد", hasattr(FW, "blackhole_export"))
+check("verify وجود دارد", hasattr(FW, "blackhole_verify"))
+
+calls2 = []
+FW._run = lambda cmd, timeout=15: (calls2.append(cmd) or (True, ""))
+FW.blackhole_available = lambda: True
+FW.blackhole_list = lambda: []
+FW._blocklist_write = lambda ip, note, remove: None
+
+res = FW.blackhole_bulk(["91.99.12.4", "45.9.148.7", "  ", "# توضیح",
+                         "91.99.12.4", "bad-ip"])
+check("تکراری‌ها یک بار حساب می‌شوند",
+      sum(1 for r in res["results"] if r["ip"] == "91.99.12.4") == 1)
+check("خط خالی و کامنت رد می‌شوند",
+      all(r["ip"] not in ("", "#") for r in res["results"]))
+check("آدرس نامعتبر ناموفق می‌شود",
+      any(not r["ok"] and r["ip"] == "bad-ip" for r in res["results"]))
+check("آدرس‌های درست بسته می‌شوند", res["done"] == 2, str(res["done"]))
+check("گزارش برای هر آدرس جدا می‌آید", len(res["results"]) == 3,
+      f"{len(res['results'])} ردیف")
+
+# قالب خروجی باید دوباره قابل ورود باشد
+FW.blackhole_list = lambda: ["91.99.12.4", "45.9.148.7"]
+txt = FW.blackhole_export()
+back = FW.blackhole_bulk(txt.splitlines())
+check("خروجی دوباره قابل ورود است", back["total"] == 2,
+      f"{back['total']} آدرس از فایل خوانده شد")
+
+# تأیید باید از کرنل بپرسد، نه از فایلی که خودمان نوشته‌ایم
+FW._run = lambda cmd, timeout=10: (True, "blackhole 91.99.12.4 dev lo")
+v = FW.blackhole_verify("91.99.12.4")
+check("تأیید از کرنل می‌پرسد", v["blocked"] is True, v["why"][:40])
+
+FW._run = lambda cmd, timeout=10: (True, "91.99.12.4 via 1.2.3.1 dev eth0")
+FW.blackhole_list = lambda: []
+v2 = FW.blackhole_verify("91.99.12.4")
+check("مسیر عادی یعنی بسته نیست", v2["blocked"] is False, v2["why"][:40])
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

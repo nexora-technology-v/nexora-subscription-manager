@@ -1,5 +1,59 @@
 # Changelog
 
+## [1.8.0]
+
+### Fixed — The monitoring report was cut in half before it arrived
+
+`job-result` truncated the payload to 4000 characters and then parsed the
+truncated string as JSON. A full server snapshot is larger than that, so the
+parse always failed — and the failure was swallowed by a bare `except`, which
+recorded the job as **successful** while storing nothing.
+
+The agent log told the story: `sysmon` jobs returning real data with
+`"level": "crit"`, and a page that stayed empty. The report arrived, was
+destroyed on the doorstep, and the error went in the bin.
+
+The full result is parsed now; only the copy stored in the jobs table is
+shortened. The agent stops truncating structured output at all, and says so
+explicitly if a result ever exceeds its limit instead of sending half a JSON
+document.
+
+### Fixed — Agents could never update themselves
+
+`update_agent` kept failing with "این آدرس خارج از پنل مجاز نیست". The panel
+runs behind nginx, so `request.base_url` gives `http://127.0.0.1:8100` — the
+internal address, not the domain the agent knows. The agent rejects any URL that
+does not start with its own panel address, and it is right to.
+
+The URL is built from the forwarding headers now, so it matches what the agent
+expects.
+
+### Added — Blocking addresses in bulk, and proving they are blocked
+
+A scan arrives with a hundred addresses and typing them one at a time is neither
+practical nor error-free. Paste a list or load a file, and every address reports
+its own result — "97 of 100" is useless without knowing which three.
+
+The list exports in the same format it imports, so one server's blocklist loads
+straight into another.
+
+And each blocked address has a **verify** button that asks the kernel directly.
+"I saw a success message" is not the same as "it is blocked", and only the
+routing table settles it.
+
+### Changed — Every date in accounting is Jalali, and picked not typed
+
+The reseller start date, the settled-until date, and payment dates all use the
+Jalali picker now. A date typed by hand into a Gregorian field is one mental
+conversion away from being wrong, on numbers that end up on an invoice.
+
+### Changed — Long lists stop taking the whole page
+
+`LongList` shows the first few rows, keeps the rest behind a button, and adds a
+search box once a list is long enough for that to matter. Applied first to the
+service and process lists in monitoring, where a real server produces dozens of
+rows and the two that are actually broken were buried among them.
+
 ## [1.7.2]
 
 ### Fixed — The monitoring report was only ever requested by hand
