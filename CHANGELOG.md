@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.10.4]
+
+### Fixed — The SSL certificate check never ran on any server
+
+`check_cert` returns immediately unless it is given a domain. The domain came
+from `advanced.panelDomain` — a config key that no UI writes, no installer step
+sets, and no default provides. It is read in two places and written in none.
+
+So the check existed, was written correctly, and never executed. Nobody was ever
+warned that a certificate was about to expire. When it does expire, the panel and
+the subscription page stop answering for every customer at once, with no prior
+signal.
+
+It finds the certificate itself now. certbot names each directory after its
+domain, so `/etc/letsencrypt/live/<domain>/fullchain.pem` supplies both the file
+and the name — nothing to configure. With several certificates, the one expiring
+soonest is reported.
+
+### Fixed — The expiry date was parsed in a locale-dependent way
+
+`strptime` with `%b` matches month names in the system locale. OpenSSL always
+prints English ones, so on a server whose `LC_TIME` is not English the parse
+raised, the function returned `None`, and the check disappeared without a word.
+Parsed with an explicit month table and compared in UTC now.
+
+### Changed — A certificate that cannot be read is a warning, not silence
+
+Any failure used to return `None`, which removes the row from the health list
+entirely. No certificate at all still returns `None` — an HTTP-only server should
+not be nagged. But when a certificate file is present and its date cannot be
+read, that is now a warning with the command to run: not knowing when your
+certificate expires is itself worth saying.
+
+### Added — `tools/test-health.py`
+
+The health checks had no test, and one of them had already shipped broken
+(`check_time` in 1.9.7). 18 checks covering certificate discovery, the expiry
+thresholds, OpenSSL's two-space day format, the unreadable-certificate case,
+picking the soonest of several, and the timedatectl parsing that was wrong before.
+
 ## [1.10.3]
 
 ### Fixed — The public config endpoint leaked keys nobody added to the filter

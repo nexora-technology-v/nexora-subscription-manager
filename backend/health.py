@@ -18,6 +18,7 @@ import shutil
 import socket
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 OK, WARN, CRIT = "ok", "warn", "crit"
@@ -388,40 +389,113 @@ def check_kernel():
                   "بدون خطای مهم" if not lines else f"{len(lines)} مورد جزئی")
 
 
-def check_cert(domain=None):
-    """گواهی SSL — منقضی شود، صفحه اشتراک باز نمی‌شود."""
-    if not domain:
-        return None
+#: جاهایی که گواهی TLS نگهداری می‌شود.
+#
+#  certbot برای هر دامنه یک پوشه به نام خودِ دامنه می‌سازد، پس نام
+#  پوشه همان دامنه است و لازم نیست جایی تنظیمش کنیم.
+CERT_DIRS = (Path("/etc/letsencrypt/live"), Path("/etc/nexora/ssl"))
 
-    paths = [
-        Path(f"/etc/letsencrypt/live/{domain}/fullchain.pem"),
-        Path(f"/etc/nexora/ssl/{domain}.crt"),
-        Path("/etc/nexora/ssl/cert.pem"),
-    ]
-    cert = next((p for p in paths if p.exists()), None)
-    if not cert:
-        return None
+#: ماه‌های openssl. از strptime با %b استفاده نمی‌کنیم چون به locale
+#: سیستم وابسته است: روی سروری که LC_TIME انگلیسی نیست، «Dec» را
+#: نمی‌شناسد و کل بررسی بی‌صدا کنار می‌رود.
+_MONTHS = {m: i for i, m in enumerate(
+    ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), start=1)}
 
-    ok, out = _run(["openssl", "x509", "-enddate", "-noout", "-in", str(cert)])
+
+def _cert_files(domain=None):
+    """فایل‌های گواهی که روی این سرور هست: [(نام, مسیر)]"""
+    out = []
+    if domain:
+        for p in (Path(f"/etc/letsencrypt/live/{domain}/fullchain.pem"),
+                  Path(f"/etc/nexora/ssl/{domain}.crt")):
+            if p.exists():
+                out.append((domain, p))
+
+    for base in CERT_DIRS:
+        try:
+            if not base.is_dir():
+                continue
+            for child in sorted(base.iterdir()):
+                if child.is_dir():
+                    f = child / "fullchain.pem"
+                    if f.exists():
+                        out.append((child.name, f))
+                elif child.suffix in (".crt", ".pem"):
+                    out.append((child.stem, child))
+        except OSError:
+            continue
+
+    seen, uniq = set(), []
+    for name, p in out:
+        if str(p) not in seen:
+            seen.add(str(p))
+            uniq.append((name, p))
+    return uniq
+
+
+def _cert_expiry(path):
+    """تاریخ انقضای یک گواهی (UTC)، یا None اگر خوانده نشد."""
+    ok, out = _run(["openssl", "x509", "-enddate", "-noout", "-in", str(path)])
     if not ok or "notAfter=" not in out:
         return None
-
-    from datetime import datetime
+    raw = out.split("notAfter=", 1)[1].strip()
+    m = re.match(r"([A-Za-z]{3})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})\s+(\d{4})",
+                 raw)
+    if not m or m.group(1) not in _MONTHS:
+        return None
     try:
-        when = out.split("notAfter=")[1].strip()
-        exp = datetime.strptime(when, "%b %d %H:%M:%S %Y %Z")
-        days = (exp - datetime.now()).days
-    except Exception:
+        return datetime(int(m.group(6)), _MONTHS[m.group(1)], int(m.group(2)),
+                        int(m.group(3)), int(m.group(4)), int(m.group(5)),
+                        tzinfo=timezone.utc)
+    except ValueError:
         return None
 
-    detail = f"{days} روز مانده · {exp:%Y-%m-%d}"
+
+def check_cert(domain=None):
+    """
+    گواهی SSL — منقضی شود، صفحه‌ی اشتراک برای هیچ مشتری باز نمی‌شود.
+
+    دامنه لازم نیست داده شود.
+
+    قبلاً بدون domain فوراً None برمی‌گرداند، و domain از
+    advanced.panelDomain می‌آمد — کلیدی که هیچ رابط کاربری، هیچ
+    مرحله‌ی نصب و هیچ پیش‌فرضی آن را نمی‌نوشت. یعنی این بررسی روی
+    هیچ سروری اجرا نمی‌شد و هشدارِ «گواهی دارد تمام می‌شود» هرگز
+    نمی‌آمد.
+
+    حالا خودش پوشه‌های گواهی را می‌گردد. certbot پوشه را به نام دامنه
+    می‌سازد، پس نام دامنه هم از همان‌جا می‌آید.
+
+    اگر هیچ گواهی‌ای نبود None برمی‌گرداند — سروری که فقط HTTP دارد
+    نباید هشدار بگیرد. ولی اگر گواهی *هست* و خوانده نشد، هشدار
+    می‌دهد: ندانستنِ تاریخ انقضا خودش خبر است.
+    """
+    files = _cert_files(domain)
+    if not files:
+        return None
+
+    soonest = None
+    for name, path in files:
+        exp = _cert_expiry(path)
+        if exp and (soonest is None or exp < soonest[1]):
+            soonest = (name, exp)
+
+    if soonest is None:
+        return _check("cert", "گواهی SSL", WARN,
+                      f"{len(files)} گواهی پیدا شد ولی تاریخشان خوانده نشد",
+                      "روی سرور: openssl x509 -enddate -noout -in "
+                      + str(files[0][1]))
+
+    name, exp = soonest
+    days = (exp - datetime.now(timezone.utc)).days
+    detail = f"{name} · {days} روز مانده · {exp:%Y-%m-%d}"
 
     if days < 0:
-        return _check("cert", "گواهی SSL", CRIT, "منقضی شده",
+        return _check("cert", "گواهی SSL", CRIT, f"{name} منقضی شده",
                       "certbot renew --force-renewal && systemctl reload nginx")
     if days <= 10:
-        return _check("cert", "گواهی SSL", WARN, detail,
-                      "certbot renew")
+        return _check("cert", "گواهی SSL", WARN, detail, "certbot renew")
     return _check("cert", "گواهی SSL", OK, detail)
 
 
