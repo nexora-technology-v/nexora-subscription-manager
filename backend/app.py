@@ -3212,6 +3212,10 @@ def list_snapshots(x_admin_password: str = Header(...)):
     return {"snapshots": out[:20]}
 
 
+#: لاگ مشترک به‌روزرسانی و بازگردانی — رابط کاربری همین را دنبال می‌کند.
+UPDATE_LOG = os.getenv("NEXORA_UPDATE_LOG", "/tmp/nexora-update.log")
+
+
 @app.post("/api/admin/rollback")
 def run_rollback(payload: dict, x_admin_password: str = Header(...)):
     """
@@ -3221,8 +3225,13 @@ def run_rollback(payload: dict, x_admin_password: str = Header(...)):
     نوشته می‌شود تا رابط کاربری بتواند دنبالش کند.
     """
     check_auth(x_admin_password)
-    snap = (payload or {}).get("id", "")
-    if not snap or "/" in snap or ".." in snap:
+    # قالبِ مجاز، نه فهرستِ کاراکترهای ممنوع.
+    #
+    # نام نسخه‌ها را خودِ اسکریپت با «date +%Y%m%d-%H%M%S» می‌سازد، پس
+    # همیشه همین شکل است. فهرستِ ممنوع (قبلاً فقط / و ..) هر چیزی را
+    # که در آن فکر نکرده بودیم عبور می‌داد — از جمله کاراکترهای شل.
+    snap = str((payload or {}).get("id", "") or "").strip()
+    if not _re.fullmatch(r"\d{8}-\d{6}", snap):
         raise HTTPException(status_code=400, detail="شناسه نسخه نامعتبر است")
 
     target = SNAP_DIR / snap
@@ -3237,17 +3246,19 @@ def run_rollback(payload: dict, x_admin_password: str = Header(...)):
     # /usr/local/bin در آن نباشد، پس «nexora» پیدا نمی‌شود و
     # دستور بی‌صدا شکست می‌خورد.
     import shutil
-    cli = shutil.which("nexora") or "/usr/local/bin/nexora"
-    if not Path(cli).exists():
+    exe = shutil.which("nexora") or "/usr/local/bin/nexora"
+    if Path(exe).exists():
+        cli_argv = [exe]
+    else:
         local = _root_dir() / "nexora-cli.sh"
         if local.exists():
-            cli = f"bash {local}"
+            cli_argv = ["bash", str(local)]
         else:
             raise HTTPException(
                 status_code=500,
                 detail="دستور nexora پیدا نشد. روی سرور اجرا کنید: nexora doctor")
 
-    log = "/tmp/nexora-update.log"
+    log = UPDATE_LOG
     try:
         import subprocess
         # لاگ را پاک می‌کنیم تا رابط کاربری فقط این اجرا را ببیند
@@ -3258,12 +3269,29 @@ def run_rollback(payload: dict, x_admin_password: str = Header(...)):
         except Exception:
             pass
 
-        cmd = (f"setsid {cli} rollback {snap} --yes --settings={keep} "
-               f">> {log} 2>&1 < /dev/null &")
-        subprocess.Popen(["bash", "-lc", cmd],
-                         start_new_session=True,
-                         stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL)
+        # بدون شل. آرگومان‌ها فهرست‌اند، پس هیچ مقداری تفسیر نمی‌شود.
+        # start_new_session همان کاری را می‌کند که setsid می‌کرد:
+        # بستن پنل وسط کار، بازگردانی را نمی‌کشد.
+        argv = cli_argv + ["rollback", snap, "--yes", f"--settings={keep}"]
+
+        # نبودِ فایل لاگ نباید جلوی بازگردانی را بگیرد. لاگ برای دیدن
+        # است؛ بازگردانی کاری است که باید انجام شود.
+        try:
+            logf = open(log, "ab")
+        except OSError:
+            logf = None
+        try:
+            subprocess.Popen(argv,
+                             start_new_session=True,
+                             stdin=subprocess.DEVNULL,
+                             stdout=logf or subprocess.DEVNULL,
+                             stderr=subprocess.STDOUT)
+        finally:
+            if logf:
+                try:
+                    logf.close()
+                except OSError:
+                    pass
         return {"ok": True, "started": snap, "log": log}
     except Exception as e:
         raise HTTPException(status_code=500,

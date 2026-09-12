@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.10.10]
+
+### Fixed — The rollback endpoint built a shell command from its input
+
+`/api/admin/rollback` took the snapshot id from the request body and interpolated
+it into a shell string:
+
+    cmd = f"setsid {cli} rollback {snap} --yes --settings={keep}"
+    subprocess.Popen(["bash", "-lc", cmd])
+
+Its validation rejected `/` and `..` — a denylist again, which passes anything
+nobody thought of, shell metacharacters included. A directory whose name carried
+`;` or a backtick would have been accepted and interpreted.
+
+Reaching it requires the admin password, so this is not an open door. But it
+turns knowing that password into running arbitrary commands as root, rather than
+just using the panel, and it is avoidable in two lines.
+
+The id must now match `\d{8}-\d{6}`, which is the only shape
+`date +%Y%m%d-%H%M%S` produces — an allowlist, so an unexpected name is rejected
+rather than passed along. And the command runs as an argument list with no shell
+at all, so nothing in it can be interpreted. `start_new_session` does what
+`setsid` did: closing the panel mid-rollback does not kill it.
+
+### Fixed — A missing log file no longer blocks a rollback
+
+Writing output to the log is now best-effort. The log exists to be watched; the
+rollback is the part that has to happen. Its path is also configurable, which is
+what let the test exercise this at all.
+
 ## [1.10.9]
 
 ### Fixed — An expense could be recorded at last week's exchange rate

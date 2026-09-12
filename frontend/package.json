@@ -1,7 +1,7 @@
 {
   "name": "nexora",
   "private": true,
-  "version": "1.10.9",
+  "version": "1.10.10",
   "type": "module",
   "engines": {
     "node": ">=20.0.0"

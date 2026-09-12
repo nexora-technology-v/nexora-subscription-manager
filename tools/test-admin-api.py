@@ -163,6 +163,95 @@ try:
 except OSError:
     pass
 
+# ═══════════════════════════════════════════════════════════
+head("شناسه‌ی نسخه به شل نمی‌رسد")
+
+# نقطه‌ی پایانی بازگردانی، شناسه‌ی نسخه را از بدنه‌ی درخواست می‌گرفت
+# و مستقیم داخل یک رشته‌ی شل می‌گذاشت:
+#
+#     cmd = f"setsid {cli} rollback {snap} --yes ..."
+#     subprocess.Popen(["bash", "-lc", cmd])
+#
+# و اعتبارسنجی‌اش فهرستِ «این کاراکترها را رد کن» بود: / و ..
+#
+# این‌جا هم همان شکلِ اشتباه است. فهرستِ ممنوع هر چیزی را که در آن
+# فکر نکرده‌ایم عبور می‌دهد؛ فهرستِ مجاز فقط چیزی را که می‌شناسیم.
+# نام نسخه‌ها را خودِ اسکریپت با date می‌سازد و همیشه یک قالب دارد.
+
+import shutil as _sh
+import tempfile as _tf
+from pathlib import Path as _P
+
+SNAPS = _P(_tf.mkdtemp())
+app.SNAP_DIR = SNAPS
+
+LAUNCHED = []
+app.subprocess_popen_calls = LAUNCHED
+
+
+class _FakePopen:
+    def __init__(self, argv, **kw):
+        LAUNCHED.append((argv, kw))
+        self.pid = 4242
+
+
+import subprocess as _sp  # noqa: E402
+_real_popen = _sp.Popen
+_sp.Popen = _FakePopen
+
+# نسخه‌ای با نام معتبر
+(SNAPS / "20260101-120000").mkdir()
+# و یکی با نامی که اگر به شل برسد دستور اجرا می‌کند
+EVIL = "20260101-120000; touch /tmp/nexora-pwned"
+(SNAPS / EVIL.replace("/", "_")).mkdir(exist_ok=True)
+
+
+def _roll(snap_id):
+    try:
+        return app.run_rollback({"id": snap_id}, x_admin_password="testpw"), None
+    except Exception as e:
+        return None, e
+
+
+ok_res, ok_err = _roll("20260101-120000")
+check("نسخه‌ی معتبر اجرا می‌شود", ok_res and ok_res.get("ok") is True,
+      str(ok_err)[:70] if ok_err else "")
+
+bad_res, bad_err = _roll(EVIL.replace("/", "_"))
+code = getattr(bad_err, "status_code", None)
+check("نامی با کاراکتر شل رد می‌شود", bad_res is None and code == 400,
+      f"status={code}")
+
+for weird in ("20260101-120000 && ls", "$(whoami)", "a`id`b", "", "..",
+              "../../etc", "20260101_120000"):
+    r, e = _roll(weird)
+    check(f"«{weird[:22] or 'خالی'}» رد می‌شود",
+          r is None and getattr(e, "status_code", None) in (400, 404),
+          f"status={getattr(e, 'status_code', None)}")
+
+head("و اصلاً شلی در کار نیست")
+
+check("دستور به‌صورت فهرست اجرا می‌شود",
+      LAUNCHED and isinstance(LAUNCHED[0][0], list),
+      str(type(LAUNCHED[0][0]).__name__) if LAUNCHED else "هیچ اجرایی نشد")
+check("bash -lc استفاده نمی‌شود",
+      LAUNCHED and "-lc" not in LAUNCHED[0][0],
+      " ".join(str(x) for x in (LAUNCHED[0][0] if LAUNCHED else []))[:70])
+check("shell=True نیست",
+      LAUNCHED and not LAUNCHED[0][1].get("shell"),
+      str(LAUNCHED[0][1].get("shell")) if LAUNCHED else "")
+check("شناسه‌ی نسخه به‌عنوان یک آرگومان جدا می‌رود",
+      LAUNCHED and "20260101-120000" in LAUNCHED[0][0],
+      str(LAUNCHED[0][0])[:80] if LAUNCHED else "")
+check("در نشست جدا اجرا می‌شود",
+      LAUNCHED and LAUNCHED[0][1].get("start_new_session") is True,
+      "تا بستن پنل وسط بازگردانی آن را نکشد")
+
+_sp.Popen = _real_popen
+_sh.rmtree(SNAPS, ignore_errors=True)
+
+
+
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
