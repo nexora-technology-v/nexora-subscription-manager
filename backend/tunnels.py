@@ -783,6 +783,8 @@ ALLOWED_ACTIONS = {
     "ping",         # تست شبکه به سرور خارج
     "monitor",      # سنجش کیفیت تانل
     "health",       # بررسی سلامت سیستم
+    "sysmon",       # مانیتورینگ کامل سرور: CPU، رم، دیسک، پورت، اتصال
+    "firewall",     # خواندن وضعیت فایروال آن سرور
     "update_agent",
 }
 
@@ -927,6 +929,47 @@ def save_health(node_id, data):
         c.execute("UPDATE nodes SET health = ?, health_at = ? WHERE id = ?",
                   (json.dumps(data, ensure_ascii=False)[:8000], now(), node_id))
         c.commit()
+    finally:
+        c.close()
+
+
+def save_sysmon(node_id, data):
+    """
+    ثبت آخرین مانیتورینگ کامل یک سرور.
+
+    ستون را در صورت نبود می‌سازیم تا نصب‌های قدیمی هم بدون مهاجرت
+    دستی کار کنند — این ماژول روی سرورهایی اجرا می‌شود که کسی
+    قرار نیست دستی به دیتابیسشان دست بزند.
+    """
+    c = conn()
+    try:
+        cols = {r[1] for r in c.execute("PRAGMA table_info(nodes)")}
+        if "sysmon" not in cols:
+            c.execute("ALTER TABLE nodes ADD COLUMN sysmon TEXT")
+        if "sysmon_at" not in cols:
+            c.execute("ALTER TABLE nodes ADD COLUMN sysmon_at TEXT")
+        c.execute("UPDATE nodes SET sysmon = ?, sysmon_at = ? WHERE id = ?",
+                  (json.dumps(data, ensure_ascii=False)[:60000], now(), node_id))
+        c.commit()
+    finally:
+        c.close()
+
+
+def get_sysmon(node_id):
+    """آخرین مانیتورینگ ثبت‌شده‌ی یک سرور، یا None."""
+    c = conn()
+    try:
+        cols = {r[1] for r in c.execute("PRAGMA table_info(nodes)")}
+        if "sysmon" not in cols:
+            return None
+        r = c.execute("SELECT sysmon, sysmon_at FROM nodes WHERE id = ?",
+                      (node_id,)).fetchone()
+        if not r or not r["sysmon"]:
+            return None
+        try:
+            return {"data": json.loads(r["sysmon"]), "at": r["sysmon_at"]}
+        except (json.JSONDecodeError, TypeError):
+            return None
     finally:
         c.close()
 

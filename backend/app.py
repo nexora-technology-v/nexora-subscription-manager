@@ -5,6 +5,7 @@ import json
 import re as _re
 import secrets
 import time
+import logging
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -12,6 +13,8 @@ from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
+
+log = logging.getLogger("nexora.panel")
 
 CONFIG_PATH = Path(os.getenv("CONFIG_PATH", "../data/config.json"))
 AUTH_PATH = Path(os.getenv("AUTH_PATH", str(CONFIG_PATH.parent / "auth.json")))
@@ -6246,6 +6249,15 @@ def agent_job_result(payload: dict, x_agent_token: str = Header(None)):
         except Exception:
             pass
 
+    if ok and p.get("action") in ("sysmon", "firewall"):
+        try:
+            TUN.save_sysmon(node["id"], {
+                "kind": p["action"],
+                "data": json.loads(result),
+            })
+        except Exception:
+            log.debug("ذخیره‌ی مانیتورینگ نود ناموفق", exc_info=True)
+
     if not ok:
         TUN.log(node_id=node["id"], level="error",
                 message=f"کار {jid} ناموفق: {result[:150]}")
@@ -6402,6 +6414,32 @@ def agent_health_module():
                     media_type="text/x-python")
 
 
+@app.get("/api/agent/monitor.py")
+def agent_monitor_module():
+    """
+    ماژول مانیتورینگ برای سرورهای دیگر.
+
+    همان فایلی که پنل خودش استفاده می‌کند. نسخه‌ی دوم نوشتن یعنی دو
+    مجموعه آستانه و دو جور خروجی — و مدیری که نمی‌فهمد چرا سرور
+    ایران عدد دیگری می‌گوید.
+    """
+    p = _root_dir() / "backend" / "monitor.py"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="ماژول مانیتورینگ پیدا نشد")
+    return Response(content=p.read_text(encoding="utf-8"),
+                    media_type="text/x-python")
+
+
+@app.get("/api/agent/firewall.py")
+def agent_firewall_module():
+    """ماژول فایروال برای سرورهای دیگر."""
+    p = _root_dir() / "backend" / "firewall.py"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="ماژول فایروال پیدا نشد")
+    return Response(content=p.read_text(encoding="utf-8"),
+                    media_type="text/x-python")
+
+
 @app.get("/api/agent/agent.py")
 def agent_source():
     """کد agent — از خود پنل سرو می‌شود تا نسخه‌ها همگام بمانند."""
@@ -6536,6 +6574,44 @@ def tunnel_overview(x_admin_password: str = Header(...)):
             "running": sum(1 for t in tuns if t["status"] == "running"),
         },
     }
+
+
+@app.post("/api/admin/tunnel/node/{node_id}/sysmon")
+def node_sysmon_request(node_id: int, kind: str = "sysmon",
+                        x_admin_password: str = Header(...)):
+    """
+    درخواست مانیتورینگ از یک سرور دیگر.
+
+    کار در صف می‌نشیند و agent در چک‌این بعدی‌اش برش می‌دارد — پس
+    این فوری جواب نمی‌دهد و نباید هم بدهد. پنل بعد از چند ثانیه
+    نتیجه را از مسیر GET می‌خواند.
+    """
+    check_auth(x_admin_password)
+    _need_tunnels()
+    if kind not in ("sysmon", "firewall"):
+        raise HTTPException(status_code=400, detail="نوع درخواست نامعتبر است")
+    jid = TUN.queue_job(node_id, kind, {})
+    return {"ok": True, "jobId": jid,
+            "note": "درخواست ثبت شد — نتیجه تا چند ثانیه‌ی دیگر می‌رسد"}
+
+
+@app.get("/api/admin/tunnel/node/{node_id}/sysmon")
+def node_sysmon_get(node_id: int, x_admin_password: str = Header(...)):
+    """
+    آخرین مانیتورینگ ثبت‌شده‌ی یک سرور.
+
+    اگر هنوز چیزی نرسیده، خالی برمی‌گردد و پنل خودش می‌گوید منتظر
+    بماند — نه اینکه خطا نشان دهد و مدیر فکر کند چیزی خراب است.
+    """
+    check_auth(x_admin_password)
+    _need_tunnels()
+    saved = TUN.get_sysmon(node_id)
+    if not saved:
+        return {"ready": False,
+                "note": "هنوز گزارشی از این سرور نرسیده است"}
+    return {"ready": True, "at": saved.get("at"),
+            "kind": (saved.get("data") or {}).get("kind"),
+            "data": (saved.get("data") or {}).get("data")}
 
 
 @app.post("/api/admin/tunnel/node")

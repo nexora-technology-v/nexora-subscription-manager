@@ -130,7 +130,8 @@ def test_checks(fast):
                            "tools/test-monitor.py", "tools/test-firewall.py",
                            "tools/test-maintenance.py", "tools/test-serve.py",
                            "tools/test-intrusion.py",
-                           "tools/test-expenses.py"]),
+                           "tools/test-expenses.py",
+                           "tools/test-nodes.py"]),
         ("اتصال‌ها", ["tools/test-bot-buttons.py", "tools/test-seams.py",
                       "tools/check-api-contract.py"]),
     ]

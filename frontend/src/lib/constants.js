@@ -110,6 +110,7 @@ export const WORKSPACES = {
           { key: "tun-nodes", label: "سرورها", icon: Server },
           { key: "tun-list", label: "تانل‌ها", icon: Network },
           { key: "monitor", label: "مانیتورینگ سرور", icon: Activity },
+          { key: "nodes-monitor", label: "مانیتورینگ سرورهای دیگر", icon: Server },
           { key: "tun-health", label: "سلامت سرورها", icon: ShieldCheck },
           { key: "tun-events", label: "رویدادها", icon: Clock },
         ],

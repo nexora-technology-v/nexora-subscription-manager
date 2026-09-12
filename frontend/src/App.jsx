@@ -26,6 +26,7 @@ import { BotUsersSection } from "./sections/bot/users";
 import { FirewallBlocked, FirewallRules } from "./sections/firewall";
 import { FirewallIntrusion } from "./sections/intrusion";
 import { BillingExpenses, BillingLedger } from "./sections/expenses";
+import { NodesMonitor } from "./sections/nodes-monitor";
 import { MonitorSection } from "./sections/monitoring";
 import { AppsSection, BannersSection, FaqSection, LinksSection, OverviewSection, PopupSection, ReferralSection, ResellersSection, SettingsSection, VideosSection } from "./sections/subpage";
 import { LivePreview, SystemSection } from "./sections/system";
@@ -299,6 +300,7 @@ export default function App() {
           {active === "tun-list" && <TunnelList password={password} />}
           {active === "monitor" && <MonitorSection password={password} />}
           {active === "fw-rules" && <FirewallRules password={password} />}
+          {active === "nodes-monitor" && <NodesMonitor password={password} />}
           {active === "bill-ledger" && <BillingLedger password={password} />}
           {active === "bill-expenses" && <BillingExpenses password={password} />}
           {active === "fw-intrusion" && <FirewallIntrusion password={password} />}

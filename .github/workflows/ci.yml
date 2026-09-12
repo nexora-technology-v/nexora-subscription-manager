@@ -64,6 +64,7 @@ jobs:
           python tools/test-maintenance.py
           python tools/test-intrusion.py
           python tools/test-expenses.py
+          python tools/test-nodes.py
 
       - name: تست‌های اتصال
         # اینها باگ‌هایی را می‌گیرند که تست معمولی نمی‌بیند:

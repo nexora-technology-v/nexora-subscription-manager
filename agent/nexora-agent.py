@@ -545,6 +545,34 @@ def monitor(payload):
     return True, json.dumps(result, ensure_ascii=False)
 
 
+def remote_module(name, func, payload):
+    """
+    یک ماژول پنل را روی این سرور اجرا می‌کند.
+
+    پنل خودش monitor.py و firewall.py را دارد. به‌جای نوشتن نسخه‌ی
+    دومِ همان کد داخل agent — که بلافاصله از پنل عقب می‌افتد و
+    خروجی متفاوت می‌دهد — همان فایل را از پنل می‌گیریم و اجرا
+    می‌کنیم. این‌طور سرور ایران دقیقاً همان اعدادی را گزارش می‌دهد
+    که سرور اصلی می‌دهد، با همان آستانه‌ها و همان نام‌ها.
+
+    فایل کنار agent کش می‌شود؛ با refresh=1 دوباره گرفته می‌شود.
+    """
+    try:
+        import importlib.util
+        mod_path = BASE / f"{name}.py"
+        if not mod_path.exists() or payload.get("refresh"):
+            download(f"{PANEL_URL}/api/agent/{name}.py", mod_path)
+        spec = importlib.util.spec_from_file_location(f"nx_{name}", mod_path)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        fn = getattr(m, func, None)
+        if not fn:
+            return False, f"تابع {func} در {name} نیست"
+        return True, json.dumps(fn(), ensure_ascii=False)
+    except Exception as e:
+        return False, f"{type(e).__name__}: {str(e)[:150]}"
+
+
 def handle(job):
     action = job.get("action")
     p = job.get("payload") or {}
@@ -596,6 +624,12 @@ def handle(job):
             return True, json.dumps(res, ensure_ascii=False)
         except Exception as e:
             return False, f"{type(e).__name__}: {str(e)[:150]}"
+
+    if action == "sysmon":
+        return remote_module("monitor", "snapshot", p)
+
+    if action == "firewall":
+        return remote_module("firewall", "status", p)
 
     if action == "update_agent":
         return update_self(p.get("url", ""))
