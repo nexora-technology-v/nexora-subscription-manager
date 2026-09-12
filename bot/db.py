@@ -546,6 +546,12 @@ class TenantDB:
 
     # ---------- کیف پول ----------
     def add_balance(self, user_id, amount, kind, note=None, order_id=None):
+        """
+        تغییر موجودی — برای واریز، برگشت پول و تنظیم دستی ادمین.
+
+        برای *خرج‌کردن* از spend_balance استفاده کنید، نه این. این
+        تابع شرطی ندارد و موجودی را منفی هم می‌کند.
+        """
         with conn() as c:
             c.execute(
                 "UPDATE users SET balance = balance + ? WHERE tenant_id=? AND id=?",
@@ -556,6 +562,46 @@ class TenantDB:
                    VALUES (?,?,?,?,?,?)""",
                 (self.tid, user_id, amount, kind, note, order_id)
             )
+
+    def spend_balance(self, user_id, amount, kind, note=None, order_id=None):
+        """
+        خرج‌کردن از کیف پول — اتمی. برمی‌گرداند: (موفق, موجودی تازه)
+
+        چرا جدا از add_balance:
+            الگوی قبلی «اول موجودی را بخوان، اگر کافی بود کم کن» بود.
+            بین این دو، هر چیز دیگری می‌تواند همان پول را خرج کند —
+            و از وقتی ربات با هشت نخ کار می‌کند و زمان‌بند تمدید
+            خودکار در نخ جداگانه‌ای می‌دود، این دیگر فرضی نیست:
+            مشتری در حال خرید است و هم‌زمان تمدید خودکارش اجرا می‌شود.
+
+            بدتر اینکه UPDATE هیچ شرطی نداشت، پس نتیجه‌ی هر لغزشی
+            یک موجودی منفی بود که هیچ‌جا دیده نمی‌شد.
+
+            این‌جا خود دیتابیس شرط را نگه می‌دارد: اگر موجودی کافی
+            نباشد هیچ سطری به‌روز نمی‌شود و تراکنشی هم ثبت نمی‌شود.
+        """
+        amount = abs(int(amount))
+        with conn() as c:
+            cur = c.execute(
+                "UPDATE users SET balance = balance - ? "
+                "WHERE tenant_id=? AND id=? AND balance >= ?",
+                (amount, self.tid, user_id, amount)
+            )
+            if not cur.rowcount:
+                row = c.execute(
+                    "SELECT balance FROM users WHERE tenant_id=? AND id=?",
+                    (self.tid, user_id)).fetchone()
+                return False, (row["balance"] if row else 0)
+
+            c.execute(
+                """INSERT INTO wallet_tx (tenant_id, user_id, amount, kind, note, order_id)
+                   VALUES (?,?,?,?,?,?)""",
+                (self.tid, user_id, -amount, kind, note, order_id)
+            )
+            row = c.execute(
+                "SELECT balance FROM users WHERE tenant_id=? AND id=?",
+                (self.tid, user_id)).fetchone()
+            return True, (row["balance"] if row else 0)
 
     # ---------- پلن‌ها ----------
     def plans(self, active_only=True, include_trial=False):

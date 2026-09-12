@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.6.1]
+
+### Fixed — The wallet could be spent twice
+
+Both places that take money used the same shape:
+
+    fresh = db.get_user(tg_id)
+    if fresh["balance"] < price: return
+    db.add_balance(user_id, -price, ...)
+
+Read, decide, then write — with nothing holding the balance still in
+between. That was survivable while the bot processed one update at a time.
+It stopped being survivable when the bot grew an eight-thread pool, and the
+auto-renew scheduler runs in a thread of its own that the per-chat lock does
+not cover. A customer buying a plan at the moment their own auto-renewal
+fires is two deductions reading one balance.
+
+Worse, the UPDATE had no condition on it, so the result was a negative
+balance that appeared in no report and no alert.
+
+`spend_balance()` makes the database hold the invariant instead:
+
+    UPDATE users SET balance = balance - ?
+     WHERE tenant_id=? AND id=? AND balance >= ?
+
+No rows updated means not enough money — no transaction row is written and
+the order is rejected with the reason. `add_balance` keeps its unconditional
+behaviour for top-ups, refunds and admin corrections, where a negative
+balance is a legitimate thing to record.
+
+`bot/test_wallet.py` spends real money down real threads: ten of them race
+for a balance that covers exactly five purchases, and exactly five win.
+
 ## [1.6.0]
 
 ### Fixed — Why node monitoring never arrived

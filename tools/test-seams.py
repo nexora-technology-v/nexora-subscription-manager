@@ -214,7 +214,15 @@ check("اسکیما خوانده شد", len(schema) > 3, f"{len(schema)} جدو�
 
 # فقط داخل رشته‌هایی که واقعاً SQL هستند می‌گردیم. اگر مستقیم روی
 # متن فایل regex بزنیم، «from datetime import ...» هم جدول حساب می‌شود.
-SQL_START = re.compile(r'\b(SELECT|INSERT|UPDATE|DELETE|REPLACE)\b', re.I)
+# الگو باید *شکل* SQL را ببیند، نه فقط یک کلمه‌ی کلیدی. یک داک‌استرینگ
+# فارسی که در توضیحش می‌نویسد «UPDATE هیچ شرطی نداشت» وگرنه SQL حساب
+# می‌شد و «هیچ» را به‌عنوان نام جدول گزارش می‌کرد.
+SQL_START = re.compile(
+    r'\bSELECT\b[\s\S]*\bFROM\b'
+    r'|\bINSERT\s+(?:OR\s+\w+\s+)?INTO\b'
+    r'|\bUPDATE\s+\w+\s+SET\b'
+    r'|\bDELETE\s+FROM\b'
+    r'|\bREPLACE\s+INTO\b', re.I)
 queried = {}
 for fname, src in bot_sources.items():
     try:

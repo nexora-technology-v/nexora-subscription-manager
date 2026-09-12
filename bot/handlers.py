@@ -503,10 +503,27 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id):
                       "می‌توانید کیف پول را شارژ کنید یا کارت‌به‌کارت بپردازید.",
                       back_kb("buy"))
 
+    # کسر اول، سفارش بعد. اگر ترتیب برعکس باشد و کسر نگیرد، یک
+    # سفارش بی‌پرداخت می‌ماند که هیچ‌کس بعداً نمی‌فهمد چه بوده.
     order = ctx.db.create_order(fresh["id"], plan_id, p["price"], p["price"],
                                 paid_from="wallet")
-    ctx.db.add_balance(fresh["id"], -p["price"], "spend",
-                       f"خرید {p['name']}", order["id"])
+    paid, left = ctx.db.spend_balance(fresh["id"], p["price"], "spend",
+                                      f"خرید {p['name']}", order["id"])
+    if not paid:
+        # بین خواندن موجودی و این لحظه، پول جای دیگری خرج شده —
+        # مثلاً تمدید خودکار همین کاربر که در نخ دیگری می‌دود.
+        ctx.db.exec(
+            "UPDATE orders SET status='rejected', "
+            "reject_reason='موجودی کیف پول کافی نبود' "
+            "WHERE tenant_id=? AND id=?", (ctx.tid, order["id"]))
+        return _reply(ctx, chat_id, message_id,
+                      "موجودی کیف پولتان کافی نیست.\n\n"
+                      f"موجودی: <b>{core.toman(left)}</b> تومان\n"
+                      f"لازم: <b>{core.toman(p['price'])}</b> تومان\n\n"
+                      "<blockquote>اگر همین الان خرید دیگری انجام داده‌اید یا "
+                      "تمدید خودکارتان اجرا شده، ممکن است موجودی تغییر کرده "
+                      "باشد.</blockquote>",
+                      back_kb("buy"))
 
     ok, result = provision(ctx, order["id"])
     if ok:
@@ -2926,11 +2943,23 @@ def auto_renew_subscription(tenant, bot, sub):
             pass
         return
 
-    ctx.db.add_balance(user["id"], -plan["price"], "renew",
-                       f"تمدید خودکار اشتراک #{sub['id']}")
-
     order = ctx.db.create_order(user["id"], plan["id"], plan["price"], plan["price"],
                                 kind="renew", paid_from="wallet")
+
+    # اتمی: زمان‌بند تمدید خودکار در نخ جداگانه‌ای می‌دود و قفل هر چت
+    # آن را پوشش نمی‌دهد. یعنی می‌تواند دقیقاً هم‌زمان با خریدِ خود
+    # کاربر اجرا شود و دو بار از یک موجودی بردارد.
+    paid, left = ctx.db.spend_balance(
+        user["id"], plan["price"], "renew",
+        f"تمدید خودکار اشتراک #{sub['id']}", order["id"])
+    if not paid:
+        ctx.db.exec(
+            "UPDATE orders SET status='rejected', "
+            "reject_reason='موجودی کیف پول کافی نبود' "
+            "WHERE tenant_id=? AND id=?", (ctx.tid, order["id"]))
+        log.info("تمدید خودکار اشتراک %s: موجودی کافی نبود (%s تومان)",
+                 sub["id"], left)
+        return
     ctx.db.exec("UPDATE orders SET status='approved' WHERE tenant_id=? AND id=?",
                 (ctx.tid, order["id"]))
 

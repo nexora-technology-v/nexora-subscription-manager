@@ -54,6 +54,7 @@ jobs:
           python bot/test_admin.py
           python bot/test_xui.py
           python bot/test_fmt.py
+          python bot/test_wallet.py
 
       - name: تست‌های پنل و ابزارها
         run: |
