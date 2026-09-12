@@ -984,7 +984,12 @@ export function BillingSettings({ password }) {
         body: JSON.stringify({ data: parsed.data || parsed }),
       });
       const d = await res.json();
-      if (res.ok) setMsg({ t: "ok", m: `بازیابی شد — ${d.restored?.payments || 0} پرداخت` });
+      if (res.ok && d.warning) {
+        setMsg({ t: "err", m: `بازیابی ناقص بود — ${d.warning}` });
+      } else if (res.ok) {
+        const n = Object.values(d.restored || {}).reduce((x, y) => x + y, 0);
+        setMsg({ t: "ok", m: `بازیابی شد — ${n} ردیف` });
+      }
       else setMsg({ t: "err", m: errText(d.detail, "بازیابی ناموفق") });
     } catch { setMsg({ t: "err", m: "فایل معتبر نبود" }); }
     finally { setBusy(null); if (fileRef.current) fileRef.current.value = ""; }

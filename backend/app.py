@@ -2956,6 +2956,40 @@ def bot_service(action: str, x_admin_password: str = Header(...)):
     return {"ok": True, "running": _svc_active()}
 
 
+#: جدول‌هایی که پشتیبان نمی‌خواهند.
+#
+#  sqlite_sequence را خودِ SQLite نگه می‌دارد، و bot_flags یک پرچم
+#  لحظه‌ای بین پنل و ربات است نه داده‌ی کاربر.
+_BACKUP_SKIP = {"sqlite_sequence", "bot_flags"}
+
+#: ترتیب دلخواه — والدها اول. جدول‌های کشف‌شده‌ای که این‌جا نیستند
+#: بعد از این‌ها می‌آیند، پس فراموش‌شدنشان ممکن نیست.
+_BOT_TABLE_ORDER = [
+    "tenants", "users", "plans", "orders", "subscriptions",
+    "affiliates", "affiliate_commissions", "affiliate_payouts",
+    "coin_tx", "wallet_tx", "discounts", "tickets", "events",
+]
+
+
+def _tables_of(con, order=()):
+    """
+    فهرست جدول‌های واقعیِ یک دیتابیس، به ترتیب دلخواه.
+
+    چرا از اسکیما خوانده می‌شود و دستی نوشته نمی‌شود: فهرست دستی با
+    هر قابلیت تازه عقب می‌ماند و هیچ خطایی هم نمی‌دهد. پشتیبان با
+    «ok» دانلود می‌شد و جدول‌های تازه اصلاً در آن نبودند — همکاران
+    فروش، پورسانتشان، و کل بخش هزینه‌ها همین‌طور جا افتاده بودند.
+    """
+    try:
+        found = {r[0] for r in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'")}
+    except Exception:
+        return list(order)
+    found -= _BACKUP_SKIP
+    known = [t for t in order if t in found]
+    return known + sorted(found - set(known))
+
+
 @app.get("/api/admin/bot/backup")
 def bot_backup(x_admin_password: str = Header(...)):
     """دانلود بک‌آپ کامل ربات (JSON)."""
@@ -2965,8 +2999,7 @@ def bot_backup(x_admin_password: str = Header(...)):
         raise HTTPException(status_code=400, detail="دیتابیس ربات موجود نیست")
 
     try:
-        tables = ["tenants", "users", "plans", "orders", "subscriptions",
-                  "coin_tx", "wallet_tx", "discounts", "tickets"]
+        tables = _tables_of(con, _BOT_TABLE_ORDER)
         dump = {}
         for t in tables:
             try:
@@ -3015,9 +3048,12 @@ def bot_restore(payload: dict, x_admin_password: str = Header(...)):
     con = _bot_rw()
     try:
         con.execute("PRAGMA foreign_keys=OFF")
-        order = ["tenants", "users", "plans", "orders", "subscriptions",
-                 "coin_tx", "wallet_tx", "discounts", "tickets"]
-        restored = {}
+        # فقط جدول‌هایی که هم در پشتیبان‌اند و هم در این دیتابیس
+        # وجود دارند. این‌طور پشتیبانِ نسخه‌ی قدیمی‌تر هم بازمی‌گردد،
+        # بدون اینکه جدولی که در آن نبوده خالی شود.
+        present = _tables_of(con, _BOT_TABLE_ORDER)
+        order = [t for t in present if t in data]
+        restored, skipped = {}, {}
 
         for t in reversed(order):
             try:
@@ -3045,10 +3081,23 @@ def bot_restore(payload: dict, x_admin_password: str = Header(...)):
                 except Exception:
                     pass
             restored[t] = n
+            # ردیفی که درج نشد باید دیده شود. قبلاً بی‌صدا رد می‌شد و
+            # جوابْ «ok» بود — یعنی بازگردانیِ نصفه، بدون هیچ نشانه‌ای.
+            if n < len(rows):
+                skipped[t] = len(rows) - n
 
+        missing = sorted(set(data) - set(order))
         con.commit()
-        return {"ok": True, "restored": restored,
-                "safetyCopy": str(safety) if safety else None}
+        out = {"ok": True, "restored": restored,
+               "safetyCopy": str(safety) if safety else None}
+        if skipped:
+            out["skipped"] = skipped
+            out["warning"] = ("بعضی ردیف‌ها بازنگشتند: "
+                              + "، ".join(f"{k} ({v})"
+                                          for k, v in skipped.items()))
+        if missing:
+            out["unknownTables"] = missing
+        return out
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"بازیابی ناموفق: {str(e)[:200]}")
     finally:
@@ -5263,7 +5312,8 @@ def billing_backup(x_admin_password: str = Header(...)):
                             detail=f"دیتابیس حسابداری باز نشد: {str(e)[:120]}")
     try:
         dump = {}
-        for t in ("group_config", "payments", "renewals"):
+        for t in _tables_of(con, ("group_config", "payments", "renewals",
+                                  "expenses", "client_seen")):
             try:
                 dump[t] = [dict(r) for r in con.execute(f"SELECT * FROM {t}")]
             except Exception:
@@ -5303,8 +5353,14 @@ def billing_restore(payload: dict, x_admin_password: str = Header(...)):
 
     con = _billing_conn()
     try:
-        restored = {}
-        for t in ("group_config", "payments", "renewals"):
+        restored, skipped = {}, {}
+        # فقط جدول‌هایی که هم در فایل‌اند و هم در این دیتابیس. قبلاً
+        # سه جدولِ ثابت بی‌قید خالی می‌شدند — یعنی بازگردانیِ یک
+        # پشتیبانِ قدیمی، داده‌ی جدول‌هایی را که در آن نبود پاک می‌کرد.
+        for t in [x for x in _tables_of(con, ("group_config", "payments",
+                                              "renewals", "expenses",
+                                              "client_seen"))
+                  if x in data]:
             rows = data.get(t) or []
             try:
                 con.execute(f"DELETE FROM {t}")
@@ -5328,9 +5384,17 @@ def billing_restore(payload: dict, x_admin_password: str = Header(...)):
                 except Exception:
                     pass
             restored[t] = n
+            if n < len(rows):
+                skipped[t] = len(rows) - n
         con.commit()
-        return {"ok": True, "restored": restored,
-                "safetyCopy": str(safety) if safety else None}
+        out = {"ok": True, "restored": restored,
+               "safetyCopy": str(safety) if safety else None}
+        if skipped:
+            out["skipped"] = skipped
+            out["warning"] = ("بعضی ردیف‌ها بازنگشتند: "
+                              + "، ".join(f"{k} ({v})"
+                                          for k, v in skipped.items()))
+        return out
     finally:
         con.close()
 

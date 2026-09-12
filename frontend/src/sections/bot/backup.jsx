@@ -65,7 +65,9 @@ export function BotBackupSection({ password }) {
       const d = await res.json();
       if (res.ok) {
         const total = Object.values(d.restored || {}).reduce((x, y) => x + y, 0);
-        setMsg({ t: "ok", m: `${total} رکورد بازیابی شد` });
+        // بازگردانیِ نصفه نباید مثل بازگردانیِ سالم به نظر برسد
+        if (d.warning) setMsg({ t: "err", m: `${total} رکورد بازیابی شد، ولی ${d.warning}` });
+        else setMsg({ t: "ok", m: `${total} رکورد بازیابی شد` });
       } else setMsg({ t: "err", m: errText(d.detail, "بازیابی ناموفق") });
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setBusy(null); }

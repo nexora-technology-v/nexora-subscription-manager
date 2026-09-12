@@ -1,5 +1,55 @@
 # Changelog
 
+## [1.10.2]
+
+### Fixed — Backups were missing four tables, including every affiliate record
+
+The list of tables to back up was written by hand. Each time a feature added a
+table, that list was not updated, and nothing ever complained. The backup
+downloaded with "ok" and simply did not contain them.
+
+Missing from the bot backup:
+
+    affiliates              the partners themselves
+    affiliate_commissions   what they earned
+    affiliate_payouts       what has been paid out
+    events                  the history log
+
+Missing from the accounting backup: `expenses` — the whole expenses section —
+and `client_seen`, which accounting uses as the floor for "how long have we known
+this config".
+
+Worse than missing: restoring a bot backup ran `DELETE FROM` on its own table
+list, then re-inserted from the file. Affiliate data was not on that list, so it
+was left alone on the same machine — but restoring onto a fresh server produced a
+panel with no affiliates, no commission history, and no payout records. Money
+owed to real people, with nothing to reconstruct it from.
+
+Table lists are read from the schema now. A table cannot be forgotten because
+nobody has to remember it.
+
+### Fixed — A half-finished restore reported success
+
+Every row that failed to insert was swallowed by a bare `except: pass`, and the
+response was `{"ok": true}` regardless. A restore that dropped half the users
+looked exactly like one that worked.
+
+Skipped rows are counted per table and returned, and the panel shows that as an
+error rather than a success.
+
+### Fixed — Restoring an older backup wiped tables it did not contain
+
+Accounting restore deleted `group_config`, `payments` and `renewals`
+unconditionally, whether or not the file had them. A backup taken before the
+expenses feature would now also have cleared expenses. Only tables actually
+present in the file are touched.
+
+### Added — `tools/test-backup.py`
+
+Backup and restore had no test at all. 24 checks: a full round trip through every
+table, the partial-restore warning, and an old backup restored onto a newer
+schema.
+
 ## [1.10.1]
 
 Three of the five tunnel engines generated configs that could not carry traffic.
