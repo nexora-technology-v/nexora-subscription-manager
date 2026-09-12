@@ -125,7 +125,8 @@ def test_checks(fast):
     suites = [
         ("ربات", ["bot/test_bot.py", "bot/test_flow.py",
                   "bot/test_admin.py", "bot/test_xui.py",
-                  "bot/test_fmt.py", "bot/test_wallet.py"]),
+                  "bot/test_fmt.py", "bot/test_wallet.py",
+                  "bot/test_reminders.py"]),
         ("پنل و ابزارها", ["tools/test-admin-api.py", "tools/test-billing.py", "tools/test-billing-e2e.py",
                            "tools/test-monitor.py", "tools/test-firewall.py", "tools/test-fw-safety.py",
                            "tools/test-maintenance.py", "tools/test-serve.py",

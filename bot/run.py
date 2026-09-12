@@ -183,6 +183,10 @@ def expire_stale_orders():
         log.info("%s سفارش منقضی شد", n)
 
 
+#: آستانه‌های یادآوری انقضا — از دور به نزدیک.
+EXPIRY_STEPS = ((7, "notified_7d"), (3, "notified_3d"), (1, "notified_1d"))
+
+
 def send_expiry_reminders():
     """
     یادآوری انقضا در ۷، ۳ و ۱ روز مانده.
@@ -209,21 +213,97 @@ def send_expiry_reminders():
 
         for s in subs:
             left = core.days_left(s["expires_at"])
-            if left is None or left < 0:
+            if left is None:
                 continue
 
-            for day, flag in ((7, "notified_7d"), (3, "notified_3d"), (1, "notified_1d")):
-                if left <= day and not s[flag]:
-                    try:
-                        handlers.send_expiry_notice(t, tg, s, left)
-                        d.exec(
-                            f"UPDATE subscriptions SET {flag}=1 WHERE tenant_id=? AND id=?",
-                            (t["id"], s["id"])
-                        )
-                        log.info("یادآوری %s روز برای اشتراک %s", day, s["id"])
-                    except Exception:
-                        log.exception("ارسال یادآوری ناموفق (اشتراک %s)", s["id"])
-                    break
+            # اشتراکی که با ۱ روز باقی‌مانده وارد پنجره می‌شود، هم‌زمان
+            # داخل هر سه آستانه است. قبلاً هر ساعت یکی از آن‌ها باز
+            # می‌شد و همان پیام دوباره می‌رفت — سه «فقط یک روز مانده»
+            # در سه ساعت. پس هر آستانه‌ای که کاربر از آن رد شده با
+            # همان یک پیام بسته می‌شود.
+            inside = [flag for day, flag in EXPIRY_STEPS if left <= day]
+            if not inside or all(s[f] for f in inside):
+                continue
+
+            try:
+                handlers.send_expiry_notice(t, tg, s, left)
+            except Exception:
+                log.exception("ارسال یادآوری ناموفق (اشتراک %s)", s["id"])
+                continue    # پرچم را نمی‌بندیم تا ساعت بعد دوباره تلاش شود
+
+            d.exec(
+                "UPDATE subscriptions SET " + ", ".join(f"{f}=1" for f in inside)
+                + " WHERE tenant_id=? AND id=?",
+                (t["id"], s["id"])
+            )
+            log.info("یادآوری %s روز برای اشتراک %s", left, s["id"])
+
+
+#: از چند درصد مصرف هشدار بدهیم.
+TRAFFIC_WARN_PCT = 80
+
+
+def send_traffic_warnings():
+    """
+    هشدار حجم، وقتی مصرف از ۸۰٪ گذشت.
+
+    پرچم notified_80p از روز اول در جدول بود و مسیر تمدید هم صفرش
+    می‌کرد، ولی هیچ‌جا ست نمی‌شد — یعنی این هشدار هرگز نرفته بود.
+    برای مشتری‌ای که حجمش وسط ماه تمام می‌شود، این تنها خبری است که
+    می‌تواند قبل از قطعی بگیرد.
+
+    مصرف را یک‌جا از پنل می‌گیریم (یک درخواست برای همه)، نه یکی‌یکی.
+    """
+    for t in db.all_tenants(active_only=True):
+        if not t["bot_token"]:
+            continue
+        cfg = db.tenant_settings(t["id"])
+        if cfg.get("reminders", {}).get("enabled") is False:
+            continue
+
+        d = db.TenantDB(t["id"])
+        subs = d.q(
+            """SELECT s.*, u.tg_id FROM subscriptions s
+               JOIN users u ON u.id = s.user_id
+               WHERE s.tenant_id=? AND s.is_active=1 AND s.notified_80p=0
+                 AND s.gb > 0""",
+            (t["id"],)
+        )
+        if not subs:
+            continue
+
+        tg = Bot(t["bot_token"])
+        ctx = handlers.Ctx(tg, t)
+        try:
+            usage = ctx.xui.all_client_traffic()
+        except Exception:
+            log.exception("گرفتن مصرف ناموفق (مستاجر %s)", t["id"])
+            continue
+
+        for s in subs:
+            # اشتراکی که تاریخش تمام شده، مصرفش دیگر مهم نیست
+            left = core.days_left(s["expires_at"]) if s["expires_at"] else None
+            if left is not None and left <= 0:
+                continue
+
+            pair = usage.get(s["client_email"])
+            if pair is None:
+                continue
+            used_gb = round(sum(pair) / (1024 ** 3), 1)
+            total_gb = s["gb"] or 0
+            if not total_gb or used_gb * 100 < TRAFFIC_WARN_PCT * total_gb:
+                continue
+
+            try:
+                handlers.send_traffic_notice(t, tg, s, used_gb, total_gb)
+            except Exception:
+                log.exception("هشدار حجم ناموفق (اشتراک %s)", s["id"])
+                continue
+
+            d.exec("UPDATE subscriptions SET notified_80p=1"
+                   " WHERE tenant_id=? AND id=?", (t["id"], s["id"]))
+            log.info("هشدار حجم %s٪ برای اشتراک %s",
+                     int(used_gb * 100 / total_gb), s["id"])
 
 
 def run_auto_renew():
@@ -345,6 +425,7 @@ def scheduler_loop():
 
             if now - last["reminders"] > 3600:
                 send_expiry_reminders()
+                send_traffic_warnings()
                 last["reminders"] = now
 
             if now - last["renew"] > 3600:

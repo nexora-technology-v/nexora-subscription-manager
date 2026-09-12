@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.9.4]
+
+### Fixed — The same expiry reminder went out three times
+
+The hourly scheduler checked three thresholds in order and stopped at the first
+open one:
+
+    for day, flag in ((7, "notified_7d"), (3, ...), (1, ...)):
+        if left <= day and not s[flag]: send(...); set(flag); break
+
+That works for a subscription that enters the window at 30 days. It does not
+work for one that enters at 1 day left — a short plan, reminders switched on
+after the fact, or a bot that was down for a few hours. Such a subscription sits
+inside all three thresholds at once:
+
+    hour 1: the 7-day flag is open  ->  "only one day left"
+    hour 2: the 3-day flag is open  ->  "only one day left"
+    hour 3: the 1-day flag is open  ->  "only one day left"
+
+Three identical messages in three hours, because all three are built from the
+same `left`. Now one message closes every threshold the subscription has already
+passed, and later thresholds still fire on their own as the date approaches.
+
+### Added — The traffic warning that was never sent
+
+`notified_80p` has been in the subscriptions table from the start, and both
+renewal paths reset it. Nothing ever set it, and nothing ever read it — the
+"you're running out of data" warning did not exist.
+
+Unlike expiry, data has no date: a customer can burn a month's quota in one
+night. They got no warning at all; the first news was the connection dropping,
+with days still left on the subscription.
+
+At 80% used, the customer now gets one message with what is left and a renew
+button for that specific subscription. Usage comes from a single panel request
+for all clients rather than one per client, and the warning resets with each
+renewal, so it fires once per period.
+
 ## [1.9.3]
 
 ### Fixed — Affiliates were only paid on card purchases

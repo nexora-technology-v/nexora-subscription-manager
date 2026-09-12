@@ -738,6 +738,27 @@ class XUI:
                 continue
         return None
 
+    def all_client_traffic(self):
+        """
+        مصرف همه‌ی کلاینت‌ها با یک درخواست: {ایمیل: (up, down)}.
+
+        برای کار ساعتی روی دویست کلاینت، دویست درخواست به پنل زدن
+        هم کند است هم بی‌دلیل — لیست اینباندها همین را یک‌جا دارد
+        (clientStats). اگر پنل آن را نداشت، {} برمی‌گردانیم و صداکننده
+        به client_traffic تک‌به‌تک برمی‌گردد.
+        """
+        out = {}
+        try:
+            for ib in (self.inbounds() or []):
+                for st in (ib.get("clientStats") or []):
+                    em = st.get("email")
+                    if em:
+                        out[em] = (int(st.get("up") or 0),
+                                   int(st.get("down") or 0))
+        except (XUIError, AttributeError, TypeError, ValueError):
+            return {}
+        return out
+
     def reset_client_traffic(self, inbound_id, email):
         for method, p, body in (
             ("POST", f"/panel/api/clients/resetTraffic/{email}", {}),

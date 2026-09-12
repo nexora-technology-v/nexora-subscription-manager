@@ -3023,6 +3023,44 @@ def send_expiry_notice(tenant, bot, sub, days_left):
         log.warning("یادآوری ارسال نشد (%s): %s", sub["tg_id"], e)
 
 
+def send_traffic_notice(tenant, bot, sub, used_gb, total_gb):
+    """
+    هشدار «حجمت دارد تمام می‌شود».
+
+    ستون notified_80p از ابتدا در جدول بود و دو جای کد صفرش می‌کردند،
+    ولی هیچ‌جا پُرش نمی‌کرد — یعنی این هشدار هیچ‌وقت فرستاده نمی‌شد.
+    مشتری حجمش تمام می‌شد، اتصالش می‌خوابید، و اولین خبری که می‌گرفت
+    قطع‌شدن بود.
+
+    برخلاف انقضا، حجم تاریخ ندارد: کسی ممکن است در یک شب تمامش کند.
+    پس این هشدار روی درصد مصرف کار می‌کند، نه روی روز.
+    """
+    ctx = Ctx(bot, tenant)
+    pct = min(100, int(used_gb * 100 / total_gb)) if total_gb else 0
+    left_gb = max(0, round(total_gb - used_gb, 1))
+
+    srow = {k: sub[k] for k in sub.keys()} if hasattr(sub, "keys") else dict(sub)
+    label = ctx.sub_label(srow)
+
+    txt = F.join(
+        F.title(f"{core.fa(pct)}٪ از حجمتان مصرف شده", "📊"),
+        f"📦 {F.b(label)}",
+        F.lines(
+            F.row("مصرف‌شده", f"{core.fa(used_gb)} از {core.fmt_gb(total_gb)}", "💾"),
+            F.row("باقی‌مانده", f"{core.fa(left_gb)} گیگ", "🟢"),
+        ),
+        F.quote("وقتی حجم تمام شود اتصال قطع می‌شود — حتی اگر تاریخ "
+                "اشتراکتان هنوز باقی باشد."),
+    )
+    renew_cb = f"renew:{srow['id']}" if srow.get("id") else "mysubs"
+    try:
+        bot.send(sub["tg_id"], txt,
+                 keyboard=kb([[(f"🔄 تمدید · {label}", renew_cb)],
+                              [("‹ منوی اصلی", "menu")]]))
+    except TelegramError as e:
+        log.warning("هشدار حجم ارسال نشد (%s): %s", sub["tg_id"], e)
+
+
 def auto_renew_subscription(tenant, bot, sub):
     """
     تمدید خودکار از کیف پول.

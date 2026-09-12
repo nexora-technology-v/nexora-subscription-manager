@@ -55,6 +55,7 @@ jobs:
           python bot/test_xui.py
           python bot/test_fmt.py
           python bot/test_wallet.py
+          python bot/test_reminders.py
 
       - name: تست‌های پنل و ابزارها
         run: |
