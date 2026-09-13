@@ -641,6 +641,49 @@ if _risky:
 
 
 # ═══════════════════════════════════════════════════════════
+#  درز — مسیر فایل‌ها در نصب، کد، و CLI
+# ═══════════════════════════════════════════════════════════
+head("درز · مسیر داده‌ها")
+
+# سه جا باید درباره‌ی محل فایل‌ها یک حرف بزنند: install.sh که متغیرها
+# را در سرویس systemd می‌نویسد، کدی که پیش‌فرض‌ها را دارد، و
+# nexora-cli که موقع نسخه‌برداری همان‌جا را می‌گردد.
+#
+# اگر از هم فاصله بگیرند، پنل جایی می‌نویسد که نسخه‌بردار نگاه
+# نمی‌کند — و روزی که به پشتیبان نیاز باشد، خالی است.
+
+INSTALL_SH = rd("install.sh")
+CLI_SH = rd("nexora-cli.sh")
+
+# متغیرهایی که کد می‌خواند
+_read_env = set(re.findall(r'getenv\("([A-Z_]+)"', APP_PY + rd("bot/db.py")
+                           + rd("backend/tunnels.py")))
+check("متغیرهای محیطی کد پیدا شدند", len(_read_env) > 8,
+      f"{len(_read_env)} متغیر")
+
+# آن‌هایی که *باید* در نصب تنظیم شوند، چون پیش‌فرضشان نسبی است
+MUST_SET = {"CONFIG_PATH", "AUTH_PATH", "SUBPAGE_HTML_PATH",
+            "TUNNEL_DB_PATH", "BOT_DB_PATH"}
+_unset = [v for v in MUST_SET if f'{v}=' not in INSTALL_SH]
+check("نصب همه‌ی مسیرهای لازم را تنظیم می‌کند", not _unset,
+      "، ".join(_unset) if _unset else f"{len(MUST_SET)} متغیر")
+
+# دیتابیس‌ها باید کنار هم در data/ باشند — همان‌جا که CLI می‌گردد
+for _db in ("bot.db", "billing.db", "tunnels.db"):
+    check(f"«{_db}» در نسخه‌برداری هست", f"{_db}" in CLI_SH,
+          "وگرنه پشتیبان بدون آن ساخته می‌شود")
+
+check("نصب، داده را در data/ کنار نصب می‌گذارد",
+      "CONFIG_PATH=$INSTALL_DIR/data/config.json" in INSTALL_SH,
+      "پیش‌فرض billing.db و bot.db از کنار همین ساخته می‌شود")
+check("و CLI هم همان‌جا را می‌گردد",
+      '"$INSTALL_DIR/data/$db"' in CLI_SH
+      or '$INSTALL_DIR/data/bot.db' in CLI_SH,
+      "سه جا باید یک حرف بزنند")
+
+
+
+# ═══════════════════════════════════════════════════════════
 print(f"\n{D}{'─' * 54}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

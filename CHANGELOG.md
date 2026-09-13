@@ -4,6 +4,20 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Added — Data paths are checked across the installer, the code and the CLI
+
+Three places have to agree about where files live: `install.sh`, which writes the
+environment into the systemd unit; the defaults in the code; and `nexora-cli`,
+which looks in those places when it takes a snapshot.
+
+If they drift, the panel writes somewhere the snapshot does not look — and the
+day a backup is needed, it is empty. That is exactly what happened with the
+backup table list earlier in this batch, so it is worth a test rather than a
+reading.
+
+They agree today. Verified by removing one line from the installer and watching
+the test name the missing variable.
+
 ### Fixed — The DNS check hung instead of reporting slow DNS
 
 `check_dns` exists to notice when name resolution is slow. It called
