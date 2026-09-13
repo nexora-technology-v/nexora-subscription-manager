@@ -10,7 +10,7 @@ import {
   AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Loader2, Minus, Plus, Search, X,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { faNum } from "../lib/format";
+import { faNum, errText } from "../lib/format";
 
 export function Field({ label, hint, children }) {
   return (
@@ -216,9 +216,18 @@ export function LoginScreen({ onLogin }) {
     setLoading(true); setError("");
     try {
       const res = await fetch(`${API_URL}/api/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        // پیام خودِ سرور را نشان می‌دهیم.
+        //
+        // حالا که ورودِ ناموفق پشت‌سرهم موقتاً قفل می‌شود، «رمز عبور
+        // نادرست است» دقیقاً اشتباه‌ترین چیزی است که می‌شود گفت —
+        // مدیر را به تلاش دوباره می‌فرستد، درست وقتی که نباید. پیام
+        // سرور می‌گوید چند تلاش مانده یا چقدر باید صبر کند.
+        const j = await res.json().catch(() => ({}));
+        throw new Error(errText(j.detail, ""));
+      }
       onLogin(password);
-    } catch { setError("رمز عبور نادرست است یا سرور در دسترس نیست."); }
+    } catch (e) { setError(e.message || "رمز عبور نادرست است یا سرور در دسترس نیست."); }
     finally { setLoading(false); }
   };
   return (

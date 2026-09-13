@@ -12,6 +12,10 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+import contextvars as _contextvars
+import hmac as _hmac
+import ipaddress as _ipaddress
+import time as _time
 from fastapi.responses import HTMLResponse
 
 log = logging.getLogger("nexora.panel")
@@ -353,9 +357,142 @@ def save_config(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+# ═══════════════════════════════════════════════════════════
+#  سدّ حدس‌زدن رمز
+#
+#  کل این سامانه پشت یک رمز است: پنل، اطلاعات مشتری‌ها، رمز x-ui،
+#  توکن ربات. تا امروز هیچ چیزی جلوی حدس‌زدنِ پشت‌سرهم را نمی‌گرفت —
+#  نه در /api/login و نه در هیچ‌کدام از مسیرهای مدیریتی، که همان رمز
+#  را در هدر می‌گیرند و به همان اندازه برای حدس‌زدن در دسترس‌اند.
+#
+#  ماژول intrusion حمله‌ی SSH را می‌بیند و گزارش می‌دهد؛ درِ خودِ پنل
+#  هیچ نگهبانی نداشت.
+# ═══════════════════════════════════════════════════════════
+
+#: چند تلاش ناموفق، در چه بازه‌ای، و چقدر قفل
+AUTH_MAX_FAILS = 10
+AUTH_WINDOW = 300        # ثانیه
+AUTH_LOCK = 900          # ثانیه
+#: سقف آی‌پی‌های زیر نظر — تا کسی با آی‌پی جعلی حافظه را پر نکند
+AUTH_TRACK_MAX = 2048
+
+_auth_fails = {}
+_auth_ip = _contextvars.ContextVar("nexora_client_ip", default="?")
+
+
+def _client_ip(request):
+    """
+    آی‌پی واقعی درخواست‌دهنده.
+
+    پشت nginx همه‌ی درخواست‌ها از 127.0.0.1 می‌آیند، پس بدون
+    X-Forwarded-For همه در یک سطل می‌افتند و یک مهاجم می‌تواند مدیر
+    را بیرون بیندازد. ولی این هدر را فقط وقتی باور می‌کنیم که خودِ
+    همسایه لوپ‌بک یا شبکه‌ی خصوصی باشد — یعنی nginx خودمان. از
+    اینترنت هر کسی می‌تواند هر چیزی در آن بنویسد.
+    """
+    peer = ""
+    try:
+        peer = (request.client.host or "") if request.client else ""
+    except Exception:
+        peer = ""
+
+    trusted = False
+    try:
+        ip = _ipaddress.ip_address(peer)
+        trusted = ip.is_loopback or ip.is_private
+    except ValueError:
+        trusted = False
+
+    if trusted:
+        fwd = request.headers.get("x-forwarded-for") or ""
+        first = fwd.split(",")[0].strip()
+        if first:
+            try:
+                _ipaddress.ip_address(first)
+                return first
+            except ValueError:
+                pass
+    return peer or "?"
+
+
+@app.middleware("http")
+async def _remember_client_ip(request: Request, call_next):
+    """
+    آی‌پی را برای همین درخواست کنار می‌گذارد.
+
+    check_auth از ۱۱۴ جا با همان یک آرگومان صدا زده می‌شود؛ عوض‌کردن
+    امضایش یعنی دست‌زدن به همه‌ی آن‌ها. این‌طور نگهبان بدون تغییر
+    هیچ صداکننده‌ای به آی‌پی می‌رسد.
+    """
+    token = _auth_ip.set(_client_ip(request))
+    try:
+        return await call_next(request)
+    finally:
+        _auth_ip.reset(token)
+
+
+def _auth_locked(ip):
+    """اگر قفل است، چند ثانیه‌ی دیگر باز می‌شود؛ وگرنه صفر."""
+    rec = _auth_fails.get(ip)
+    if not rec:
+        return 0
+    if rec.get("until", 0) > _time.time():
+        return int(rec["until"] - _time.time()) + 1
+    return 0
+
+
+def _auth_failed(ip):
+    now = _time.time()
+    rec = _auth_fails.get(ip)
+    if not rec or now - rec.get("first", now) > AUTH_WINDOW:
+        rec = {"first": now, "n": 0, "until": 0}
+    rec["n"] += 1
+    if rec["n"] >= AUTH_MAX_FAILS:
+        rec["until"] = now + AUTH_LOCK
+    if len(_auth_fails) >= AUTH_TRACK_MAX and ip not in _auth_fails:
+        # قدیمی‌ترین را بیرون می‌اندازیم تا فهرست بی‌مرز رشد نکند
+        try:
+            oldest = min(_auth_fails, key=lambda k: _auth_fails[k].get("first", 0))
+            _auth_fails.pop(oldest, None)
+        except ValueError:
+            pass
+    _auth_fails[ip] = rec
+    return rec
+
+
+def _auth_ok(ip):
+    """ورود درست یعنی پرونده بسته می‌شود."""
+    _auth_fails.pop(ip, None)
+
+
 def check_auth(x_admin_password: str = Header(...)):
-    if x_admin_password != load_password():
-        raise HTTPException(status_code=401, detail="رمز عبور نادرست است")
+    ip = _auth_ip.get()
+
+    wait = _auth_locked(ip)
+    if wait:
+        raise HTTPException(
+            status_code=429,
+            detail=f"تلاش‌های ناموفق زیاد بود. {wait // 60 + 1} دقیقه‌ی دیگر "
+                   "دوباره امتحان کنید.",
+            headers={"Retry-After": str(wait)})
+
+    # مقایسه‌ی زمان‌ثابت: مقایسه‌ی معمولی روی اولین بایتِ متفاوت
+    # برمی‌گردد و همان اختلاف، هرچند کوچک، رمز را بایت‌به‌بایت لو
+    # می‌دهد.
+    # بایت مقایسه می‌کنیم، نه رشته: compare_digest روی رشته‌ی غیر
+    # اسکی TypeError می‌دهد — یعنی یک رمز فارسی کل پنل را با خطای
+    # ۵۰۰ می‌بست، نه فقط ورود را.
+    if not _hmac.compare_digest(
+            str(x_admin_password or "").encode("utf-8"),
+            str(load_password() or "").encode("utf-8")):
+        rec = _auth_failed(ip)
+        left = AUTH_MAX_FAILS - rec["n"]
+        detail = "رمز عبور نادرست است"
+        if 0 < left <= 3:
+            detail += f" — {left} تلاش دیگر تا قفل‌شدن موقت"
+        raise HTTPException(status_code=401, detail=detail)
+
+    _auth_ok(ip)
 
 
 #: کلیدهایی که به مرورگر مشتری فرستاده می‌شوند.
@@ -497,8 +634,8 @@ def delete_custom_palette(palette_id: str, x_admin_password: str = Header(...)):
 
 @app.post("/api/login")
 def login(payload: dict):
-    if payload.get("password") != load_password():
-        raise HTTPException(status_code=401, detail="رمز عبور نادرست است")
+    # همان نگهبان — وگرنه بستن یک در و باز گذاشتن آن یکی.
+    check_auth((payload or {}).get("password") or "")
     return {"ok": True}
 
 

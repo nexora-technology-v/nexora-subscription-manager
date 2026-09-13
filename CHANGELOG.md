@@ -4,6 +4,36 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Security — Nothing stopped someone guessing the admin password
+
+The whole system sits behind one password: the panel, customer records, the x-ui
+credentials, the bot token. There was no limit on how often it could be guessed —
+not on `/api/login`, and not on the admin routes, which take the same password in
+a header and are just as open to guessing. The intrusion module watches SSH brute
+force; the panel's own door had no guard at all.
+
+Ten failures from one IP within five minutes now lock that IP out for fifteen,
+and a correct password during the lock is refused too — otherwise the lock is an
+inconvenience rather than a barrier. A successful login clears the record. The
+last three attempts before the lock say how many are left, so an owner who has
+forgotten their password knows where they stand; earlier than that it says
+nothing, since an early warning only tells a guesser where they are.
+
+Behind nginx every request arrives from 127.0.0.1, so `X-Forwarded-For` is used —
+but only when the immediate peer is loopback or private, i.e. our own nginx. From
+the internet the header is ignored, or the lock could be stepped around with a
+made-up header. A `ContextVar` set in middleware carries the address, so none of
+the 114 `check_auth` call sites had to change.
+
+The comparison is now constant-time. Writing that test surfaced a bug in the fix
+itself: `hmac.compare_digest` raises `TypeError` on non-ASCII strings, so an owner
+with a Persian password would have had every request fail with a 500 rather than
+a login prompt. It compares encoded bytes.
+
+The login screen showed "رمز عبور نادرست است" for every failure. With a lockout
+in place that is the worst possible message — it sends the owner back to try
+again exactly when they must not — so it now shows what the server said.
+
 ### Security — Subscription links could be derived from a Telegram ID
 
 `create_subscription` set `subId = email`, and the email is `prefix_tgid_seq`.

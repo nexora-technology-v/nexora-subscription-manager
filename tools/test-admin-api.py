@@ -9,6 +9,7 @@
 
 اجرا:  python3 tools/test-admin-api.py
 """
+import io
 import os
 import sys
 import tempfile
@@ -254,6 +255,127 @@ _sh.rmtree(SNAPS, ignore_errors=True)
 
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R
+# ═══════════════════════════════════════════════════════════
+head("حدس‌زدنِ پشت‌سرهمِ رمز باید متوقف شود")
+
+# کل سامانه پشت یک رمز است: پنل، اطلاعات مشتری‌ها، رمز x-ui، توکن
+# ربات. هیچ چیزی جلوی حدس‌زدن را نمی‌گرفت — نه در /api/login و نه در
+# مسیرهای مدیریتی که همان رمز را در هدر می‌گیرند.
+
+import importlib.util as _iu  # noqa: E402
+_spec = _iu.spec_from_file_location(
+    "nxauth", os.path.join(str(ROOT), "backend", "app.py"))
+AP = _iu.module_from_spec(_spec)
+sys.modules["nxauth"] = AP
+_spec.loader.exec_module(AP)
+
+
+def _try(pw):
+    """(کد وضعیت, متن) — بدون بالا آوردن استثنا."""
+    try:
+        AP.check_auth(pw)
+        return 200, ""
+    except Exception as e:
+        return getattr(e, "status_code", 0), str(getattr(e, "detail", e))
+
+
+AP.load_password = lambda: "testpw"
+AP._auth_fails.clear()
+code, _ = _try("testpw")
+check("رمز درست پذیرفته می‌شود", code == 200, str(code))
+
+code, _ = _try("غلط")
+check("رمز غلط رد می‌شود", code == 401, str(code))
+
+# تا آستانه پیش می‌رویم
+AP._auth_fails.clear()
+codes = [_try("غلط")[0] for _ in range(AP.AUTH_MAX_FAILS)]
+check("تا پیش از آستانه هنوز ۴۰۱ است",
+      codes[:AP.AUTH_MAX_FAILS - 1] == [401] * (AP.AUTH_MAX_FAILS - 1),
+      f"{AP.AUTH_MAX_FAILS - 1} تلاش")
+
+code, detail = _try("غلط")
+check("بعد از آستانه قفل می‌شود", code == 429, str(code))
+check("و می‌گوید چقدر باید صبر کرد", "دقیقه" in detail, detail[:60])
+
+code, _ = _try("testpw")
+check("رمز درست هم در زمان قفل رد می‌شود", code == 429,
+      "وگرنه قفل فقط یک مزاحمت است، نه سد")
+
+# قفل که باز شود، رمز درست کار می‌کند و پرونده بسته می‌شود
+AP._auth_fails["?"]["until"] = 0
+code, _ = _try("testpw")
+check("بعد از پایان قفل، ورود درست باز می‌شود", code == 200, str(code))
+check("و شمارش صفر می‌شود", "?" not in AP._auth_fails,
+      "وگرنه یک ورود موفق هم آدم را نزدیک قفل بعدی نگه می‌دارد")
+
+AP._auth_fails.clear()
+_try("غلط")
+check("نزدیک آستانه هشدار نمی‌دهد",
+      "تلاش دیگر" not in _try("غلط")[1],
+      "هشدار زودهنگام فقط به حدس‌زننده می‌گوید کجاست")
+for _ in range(AP.AUTH_MAX_FAILS - 4):
+    _try("غلط")
+check("ولی در سه تلاش آخر هشدار می‌دهد",
+      "تلاش دیگر" in _try("غلط")[1],
+      "مدیرِ فراموش‌کار باید بفهمد دارد به کجا می‌رود")
+
+# ورود از /api/login هم باید از همین نگهبان رد شود
+AP._auth_fails.clear()
+try:
+    AP.login({"password": "testpw"})
+    _login_ok = True
+except Exception:
+    _login_ok = False
+check("ورود با رمز درست کار می‌کند", _login_ok)
+for _ in range(AP.AUTH_MAX_FAILS):
+    try:
+        AP.login({"password": "غلط"})
+    except Exception:
+        pass
+try:
+    AP.login({"password": "testpw"})
+    _locked = False
+except Exception as e:
+    _locked = getattr(e, "status_code", 0) == 429
+check("ورود هم قفل می‌شود", _locked,
+      "بستن یک در و باز گذاشتن آن یکی فایده‌ای ندارد")
+
+# آی‌پی واقعی
+AP._auth_fails.clear()
+
+
+class _Req:
+    def __init__(self, peer, fwd=None):
+        self.client = type("c", (), {"host": peer})()
+        self.headers = {"x-forwarded-for": fwd} if fwd else {}
+
+
+check("پشت nginx آی‌پی واقعی خوانده می‌شود",
+      AP._client_ip(_Req("127.0.0.1", "5.6.7.8")) == "5.6.7.8",
+      "وگرنه همه در یک سطل می‌افتند و یک مهاجم مدیر را بیرون می‌اندازد")
+check("ولی از اینترنت این هدر باور نمی‌شود",
+      AP._client_ip(_Req("5.6.7.8", "1.1.1.1")) == "5.6.7.8",
+      "وگرنه با یک هدر جعلی می‌شود از قفل رد شد")
+check("هدر بی‌معنا نادیده گرفته می‌شود",
+      AP._client_ip(_Req("127.0.0.1", "not-an-ip")) == "127.0.0.1")
+
+# رمز فارسی — همان چیزی که نزدیک بود کل پنل را با ۵۰۰ ببندد
+AP._auth_fails.clear()
+AP.load_password = lambda: "رمزفارسی۱۲۳"
+check("رمز غیرانگلیسی کار می‌کند", _try("رمزفارسی۱۲۳")[0] == 200,
+      "compare_digest روی رشته‌ی غیراسکی TypeError می‌دهد — باید بایت داد")
+check("و رمز فارسیِ غلط فقط ۴۰۱ است", _try("رمزدیگر")[0] == 401,
+      "نه ۵۰۰ — خطای سرور یعنی پنل برای خودِ مدیر هم بسته می‌شود")
+AP.load_password = lambda: "testpw"
+AP._auth_fails.clear()
+
+SRC = io.open(os.path.join(str(ROOT), "backend", "app.py"),
+              encoding="utf-8").read()
+check("مقایسه‌ی رمز زمان‌ثابت است", "compare_digest" in SRC,
+      "مقایسه‌ی معمولی روی اولین بایت متفاوت برمی‌گردد")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)
