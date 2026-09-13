@@ -4,6 +4,25 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — "بدون نرخ" never said why, and a rate could vanish on save
+
+Five different situations end in "بدون نرخ", and the phrase tells you none of
+them apart: no rates on the group at all, an unlimited config with only volume
+rates defined, a volume config with only an unlimited rate, rates stored in a form
+that cannot be read, or a group whose key does not match. An owner who has
+defined a rate and still sees "بدون نرخ" has no way to tell which — which is why
+this has come back as "accounting isn't working" more than once.
+
+Every unpriced line now carries the reason, and the reason names the fix: which
+button to press, which kind of rate is missing. The group card lists them by
+count instead of showing a bare number, and the invoice and period views show
+them too.
+
+And one of those five was real: saving a rate row that could not be parsed
+silently skipped it. The response said `ok`, the row was gone, and the next thing
+the owner saw was "بدون نرخ" for a rate they had definitely entered. It is a 400
+now, naming the row.
+
 ### Fixed — The ports and clients cards still dumped the whole list
 
 Two cards in monitoring never moved to the numbered pager the rest of the panel

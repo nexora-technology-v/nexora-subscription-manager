@@ -21,14 +21,18 @@ _ok = _fail = 0
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = io.open(os.path.join(ROOT, "backend", "app.py"), encoding="utf-8").read()
 
-# فقط همین تابع را برمی‌داریم تا کل app.py با وابستگی‌هایش لازم نشود
-_m = re.search(r"def _price_for.*?\n(?=\n\n@|\n\ndef )", SRC, re.S)
+# فقط همین دو تابع را برمی‌داریم تا کل app.py با وابستگی‌هایش لازم
+# نشود. _price_for حالا کارش را به _price_with_reason می‌سپارد، پس
+# هر دو باید بیایند — وگرنه تست با NameError می‌افتد و دلیلش هیچ
+# ربطی به قیمت‌گذاری ندارد.
+_m = re.search(r"def _price_for.*?\n(?=\n\n@app)", SRC, re.S)
 if not _m:
     print(f"{R}تابع _price_for در backend/app.py پیدا نشد{X}")
     sys.exit(1)
 _ns = {}
 exec(_m.group(0), _ns)
 price_for = _ns["_price_for"]
+price_with_reason = _ns["_price_with_reason"]
 
 
 def check(name, cond, detail=""):
@@ -85,6 +89,55 @@ check("همه‌ی نرخ‌ها خراب", price_for(50, [{"gb": "x", "price": 
 
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R
+# ═══════════════════════════════════════════════════════════
+head("«بدون نرخ» باید بگوید چرا")
+
+# پنج علت مختلف به «بدون نرخ» ختم می‌شوند و هیچ‌کدام از خودِ عبارت
+# پیدا نیست. مدیری که نرخ تعریف کرده و باز هم «بدون نرخ» می‌بیند،
+# هیچ راهی ندارد بفهمد کدام‌یک است — و همین چند بار به‌عنوان
+# «حسابداری کار نمی‌کند» برگشته.
+
+_p, _w = price_with_reason(0, [])
+check("گروه بدون نرخ", _p is None and "هیچ نرخی تعریف نشده" in _w, _w)
+
+_p, _w = price_with_reason(0, [{"gb": 50, "price": 120_000}])
+check("کانفیگ نامحدود با نرخ‌های حجمی",
+      _p is None and "نامحدود" in _w and "دکمه" in _w,
+      "باید بگوید دقیقاً کجا را بزند")
+
+_p, _w = price_with_reason(50, [{"gb": 0, "price": 190_000}])
+check("کانفیگ حجمی با فقط نرخ نامحدود",
+      _p is None and "۵۰" in _w.replace("50", "۵۰"),
+      _w)
+
+_p, _w = price_with_reason(0, [{"gb": 0, "price": 190_000}])
+check("نامحدود با نرخ نامحدود قیمت می‌گیرد", _p == 190_000 and _w is None)
+
+_p, _w = price_with_reason(50, [{"gb": 50, "price": 120_000}])
+check("تطابق دقیق هنوز کار می‌کند", _p == 120_000 and _w is None)
+
+_p, _w = price_with_reason(40, [{"gb": 30, "price": 90_000},
+                                {"gb": 50, "price": 120_000}])
+check("نزدیک‌ترین بالاتر هنوز کار می‌کند", _p == 120_000 and _w is None)
+
+_p, _w = price_with_reason(200, [{"gb": 30, "price": 90_000},
+                                 {"gb": 50, "price": 120_000}])
+check("بزرگ‌تر از همه، بالاترین نرخ را می‌گیرد", _p == 120_000 and _w is None,
+      "صفر گرفتن از یک کانفیگ واقعی بدتر از تقریب است")
+
+_p, _w = price_with_reason(50, [{"gb": None, "price": None}])
+check("ردیف خراب، دلیلِ روشن می‌دهد",
+      _p is None and "خوانده نشدند" in _w, _w)
+
+APP = io.open(os.path.join(ROOT, "backend", "app.py"), encoding="utf-8").read()
+check("صورتحساب دلیل را روی هر ردیف می‌گذارد", '"priceWhy": price_why' in APP)
+check("نمای کلی هم دلیل‌ها را می‌شمارد", 'G["unpricedWhy"]' in APP)
+check("و صفحه‌ی دوره هم", '"unpricedWhy"' in APP)
+check("ثبت نرخِ ناخوانا دیگر بی‌صدا نمی‌افتد",
+      "ردیف نرخ شماره" in APP,
+      "قبلاً continue بود: پاسخ ok می‌آمد و نرخ ذخیره نمی‌شد")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

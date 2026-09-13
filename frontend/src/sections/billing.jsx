@@ -1489,6 +1489,17 @@ export function BillingDash({ password }) {
                   حجم بدون نرخ: {g.unpriced.map((v) => v ? `${faNum(v)}GB` : "نامحدود").join("، ")}
                 </div>
               )}
+              {/* دلیلش، نه فقط تعدادش.
+                  «۷ کانفیگ بدون نرخ» مدیری را که نرخ تعریف کرده به
+                  هیچ‌جا نمی‌برد جز این نتیجه که پنل خراب است. */}
+              {Object.keys(g.unpricedWhy || {}).length > 0 && (
+                <div className="text-[12px] mt-1.5 leading-relaxed"
+                  style={{ color: "var(--warn)" }}>
+                  {Object.entries(g.unpricedWhy).map(([why, n]) => (
+                    <div key={why}>• {faNum(n)} کانفیگ: {why}</div>
+                  ))}
+                </div>
+              )}
               {/* کانفیگ‌هایی که نرخ نگرفتند — با دلیل، تا معلوم باشد
                   چرا عدد صورت‌حساب از تعداد کانفیگ‌ها کمتر است */}
               {g.skipped > 0 && (
@@ -1858,6 +1869,9 @@ export function BillingInvoice({ password }) {
                 <InfoBox tone="warn">
                   حجم‌های بدون نرخ کنار گذاشته شدند:{" "}
                   {inv.unpricedVolumes.map((v) => v ? `${faNum(v)}GB` : "نامحدود").join("، ")}
+                  {(inv.unpricedWhy || []).map((why) => (
+                    <div key={why} className="mt-1.5">— {why}</div>
+                  ))}
                 </InfoBox>
               )}
 

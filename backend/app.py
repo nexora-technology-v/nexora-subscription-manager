@@ -4684,32 +4684,51 @@ def _price_for(gb, rates):
     به نامحدود تعمیم داد، پس تا وقتی نرخ نامحدود تعریف نشده بدون نرخ
     می‌ماند و در فهرست «نیاز به بررسی» دیده می‌شود.
     """
-    if not rates:
-        return None
+    price, _ = _price_with_reason(gb, rates)
+    return price
 
-    valid = []
+
+def _price_with_reason(gb, rates):
+    """
+    قیمت، به‌همراه دلیلِ نبودنش. برمی‌گرداند: (قیمت یا None, دلیل یا None)
+
+    چرا دلیل لازم است: «بدون نرخ» پنج علت مختلف دارد و هیچ‌کدامشان
+    از خودِ عبارت پیدا نیست. مدیری که نرخ تعریف کرده و باز هم «بدون
+    نرخ» می‌بیند، هیچ راهی ندارد بفهمد کدام‌یک است — و همین چند بار
+    به‌عنوان «حسابداری کار نمی‌کند» برگشته.
+    """
+    if not rates:
+        return None, "برای این گروه هیچ نرخی تعریف نشده"
+
+    valid, broken = [], 0
     for r in rates:
         try:
             valid.append((int(r.get("gb", -1)), int(r.get("price", 0))))
         except (TypeError, ValueError):
+            broken += 1
             continue
     if not valid:
-        return None
+        return None, "نرخ‌های این گروه خوانده نشدند — دوباره ثبتشان کنید"
 
     for g, price in valid:
         if g == gb:
-            return price
+            return price, None
 
     if gb > 0:
         higher = sorted((v for v in valid if v[0] > gb), key=lambda v: v[0])
         if higher:
-            return higher[0][1]
+            return higher[0][1], None
         # از همه‌ی نرخ‌ها بزرگ‌تر است — بالاترین نرخ حجمی را می‌گیرد
         volume_rates = [v for v in valid if v[0] > 0]
         if volume_rates:
-            return max(volume_rates, key=lambda v: v[0])[1]
+            return max(volume_rates, key=lambda v: v[0])[1], None
+        return None, (f"این کانفیگ {gb} گیگ است ولی فقط نرخ نامحدود "
+                      "تعریف شده — یک نرخ حجمی اضافه کنید")
 
-    return None
+    # gb == 0 یعنی نامحدود
+    return None, ("این کانفیگ نامحدود است و نرخ نامحدود تعریف نشده — "
+                  "در ویرایش گروه، دکمه‌ی «نامحدود» را بزنید و قیمتش "
+                  "را بگذارید")
 
 
 @app.get("/api/admin/billing/groups")
@@ -4891,7 +4910,8 @@ def _billing_overview_impl():
                 "sources": {},
                 "configs": 0, "active": 0, "months": 0, "renewals": 0,
                 "used": 0, "quota": 0, "due": 0,
-                "paid": pays.get(g, 0), "unpriced": 0, "estimated": 0,
+                "paid": pays.get(g, 0), "unpriced": 0, "unpricedWhy": {},
+                "estimated": 0,
                 # کانفیگ‌هایی که ساخته شدند ولی هرگز به کار نیفتادند —
                 # اینها نرخ نمی‌گیرند و این‌جا شمرده می‌شوند تا مدیر
                 # ببیند چند تا و چرا کنار گذاشته شده‌اند
@@ -4939,9 +4959,14 @@ def _billing_overview_impl():
                 used_gb = cl["used"] / (1024 ** 3)
                 G["due"] += round(used_gb * G["perGb"])
             else:
-                price = _price_for(gb, G["rates"])
+                price, why = _price_with_reason(gb, G["rates"])
                 if price is None:
                     G["unpriced"] += 1
+                    # چرایش را هم نگه می‌داریم. «۷ کانفیگ بدون نرخ»
+                    # بدون دلیل، مدیر را به همان‌جایی می‌برد که نرخ
+                    # را از قبل تعریف کرده و فکر می‌کند پنل خراب است.
+                    if why:
+                        G["unpricedWhy"][why] = G["unpricedWhy"].get(why, 0) + 1
                 else:
                     G["due"] += months * price
 
@@ -4962,7 +4987,8 @@ def _billing_overview_impl():
                 "perGb": _price_per_gb(conf),
                 "configs": 0, "active": 0, "months": 0, "renewals": 0,
                 "used": 0, "quota": 0, "due": 0,
-                "paid": pays.get(gname, 0), "unpriced": 0, "estimated": 0,
+                "paid": pays.get(gname, 0), "unpriced": 0, "unpricedWhy": {},
+                "estimated": 0,
                 "botOwned": 0,
             }
 
@@ -5036,13 +5062,20 @@ def billing_group_put(group_key: str, payload: dict, x_admin_password: str = Hea
     if not isinstance(rates, list):
         raise HTTPException(status_code=400, detail="فهرست نرخ نامعتبر است")
 
+    # ردیفی که خوانده نشود باید خطا بدهد، نه اینکه بی‌صدا بیفتد.
+    #
+    # قبلاً continue بود: پاسخ «ok» می‌آمد و نرخی که مدیر تازه نوشته
+    # بود اصلاً ذخیره نمی‌شد. بعد در حسابداری «بدون نرخ» می‌دید و
+    # مطمئن بود که نرخ را تعریف کرده — چون کرده بود.
     clean = []
-    for r in rates:
+    for i, r in enumerate(rates, 1):
         try:
             clean.append({"gb": max(0, int(r.get("gb", 0))),
                           "price": max(0, int(r.get("price", 0)))})
-        except (TypeError, ValueError):
-            continue
+        except (TypeError, ValueError, AttributeError):
+            raise HTTPException(
+                status_code=400,
+                detail=f"ردیف نرخ شماره {i} خوانده نشد — حجم و قیمت باید عدد باشند")
 
     try:
         per_gb = int(payload.get("per_gb") or payload.get("perGb") or 0)
@@ -5445,7 +5478,7 @@ def billing_invoice(group_key: str, x_admin_password: str = Header(...)):
             continue
         months, kind, drift = _months_for(cl, logged)
         gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
-        price = _price_for(gb, rates)
+        price, price_why = _price_with_reason(gb, rates)
         amount = (months * price) if price is not None else 0
         due += amount
         created_j, created_g = _to_jalali(cl.get("createdAt"))
@@ -5480,6 +5513,7 @@ def billing_invoice(group_key: str, x_admin_password: str = Header(...)):
             "kind": kind,
             "drift": drift,
             "price": price,
+            "priceWhy": price_why,
             "amount": amount,
             "active": cl["enable"],
             "status": status,
@@ -5547,6 +5581,10 @@ def billing_invoice(group_key: str, x_admin_password: str = Header(...)):
         "paid": totals["paid"],
         "balance": totals["balance"],
         "unpricedVolumes": totals["unpriced"],
+        # دلیل‌ها، نه فقط شمارش — همان چیزی که مدیر برای درست‌کردنش
+        # لازم دارد
+        "unpricedWhy": sorted({l["priceWhy"] for l in lines
+                               if l["price"] is None and l.get("priceWhy")}),
         "totals": totals,
         "review": review,
         "generatedAt": _to_jalali(int(datetime.now().timestamp() * 1000))[0],
@@ -6530,7 +6568,7 @@ def billing_period(group_key: str, start: str = "", end: str = "",
             continue
 
         gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
-        price = _price_for(gb, rates)
+        price, price_why = _price_with_reason(gb, rates)
         _cj, created_g = _to_jalali(cl.get("createdAt"))
         created_j, _ = _to_jalali(cl.get("createdAt"))
 
@@ -6542,7 +6580,8 @@ def billing_period(group_key: str, start: str = "", end: str = "",
                 "email": cl["email"], "gb": gb,
                 "gbLabel": "نامحدود" if gb == 0 else f"{gb} GB",
                 "date": created_g, "dateJalali": created_j,
-                "price": price, "amount": price or 0,
+                "price": price, "priceWhy": price_why,
+                "amount": price or 0,
                 "usedGB": round(cl["used"] / (1024 ** 3), 1),
             })
 
@@ -6555,7 +6594,8 @@ def billing_period(group_key: str, start: str = "", end: str = "",
                     "email": cl["email"], "gb": gb,
                     "gbLabel": "نامحدود" if gb == 0 else f"{gb} GB",
                     "date": rdate, "dateJalali": rj, "kind": kind,
-                    "price": price, "amount": price or 0,
+                    "price": price, "priceWhy": price_why,
+                    "amount": price or 0,
                 })
 
     new_total = sum(x["amount"] for x in new_configs)
@@ -6600,6 +6640,10 @@ def billing_period(group_key: str, start: str = "", end: str = "",
             "balance": due - paid_in_period,
             "estimated": sum(1 for r in renewals if r["kind"] == "تخمینی"),
             "unpriced": sum(1 for x in new_configs + renewals if x["price"] is None),
+            # همان دلیل‌ها، جمع‌شده — تا صفحه بتواند یک جمله‌ی روشن
+            # بگوید به‌جای یک عدد
+            "unpricedWhy": sorted({x["priceWhy"] for x in new_configs + renewals
+                                   if x["price"] is None and x.get("priceWhy")}),
         },
         "payments": [p for p in pays if in_period((p.get("paid_at") or "")[:10])],
     }
