@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect } from "react";
 import {
-  Activity, AlertTriangle, CheckCircle2, ChevronDown, HelpCircle, Loader2, Network, Package, RefreshCw, Save, Search, Server, ShieldCheck, TrendingUp, Users, XCircle, Zap,
+  Activity, AlertTriangle, CheckCircle2, HelpCircle, Loader2, Network, Package, RefreshCw, Save, Search, Server, ShieldCheck, TrendingUp, Users, XCircle, Zap,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum, fmtSize, fmtUptime, toFaDigits } from "../lib/format";
@@ -111,7 +111,6 @@ export const RISK_META = {
  * باید به آن رسیدگی کنید؛ بقیه پشت یک دکمه است.
  */
 export function PortsCard({ ports }) {
-  const [all, setAll] = useState(false);
   // فیلتر: روی سرور واقعی ده‌ها پورت هست و بدون فیلتر، پیداکردن
   // «آن یکی که یادم نیست چیست» یعنی چشم‌چرخاندن در کل فهرست
   const [risk, setRisk] = useState("all");
@@ -139,12 +138,18 @@ export function PortsCard({ ports }) {
   };
 
   const risky = [...high, ...med];
-  // با فیلتر فعال، همه‌ی نتایج نشان داده می‌شوند؛ بدون فیلتر، همان
-  // رفتار قبلی: فقط چیزی که باید به آن رسیدگی شود
-  const shown = filtering
-    ? [...risky, ...low].filter(match)
-    : (all ? [...risky, ...low] : risky.slice(0, 6));
-  const hidden = filtering ? 0 : ports.length - shown.length;
+
+  // همه‌ی پورت‌ها به فهرست می‌روند و صفحه‌بندی می‌شوند.
+  //
+  // قبلاً دو حالت بود و هر دو می‌توانستند کل فهرست را یک‌جا بریزند:
+  // با فیلتر فعال هیچ سقفی نبود، و دکمه‌ی «نمایش همه‌ی N پورت» هم
+  // همه را باز می‌کرد. روی سرور ایران که نزدیک هشتصد سوکت دارد،
+  // یعنی یک جدول هشتصد ردیفی در یک کارت — همان چیزی که «خیلی بزرگ
+  // شده و از باکس زده بیرون».
+  //
+  // پرخطرها اول می‌آیند، پس صفحه‌ی اول همان چیزی است که باید به آن
+  // رسیدگی شود.
+  const ordered = [...risky, ...low].filter(match);
 
   return (
     <div className="fx-card p-5 mb-4">
@@ -183,44 +188,37 @@ export function PortsCard({ ports }) {
           : "هر پورتِ رو به اینترنت یک در است. این‌ها را بشناسید یا ببندید."}
       </p>
 
-      {shown.length > 0 && (
-        <div style={{ overflowX: "auto" }}>
-          <table className="fx-table">
-            <thead>
-              <tr><th>پورت</th><th>پروتکل</th><th>پردازه</th><th>دسترسی</th><th>ریسک</th></tr>
-            </thead>
-            <tbody>
-              {shown.map((p, i) => {
-                const r = RISK_META[p.risk] || RISK_META.low;
-                return (
-                  <tr key={`${p.port}-${p.proto}-${i}`}>
-                    <td style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>{p.port}</td>
-                    <td style={{ color: "var(--muted)" }}>{p.proto}</td>
-                    <td dir="ltr" style={{ color: "var(--dim)" }}>{p.process || "—"}</td>
-                    <td style={{ color: p.public ? "var(--warn)" : "var(--muted)" }}>
-                      {p.public ? "اینترنت" : "فقط داخلی"}
-                    </td>
-                    <td>
-                      <span className="fx-pill" style={{ background: r.bg, color: r.c }}>
-                        {r.t}{p.known ? ` · ${p.known}` : ""}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {(hidden > 0 || all) && (
-        <button onClick={() => setAll(!all)}
-          className="fx-btn-g w-full mt-3 py-2.5 text-[13px] flex items-center justify-center gap-1.5">
-          {all
-            ? <>کمتر <ChevronDown size={14} style={{ transform: "rotate(180deg)" }} /></>
-            : <>نمایش همه‌ی {faNum(ports.length)} پورت <ChevronDown size={14} /></>}
-        </button>
-      )}
+      <LongList items={ordered} initial={10} label="پورت"
+        empty="با این فیلتر پورتی نماند"
+        container={(rows) => (
+          <div style={{ overflowX: "auto" }}>
+            <table className="fx-table">
+              <thead>
+                <tr><th>پورت</th><th>پروتکل</th><th>پردازه</th><th>دسترسی</th><th>ریسک</th></tr>
+              </thead>
+              <tbody>{rows}</tbody>
+            </table>
+          </div>
+        )}>
+        {(p, i) => {
+          const r = RISK_META[p.risk] || RISK_META.low;
+          return (
+            <tr key={`${p.port}-${p.proto}-${i}`}>
+              <td style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>{p.port}</td>
+              <td style={{ color: "var(--muted)" }}>{p.proto}</td>
+              <td dir="ltr" style={{ color: "var(--dim)" }}>{p.process || "—"}</td>
+              <td style={{ color: p.public ? "var(--warn)" : "var(--muted)" }}>
+                {p.public ? "اینترنت" : "فقط داخلی"}
+              </td>
+              <td>
+                <span className="fx-pill" style={{ background: r.bg, color: r.c }}>
+                  {r.t}{p.known ? ` · ${p.known}` : ""}
+                </span>
+              </td>
+            </tr>
+          );
+        }}
+      </LongList>
     </div>
   );
 }
@@ -553,7 +551,6 @@ export function UsageHistoryCard({ password }) {
 /** پرمصرف‌ترین مشتری‌ها — بر اساس ترافیک واقعی پنل، نه شمارش اتصال. */
 export function TopClientsCard({ password }) {
   const [d, setD] = useState(null);
-  const [all, setAll] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -578,8 +575,12 @@ export function TopClientsCard({ password }) {
     );
   }
 
-  const list = all ? d.clients : (d.clients || []).slice(0, 6);
-  const max = d.clients?.[0]?.usedGB || 1;
+  // همان قاعده‌ی کارت پورت‌ها: صفحه‌بندی عددی، نه «نمایش همه».
+  //
+  // فهرست مشتری‌ها به تعداد کانفیگ‌های فروخته‌شده بزرگ می‌شود، پس
+  // دکمه‌ی «نمایش همه» یعنی کارتی که با رشد کسب‌وکار بلندتر می‌شود.
+  const list = d.clients || [];
+  const max = list[0]?.usedGB || 1;
 
   return (
     <div className="fx-card p-5 mb-4">
@@ -599,7 +600,10 @@ export function TopClientsCard({ password }) {
       {!list.length ? (
         <EmptyState icon={Users} text="هنوز مصرفی ثبت نشده"
           hint="کانفیگ‌ها ساخته شده‌اند ولی هنوز ترافیکی از آن‌ها عبور نکرده." />
-      ) : list.map((c) => (
+      ) : (
+      <LongList items={list} initial={6} label="مشتری" searchable
+        match={(c, q) => String(c.email).toLowerCase().includes(q)}>
+        {(c) => (
         <div key={c.email} className="py-2">
           <div className="flex items-baseline justify-between gap-2 mb-1 flex-wrap">
             <span dir="ltr" className="text-[13px] truncate"
@@ -626,14 +630,8 @@ export function TopClientsCard({ password }) {
             </div>
           )}
         </div>
-      ))}
-
-      {(d.clients || []).length > 6 && (
-        <button onClick={() => setAll(!all)}
-          className="fx-btn-g w-full mt-3 py-2.5 text-[13px] flex items-center justify-center gap-1.5">
-          {all ? "کمتر" : `نمایش همه‌ی ${faNum(d.clients.length)} مشتری`}
-          <ChevronDown size={14} style={all ? { transform: "rotate(180deg)" } : undefined} />
-        </button>
+        )}
+      </LongList>
       )}
     </div>
   );

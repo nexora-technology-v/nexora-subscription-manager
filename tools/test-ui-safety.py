@@ -191,6 +191,58 @@ for b in broken[:8]:
 
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R
+# ═══════════════════════════════════════════════════════════
+head("فهرست بلند باید صفحه‌بندی شود، نه اینکه همه‌اش ریخته شود")
+
+# سرور ایران نزدیک هشتصد سوکت باز دارد. کارت «پورت‌های باز» دو راه
+# داشت که هر دو کل فهرست را یک‌جا می‌ریختند: با فیلتر فعال هیچ سقفی
+# نبود، و دکمه‌ی «نمایش همه‌ی N پورت» هم همه را باز می‌کرد. نتیجه یک
+# جدول هشتصد ردیفی در یک کارت بود.
+#
+# LongList صفحه‌بندی عددی دارد — همان چیزی که لازم است — ولی این
+# کارت از آن استفاده نمی‌کرد.
+
+MON = io.open(os.path.join(ROOT, "frontend", "src", "sections",
+                           "monitoring.jsx"), encoding="utf-8").read()
+_ports = MON[MON.index("export function PortsCard"):]
+_ports = _ports[:_ports.index("\nexport function")]
+
+check("کارت پورت‌ها صفحه‌بندی دارد", "<LongList" in _ports,
+      "همان کامپوننتی که بقیه‌ی فهرست‌های بلند استفاده می‌کنند")
+# دنبال خودِ دکمه می‌گردیم، نه متن — وگرنه توضیحِ همین اصلاح هم
+# به‌عنوان دکمه شمرده می‌شود
+check("و دکمه‌ی «نمایش همه» ندارد",
+      "faNum(ports.length)} پورت" not in _ports,
+      "«نمایش بیشتر» فهرست را بلندتر می‌کند — دقیقاً همان مشکل")
+check("کارت مشتری‌ها هم صفحه‌بندی شد",
+      "نمایش همه‌ی ${faNum(d.clients.length)} مشتری" not in MON
+      and "items={list} initial={6}" in MON,
+      "فهرست مشتری‌ها با رشد کسب‌وکار بلندتر می‌شد")
+check("و حالتِ all جایی نمانده", "const [all, setAll]" not in MON,
+      "وضعیتی که دیگر خوانده نمی‌شود فقط گمراه‌کننده است")
+check("و حالتِ بی‌سقف هم ندارد",
+      "setAll" not in _ports and "const [all," not in _ports)
+check("پرخطرها هنوز اول می‌آیند",
+      "[...risky, ...low]" in _ports,
+      "صفحه‌ی اول باید همان چیزی باشد که باید به آن رسیدگی شود")
+
+UI = io.open(os.path.join(ROOT, "frontend", "src", "ui", "index.jsx"),
+             encoding="utf-8").read()
+check("LongList می‌تواند ظرف دلخواه بگیرد", "container" in UI,
+      "ردیف جدول باید داخل tbody بنشیند، نه داخل div")
+check("و صفحه‌بندی‌اش عددی است", "Pager page={cur}" in UI)
+
+# هر فهرستی که از داده‌ی سرور می‌آید و مستقیم map می‌شود، بالقوه
+# بی‌سقف است. این‌ها را می‌شماریم تا کارت تازه‌ای همان اشتباه را
+# تکرار نکند.
+_unbounded = []
+for _name in ("sec.processes", "sec.services", "conn.byIp"):
+    if f"{_name}.map(" in MON:
+        _unbounded.append(_name)
+check("فهرست‌های بلندِ دیگر هم مستقیم map نمی‌شوند", not _unbounded,
+      "، ".join(_unbounded) if _unbounded else "همه از LongList رد می‌شوند")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

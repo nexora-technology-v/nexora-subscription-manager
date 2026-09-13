@@ -630,7 +630,7 @@ export function usePager(items, perPage = 10) {
 
 export function LongList({
   items, children, initial = 8, searchable = false,
-  match, empty = "چیزی نیست", label = "مورد",
+  match, empty = "چیزی نیست", label = "مورد", container,
 }) {
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
@@ -681,7 +681,10 @@ export function LongList({
         </div>
       )}
 
-      {shown.map(children)}
+      {/* ظرف اختیاری: ردیف‌های جدول باید داخل <tbody> بنشینند، نه
+          داخل یک <div>. بدون این، هر فهرستِ جدولی مجبور بود
+          صفحه‌بندی خودش را از نو بنویسد — و ننوشت. */}
+      {container ? container(shown.map(children)) : shown.map(children)}
 
       {!filtered.length && (
         <div className="text-[13px] py-4 text-center"

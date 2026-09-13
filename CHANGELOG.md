@@ -4,6 +4,21 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — The ports and clients cards still dumped the whole list
+
+Two cards in monitoring never moved to the numbered pager the rest of the panel
+uses. The open-ports card had two ways to render everything at once: with any
+filter active there was no cap at all, and the "نمایش همه‌ی N پورت" button opened
+the lot. On the Iran node — around eight hundred sockets — that is an
+eight-hundred-row table inside one card, which is the section reported as too big
+and spilling out of its box. The top-clients card had the same button, on a list
+that grows with every config sold.
+
+Both now use `LongList`: ten and six per page, numbered, with search. Risky ports
+still sort first, so page one is what needs attention. `LongList` gained an
+optional `container` so table rows can sit in a real `<tbody>` instead of a
+`<div>` — the reason this card had been skipped.
+
 ### Fixed — An affiliate could be their own customer
 
 The friend-referral path refuses a self-invite. The affiliate path had no such
