@@ -289,14 +289,34 @@ check("کانفیگ‌ها گرفته شدند", len(res["configs"]) == 3,
 # ═══════════════ لینک اشتراک ═══════════════
 section("لینک اشتراک")
 check("بدون دامنه‌ی مدیر، از تنظیمات پنل ساخته می‌شود",
-      res["sub_url"] == f"https://sub.example.ir:2096/sub/{EMAIL}",
+      res["sub_url"] == f"https://sub.example.ir:2096/sub/{res['sub_id']}",
       str(res["sub_url"]))
 
 c2 = X.XUI(BASE, "admin", "admin")
 r2 = c2.create_subscription(41, "nexora_666_1", gb=10, days=7, tg_id=666,
                             sub_base_url="https://my.dom/sub", inbound_ids=[41])
 check("دامنه‌ی مدیر اولویت دارد",
-      r2["sub_url"] == "https://my.dom/sub/nexora_666_1", str(r2["sub_url"]))
+      r2["sub_url"] == f"https://my.dom/sub/{r2['sub_id']}", str(r2["sub_url"]))
+
+# ═══ آدرس اشتراک نباید از روی شناسه‌ی تلگرام ساختنی باشد ═══
+#
+# قبلاً subId دقیقاً همان ایمیل بود: prefix_tgid_seq. مسیر اشتراک در
+# 3x-ui رمز نمی‌خواهد، پس کسی که یک کانفیگ خودش را دارد پیشوند و
+# دامنه را می‌داند و می‌تواند بازه‌ای از شناسه‌های تلگرام را پویش کند
+# و اشتراک زنده‌ی بقیه را بردارد.
+check("شناسه‌ی لینک دیگر همان ایمیل نیست", res["sub_id"] != EMAIL,
+      res["sub_id"])
+check("و شناسه‌ی تلگرام در آن نیست", "555" not in res["sub_id"],
+      "وگرنه باز هم ساختنی است")
+check("ولی پیشوند برند می‌ماند", res["sub_id"].startswith("nexora_"),
+      res["sub_id"])
+check("هر بار متفاوت است",
+      X.XUI.make_sub_id(EMAIL) != X.XUI.make_sub_id(EMAIL))
+check("و برای آدرس امن است",
+      re.fullmatch(r"[A-Za-z0-9_]+", res["sub_id"]) is not None,
+      res["sub_id"])
+check("ایمیل کلاینت دست‌نخورده می‌ماند", panel["email"] == EMAIL,
+      "برند صفحه‌ی اشتراک از ایمیل خوانده می‌شود، نه از آدرس")
 
 # ═══════════════ خواندن ═══════════════
 section("خواندن کلاینت")

@@ -4,6 +4,24 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Security — Subscription links could be derived from a Telegram ID
+
+`create_subscription` set `subId = email`, and the email is `prefix_tgid_seq`.
+A 3x-ui subscription path takes no password — no subscription link does; its
+whole protection is that the string cannot be guessed. 3x-ui generates a random
+`subId` for exactly that reason, and we were replacing it with something
+countable.
+
+The real risk is not targeting one customer, it is scanning. Anyone holding one
+config of their own knows the prefix and the domain; from there a range of
+Telegram IDs with a small `seq` yields other customers' live subscriptions —
+their configs, on their quota.
+
+New configs now get `prefix_<16 hex>`. The prefix stays, in case any routing is
+keyed on it; the subscription page reads the brand from the client *email*, not
+from the URL, so nothing about branding changes. Existing subscriptions are
+untouched — their `subId` and link are stored and keep working.
+
 ### Fixed — The customer who most needs to renew was the one shown no banner
 
 The subscription page's renew banner fired on `daysLeft >= 0 && daysLeft <=

@@ -8,6 +8,7 @@
 
 import re
 import json
+import secrets
 import time
 import uuid as uuidlib
 import logging
@@ -873,12 +874,38 @@ class XUI:
         except Exception:
             return [int(inbound_id)]
 
+    @staticmethod
+    def make_sub_id(email):
+        """
+        شناسه‌ی لینک اشتراک — با پیشوند برند، ولی غیرقابل‌حدس.
+
+        قبلاً subId دقیقاً خود ایمیل بود: prefix_tgid_seq. یعنی آدرس
+        اشتراک هر مشتری از روی شناسه‌ی تلگرامش ساختنی بود، و مسیر
+        اشتراک در 3x-ui رمز نمی‌خواهد — همین‌طور که هیچ لینک اشتراکی
+        نمی‌خواهد. امنیتش تماماً به حدس‌نزدنی‌بودن همان رشته است.
+
+        خطر واقعی حدسِ هدف‌دار نیست، پویش است: کسی که یک کانفیگ خودش
+        را دارد پیشوند و دامنه را می‌داند، و بعد کافی است بازه‌ای از
+        شناسه‌های تلگرام را با seq کوچک امتحان کند تا اشتراک زنده‌ی
+        بقیه را برداشت کند. خودِ 3x-ui به همین دلیل subId تصادفی
+        می‌سازد؛ ما آن را با چیزی قابل‌شمارش عوض کرده بودیم.
+
+        پیشوند می‌ماند چون ممکن است جایی مسیردهی روی آن بسته باشد؛
+        برند صفحه‌ی اشتراک از *ایمیل* کلاینت خوانده می‌شود نه از این،
+        پس تصادفی‌کردنش چیزی را خراب نمی‌کند.
+
+        اشتراک‌های موجود دست نمی‌خورند: subId و لینکشان در دیتابیس
+        ذخیره است و همان می‌ماند.
+        """
+        prefix = (str(email or "").split("_")[0] or "nx")[:12]
+        return f"{prefix}_{secrets.token_hex(8)}"
+
     def create_subscription(self, inbound_id, email, gb, days, ip_limit=2,
                             tg_id=None, sub_base_url=None, inbound_ids=None):
         """
         ساخت اشتراک کامل و برگرداندن اطلاعات لازم برای ارسال به مشتری.
         """
-        sub_id = email  # همان email به‌عنوان subId تا لینک قابل‌پیش‌بینی باشد
+        sub_id = self.make_sub_id(email)
         client = self.add_client(inbound_id, email, gb=gb, days=days,
                                  ip_limit=ip_limit, tg_id=tg_id, sub_id=sub_id,
                                  inbound_ids=inbound_ids)
