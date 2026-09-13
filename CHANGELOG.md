@@ -4,6 +4,21 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Added — Interpolated SQL is checked for request data
+
+Values are always parameterised, but table and column *names* cannot be, so 24
+queries build those with an f-string. That is fine while the names come from the
+code — a fixed list, a whitelist, or the database's own schema. It stops being
+fine the moment something from the request body lands in the query text.
+
+All 24 were read: filter fragments from a constant dictionary, `SET` clauses
+assembled from literals written in the code, whitelisted keys, table names from
+`sqlite_master`, and placeholder strings. None takes request data. No injection.
+
+The check is permanent now — it flags any SQL f-string whose interpolated
+expression references the request. Confirmed by planting one and watching the
+test name the file, the line and the expression.
+
 ### Added — Every query is checked for tenant scoping
 
 The bot is multi-tenant: each shop shares the same tables and only the

@@ -594,6 +594,53 @@ if _leaks:
 
 
 # ═══════════════════════════════════════════════════════════
+#  درز — SQL ساخته‌شده با درج رشته
+# ═══════════════════════════════════════════════════════════
+head("درز · درجِ رشته در SQL")
+
+# مقدارها همیشه با ? پارامتر می‌شوند، ولی *نام* جدول و ستون را
+# نمی‌شود پارامتر کرد — پس چند جا با f-string ساخته می‌شوند.
+#
+# تا وقتی آن نام‌ها از خود کد بیایند (فهرست ثابت، فهرست سفید، یا
+# اسکیمای دیتابیس) هیچ مشکلی نیست. خطر جایی است که چیزی از بدنه‌ی
+# درخواست مستقیم داخل کوئری بنشیند.
+
+#: نام‌هایی که یعنی «این از بیرون آمده».
+REQUEST_ISH = ("payload", "request", "body", "form", "params",
+               "user_input", "raw_input")
+
+SQL_KW = re.compile(
+    r"\b(SELECT|INSERT INTO|UPDATE|DELETE FROM|ALTER TABLE|PRAGMA)\b", re.I)
+
+_interp, _risky = 0, []
+for _path in ("backend/app.py", "bot/db.py", "bot/handlers.py",
+              "backend/tunnels.py"):
+    _src = io.open(os.path.join(ROOT, _path), encoding="utf-8").read()
+    for _n in ast.walk(ast.parse(_src)):
+        if not isinstance(_n, ast.JoinedStr):
+            continue
+        _lit = " ".join(v.value for v in _n.values
+                        if isinstance(v, ast.Constant)
+                        and isinstance(v.value, str))
+        if not SQL_KW.search(_lit):
+            continue
+        _interp += 1
+        for _v in _n.values:
+            if not isinstance(_v, ast.FormattedValue):
+                continue
+            _expr = ast.unparse(_v.value)
+            if any(r in _expr.lower() for r in REQUEST_ISH):
+                _risky.append(f"{_path}:{_n.lineno} — {{{_expr}}}")
+
+check("کوئری‌های درج‌شده پیدا شدند", _interp > 15, f"{_interp} کوئری")
+check("هیچ‌کدام مقدارِ درخواست را داخل SQL نمی‌گذارند", not _risky,
+      f"{len(_risky)} مورد" if _risky else f"{_interp} کوئری بررسی شد")
+if _risky:
+    bullets(_risky)
+
+
+
+# ═══════════════════════════════════════════════════════════
 print(f"\n{D}{'─' * 54}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
