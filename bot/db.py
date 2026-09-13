@@ -605,6 +605,47 @@ class TenantDB:
                 (self.tid, user_id)).fetchone()
             return True, (row["coins"] if row else 0)
 
+    def reward_referral(self, referrer_id, referred_id, amount, note,
+                        order_id=None):
+        """
+        پاداش معرف — یک‌بار به ازای هر دوستِ معرفی‌شده. اتمی.
+
+        برمی‌گرداند: پرداخت شد یا نه.
+
+        قاعده‌ی قبلی این بود: «اگر این کاربر هیچ سفارش تاییدشده‌ی
+        دیگری ندارد». دو اشکال داشت.
+
+        یکی اینکه قاعده‌ی درستی نبود — چیزی که واقعاً می‌خواهیم «یک
+        پاداش برای هر دوست» است، نه «برای اولین سفارش».
+
+        دوم اینکه بین شمردن و پرداخت فاصله بود: دو تایید هم‌زمان یا
+        هر دو پاداش می‌دادند، یا — بعد از اینکه ادعای سفارش وضعیت را
+        زودتر approved کرد — هیچ‌کدام.
+
+        این‌جا شرط و درج یک دستورند، پس هیچ فاصله‌ای نمی‌ماند.
+        """
+        amount = int(amount or 0)
+        if amount <= 0 or not referrer_id or not referred_id:
+            return False
+
+        with conn() as c:
+            cur = c.execute(
+                """INSERT INTO coin_tx (tenant_id, user_id, amount, kind,
+                                        note, ref_user_id, order_id)
+                   SELECT ?,?,?,'referral',?,?,?
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM coin_tx
+                         WHERE tenant_id=? AND kind='referral'
+                           AND ref_user_id=?)""",
+                (self.tid, referrer_id, amount, note, referred_id, order_id,
+                 self.tid, referred_id))
+            if not cur.rowcount:
+                return False
+            c.execute(
+                "UPDATE users SET coins = coins + ? WHERE tenant_id=? AND id=?",
+                (amount, self.tid, referrer_id))
+            return True
+
     def claim_trial(self, user_id):
         """
         گرفتن حقِ اشتراک تست، اتمی. برمی‌گرداند: گرفته شد یا نه.

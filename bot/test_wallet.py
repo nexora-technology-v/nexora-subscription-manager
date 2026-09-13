@@ -710,6 +710,74 @@ check("نوشتن دیرهنگام پرچم حذف شده",
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("پاداش معرف — یک‌بار برای هر دوست")
+
+# قاعده‌ی قبلی «اگر این کاربر سفارش تاییدشده‌ی دیگری ندارد» بود. دو
+# اشکال: قاعده‌ی درستی نبود، و بین شمردن و پرداخت فاصله داشت.
+#
+# و اصلاحِ ادعای سفارش این را بدتر کرد: چون حالا وضعیت *قبل* از ساخت
+# approved می‌شود، دو سفارش هم‌زمانِ یک مشتری باعث می‌شد هر دو
+# شمارش، دیگری را ببیند و هیچ‌کدام پاداش ندهد.
+
+ref_u = new_user(0)
+friend = new_user(0)
+
+PAID = []
+G2 = threading.Barrier(3)
+
+
+def _pay():
+    G2.wait()
+    if d.reward_referral(ref_u["id"], friend["id"], 25, "خرید دوست"):
+        PAID.append(1)
+
+
+tt = [threading.Thread(target=_pay) for _ in range(3)]
+for t in tt:
+    t.start()
+for t in tt:
+    t.join()
+
+check("از سه نخ فقط یکی پرداخت می‌کند", len(PAID) == 1,
+      f"{len(PAID)} پرداخت")
+
+bal = d.q("SELECT coins FROM users WHERE tenant_id=? AND id=?",
+          (tid, ref_u["id"]), one=True)
+check("و سکه فقط یک‌بار اضافه شده", bal and bal["coins"] == 25,
+      f"{bal and bal['coins']} سکه")
+
+rows = d.q("SELECT * FROM coin_tx WHERE tenant_id=? AND kind='referral'"
+           " AND ref_user_id=?", (tid, friend["id"]))
+check("و فقط یک تراکنش ثبت شده", len(rows) == 1, f"{len(rows)} تراکنش")
+
+check("تلاش بعدی هم پرداخت نمی‌کند",
+      not d.reward_referral(ref_u["id"], friend["id"], 25, "دوباره"))
+
+head("ولی دوستِ دوم پاداش خودش را می‌گیرد")
+
+friend2 = new_user(0)
+check("دوست تازه پاداش می‌گیرد",
+      d.reward_referral(ref_u["id"], friend2["id"], 25, "دوست دوم"),
+      "قاعده «یک‌بار برای هر دوست» است، نه «یک‌بار در کل»")
+bal2 = d.q("SELECT coins FROM users WHERE tenant_id=? AND id=?",
+           (tid, ref_u["id"]), one=True)
+check("و موجودی جمع می‌شود", bal2 and bal2["coins"] == 50,
+      f"{bal2 and bal2['coins']} سکه")
+
+head("حالت‌های بی‌معنی")
+
+check("مبلغ صفر پرداخت نمی‌شود",
+      not d.reward_referral(ref_u["id"], new_user(0)["id"], 0, "صفر"))
+check("بدون معرف هم نه",
+      not d.reward_referral(None, friend["id"], 25, "بی‌معرف"))
+
+check("و کد دیگر سفارش‌ها را نمی‌شمارد",
+      "status='approved' AND id<>?" not in SRC,
+      "قاعده‌ی قدیمی به تعداد سفارش‌ها وابسته بود")
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

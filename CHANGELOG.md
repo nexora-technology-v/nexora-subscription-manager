@@ -4,6 +4,22 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — The referral reward asked the wrong question, and my own fix made it worse
+
+`_reward_referrer` paid out when the buyer had no *other* approved order. That is
+not the rule the business wants, which is one reward per friend introduced — and
+it was read-then-write, so two approvals at once could pay twice.
+
+Claiming orders before provisioning (above) changed which way it failed. With the
+status now set early, two concurrent orders from the same customer each see the
+other as an earlier approved order, and *neither* pays. I introduced that, and
+the fix for it is to stop counting orders at all.
+
+The reward is now one statement: insert the coin transaction only if no referral
+row exists for that friend, then credit the coins if the insert happened. The
+condition and the payment cannot be separated, and the rule matches what it is
+actually for — a second friend still earns a second reward.
+
 ### Fixed — The free trial could be taken more than once
 
 Same shape as the approval race, and this one gives away product.

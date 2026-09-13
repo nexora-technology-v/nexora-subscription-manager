@@ -1032,14 +1032,6 @@ def _reward_referrer(ctx, user, order_id):
     if not user.get("referred_by"):
         return
 
-    prev = ctx.db.q(
-        """SELECT COUNT(*) AS c FROM orders
-           WHERE tenant_id=? AND user_id=? AND status='approved' AND id<>?""",
-        (ctx.tid, user["id"], order_id), one=True
-    )
-    if (prev or {}).get("c", 0) > 0:
-        return  # خرید اولش نبوده
-
     cs = core.coin_settings(ctx.s.get("coins"))
     amount = int(cs.get("per_referral") or 0)
     if amount <= 0:
@@ -1049,9 +1041,13 @@ def _reward_referrer(ctx, user, order_id):
     if not ref:
         return
 
-    ctx.db.add_coins(ref["id"], amount, "referral",
-                     f"خرید زیرمجموعه {user.get('first_name') or user['tg_id']}",
-                     ref_user_id=user["id"], order_id=order_id)
+    # یک پاداش برای هر دوست — نه «برای اولین سفارش». شرط و پرداخت یک
+    # دستورند، پس دو تایید هم‌زمان نه دو بار پاداش می‌دهند نه هیچ.
+    if not ctx.db.reward_referral(
+            ref["id"], user["id"], amount,
+            f"خرید زیرمجموعه {user.get('first_name') or user['tg_id']}",
+            order_id=order_id):
+        return
 
     prog = core.coin_progress(ref["coins"] + amount, ctx.s.get("coins"))
     text = (
