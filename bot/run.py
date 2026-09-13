@@ -421,18 +421,24 @@ def process_panel_approvals():
 
             if ok:
                 log.info("سفارش %s از پنل تحویل شد", oid)
+            elif note == handlers.ORDER_BUSY:
+                # نخ دیگری همین سفارش را برداشته و همین حالا وسط ساخت
+                # کانفیگ است. دست زدن به وضعیت یعنی نوشتن روی ادعای او.
+                log.info("سفارش %s دست نخ دیگری است — رها می‌کنیم", oid)
             else:
                 log.warning("تحویل سفارش %s ناموفق: %s", oid, note)
                 with db.conn() as cx:
                     cx.execute(
-                        "UPDATE orders SET status='awaiting', admin_note=? WHERE id=?",
+                        "UPDATE orders SET status='awaiting', admin_note=? "
+                        "WHERE id=? AND sub_id IS NULL",
                         (f"تحویل ناموفق: {str(note)[:120]}", oid))
         except Exception as e:
             log.error("خطا در تحویل سفارش %s: %s", oid, e)
             try:
                 with db.conn() as cx:
                     cx.execute(
-                        "UPDATE orders SET status='awaiting', admin_note=? WHERE id=?",
+                        "UPDATE orders SET status='awaiting', admin_note=? "
+                        "WHERE id=? AND sub_id IS NULL",
                         (f"خطای تحویل: {str(e)[:120]}", oid))
             except Exception:
                 pass

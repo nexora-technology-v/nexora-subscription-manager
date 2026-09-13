@@ -810,6 +810,12 @@ def _free_email(ctx, user, prefix, limit=30):
     return core.make_email(prefix, user["tg_id"], seq)
 
 
+#: پاسخ approve_order وقتی نخِ دیگری همین سفارش را برداشته.
+#: صداکننده باید این را از «ساخت کانفیگ شکست خورد» تشخیص بدهد،
+#: چون پاسخِ درست به این یکی صبر است نه تلاش دوباره.
+ORDER_BUSY = "این سفارش همین حالا در حال پردازش است"
+
+
 def _pay_commission(ctx, user, order_id, amount):
     """
     ثبت پورسانت همکار فروش برای یک فروش موفق.
@@ -877,7 +883,7 @@ def approve_order(ctx, order_id, admin_tg_id):
     # دو تایید هم‌زمان هر دو نگهبان بالا را رد می‌کردند و مشتری با یک
     # پرداخت دو کانفیگ می‌گرفت.
     if not ctx.db.claim_order(order_id, admin_tg_id):
-        return False, "این سفارش همین حالا در حال پردازش است"
+        return False, ORDER_BUSY
 
     def _unclaim(note):
         """ادعا را پس می‌دهیم تا تلاش دوباره ممکن بماند."""
@@ -2966,6 +2972,14 @@ def _on_callback(ctx, cq):
                     ctx.bot.send(chat_id,
                                  f"✅ <b>سفارش #{arg} تایید شد</b>\n"
                                  "کانفیگ ساخته و برای مشتری ارسال شد.")
+                elif res == ORDER_BUSY:
+                    # نخ دیگری همین سفارش را برداشته. گفتن «ساخت
+                    # ناموفق بود» ادمین را به تلاش دوباره تشویق
+                    # می‌کند، درست وقتی که نباید.
+                    ctx.bot.send(
+                        chat_id,
+                        f"⏳ سفارش #{arg} همین حالا از مسیر دیگری در حال "
+                        "پردازش است — چند لحظه صبر کنید و وضعیتش را ببینید.")
                 else:
                     ctx.bot.send(
                         chat_id,

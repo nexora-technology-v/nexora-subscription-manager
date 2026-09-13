@@ -4,6 +4,29 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — Losing the claim race erased the winner's claim
+
+Once approval became a conditional claim, `approve_order` could return False for
+two very different reasons: provisioning failed, or another thread already owns
+the order. Both callers read that False as failure.
+
+The scheduler's version was the serious one. On failure it reset the order to
+`awaiting` unconditionally — so when it lost the race it wrote over the winner's
+claim while that thread was mid-provision. The config went out, the order still
+read "awaiting review", it reappeared in the admin's pending list, and a second
+approval passed the `status != 'approved'` check and provisioned a second
+config. The double-provisioning bug, back through the side door.
+
+Now the busy answer is a named constant both callers branch on: the scheduler
+logs and leaves the status alone, and the admin is told to wait rather than
+"creating the config failed", which invites exactly the retry that must not
+happen. Both status reverts also carry `AND sub_id IS NULL`, so an order whose
+config already shipped can never be sent back to the pending list.
+
+This is the third regression from the same root: every guard I make conditional
+turns a sentence that was unconditionally true into one that needs re-checking
+at each caller.
+
 ### Fixed — Callers still claimed the rejection went through
 
 Making rejection conditional left three callers reporting success regardless. The
