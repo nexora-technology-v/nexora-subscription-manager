@@ -173,6 +173,63 @@ check("حافظه خوانده می‌شود یا صادقانه می‌گوید
       m and m["level"] in ("ok", "warn", "crit"), m and m["detail"])
 
 
+head("بررسی DNS خودش هنگ نمی‌کند")
+
+# این بررسی اصلاً برای تشخیص DNSِ کند نوشته شده. ولی gethostbyname
+# مهلت نمی‌پذیرد — از resolver سیستم می‌رود و مهلت خودش را دارد که
+# می‌تواند ده‌ها ثانیه باشد. یعنی دقیقاً وقتی باید هشدار می‌داد،
+# خودش کل گزارش سلامت را نگه می‌داشت: هم در پنل، هم روی نود ایران.
+
+import socket as _sk
+import threading as _thr
+import time as _tm
+
+_HANG = _thr.Event()
+_real_ghn = _sk.gethostbyname
+
+
+def _never(host):
+    _HANG.wait(30)
+    return "1.2.3.4"
+
+
+_sk.gethostbyname = _never
+H.DNS_DEADLINE = 1.0
+
+_t0 = _tm.time()
+r = H.check_dns()
+_took = _tm.time() - _t0
+
+check("با resolverِ بی‌جواب هم سر وقت برمی‌گردد", _took < 3.0,
+      f"{_took:.1f} ثانیه با مهلت ۱ ثانیه")
+check("و آن را بحرانی گزارش می‌کند", r and r["level"] == "crit",
+      r and r["detail"])
+check("دلیلش را می‌گوید", r and "جواب نداد" in r["detail"], r and r["detail"])
+
+_HANG.set()
+_tm.sleep(0.2)
+
+_sk.gethostbyname = lambda h: "1.2.3.4"
+H.DNS_DEADLINE = 4.0
+r2 = H.check_dns()
+check("resolverِ سالم سالم گزارش می‌شود", r2 and r2["level"] in ("ok", "warn"),
+      r2 and r2["detail"])
+
+
+def _boom(host):
+    raise OSError("نام حل نشد")
+
+
+_sk.gethostbyname = _boom
+r3 = H.check_dns()
+check("خطای واقعی resolve هم بحرانی است", r3 and r3["level"] == "crit")
+check("و با «بی‌جواب» اشتباه نمی‌شود",
+      r3 and "OSError" in r3["detail"], r3 and r3["detail"])
+
+_sk.gethostbyname = _real_ghn
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

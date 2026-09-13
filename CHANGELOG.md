@@ -4,6 +4,21 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — The DNS check hung instead of reporting slow DNS
+
+`check_dns` exists to notice when name resolution is slow. It called
+`gethostbyname` with no bound — and that call takes no timeout, because it goes
+through the system resolver, which has its own and can take tens of seconds
+across several nameservers.
+
+So the check that was written to warn about slow DNS held up the entire health
+report when DNS was slow. On the panel and on the Iran node both, since the agent
+runs the same code. Measured at 30 seconds against a hung resolver.
+
+It runs with a 4-second deadline now and reports "did not answer" as critical,
+which is the warning it was meant to produce. A genuine resolve failure still
+reports its own error, so the two are distinguishable.
+
 ### Fixed — Reverse DNS could hold the intrusion page for 30 seconds
 
 `rdns_many` looks up names in parallel with a time budget, and the docstring

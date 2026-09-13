@@ -240,6 +240,37 @@ def check_listening(ports=None):
 #  شبکه
 # ═══════════════════════════════════════════════════════════
 
+#: چند ثانیه به DNS فرصت بدهیم پیش از اینکه «بی‌جواب» حسابش کنیم.
+DNS_DEADLINE = 4.0
+
+
+def _resolve_ms(host, deadline):
+    """
+    یک resolve با مهلت. برمی‌گرداند: (میلی‌ثانیه یا None, خطا)
+
+    gethostbyname مهلت نمی‌پذیرد — از resolver سیستم می‌رود و
+    مهلت خودش را دارد که می‌تواند ده‌ها ثانیه باشد. بدون مهار، *این*
+    بررسی که اصلاً برای تشخیص DNS کند نوشته شده، خودش هنگ می‌کرد و
+    کل گزارش سلامت را نگه می‌داشت — هم در پنل، هم روی نود ایران.
+    """
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _TO
+
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        t0 = time.perf_counter()
+        fut = pool.submit(socket.gethostbyname, host)
+        try:
+            fut.result(timeout=deadline)
+        except _TO:
+            return None, ""
+        except Exception as e:
+            return None, type(e).__name__
+        return round((time.perf_counter() - t0) * 1000), ""
+    finally:
+        # منتظر نخی که هنوز روی resolver گیر است نمی‌مانیم
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
 def check_dns():
     """
     DNS.
@@ -247,13 +278,13 @@ def check_dns():
     اگر resolve کند یا خراب باشد، همه‌چیز کند می‌شود بدون اینکه
     خطای مشخصی بدهد.
     """
-    try:
-        t0 = time.perf_counter()
-        socket.gethostbyname("cloudflare.com")
-        ms = round((time.perf_counter() - t0) * 1000)
-    except Exception as e:
-        return _check("dns", "DNS", CRIT, f"resolve نشد: {type(e).__name__}",
-                      "محتویات /etc/resolv.conf را ببینید")
+    ms, err = _resolve_ms("cloudflare.com", DNS_DEADLINE)
+    if ms is None:
+        return _check(
+            "dns", "DNS", CRIT,
+            (f"resolve نشد: {err}" if err
+             else f"بیش از {DNS_DEADLINE} ثانیه جواب نداد"),
+            "محتویات /etc/resolv.conf را ببینید")
 
     servers = []
     try:
