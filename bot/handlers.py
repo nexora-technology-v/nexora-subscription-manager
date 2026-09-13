@@ -759,6 +759,50 @@ def show_order_status(ctx, user, chat_id, message_id, order_id):
 
 
 
+
+def _free_email(ctx, user, prefix, limit=30):
+    """
+    شناسه‌ی کانفیگ تازه برای این مشتری — تضمین‌شده آزاد.
+
+    قبلاً شماره از *تعداد* اشتراک‌های ثبت‌شده می‌آمد:
+
+        seq = len(user_subs(...)) + 1
+
+    تا وقتی جدول فقط رشد می‌کند این درست است. ولی شماره باید از
+    بیشترین شماره‌ی موجود بیاید نه از تعداد، وگرنه هر شکافی در
+    دنباله — یک ردیف که جا افتاده، یا دیتابیسی که از نسخه‌ی قدیمی‌تر
+    بازگردانی شده — شماره را عقب می‌برد و روی کانفیگی می‌نشیند که
+    در x-ui هنوز زنده است و مشتری دیگری دارد از آن استفاده می‌کند.
+
+    پس دو محافظ: شماره از بیشینه، و بعد پرسیدن از خود پنل که آزاد
+    است یا نه. یک درخواست اضافه در هر خرید، در برابر گرفتنِ کانفیگِ
+    یک مشتریِ فعال.
+    """
+    subs = ctx.db.user_subs(user["id"], active_only=False)
+
+    top = 0
+    for sb in subs:
+        tail = str(sb.get("client_email") or "").rsplit("_", 1)[-1]
+        if tail.isdigit():
+            top = max(top, int(tail))
+    seq = max(top, len(subs)) + 1
+
+    for _ in range(limit):
+        email = core.make_email(prefix, user["tg_id"], seq)
+        try:
+            taken = ctx.xui.find_client(None, email=email)
+        except Exception:
+            # پنل جواب نداد — شماره‌ی محاسبه‌شده بهترین چیزی است که
+            # داریم. متوقف‌کردن خرید به‌خاطر یک بررسی، بدتر است.
+            return email
+        if not taken:
+            return email
+        log.warning("شناسه‌ی %s در پنل گرفته است — شماره‌ی بعدی", email)
+        seq += 1
+
+    return core.make_email(prefix, user["tg_id"], seq)
+
+
 def _pay_commission(ctx, user, order_id, amount):
     """
     ثبت پورسانت همکار فروش برای یک فروش موفق.
@@ -1093,8 +1137,7 @@ def provision(ctx, order_id):
                             (sub["id"], ctx.tid, order_id))
                 return True, {**sub, "expires_at": new_exp, "renewed": True}
 
-        seq = len(ctx.db.user_subs(user["id"], active_only=False)) + 1
-        email = core.make_email(prefix, user["tg_id"], seq)
+        email = _free_email(ctx, user, prefix)
 
         # اینباندهایی که کانفیگ روی آن‌ها ساخته می‌شود.
         #

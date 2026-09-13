@@ -52,6 +52,7 @@ os.environ["BOT_DB_PATH"] = tempfile.mktemp(suffix=".db")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from bot import db as DB  # noqa: E402
+import handlers as H  # noqa: E402
 
 DB.init_db()
 tid = DB.create_tenant("تست کیف پول", bot_token="123:TEST", owner_tg_id=999)
@@ -491,6 +492,98 @@ check("بدون رزرو هم خطا نمی‌دهد",
       d.get_order(o4["id"])["status"] == "expired")
 check("و سکه‌ی بی‌دلیل نمی‌سازد", coins_of(u4["id"]) == 0,
       f"{coins_of(u4['id'])} سکه")
+
+
+
+# ═══════════════════════════════════════════════════════════
+head("شناسه‌ی کانفیگ تازه روی مشتری دیگر نمی‌نشیند")
+
+# شماره از *تعداد* اشتراک‌ها می‌آمد: len(user_subs) + 1. تا وقتی
+# جدول فقط رشد می‌کند درست است، ولی هر شکافی در دنباله — ردیفی که
+# جا افتاده، یا دیتابیسی که از نسخه‌ی قدیمی‌تر بازگردانی شده —
+# شماره را عقب می‌برد، و کانفیگی که در x-ui زنده است و مشتری دارد
+# از آن استفاده می‌کند، بازنویسی می‌شود.
+
+EXISTING = set()
+
+
+class FakeXUI2:
+    def __init__(self):
+        self.asked = []
+
+    def find_client(self, inbound_id, email=None, client_uuid=None):
+        self.asked.append(email)
+        return {"email": email} if email in EXISTING else None
+
+
+class SeqCtx:
+    def __init__(self, subs):
+        self._subs = subs
+        self.xui = FakeXUI2()
+        self.tid = 1
+
+        class _DB:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def user_subs(self, uid, active_only=True):
+                return self._rows
+
+        self.db = _DB(subs)
+
+
+U = {"id": 7, "tg_id": 555}
+
+
+def _mk(*tails):
+    return [{"client_email": f"nexora_555_{t}"} for t in tails]
+
+
+EXISTING.clear()
+c = SeqCtx(_mk(1, 2, 3))
+check("بعد از سه اشتراک، شماره‌ی چهار",
+      H._free_email(c, U, "nexora") == "nexora_555_4")
+
+# شکاف در دنباله: ردیف دوم نیست ولی کانفیگ سوم وجود دارد
+c = SeqCtx(_mk(1, 3))
+check("با شکاف در دنباله، از بیشینه جلو می‌رود",
+      H._free_email(c, U, "nexora") == "nexora_555_4",
+      "len+1 می‌شد ۳ — یعنی روی کانفیگ زنده‌ی nexora_555_3")
+
+# دیتابیس از نسخه‌ی قدیمی بازگردانی شده: یک ردیف، ولی پنل چهار کانفیگ دارد
+EXISTING.update({"nexora_555_2", "nexora_555_3", "nexora_555_4"})
+c = SeqCtx(_mk(1))
+got = H._free_email(c, U, "nexora")
+check("اگر پنل شناسه را گرفته باشد، جلو می‌رود",
+      got == "nexora_555_5", got)
+check("و واقعاً از پنل پرسیده", len(c.xui.asked) >= 3,
+      f"{len(c.xui.asked)} پرسش")
+
+head("وقتی پنل جواب نمی‌دهد، خرید متوقف نمی‌شود")
+
+
+class DeadXUI:
+    def find_client(self, *a, **k):
+        raise RuntimeError("پنل در دسترس نیست")
+
+
+c = SeqCtx(_mk(1, 2))
+c.xui = DeadXUI()
+got = H._free_email(c, U, "nexora")
+check("شناسه‌ی محاسبه‌شده برمی‌گردد", got == "nexora_555_3", got)
+check("و خطا بالا نمی‌رود", True,
+      "متوقف‌کردن خریدِ پرداخت‌شده به‌خاطر یک بررسی، بدتر از ریسک است")
+
+head("مشتری تازه از یک شروع می‌کند")
+
+EXISTING.clear()
+c = SeqCtx([])
+check("اولین کانفیگ شماره‌ی یک است",
+      H._free_email(c, U, "nexora") == "nexora_555_1")
+
+check("حلقه بی‌پایان نمی‌شود",
+      H._free_email.__defaults__ and H._free_email.__defaults__[-1] <= 50,
+      f"سقف {H._free_email.__defaults__[-1]} تلاش")
 
 
 

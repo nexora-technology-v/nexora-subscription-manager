@@ -4,6 +4,26 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — A new config could land on an existing customer's identifier
+
+The identifier for a new config came from the *count* of a customer's
+subscriptions: `len(user_subs) + 1`. That holds while the table only grows, which
+it does — nothing deletes from it.
+
+But a count is not a high-water mark. Any gap in the sequence — a row that never
+got written because provisioning failed halfway, or a bot database restored from
+an older snapshot — moves the number backwards onto an identifier that x-ui still
+has, belonging to a customer who is using it right now. `create_subscription`
+passes it straight to `add_client` with no check.
+
+The number comes from the highest existing suffix now, not the count. Then the
+panel is asked whether that identifier is free, and it steps forward until one
+is. One extra request per purchase, against taking over a live customer's config.
+
+If the panel does not answer, the computed identifier is used anyway: stopping a
+purchase that has already been paid for, because a safety check could not run, is
+the worse outcome.
+
 ### Fixed — Three rate limits in a row dropped the message
 
 `call` retried three times, and those three were shared between network errors
