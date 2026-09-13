@@ -4,6 +4,28 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Added — Every route is checked for authentication
+
+An admin endpoint that forgets `check_auth` is an open door, and from the outside
+it looks exactly like the others. With 114 of them, reading through is not a
+method.
+
+`tools/test-seams.py` now parses `app.py` into a syntax tree and checks every
+route. All 114 admin endpoints authenticate — verified, not assumed. Deleting one
+`check_auth` makes the test fail and name the route and its line, which is how
+this was confirmed to work rather than just pass.
+
+Agent routes are checked for a node token instead, since they are called by the
+agent and not by a person. Five are deliberately open and listed with the reason:
+they serve *code* — the monitoring and firewall logic and the agent itself — not
+data or credentials. Requiring a token would be easy on this side, but `download`
+in the agent does not send one, so every agent already installed would lose the
+ability to update itself and stay behind permanently. The order has to be the
+other way round: the agent learns to send a token first.
+
+Public routes are listed too, so a new one cannot appear without someone
+deciding it should.
+
 ### Fixed — Every expired subscription said it expired "0 days ago"
 
 `days_left` never returns a negative number. That is deliberate: a lot of code

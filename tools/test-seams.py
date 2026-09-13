@@ -448,6 +448,88 @@ if py_problems:
 
 
 # ═══════════════════════════════════════════════════════════
+#  درز — هر مسیر مدیریتی باید احراز هویت کند
+# ═══════════════════════════════════════════════════════════
+head("درز · احراز هویت مسیرها")
+
+# یک نقطه‌ی پایانی مدیریتی که check_auth را جا انداخته باشد، درِ باز
+# است — و از بیرون هیچ تفاوتی با بقیه ندارد. با ۱۱۴ مسیر، چشم‌چرانی
+# جواب نمی‌دهد؛ این بررسی درخت نحوی را می‌خواند.
+
+import ast as _ast
+
+_tree = _ast.parse(APP_PY)
+_routes = []
+for _n in _tree.body:
+    if not isinstance(_n, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+        continue
+    for _d in _n.decorator_list:
+        if (isinstance(_d, _ast.Call) and _d.args
+                and isinstance(_d.args[0], _ast.Constant)
+                and re.fullmatch(r"app\.(get|post|put|delete|patch)",
+                                 _ast.unparse(_d.func))):
+            _routes.append((_d.args[0].value, _n))
+
+check("مسیرها از درخت نحوی خوانده شدند", len(_routes) > 100,
+      f"{len(_routes)} مسیر")
+
+_admin = [(p, n) for p, n in _routes if p.startswith("/api/admin")]
+_naked = [(p, n.name, n.lineno) for p, n in _admin
+          if "check_auth" not in _ast.unparse(n)]
+check("هر مسیر مدیریتی احراز هویت می‌کند", not _naked,
+      ("، ".join(f"{p} (خط {ln})" for p, _f, ln in _naked)
+       if _naked else f"{len(_admin)} مسیر"))
+if _naked:
+    bullets([f"{p} — {f}() خط {ln}" for p, f, ln in _naked])
+
+# مسیرهای ایجنت با رمز مدیریت کار نمی‌کنند؛ با توکن و امضای نود.
+_agent = [(p, n) for p, n in _routes if p.startswith("/api/agent")]
+#: مسیرهایی که عمداً توکن نمی‌خواهند، و دلیلش.
+#
+#  این پنج‌تا فقط *کد* می‌دهند — منطق مانیتورینگ و فایروال و خودِ
+#  ایجنت — نه داده و نه اعتبارنامه. بستنشان ممکن است، ولی download
+#  در ایجنت توکن نمی‌فرستد، پس هر ایجنتی که همین حالا روی سرورها
+#  نصب است دیگر نمی‌تواند خودش را به‌روز کند و برای همیشه عقب
+#  می‌ماند. راهش این است که اول ایجنت توکن بفرستد و بعد این‌جا
+#  اجباری شود — نه برعکس.
+OPEN_AGENT_ROUTES = {
+    "/api/agent/agent.py", "/api/agent/monitor.py",
+    "/api/agent/firewall.py", "/api/agent/health.py",
+    "/api/agent/netid.py",
+}
+
+_unsigned = [(p, n.name) for p, n in _agent
+             if p not in OPEN_AGENT_ROUTES
+             and "_agent_node" not in _ast.unparse(n)
+             and "token" not in _ast.unparse(n.args).lower()]
+check("هر مسیر ایجنتِ داده‌ای توکن می‌خواهد", not _unsigned,
+      ("، ".join(p for p, _f in _unsigned) if _unsigned
+       else f"{len(_agent) - len(OPEN_AGENT_ROUTES)} مسیر"))
+
+_gone = [p for p in OPEN_AGENT_ROUTES
+         if p not in {x for x, _n in _agent}]
+check("فهرست استثناها کهنه نشده", not _gone,
+      "، ".join(_gone) if _gone else "هر پنج‌تا هنوز هستند")
+
+# و مسیرهای عمومی عمداً بازند — ولی باید کم و شناخته‌شده باشند
+_public = sorted(p for p, _n in _routes
+                 if not p.startswith(("/api/admin", "/api/agent")))
+KNOWN_PUBLIC = {
+    "/api/public/config", "/api/preview", "/api/health", "/api/sub/{sub_id}",
+    "/", "/api", "/api/docs", "/api/openapi.json",
+    # ورود خودش نمی‌تواند رمز بخواهد
+    "/api/login",
+}
+_new_public = [p for p in _public if p not in KNOWN_PUBLIC]
+check("مسیر عمومی تازه‌ای بی‌خبر اضافه نشده", not _new_public,
+      ("، ".join(_new_public) if _new_public
+       else f"{len(_public)} مسیر عمومی شناخته‌شده"))
+if _new_public:
+    bullets(_new_public)
+
+
+
+# ═══════════════════════════════════════════════════════════
 print(f"\n{D}{'─' * 54}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
