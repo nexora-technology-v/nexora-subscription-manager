@@ -13,6 +13,13 @@ import requests
 
 log = logging.getLogger("nexora.tg")
 
+#: چند بار حاضریم برای محدودیت نرخ صبر کنیم.
+#
+#  سخاوتمندتر از تلاش شبکه، چون ۴۲۹ خرابی نیست: تلگرام دارد
+#  می‌گوید کی دوباره بیا. ولی بی‌نهایت هم نه — یک ربات که تا ابد
+#  صبر کند، بقیه‌ی صف را هم نگه می‌دارد.
+NET_RATE_LIMIT_TRIES = 6
+
 API = "https://api.telegram.org/bot{token}/{method}"
 
 
@@ -72,8 +79,17 @@ class Bot:
         else:
             net_timeout = self.timeout
 
+        # خطای شبکه و محدودیت نرخ دو چیز متفاوت‌اند و سهمیه‌شان هم
+        # باید جدا باشد. خطای شبکه یعنی چیزی خراب است؛ ۴۲۹ یعنی
+        # تلگرام صریح می‌گوید چند ثانیه صبر کن و دوباره بفرست.
+        #
+        # قبلاً هر دو از یک سهمیه‌ی سه‌تایی می‌خوردند، پس سه بار ۴۲۹
+        # پشت هم — که در ارسال همگانی کاملاً عادی است — پیام را
+        # می‌انداخت.
         last_err = None
-        for attempt in range(3):
+        net_tries = rate_waits = 0
+        while net_tries < 3 and rate_waits < NET_RATE_LIMIT_TRIES:
+            attempt = net_tries
             try:
                 r = self._session.post(
                     API.format(token=self.token, method=method),
@@ -89,6 +105,7 @@ class Bot:
                 # محدودیت نرخ — صبر و تلاش مجدد
                 if code == 429:
                     wait = (data.get("parameters") or {}).get("retry_after", 3)
+                    rate_waits += 1
                     time.sleep(min(wait, 30))
                     continue
 
@@ -96,8 +113,16 @@ class Bot:
 
             except requests.RequestException as e:
                 last_err = e
+                net_tries += 1
                 time.sleep(1.5 * (attempt + 1))
 
+        # پیام خطا باید بگوید واقعاً چه شد. قبلاً حتی وقتی علت
+        # محدودیت نرخ بود، «شبکه در دسترس نبود: None» می‌داد — و مدیری
+        # که پیام همگانی فرستاده بود دنبال مشکل شبکه می‌گشت.
+        if rate_waits and not last_err:
+            raise TelegramError(
+                f"تلگرام محدودیت نرخ گذاشت — بعد از {rate_waits} بار صبر هم "
+                "اجازه نداد. آهسته‌تر بفرستید.", 429)
         raise TelegramError(f"شبکه در دسترس نبود: {last_err}")
 
     # ---------- پیام ----------

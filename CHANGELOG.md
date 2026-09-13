@@ -4,6 +4,38 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — Three rate limits in a row dropped the message
+
+`call` retried three times, and those three were shared between network errors
+and Telegram's 429. They are not the same thing. A network error means something
+is broken; a 429 means Telegram is explicitly saying *wait this long and send it
+again*.
+
+During a broadcast, three 429s in a row is ordinary. The message was dropped and
+the recipient counted as failed.
+
+They have separate budgets now: three attempts for network errors, six waits for
+rate limits. Telegram's own `retry_after` is still what decides how long, capped
+at 30 seconds.
+
+### Fixed — A rate limit was reported as a network failure
+
+When all attempts were spent on 429s, the error raised was:
+
+    TelegramError("شبکه در دسترس نبود: None")
+
+`last_err` had never been set, because no network error had occurred. An admin
+whose broadcast left a few people out went looking for a network problem when
+they only needed to send more slowly. The error now says it was a rate limit, how
+many times it waited, and carries code 429.
+
+### Added — `bot/test_tg.py`
+
+The Telegram client had no test of its own. 16 checks: the normal path, one 429
+and recovery, three in a row still delivering, giving up with a truthful message,
+logical errors like `chat not found` raising immediately with no retry and no
+wait, and a transient network error not costing the message.
+
 ### Changed — Every monitoring refresh cost a second of waiting and an apt run
 
 Both `cpu()` and `network()` measure rates, so each read its counter twice with a
