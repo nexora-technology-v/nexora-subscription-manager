@@ -14,8 +14,9 @@ The customer pays twice and gets one month. Nothing errors, and nothing in the
 panel shows it — the expiry looks right, because it is right for one of the two
 payments.
 
-Reaching it is easy: tapping the wallet renew button twice, or the hourly
-auto-renew firing while the customer renews by hand.
+Reaching it does not need a double tap — the per-chat lock covers that. It needs
+the hourly auto-renew, which runs on the scheduler thread outside that lock,
+firing while the customer renews by hand.
 
 A subscription is now locked for the moment it takes to renew it. The second
 renewal is refused, and `wallet_pay` already refunds in full when provisioning
@@ -47,9 +48,13 @@ actually for — a second friend still earns a second reward.
 Same shape as the approval race, and this one gives away product.
 
 `give_trial` read `trial_used`, provisioned the config, and wrote the flag
-afterwards. Between the read and the write sits a full round trip to x-ui. Two
-taps on the free-trial button and both threads see the flag at zero; both build a
-config. Tap it five times and get five free subscriptions.
+afterwards, with a full round trip to x-ui in between.
+
+**Correction to what was written here first:** I described this as reachable by
+tapping the button twice. It is not. The bot serialises everything from one chat
+behind a per-chat lock, so a customer's second tap waits for the first to finish
+and finds the flag already set. This change is hardening, not a live bug — unlike
+the three below it, which the scheduler reaches without that lock.
 
 The right to the trial is claimed atomically now — one conditional UPDATE from 0
 to 1, and only the winner proceeds.
@@ -64,9 +69,11 @@ that sentence a lie.
 marked it approved. The gap between the read and the mark is a full round trip to
 x-ui — seconds.
 
-The bot runs eight threads and the approve button sits in the admin group. A
-double tap, two admins, or a panel approval landing while someone presses the
-Telegram button: both threads pass the guard, both provision, and the customer
+The bot serialises each chat behind a lock, so two taps on the same button are
+safe. The scheduler thread is not behind that lock: it calls `approve_order`
+directly when it picks up an order approved from the panel. So a panel approval
+landing while an admin presses the button in the Telegram group is two threads
+with nothing between them — both pass the guard, both provision, and the customer
 gets two configs for one payment. The referrer is rewarded twice as well, since
 neither approval is marked yet when the "first purchase?" check runs. Only the
 affiliate commission survived, because its table has a uniqueness constraint.
