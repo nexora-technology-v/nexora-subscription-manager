@@ -4,6 +4,44 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — The firewall's SSH guard only knew about port 22
+
+Every guard in `firewall.py` compared against the literal 22: `sshProtected`,
+`_ssh_would_break`, the critical-port markers, the preflight blockers, the
+"don't deny this" check in apply-plan.
+
+On a server whose SSH has been moved — what every hardening guide tells you to
+do — that is the worst outcome the module exists to prevent. A leftover rule on
+22 was enough to make `sshProtected` true, so the panel showed no warning, and
+`/firewall/toggle` enabled ufw with nothing allowing the real SSH port. That
+path has no rollback timer, so the only way back in is the provider's console.
+
+The real ports are now read from `sshd_config` (plus `sshd_config.d/*.conf`,
+`ListenAddress host:port`, honouring comments) and, on the paths that already
+have the socket list, from the sockets `sshd` actually holds. Config and running
+state are unioned: an extra port costs one warning, a missing one costs the
+server. With no config readable, the answer is still 22 — unchanged behaviour on
+a stock machine. `status()` now returns `sshPorts`, and the panel's warning names
+the real port instead of saying 22.
+
+Saved rules (`ufw show added`, what the panel lists while the firewall is off)
+now carry the same critical marking as active ones.
+
+### Fixed — The panel-trace button raised NameError instead of tracing
+
+`app.py` imports `sys` as `_sys`; the xui-trace route called bare `sys.path`.
+Every click on it returned a 500.
+
+### Added — Reading a variable that nothing assigns is checked
+
+The seam that catches a missing module import missed both of the above: it looks
+for `mod.name(`, and `sys.path.insert(` doesn't match that shape. The new check
+walks every function's scope with the AST instead, so a name that gets its value
+in some *other* function is caught at test time rather than when the user presses
+the button it hides behind.
+
+It found the xui-trace bug on its first run, and two of my own in this change.
+
 ### Fixed — Losing the claim race erased the winner's claim
 
 Once approval became a conditional claim, `approve_order` could return False for

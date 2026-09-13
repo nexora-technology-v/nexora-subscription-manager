@@ -684,6 +684,98 @@ check("و CLI هم همان‌جا را می‌گردد",
 
 
 # ═══════════════════════════════════════════════════════════
+#  درز — متغیری که هیچ‌جا مقدار نگرفته
+# ═══════════════════════════════════════════════════════════
+head("درز · متغیر بی‌مقدار در تابع")
+
+# همان خانواده‌ی بالا، ولی یک پله نزدیک‌تر: نه ماژول جاافتاده، بلکه
+# متغیری که *در تابعِ دیگری* مقدار می‌گیرد و این‌جا بی‌مقدار خوانده
+# می‌شود. پایتون تا لحظه‌ی اجرا چیزی نمی‌گوید، و چون این خط معمولاً
+# پشت یک شرط است — «اگر ادمین رد کرد»، «اگر پورت حیاتی بود» — تست‌های
+# معمولی هم از کنارش رد می‌شوند.
+#
+# سه بار همین اتفاق افتاد: یک‌بار در مسیر تایید سفارش از گروه ادمین،
+# دوبار وقتی یک مقدار مشترک را به چند تابع بردم و در یکی‌شان تعریفش
+# را جا انداختم. هر سه فقط وقتی خودشان را نشان می‌دادند که کاربر
+# دقیقاً همان دکمه را می‌زد.
+
+PYFILES = [
+    "backend/app.py", "backend/monitor.py", "backend/firewall.py",
+    "backend/netid.py", "backend/tunnels.py", "backend/health.py",
+    "backend/intrusion.py", "backend/fx.py", "bot/handlers.py",
+    "bot/db.py", "bot/core.py", "bot/xui.py", "bot/tg.py", "bot/run.py",
+    "bot/fmt.py", "bot/qr.py", "agent/nexora-agent.py",
+]
+
+import builtins as _bi
+_BUILTIN = set(dir(_bi)) | {"__file__", "__name__", "__doc__", "__spec__"}
+
+
+def _bound_in(node):
+    """هر نامی که در این زیردرخت مقدار می‌گیرد — سخاوتمندانه."""
+    out = set()
+    for n in ast.walk(node):
+        if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+            out.add(n.id)
+        elif isinstance(n, ast.Import):
+            for a in n.names:
+                out.add((a.asname or a.name).split(".")[0])
+        elif isinstance(n, ast.ImportFrom):
+            for a in n.names:
+                out.add(a.asname or a.name)
+        elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef,
+                            ast.ClassDef)):
+            out.add(n.name)
+        elif isinstance(n, ast.ExceptHandler) and n.name:
+            out.add(n.name)
+        elif isinstance(n, (ast.Global, ast.Nonlocal)):
+            out.update(n.names)
+        elif isinstance(n, (ast.arg,)):
+            out.add(n.arg)
+    return out
+
+
+unbound = []
+for rel in PYFILES:
+    path = os.path.join(ROOT, rel)
+    if not os.path.exists(path):
+        continue
+    try:
+        tree = ast.parse(io.open(path, encoding="utf-8").read())
+    except SyntaxError:
+        continue
+
+    # نام‌های سطح ماژول: هر چیزی که بیرون توابع مقدار می‌گیرد
+    modscope = set(_BUILTIN)
+    for n in tree.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            modscope.add(n.name)
+        else:
+            modscope |= _bound_in(n)
+
+    # فقط توابع سطح بالا و متدها — تابع تودرتو داخل همین زیردرخت است
+    funcs = [n for n in tree.body
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    for cls in [n for n in tree.body if isinstance(n, ast.ClassDef)]:
+        funcs += [n for n in cls.body
+                  if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+
+    for fn in funcs:
+        bound = modscope | _bound_in(fn)
+        for stmt in fn.body:
+            for n in ast.walk(stmt):
+                if (isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)
+                        and n.id not in bound):
+                    unbound.append(f"{rel}:{n.lineno} — {n.id} در {fn.name}()")
+
+check("هر متغیری که خوانده می‌شود جایی مقدار گرفته", not unbound,
+      f"{len(unbound)} مورد" if unbound
+      else f"{len(PYFILES)} فایل — NameError پشت شرط پنهان نمانده")
+if unbound:
+    bullets(unbound)
+
+
+# ═══════════════════════════════════════════════════════════
 print(f"\n{D}{'─' * 54}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

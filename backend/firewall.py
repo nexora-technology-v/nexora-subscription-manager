@@ -10,6 +10,7 @@
 قطع کند. هر مسیری که به فعال‌کردن فایروال یا حذف قاعده می‌رسد، اول
 از این نگهبان رد می‌شود.
 """
+import glob
 import os
 import re
 import shutil
@@ -18,8 +19,106 @@ import time
 from datetime import datetime
 
 #: پورت‌هایی که بستنشان یعنی قطع دسترسی خودِ مدیر یا خوابیدن سرویس.
-#: این‌ها بدون تایید صریح حذف نمی‌شوند.
+#: این‌ها بدون تایید صریح حذف نمی‌شوند. پایه است، نه همه‌ی فهرست:
+#: پورت واقعی SSH از روی سرور خوانده می‌شود و به این اضافه می‌شود.
 CRITICAL_PORTS = {22: "SSH — راه ورود شما به سرور"}
+
+SSH_LABEL = CRITICAL_PORTS[22]
+SSHD_CONFIG = "/etc/ssh/sshd_config"
+SSHD_CONFIG_DIR = "/etc/ssh/sshd_config.d"
+
+_SSH_CFG_CACHE = {"at": 0.0, "ports": frozenset()}
+_SSH_CFG_TTL = 60.0
+
+#: Port 2222 — و شکل‌های دیگرش: با «=»، با فاصله‌ی اضافه، حروف بزرگ
+_RE_SSH_PORT = re.compile(r"^\s*port\s*=?\s*(\d{1,5})\s*$", re.I)
+#: ListenAddress 1.2.3.4:2222 یا [::1]:2222
+_RE_SSH_LISTEN = re.compile(r"^\s*listenaddress\s*=?\s*(\S+)", re.I)
+
+
+def _sshd_config_ports():
+    """
+    پورت‌های SSH از روی پیکربندی sshd.
+
+    خواندن فایل ارزان است و به هیچ پردازه‌ای نیاز ندارد، پس این منبعِ
+    پیش‌فرض است. نتیجه یک دقیقه نگه داشته می‌شود چون مسیر وضعیت
+    فایروال مدام از رابط کاربری خوانده می‌شود.
+    """
+    now = time.time()
+    if now - _SSH_CFG_CACHE["at"] < _SSH_CFG_TTL:
+        return _SSH_CFG_CACHE["ports"]
+
+    ports = set()
+    files = [SSHD_CONFIG]
+    try:
+        files += sorted(glob.glob(os.path.join(SSHD_CONFIG_DIR, "*.conf")))
+    except Exception:
+        pass
+
+    for path in files:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+        except Exception:
+            continue
+        for line in text.splitlines():
+            line = line.split("#", 1)[0]
+            m = _RE_SSH_PORT.match(line)
+            if m:
+                p = int(m.group(1))
+                if 1 <= p <= 65535:
+                    ports.add(p)
+                continue
+            m = _RE_SSH_LISTEN.match(line)
+            if m:
+                addr = m.group(1)
+                # [::1]:2222 یا 1.2.3.4:2222 — ولی نه «::» خالی و نه
+                # آدرس آی‌پی‌ششِ بی‌پورت، که دو نقطه‌اش پورت نیست.
+                tail = addr.rsplit("]:", 1)[-1] if "]" in addr else (
+                    addr.rsplit(":", 1)[-1] if addr.count(":") == 1 else "")
+                if tail.isdigit() and 1 <= int(tail) <= 65535:
+                    ports.add(int(tail))
+
+    _SSH_CFG_CACHE["at"] = now
+    _SSH_CFG_CACHE["ports"] = frozenset(ports)
+    return _SSH_CFG_CACHE["ports"]
+
+
+def ssh_ports(listening=None):
+    """
+    پورت‌هایی که SSH واقعاً روی آن‌هاست.
+
+    تمام نگهبان‌های این فایل تا امروز عدد ۲۲ را ثابت در کد داشتند.
+    روی سروری که SSH را جابه‌جا کرده — کاری که هر راهنمای سخت‌سازی
+    توصیه می‌کند — این یعنی بدترین حالت ممکن: یک قاعده‌ی جامانده روی
+    ۲۲ کافی بود تا sshProtected درست شود، هشدار رابط کاربری نیاید، و
+    روشن‌کردن فایروال پورت واقعی SSH را ببندد. آن مسیر ساعت‌شمار
+    بازگشت هم ندارد، پس راه برگشتی جز کنسول ارائه‌دهنده نمی‌ماند.
+
+    listening=None یعنی فقط پیکربندی خوانده شود — ارزان، برای مسیرهایی
+    که رابط کاربری مدام صدایشان می‌زند. مسیرهایی که فهرست سوکت‌ها را
+    از قبل دارند آن را می‌دهند تا سوکت‌های واقعی sshd هم اضافه شوند:
+    اگر پیکربندی و چیزی که اجرا شده یکی نباشند، اجتماعشان امن‌ترین
+    پاسخ است — پورت اضافه فقط یک هشدار بیشتر است، ولی پورت جاافتاده
+    یعنی قفل‌شدن بیرونِ سرور.
+    """
+    found = set(_sshd_config_ports())
+    for p in listening or []:
+        proc = (p.get("process") or "").lower()
+        if proc.startswith("sshd") or proc == "ssh":
+            try:
+                found.add(int(p.get("port")))
+            except (TypeError, ValueError):
+                continue
+    return found or set(CRITICAL_PORTS)
+
+
+def critical_ports(listening=None):
+    """نقشه‌ی پورت‌های حیاتی، با SSH هرجا که واقعاً هست."""
+    out = dict(CRITICAL_PORTS)
+    for p in ssh_ports(listening):
+        out.setdefault(p, SSH_LABEL)
+    return out
 
 
 def _run(cmd, timeout=15):
@@ -54,6 +153,7 @@ def _parse_added(out):
     با delete لازم است، نه شماره. پس num را None می‌گذاریم و رابط
     می‌داند که هنوز اعمال نشده.
     """
+    crit = critical_ports()
     rules = []
     for line in (out or "").splitlines():
         line = line.strip()
@@ -94,6 +194,8 @@ def _parse_added(out):
             "num": None, "target": target, "action": action,
             "source": source, "port": port, "proto": proto,
             "pending": True, "raw": line,
+            "critical": port in crit if port else False,
+            "note": crit.get(port, "") if port else "",
         })
     return rules
 
@@ -106,6 +208,7 @@ def _parse_status(text):
       [ 1] 22/tcp                     ALLOW IN    Anywhere
       [ 2] 443                        ALLOW IN    Anywhere (v6)
     """
+    crit = critical_ports()
     rules = []
     for line in text.splitlines():
         m = re.match(r"\s*\[\s*(\d+)\]\s+(.+?)\s{2,}(ALLOW|DENY|REJECT|LIMIT)"
@@ -128,8 +231,8 @@ def _parse_status(text):
             "direction": direction or "IN",
             "source": (src or "Anywhere").strip(),
             "v6": "(v6)" in (src or ""),
-            "critical": port in CRITICAL_PORTS if port else False,
-            "note": CRITICAL_PORTS.get(port, "") if port else "",
+            "critical": port in crit if port else False,
+            "note": crit.get(port, "") if port else "",
         })
     return rules
 
@@ -166,13 +269,15 @@ def status():
         seen.add(key)
         uniq.append(r)
 
-    ssh_open = any(r["port"] == 22 and r["action"] in ("ALLOW", "LIMIT")
+    ssh = ssh_ports()
+    ssh_open = any(r["port"] in ssh and r["action"] in ("ALLOW", "LIMIT")
                    for r in rules)
 
     return {
         "ready": True, "installed": True, "active": active,
         "rules": uniq, "ruleCount": len(uniq),
         "sshProtected": ssh_open,
+        "sshPorts": sorted(ssh),
         "defaultIncoming": ("deny" if "deny (incoming)" in out
                             else ("allow" if "allow (incoming)" in out else "?")),
     }
@@ -188,7 +293,10 @@ def _ssh_would_break(rules, active):
     """
     if active:
         return False
-    return not any(r["port"] == 22 and r["action"] in ("ALLOW", "LIMIT")
+    # فهرست سوکت‌ها را هم می‌خوانیم: این تنها جایی است که اشتباه‌کردن
+    # یعنی قطع‌شدن دسترسی، و این مسیر ساعت‌شمار بازگشت ندارد.
+    ssh = ssh_ports(_read_listening())
+    return not any(r["port"] in ssh and r["action"] in ("ALLOW", "LIMIT")
                    for r in rules)
 
 
@@ -202,9 +310,10 @@ def enable(confirm_ssh=False):
         return True, "فایروال از قبل روشن است"
 
     if _ssh_would_break(st.get("rules") or [], st.get("active")) and not confirm_ssh:
-        return False, ("هیچ قاعده‌ای پورت ۲۲ (SSH) را باز نگذاشته. با روشن‌کردن "
-                       "فایروال دسترسی شما به سرور قطع می‌شود. اول قاعده‌ی SSH "
-                       "را اضافه کنید.")
+        pl = "، ".join(str(p) for p in sorted(ssh_ports(_read_listening())))
+        return False, (f"هیچ قاعده‌ای پورت SSH ({pl}) را باز نگذاشته. با "
+                       "روشن‌کردن فایروال دسترسی شما به سرور قطع می‌شود. "
+                       "اول قاعده‌ی SSH را اضافه کنید.")
 
     ok, out = _run(["ufw", "--force", "enable"], timeout=25)
     return ok, (out.strip()[:200] or ("روشن شد" if ok else "ناموفق"))
@@ -422,6 +531,7 @@ def suggest(listening_ports=None):
     tun = tunnel_ports_in_use()
     tprocs = _tunnel_procs()
     xports = xray_service_ports()
+    crit = critical_ports(listening_ports)
 
     keep, close, unknown, already = [], [], [], []
     ephemeral = []
@@ -445,7 +555,7 @@ def suggest(listening_ports=None):
         # خود x-ui خوانده‌ایم و این پورت در آن نیست.
         if (xports is not None and port not in xports
                 and ("xray" in proc or "sing-box" in proc)
-                and port not in tun and port not in CRITICAL_PORTS):
+                and port not in tun and port not in crit):
             ephemeral.append({"port": port, "proto": p.get("proto") or "udp",
                               "process": p.get("process") or ""})
             continue
@@ -470,9 +580,9 @@ def suggest(listening_ports=None):
                                 "از آن رد می‌شوند قطع می‌شوند."})
             continue
 
-        if port in CRITICAL_PORTS:
+        if port in crit:
             keep.append({**row, "action": "allow", "critical": True,
-                         "why": CRITICAL_PORTS[port]})
+                         "why": crit[port]})
         elif known:
             keep.append({**row, "action": "allow",
                          "why": f"{known} — سرویس شناخته‌شده‌ی این پنل"})
@@ -538,6 +648,7 @@ def apply_plan(rules, confirm=False):
     # می‌شوند. مثل SSH، این را بدون تایید جداگانه انجام نمی‌دهیم —
     # حتی اگر خودِ پیشنهاد از همین‌جا آمده باشد.
     tun = tunnel_ports_in_use()
+    crit = critical_ports(_read_listening())
     results = []
     for r in rules or []:
         port = r.get("port")
@@ -558,10 +669,10 @@ def apply_plan(rules, confirm=False):
                         "بستنش تانل را قطع می‌کند، پس انجام نشد."})
             continue
 
-        if action == "deny" and pnum in CRITICAL_PORTS and not r.get("confirmCritical"):
+        if action == "deny" and pnum in crit and not r.get("confirmCritical"):
             results.append({
                 "port": pnum, "action": action, "ok": False, "blocked": True,
-                "note": f"{CRITICAL_PORTS[pnum]} — بسته نشد"})
+                "note": f"{crit[pnum]} — بسته نشد"})
             continue
 
         ok, note = add_rule(pnum, proto=proto, action=action,
@@ -629,6 +740,7 @@ def preflight():
 
     listening = _read_listening() or []
     tun = tunnel_ports_in_use()
+    crit = critical_ports(listening)
 
     at_risk, covered = [], []
     for p in listening:
@@ -641,8 +753,8 @@ def preflight():
 
         why = ""
         critical = False
-        if port in CRITICAL_PORTS:
-            why, critical = CRITICAL_PORTS[port], True
+        if port in crit:
+            why, critical = crit[port], True
         elif port in tun:
             why = f"تانل {tun[port]} — تمام مشتری‌های ایران از این رد می‌شوند"
             critical = True

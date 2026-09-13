@@ -10,6 +10,7 @@
 
 اجرا:  python3 tools/test-firewall.py
 """
+import io
 import os
 import sys
 
@@ -141,6 +142,75 @@ check("راهنمای نصب می‌دهد", "ufw" in (st.get("hint") or ""), st
 ok, note = F.enable()
 check("روشن‌کردن بدون ufw ناموفق و بی‌خطر است", not ok, note[:40])
 F.available = _real
+
+# ═══════════════════════════════════════════════════════════
+head("SSH همان‌جایی نیست که کد فکر می‌کرد")
+
+# هر نگهبان این فایل عدد ۲۲ را ثابت در کد داشت. روی سروری که SSH
+# را جابه‌جا کرده — کاری که هر راهنمای سخت‌سازی توصیه می‌کند — یک
+# قاعده‌ی جامانده روی ۲۲ کافی بود تا sshProtected درست شود، هشدار
+# رابط کاربری نیاید، و روشن‌کردن فایروال پورت واقعی SSH را ببندد.
+# مسیر toggle ساعت‌شمار بازگشت هم ندارد.
+
+CFG = os.path.join(os.environ.get("TEMP") or "/tmp", "nexora-sshd-test")
+os.makedirs(CFG, exist_ok=True)
+_cfg = os.path.join(CFG, "sshd_config")
+io.open(_cfg, "w", encoding="utf-8").write(
+    "# Port 22\n"
+    "Port 2222\n"
+    "ListenAddress 10.0.0.5:2022\n"
+    "ListenAddress 0.0.0.0\n"
+    "PermitRootLogin no\n")
+
+_real_cfg, F.SSHD_CONFIG = F.SSHD_CONFIG, _cfg
+_real_dir, F.SSHD_CONFIG_DIR = F.SSHD_CONFIG_DIR, os.path.join(CFG, "none.d")
+F._SSH_CFG_CACHE["at"] = 0.0
+
+ports = F.ssh_ports()
+check("پورت جابه‌جاشده از پیکربندی خوانده شد", 2222 in ports, str(sorted(ports)))
+check("ListenAddress با پورت هم حساب می‌شود", 2022 in ports)
+check("خط کامنت‌شده شمرده نمی‌شود", 22 not in ports,
+      "«# Port 22» یعنی ۲۲ دیگر باز نیست")
+check("ListenAddress بی‌پورت چیزی اضافه نمی‌کند", ports == {2222, 2022},
+      str(sorted(ports)))
+
+check("سوکت واقعی sshd هم اضافه می‌شود",
+      2200 in F.ssh_ports([{"port": 2200, "process": "sshd"}]),
+      "اگر پیکربندی و چیزی که اجرا شده یکی نباشند، اجتماعشان امن‌تر است")
+check("پردازه‌های دیگر اضافه نمی‌شوند",
+      8443 not in F.ssh_ports([{"port": 8443, "process": "xray"}]))
+
+# قاعده‌ای فقط روی ۲۲ — درست همان تله
+LEFTOVER = [{"port": 22, "action": "ALLOW"}]
+check("قاعده‌ی جامانده‌ی ۲۲ دیگر «محافظت‌شده» حساب نمی‌شود",
+      F._ssh_would_break(LEFTOVER, active=False) is True,
+      "پورت واقعی ۲۲۲۲ است و قاعده ندارد")
+check("قاعده روی پورت واقعی کافی است",
+      F._ssh_would_break([{"port": 2222, "action": "ALLOW"}],
+                         active=False) is False)
+check("LIMIT هم باز حساب می‌شود",
+      F._ssh_would_break([{"port": 2222, "action": "LIMIT"}],
+                         active=False) is False)
+
+crit = F.critical_ports()
+check("پورت واقعی SSH حیاتی علامت می‌خورد", crit.get(2222) == F.SSH_LABEL)
+check("۲۲ هم حیاتی می‌ماند", 22 in crit,
+      "هشدار اضافه بی‌ضرر است؛ هشدار جاافتاده نه")
+
+added = F._parse_added("ufw allow 2222/tcp\nufw allow 443/tcp\n")
+check("قاعده‌های ذخیره‌شده هم حیاتی علامت می‌خورند",
+      added[0]["critical"] is True and added[1]["critical"] is False,
+      "وقتی فایروال خاموش است، همین‌ها نمایش داده می‌شوند")
+
+# بدون هیچ پیکربندی، رفتار قبلی می‌ماند
+F.SSHD_CONFIG = os.path.join(CFG, "nope")
+F._SSH_CFG_CACHE["at"] = 0.0
+check("بدون پیکربندی، به ۲۲ برمی‌گردد", F.ssh_ports() == {22},
+      "روی سرور بدون sshd_config رفتار عوض نمی‌شود")
+
+F.SSHD_CONFIG, F.SSHD_CONFIG_DIR = _real_cfg, _real_dir
+F._SSH_CFG_CACHE["at"] = 0.0
+
 
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R

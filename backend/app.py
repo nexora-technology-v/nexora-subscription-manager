@@ -1264,7 +1264,10 @@ def bot_xui_trace(x_admin_password: str = Header(...)):
     step("روش احراز هویت", True,
          "توکن API" if t.get("panel_token") else f"نام کاربری ({t.get('panel_user')})")
 
-    sys.path.insert(0, str(_bot_dir()))
+    # app.py ماژول sys را با نام _sys وارد می‌کند؛ «sys» خالی این‌جا
+    # یعنی NameError درست وقتی ادمین دکمه‌ی ردیابی را می‌زند.
+    import sys as _sys
+    _sys.path.insert(0, str(_bot_dir()))
     try:
         from xui import XUI, XUIError
     except Exception as e:
