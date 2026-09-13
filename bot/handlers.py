@@ -2018,20 +2018,31 @@ def give_trial(ctx, user, chat_id, message_id):
     if require_membership(ctx, chat_id, message_id, user):
         return
 
+    # حقِ تست را *قبل* از ساخت می‌گیریم.
+    #
+    # بررسی بالا فقط یک خواندن است؛ بین آن و نوشتن پرچم، ساخت کانفیگ
+    # چند ثانیه طول می‌کشد. دو بار زدنِ دکمه یعنی هر دو نخ پرچم را
+    # صفر می‌دیدند و هر دو کانفیگ رایگان می‌ساختند.
+    if not ctx.db.claim_trial(u["id"]):
+        return _reply(ctx, chat_id, message_id,
+                      "اشتراک تست رایگان را قبلاً گرفته‌اید — "
+                      "هر حساب فقط یک‌بار می‌تواند.",
+                      kb([[("🛒 دیدن پلن‌ها", "buy")], [("‹ بازگشت", "menu")]]))
+
     order = ctx.db.create_order(u["id"], plan["id"], 0, 0, kind="new")
     ctx.db.exec("UPDATE orders SET status='approved', reviewed_at=CURRENT_TIMESTAMP "
                 "WHERE tenant_id=? AND id=?", (ctx.tid, order["id"]))
 
     ok, result = provision(ctx, order["id"])
     if not ok:
+        # پیام پایین می‌گوید تست محفوظ است — پس واقعاً پسش می‌دهیم
+        ctx.db.release_trial(u["id"])
         return _reply(ctx, chat_id, message_id,
                       "ساخت اشتراک تست به مشکل خورد.\n\n"
                       f"<i>{esc(result)}</i>\n\n"
                       "چند دقیقه دیگر دوباره امتحان کنید — "
                       "تست رایگانتان هنوز محفوظ است.", back_kb())
 
-    ctx.db.exec("UPDATE users SET trial_used=1 WHERE tenant_id=? AND id=?",
-                (ctx.tid, u["id"]))
     _reply(ctx, chat_id, message_id,
            "🎉 <b>اشتراک تست رایگان شما فعال شد</b>\n\n"
            "همین پایین می‌فرستیمش — امتحانش کنید و اگر پسندیدید، "

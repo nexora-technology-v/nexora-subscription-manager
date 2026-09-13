@@ -605,6 +605,37 @@ class TenantDB:
                 (self.tid, user_id)).fetchone()
             return True, (row["coins"] if row else 0)
 
+    def claim_trial(self, user_id):
+        """
+        گرفتن حقِ اشتراک تست، اتمی. برمی‌گرداند: گرفته شد یا نه.
+
+        قبلاً پرچم trial_used *بعد از* ساخت کانفیگ نوشته می‌شد، و
+        بینشان یک رفت‌وبرگشت کامل با x-ui فاصله بود. دو بار زدنِ
+        دکمه‌ی «تست رایگان» یعنی هر دو نخ پرچم را صفر می‌دیدند و هر
+        دو کانفیگ می‌ساختند — یعنی محصول رایگان، به تعداد دفعاتی که
+        کسی دکمه را می‌زد.
+
+        این شرط از ریشه می‌بندَدش: فقط اولین نفر می‌تواند پرچم را
+        از صفر به یک ببرد.
+        """
+        with conn() as c:
+            cur = c.execute(
+                "UPDATE users SET trial_used=1 "
+                "WHERE tenant_id=? AND id=? AND trial_used=0",
+                (self.tid, user_id))
+            return bool(cur.rowcount)
+
+    def release_trial(self, user_id):
+        """
+        پس‌دادن حقِ تست، وقتی ساخت کانفیگ شکست خورد.
+
+        پیام خطا به مشتری می‌گوید «تست رایگانتان هنوز محفوظ است» —
+        و این تابع همان را راست نگه می‌دارد.
+        """
+        with conn() as c:
+            c.execute("UPDATE users SET trial_used=0 WHERE tenant_id=? AND id=?",
+                      (self.tid, user_id))
+
     def claim_order(self, order_id, admin_tg_id, stale_minutes=5):
         """
         ادعای انحصاری یک سفارش، پیش از ساخت کانفیگ. اتمی.

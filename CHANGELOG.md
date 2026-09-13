@@ -4,6 +4,22 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — The free trial could be taken more than once
+
+Same shape as the approval race, and this one gives away product.
+
+`give_trial` read `trial_used`, provisioned the config, and wrote the flag
+afterwards. Between the read and the write sits a full round trip to x-ui. Two
+taps on the free-trial button and both threads see the flag at zero; both build a
+config. Tap it five times and get five free subscriptions.
+
+The right to the trial is claimed atomically now — one conditional UPDATE from 0
+to 1, and only the winner proceeds.
+
+The failure message tells the customer their trial is still available, so a failed
+provision explicitly hands the right back. Without that, the claim would have made
+that sentence a lie.
+
 ### Fixed — Two approvals at once gave one payment two configs
 
 `approve_order` read the order's status, provisioned the config, and only then

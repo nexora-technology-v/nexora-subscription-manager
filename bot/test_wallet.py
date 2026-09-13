@@ -659,6 +659,57 @@ check("پس‌دادن فقط وقتی کانفیگ ساخته نشده",
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("اشتراک تست رایگان، فقط یک‌بار — حتی با چند نخ")
+
+# پرچم trial_used *بعد از* ساخت کانفیگ نوشته می‌شد، و بینشان یک
+# رفت‌وبرگشت کامل با x-ui فاصله بود. دو بار زدنِ دکمه یعنی هر دو نخ
+# پرچم را صفر می‌دیدند و هر دو کانفیگ می‌ساختند — محصول رایگان، به
+# تعداد دفعاتی که کسی دکمه را می‌زد.
+
+ut = new_user(0)
+GOT = []
+GATE = threading.Barrier(4)
+
+
+def _grab():
+    GATE.wait()
+    if d.claim_trial(ut["id"]):
+        GOT.append(1)
+
+
+th = [threading.Thread(target=_grab) for _ in range(4)]
+for t in th:
+    t.start()
+for t in th:
+    t.join()
+
+check("از چهار نخ فقط یکی تست را می‌گیرد", len(GOT) == 1,
+      f"{len(GOT)} نفر گرفتند")
+
+flag = d.q("SELECT trial_used FROM users WHERE tenant_id=? AND id=?",
+           (tid, ut["id"]), one=True)
+check("و پرچم ثبت شده", flag and flag["trial_used"] == 1)
+check("تلاش بعدی هم رد می‌شود", not d.claim_trial(ut["id"]))
+
+head("اگر ساخت شکست بخورد، تست پس داده می‌شود")
+
+d.release_trial(ut["id"])
+check("بعد از پس‌دادن، دوباره قابل‌گرفتن است", d.claim_trial(ut["id"]),
+      "پیام خطا به مشتری می‌گوید «تست رایگانتان محفوظ است»")
+
+check("کد هم واقعاً پسش می‌دهد",
+      "ctx.db.release_trial(u[\"id\"])" in SRC,
+      "وگرنه آن جمله دروغ است")
+check("و ادعا قبل از ساخت گرفته می‌شود",
+      SRC.index("claim_trial") < SRC.index("ساخت اشتراک تست به مشکل خورد"),
+      "نه بعد از آن")
+check("نوشتن دیرهنگام پرچم حذف شده",
+      "UPDATE users SET trial_used=1 WHERE tenant_id=? AND id=?" not in SRC,
+      "حالا فقط از راه ادعای اتمی نوشته می‌شود")
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
