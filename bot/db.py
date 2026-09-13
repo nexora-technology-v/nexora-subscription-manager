@@ -307,6 +307,14 @@ def _migrate(con):
         # sub_id موجود *بعد* از ساخت پر می‌شود و نتیجه را نگه می‌دارد؛
         # این یکی مقصد را از همان لحظه‌ی ثبت سفارش مشخص می‌کند.
         ("orders", "renew_sub_id", "INTEGER"),
+        # قفلِ کوتاهِ تمدید.
+        #
+        # extend_subscription تاریخ فعلی را از پنل می‌خواند و بعد
+        # تاریخ تازه را می‌نویسد. دو تمدید هم‌زمان روی یک اشتراک —
+        # دوباره زدنِ دکمه، یا تمدید خودکاری که هم‌زمان با تمدید دستی
+        # اجرا شود — هر دو یک مبدأ می‌خوانند و هر دو همان یک ماه را
+        # می‌نویسند. مشتری دو بار پول می‌دهد و یک ماه می‌گیرد.
+        ("subscriptions", "renewing_at", "TEXT"),
     ]
     for table, col, spec in adds:
         try:
@@ -645,6 +653,28 @@ class TenantDB:
                 "UPDATE users SET coins = coins + ? WHERE tenant_id=? AND id=?",
                 (amount, self.tid, referrer_id))
             return True
+
+    def claim_renewal(self, sub_id, stale_minutes=5):
+        """
+        قفل‌کردن یک اشتراک برای تمدید. اتمی.
+
+        قفلِ مانده بعد از چند دقیقه خودبه‌خود آزاد می‌شود، تا نخی که
+        وسط کار مرد اشتراک را برای همیشه قفل نکند.
+        """
+        with conn() as c:
+            cur = c.execute(
+                """UPDATE subscriptions SET renewing_at=CURRENT_TIMESTAMP
+                    WHERE tenant_id=? AND id=?
+                      AND (renewing_at IS NULL
+                           OR renewing_at < datetime('now', ?))""",
+                (self.tid, sub_id, f"-{int(stale_minutes)} minutes"))
+            return bool(cur.rowcount)
+
+    def release_renewal(self, sub_id):
+        """آزادکردن قفل تمدید — چه موفق، چه ناموفق."""
+        with conn() as c:
+            c.execute("UPDATE subscriptions SET renewing_at=NULL "
+                      "WHERE tenant_id=? AND id=?", (self.tid, sub_id))
 
     def claim_trial(self, user_id):
         """

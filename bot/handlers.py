@@ -1123,20 +1123,35 @@ def provision(ctx, order_id):
                 subs = ctx.db.user_subs(user["id"])
                 sub = subs[0] if subs else None
             if sub:
-                # ایمیل را هم می‌دهیم: در 3x-ui نسخه‌ی ۳ شناسه‌ی اصلی
-                # کلاینت ایمیل است و جست‌وجو با آن مطمئن‌تر از uuid است
-                ctx.xui.extend_subscription(sub["inbound_id"], sub["client_uuid"],
-                                            plan["days"], plan["gb"],
-                                            email=sub.get("client_email"))
-                new_exp = _add_days_iso(sub["expires_at"], plan["days"])
-                ctx.db.exec(
-                    """UPDATE subscriptions SET expires_at=?, is_active=1,
-                       notified_7d=0, notified_3d=0, notified_1d=0, notified_80p=0
-                       WHERE tenant_id=? AND id=?""",
-                    (new_exp, ctx.tid, sub["id"])
-                )
-                ctx.db.exec("UPDATE orders SET sub_id=? WHERE tenant_id=? AND id=?",
-                            (sub["id"], ctx.tid, order_id))
+                # قفل کوتاه روی همین اشتراک.
+                #
+                # تاریخ تازه از تاریخ فعلی ساخته می‌شود، پس دو تمدید
+                # هم‌زمان هر دو یک مبدأ می‌خوانند و هر دو همان یک ماه
+                # را می‌نویسند — دو پرداخت، یک ماه. صداکننده با خطای
+                # ما پول را برمی‌گرداند.
+                if not ctx.db.claim_renewal(sub["id"]):
+                    return False, "این اشتراک همین حالا در حال تمدید است"
+                try:
+                    # ایمیل را هم می‌دهیم: در 3x-ui نسخه‌ی ۳ شناسه‌ی
+                    # اصلی کلاینت ایمیل است و جست‌وجو با آن مطمئن‌تر
+                    # از uuid است
+                    ctx.xui.extend_subscription(
+                        sub["inbound_id"], sub["client_uuid"],
+                        plan["days"], plan["gb"],
+                        email=sub.get("client_email"))
+                    new_exp = _add_days_iso(sub["expires_at"], plan["days"])
+                    ctx.db.exec(
+                        """UPDATE subscriptions SET expires_at=?, is_active=1,
+                           notified_7d=0, notified_3d=0, notified_1d=0,
+                           notified_80p=0
+                           WHERE tenant_id=? AND id=?""",
+                        (new_exp, ctx.tid, sub["id"])
+                    )
+                    ctx.db.exec(
+                        "UPDATE orders SET sub_id=? WHERE tenant_id=? AND id=?",
+                        (sub["id"], ctx.tid, order_id))
+                finally:
+                    ctx.db.release_renewal(sub["id"])
                 return True, {**sub, "expires_at": new_exp, "renewed": True}
 
         email = _free_email(ctx, user, prefix)

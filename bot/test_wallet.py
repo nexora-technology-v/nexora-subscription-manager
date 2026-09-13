@@ -778,6 +778,78 @@ check("و کد دیگر سفارش‌ها را نمی‌شمارد",
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("دو تمدید هم‌زمان روی یک اشتراک")
+
+# extend_subscription تاریخ فعلی را از پنل می‌خواند و بعد تاریخ تازه
+# را می‌نویسد. دو تمدید هم‌زمان — دوباره زدنِ دکمه، یا تمدید خودکاری
+# که با تمدید دستی برخورد کند — هر دو یک مبدأ می‌خوانند و هر دو
+# همان یک ماه را می‌نویسند: دو پرداخت، یک ماه تمدید.
+
+pid_n = d.exec(
+    "INSERT INTO plans (tenant_id, name, gb, days, price) VALUES (?,?,?,?,?)",
+    (tid, "تمدیدی", 50, 30, 200000))
+un = new_user(0)
+sub_n = d.exec(
+    "INSERT INTO subscriptions (tenant_id, user_id, plan_id, client_email,"
+    " gb, expires_at) VALUES (?,?,?,?,?,?)",
+    (tid, un["id"], pid_n, "e_renew", 50, "2026-12-01T00:00:00"))
+
+LOCKED = []
+G3 = threading.Barrier(3)
+
+
+def _lock():
+    G3.wait()
+    if d.claim_renewal(sub_n):
+        LOCKED.append(1)
+
+
+lk = [threading.Thread(target=_lock) for _ in range(3)]
+for t in lk:
+    t.start()
+for t in lk:
+    t.join()
+
+check("از سه نخ فقط یکی قفل را می‌گیرد", len(LOCKED) == 1,
+      f"{len(LOCKED)} قفل")
+check("تلاش بعدی هم رد می‌شود", not d.claim_renewal(sub_n))
+
+d.release_renewal(sub_n)
+check("بعد از آزادشدن، دوباره قابل‌گرفتن است", d.claim_renewal(sub_n),
+      "تمدید ماه بعد نباید مسدود بماند")
+
+head("قفلِ مانده، اشتراک را برای همیشه نمی‌بندد")
+
+d.exec("UPDATE subscriptions SET renewing_at=datetime('now','-20 minutes')"
+       " WHERE tenant_id=? AND id=?", (tid, sub_n))
+check("قفل کهنه دوباره قابل‌گرفتن است", d.claim_renewal(sub_n),
+      "نخی که وسط تمدید مرد، اشتراک را قفل نگه نمی‌دارد")
+d.release_renewal(sub_n)
+
+head("و قفل، سراغ اشتراک دیگری نمی‌رود")
+
+sub_b = d.exec(
+    "INSERT INTO subscriptions (tenant_id, user_id, plan_id, client_email,"
+    " gb, expires_at) VALUES (?,?,?,?,?,?)",
+    (tid, un["id"], pid_n, "e_other2", 50, "2026-12-01T00:00:00"))
+d.claim_renewal(sub_n)
+check("اشتراک دیگرِ همان مشتری آزاد می‌ماند", d.claim_renewal(sub_b),
+      "قفل روی یک اشتراک است، نه روی کل حساب")
+d.release_renewal(sub_n)
+d.release_renewal(sub_b)
+
+check("provision قبل از تمدید قفل می‌گیرد",
+      "ctx.db.claim_renewal(sub[\"id\"])" in SRC)
+check("و در هر حالت آزادش می‌کند",
+      "finally:" in SRC and "release_renewal(sub[\"id\"])" in SRC,
+      "شکستِ پنل نباید اشتراک را قفل بگذارد")
+check("و رد شدن، پول را برمی‌گرداند",
+      "در حال تمدید است" in SRC and "خطا در ساخت کانفیگ" in SRC,
+      "wallet_pay روی شکستِ provision مبلغ را برمی‌گرداند")
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

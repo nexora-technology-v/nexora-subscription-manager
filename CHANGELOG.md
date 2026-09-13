@@ -4,6 +4,28 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — Two renewals at once charged twice and extended once
+
+`extend_subscription` reads the current expiry from the panel and writes the new
+one. Two renewals running together both read the same starting point and both
+write the same single month.
+
+The customer pays twice and gets one month. Nothing errors, and nothing in the
+panel shows it — the expiry looks right, because it is right for one of the two
+payments.
+
+Reaching it is easy: tapping the wallet renew button twice, or the hourly
+auto-renew firing while the customer renews by hand.
+
+A subscription is now locked for the moment it takes to renew it. The second
+renewal is refused, and `wallet_pay` already refunds in full when provisioning
+fails — so the customer gets their money back rather than a silent loss.
+
+The lock releases whatever happens, including a panel error, and a lock older
+than five minutes is taken over, so a thread dying mid-renewal cannot leave a
+subscription permanently unrenewable. It is per subscription: the customer's
+other subscriptions stay free to renew.
+
 ### Fixed — The referral reward asked the wrong question, and my own fix made it worse
 
 `_reward_referrer` paid out when the buyer had no *other* approved order. That is
