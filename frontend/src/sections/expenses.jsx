@@ -285,6 +285,9 @@ export function BillingExpenses({ password }) {
           </div>
           <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
             این مبلغ را هر ماه باید دربیاورید
+            {d.monthlyFromYearly > 0 && (
+              <> — شامل {toman(d.monthlyFromYearly)} از هزینه‌های سالانه</>
+            )}
           </div>
         </div>
         <div className="fx-card p-4">

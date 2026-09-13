@@ -15,6 +15,7 @@
 اجرا:  python3 tools/test-billing-e2e.py
 """
 import importlib.util
+import io
 import os
 import sqlite3
 import sys
@@ -589,6 +590,64 @@ APP._xui_db_path, APP.BILLING_DB = _saved_x, _saved_b
 
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
+# ═══════════════════════════════════════════════════════════
+head("هزینه‌ی سالانه هم بار ماهانه است")
+
+# کارت «هزینه‌ی ثابت ماهانه» می‌گوید «این مبلغ را هر ماه باید
+# دربیاورید». هزینه‌ی سالانه — دامنه، لایسنس — کلاً کنار گذاشته
+# می‌شد و صفر حساب می‌آمد. یعنی همان خطایی که این بخش برای
+# جلوگیری از آن ساخته شده: اشتباه، و همیشه به نفع خودِ مدیر.
+
+_bc = APP._billing_conn()
+try:
+    _bc.execute("DELETE FROM expenses")
+    for _kind, _label, _irt, _rec in (
+            ("server_abroad", "هتزنر", 3_000_000, "monthly"),
+            ("domain", "دامنه‌ی ir", 1_200_000, "yearly"),
+            ("other", "یک‌بار", 500_000, "once")):
+        _bc.execute(
+            "INSERT INTO expenses (kind,label,amount,currency,amount_irt,"
+            "recurring,spent_at) VALUES (?,?,?,?,?,?,?)",
+            (_kind, _label, _irt, "IRT", _irt, _rec, "2025-01-01"))
+    _bc.commit()
+finally:
+    _bc.close()
+
+_ex = APP.expenses_list(months=120, x_admin_password="x")
+
+check("سهم ماهانه‌ی هزینه‌ی سالانه شمرده می‌شود",
+      _ex["monthlyFromYearly"] == 100_000,
+      f"۱٬۲۰۰٬۰۰۰ ÷ ۱۲ = {_ex['monthlyFromYearly']:,}")
+check("و در بار ماهانه جمع می‌شود",
+      _ex["monthlyRecurring"] == 3_100_000,
+      f"{_ex['monthlyRecurring']:,} — قبلاً ۳٬۰۰۰٬۰۰۰ بود")
+check("هزینه‌ی یک‌بار در بار ماهانه نمی‌آید",
+      _ex["monthlyRecurring"] < 3_500_000,
+      "«یک‌بار» یعنی یک‌بار")
+check("جمع سالانه جدا هم گزارش می‌شود",
+      _ex["yearlyTotal"] == 1_200_000)
+check("جمع کل هر سه را دارد", _ex["allTimeTotal"] == 4_700_000,
+      f"{_ex['allTimeTotal']:,}")
+
+_bc = APP._billing_conn()
+try:
+    _bc.execute("DELETE FROM expenses WHERE recurring='yearly'")
+    _bc.commit()
+finally:
+    _bc.close()
+_ex2 = APP.expenses_list(months=120, x_admin_password="x")
+check("بدون هزینه‌ی سالانه، عدد همان قبلی است",
+      _ex2["monthlyRecurring"] == 3_000_000
+      and _ex2["monthlyFromYearly"] == 0,
+      "رفتار قبلی برای کسی که هزینه‌ی سالانه ندارد عوض نمی‌شود")
+
+JSX = io.open(os.path.join(ROOT, "frontend", "src", "sections",
+                           "expenses.jsx"), encoding="utf-8").read()
+check("کارت می‌گوید این عدد از کجا آمده",
+      "monthlyFromYearly" in JSX and "هزینه‌های سالانه" in JSX,
+      "عددی که بی‌توضیح بالا برود، مدیر فکر می‌کند اشتباه است")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

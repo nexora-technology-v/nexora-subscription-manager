@@ -4,6 +4,21 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — Yearly costs counted as zero in the monthly burden
+
+The expenses page has a card reading "هزینه‌ی ثابت ماهانه — این مبلغ را هر ماه
+باید دربیاورید". It summed only expenses marked `monthly`. An expense marked
+`yearly` — a domain, a licence — was accepted by the form, stored, and labelled
+"سالانه" in the list, then left out of that figure entirely.
+
+So a 1,200,000-toman yearly renewal contributed 0 to the number that says what
+you have to earn each month, instead of 100,000. That is the exact error this
+module's own docstring says it exists to prevent: wrong, and always in the
+owner's favour.
+
+Yearly expenses now contribute a twelfth. The card says how much of the total
+came from them, so the number doesn't just quietly go up.
+
 ### Fixed — The HTML guard missed what Telegram rejects and flagged what it accepts
 
 `send` runs every outgoing message through `fmt.check`, and sends it stripped of

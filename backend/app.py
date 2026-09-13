@@ -4974,9 +4974,19 @@ def expenses_list(months: int = 12, x_admin_password: str = Header(...)):
             "SELECT COALESCE(SUM(gb),0) g FROM expenses WHERE kind='traffic'"
         ).fetchone()
         # هزینه‌ی ماهانه‌ی تکرارشونده — عددی که مدیر باید هر ماه دربیاورد
+        #
+        # هزینه‌ی سالانه هم هست، فقط تقسیم بر دوازده. قبلاً کلاً کنار
+        # گذاشته می‌شد: دامنه و لایسنسی که سالی یک‌بار پرداخت می‌شوند
+        # در عددی که می‌گوید «این را هر ماه باید دربیاورید» صفر حساب
+        # می‌شدند. یعنی همان خطایی که این بخش برای جلوگیری از آن
+        # ساخته شده — اشتباه، و همیشه به نفع خودِ مدیر.
         monthly = con.execute(
             "SELECT COALESCE(SUM(amount_irt),0) s FROM expenses "
             "WHERE recurring='monthly'"
+        ).fetchone()
+        yearly = con.execute(
+            "SELECT COALESCE(SUM(amount_irt),0) s FROM expenses "
+            "WHERE recurring='yearly'"
         ).fetchone()
     finally:
         con.close()
@@ -4991,7 +5001,12 @@ def expenses_list(months: int = 12, x_admin_password: str = Header(...)):
         "allTimeTotal": all_time["s"] if all_time else 0,
         "allTimeCount": all_time["n"] if all_time else 0,
         "trafficGB": gb_total["g"] if gb_total else 0,
-        "monthlyRecurring": monthly["s"] if monthly else 0,
+        "monthlyRecurring": (
+            (monthly["s"] if monthly else 0)
+            + round((yearly["s"] if yearly else 0) / 12)),
+        # جدا هم می‌آید تا کارت بتواند بگوید این عدد از کجا آمده
+        "monthlyFromYearly": round((yearly["s"] if yearly else 0) / 12),
+        "yearlyTotal": yearly["s"] if yearly else 0,
     }
 
 
