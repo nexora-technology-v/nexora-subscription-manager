@@ -4,6 +4,26 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Added — Every query is checked for tenant scoping
+
+The bot is multi-tenant: each shop shares the same tables and only the
+`tenant_id` column keeps them apart. A query that omits it shows one shop's data
+inside another's bot, and raises nothing — the result looks perfectly valid.
+
+All 85 queries touching tenant tables are scoped. Confirmed by removing one
+condition and watching the test name the file and line.
+
+One exception is recorded with its reason: the one-time migration that backfills
+`plan_name` runs across all tenants on purpose, joining on a globally unique
+`plan_id`.
+
+### Changed — Commission lookups assert the tenant instead of relying on ids
+
+`record_commission` looked up the user and the affiliate by primary key alone.
+Those ids are globally unique, so the result was correct — until a caller passes
+a `user_id` from one tenant with another tenant's `tenant_id`. The commission
+would go to the wrong shop's partner, silently. The condition costs nothing.
+
 ### Added — Every route is checked for authentication
 
 An admin endpoint that forgets `check_auth` is an open door, and from the outside

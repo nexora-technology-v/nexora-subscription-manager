@@ -370,13 +370,21 @@ def record_commission(tenant_id, user_id, order_id, amount):
 
     con = _connect()
     try:
-        u = con.execute("SELECT affiliate_id FROM users WHERE id=?",
-                        (user_id,)).fetchone()
+        # هر دو جست‌وجو به مستاجر محدود می‌شوند.
+        #
+        # شناسه‌ها سراسری‌اند، پس بدون این هم نتیجه درست درمی‌آمد — تا
+        # روزی که صداکننده‌ای user_id یک مستاجر را با tenant_id مستاجر
+        # دیگر بدهد. آن‌وقت پورسانت به همکارِ فروشگاه دیگری می‌رسید و
+        # هیچ‌جا خطایی هم نمی‌داد. شرط اضافه رایگان است.
+        u = con.execute(
+            "SELECT affiliate_id FROM users WHERE id=? AND tenant_id=?",
+            (user_id, tenant_id)).fetchone()
         if not u or not u["affiliate_id"]:
             return None
 
-        aff = con.execute("SELECT * FROM affiliates WHERE id=? AND active=1",
-                          (u["affiliate_id"],)).fetchone()
+        aff = con.execute(
+            "SELECT * FROM affiliates WHERE id=? AND tenant_id=? AND active=1",
+            (u["affiliate_id"], tenant_id)).fetchone()
         if not aff:
             return None
 

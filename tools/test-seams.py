@@ -530,6 +530,70 @@ if _new_public:
 
 
 # ═══════════════════════════════════════════════════════════
+#  درز — هر کوئری باید به مستاجر محدود باشد
+# ═══════════════════════════════════════════════════════════
+head("درز · محدودشدن به مستاجر")
+
+# ربات چندمستاجری است: هر فروشگاه جدول‌های مشترک دارد و فقط ستون
+# tenant_id آن‌ها را از هم جدا می‌کند. یک کوئری که آن شرط را جا
+# بیندازد، داده‌ی یک فروشگاه را در ربات دیگری نشان می‌دهد — و هیچ
+# خطایی هم نمی‌دهد، چون نتیجه «معتبر» به نظر می‌رسد.
+
+TENANT_TABLES = {
+    "users", "plans", "orders", "subscriptions", "coin_tx", "wallet_tx",
+    "discounts", "tickets", "affiliates", "affiliate_commissions",
+    "affiliate_payouts", "events",
+}
+
+#: کوئری‌هایی که عمداً به مستاجر محدود نیستند، و دلیلشان.
+#: هر ورودی یک تصمیم است، نه یک استثنا.
+TENANT_FREE = {
+    "UPDATE subscriptions SET plan_name":
+        "مهاجرت یک‌باره — عمداً روی همه‌ی مستاجرها، و روی plan_id که "
+        "سراسری یکتاست",
+}
+
+
+def _sql_literals(tree):
+    """رشته‌های SQL، با چسباندن رشته‌های مجاور."""
+    out = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            out.append((node.lineno, node.value))
+        elif isinstance(node, ast.JoinedStr):
+            parts = [v.value for v in node.values
+                     if isinstance(v, ast.Constant) and isinstance(v.value, str)]
+            out.append((node.lineno, " ".join(parts)))
+    return out
+
+
+_leaks, _checked = [], 0
+for _path, _src in (("bot/db.py", DB_PY), ("bot/handlers.py", HANDLERS)):
+    for _ln, _q in _sql_literals(ast.parse(_src)):
+        if not re.search(r"\b(SELECT|INSERT INTO|UPDATE|DELETE FROM)\b",
+                         _q, re.I):
+            continue
+        _tables = {t.lower() for t in re.findall(
+            r"(?:FROM|INTO|UPDATE|JOIN)\s+([a-z_]+)", _q, re.I)}
+        if not (_tables & TENANT_TABLES):
+            continue
+        _checked += 1
+        if "tenant_id" in _q:
+            continue
+        _flat = " ".join(_q.split())
+        if any(_flat.startswith(k) for k in TENANT_FREE):
+            continue
+        _leaks.append(f"{_path}:{_ln} — {_flat[:70]}")
+
+check("کوئری‌های مستاجری پیدا شدند", _checked > 60, f"{_checked} کوئری")
+check("همه به مستاجر محدودند", not _leaks,
+      f"{len(_leaks)} بدون شرط" if _leaks else f"{_checked} کوئری")
+if _leaks:
+    bullets(_leaks)
+
+
+
+# ═══════════════════════════════════════════════════════════
 print(f"\n{D}{'─' * 54}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
