@@ -4,6 +4,41 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — Reverse DNS could hold the intrusion page for 30 seconds
+
+`rdns_many` looks up names in parallel with a time budget, and the docstring
+promises the whole thing is capped. It was not.
+
+The pool was used as `with ThreadPoolExecutor(...)`, and leaving that block calls
+`shutdown(wait=True)` — which waits for every lookup already running. Cancelling
+the pending ones does nothing for those. With a DNS server that does not answer,
+the page waits as long as the resolver does. Measured at 30 seconds against a
+1-second budget.
+
+The pool is shut down with `wait=False, cancel_futures=True` now. Lookups still
+finish in the background and land in the cache, so the next load gets them free.
+
+### Fixed — A reverse lookup left a 1.2-second timeout on every socket
+
+`rdns` set `socket.setdefaulttimeout(timeout)` and restored the old value
+afterwards. That value is global to the process, not to the thread, and
+`rdns_many` runs sixteen of these at once: each thread read whatever another had
+just set as the "previous" value, and the last one to finish left 1.2 seconds
+behind permanently — inherited by every socket in the panel that did not set its
+own timeout.
+
+It did not even do what it was for. `gethostbyaddr` goes through the system
+resolver, which has its own timeouts and ignores that setting. Bounding the time
+belongs to `rdns_many`, and that is where it now happens.
+
+### Added — Owner classification is tested
+
+Deciding whether an attacking address is a datacentre or one of your own
+customers had no test, and getting it wrong means blocking someone who pays you.
+Real reverse-DNS samples for an Iranian operator, two hosting providers, an
+unknown domain and no name at all, plus a check that no hint is short enough to
+match everything.
+
 ### Added — Interpolated SQL is checked for request data
 
 Values are always parameterised, but table and column *names* cannot be, so 24

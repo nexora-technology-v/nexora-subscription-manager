@@ -30,6 +30,8 @@ def load(name, path):
 
 
 N = load("netid", "backend/netid.py")
+NETSRC = io.open(os.path.join(ROOT, "backend", "netid.py"),
+                 encoding="utf-8").read()
 
 G, R, D, X = "\033[38;5;42m", "\033[38;5;203m", "\033[38;5;245m", "\033[0m"
 _ok = _fail = 0
@@ -154,6 +156,92 @@ check("بدون netid هم کار می‌کند", "_Fallback" in MON,
 M = load("monitor", "backend/monitor.py")
 check("monitor واقعاً بارگذاری می‌شود", hasattr(M, "snapshot"))
 check("backpack در TUNNEL_ENGINES هست", "backpack" in M.TUNNEL_ENGINES)
+
+# ═══════════════════════════════════════════════════════════
+head("جست‌وجوی نام معکوس، صفحه را معطل نمی‌کند")
+
+# دو مشکل با هم:
+#
+#   ۱. rdns با setdefaulttimeout مهلت می‌گذاشت. آن مقدار سراسریِ کل
+#      پردازه است، نه مالِ نخ. rdns_many شانزده‌تا را هم‌زمان می‌دواند،
+#      پس نخ‌ها مقدار همدیگر را «مقدار قبلی» می‌دیدند و آخری ۱.۲
+#      ثانیه را برای همیشه در پردازه جا می‌گذاشت.
+#
+#   ۲. «with ThreadPoolExecutor» موقع خروج منتظر نخ‌های در حال اجرا
+#      می‌ماند. یعنی بودجه سقف واقعی نبود.
+
+import socket as _sock
+import time as _t
+import threading as _th
+
+_BEFORE = _sock.getdefaulttimeout()
+
+_SLOW = _th.Event()
+
+
+def _hang(name):
+    """جست‌وجویی که جواب نمی‌دهد — مثل DNSِ از کار افتاده."""
+    _SLOW.wait(30)
+    return ("x", [], ["1.2.3.4"])
+
+
+_real_gha = _sock.gethostbyaddr
+_sock.gethostbyaddr = _hang
+N._RDNS_CACHE.clear()
+
+_t0 = _t.time()
+_res = N.rdns_many([f"5.200.10.{i}" for i in range(1, 25)],
+                   timeout=1.2, workers=8, budget=1.0)
+_took = _t.time() - _t0
+
+check("با DNSِ هنگ‌کرده هم سر وقت برمی‌گردد", _took < 3.0,
+      f"{_took:.1f} ثانیه با بودجه‌ی ۱ ثانیه")
+check("همه‌ی آدرس‌ها جواب دارند — حتی اگر خالی", len(_res) == 24,
+      f"{len(_res)} از ۲۴")
+check("و نام‌ها خالی‌اند، نه اینکه گم شوند",
+      all(v == "" for v in _res.values()))
+
+_SLOW.set()
+_t.sleep(0.2)
+_sock.gethostbyaddr = _real_gha
+
+check("مهلت سراسری سوکت دست‌نخورده مانده",
+      _sock.getdefaulttimeout() == _BEFORE,
+      f"{_sock.getdefaulttimeout()} در برابر {_BEFORE}")
+# صدازدنِ واقعی را می‌سنجیم، نه متن — کامنتی که توضیح می‌دهد چرا
+# استفاده نمی‌شود، خودش شامل همان کلمه است.
+check("و کد اصلاً setdefaulttimeout را صدا نمی‌زند",
+      "socket.setdefaulttimeout(" not in NETSRC,
+      "مقدار سراسری بین نخ‌ها نشت می‌کرد")
+
+head("دسته‌بندی صاحب آدرس")
+
+# این همان تصمیمی است که می‌گوید یک مهاجم دیتاسنتر است یا مشتری شما.
+CASES = [
+    ("host-5-200-10-20.tehran.mci.ir", "isp"),
+    ("abc.hetzner.com", "hosting"),
+    ("static.1.2.3.4.clients.your-server.de", "hosting"),
+    ("ip-1-2-3-4.pars.ir", "named"),
+    ("", "unknown"),
+]
+for _ptr, _kind in CASES:
+    _r = N.owner("1.2.3.4", ptr=_ptr)
+    check(f"«{_ptr or 'بدون نام'}» → {_kind}", _r["kind"] == _kind,
+          f"{_r['kind']} / {_r['label']}")
+
+check("دیتاسنتر دلیلش را می‌گوید",
+      "دیتاسنتر" in N.owner("1.2.3.4", ptr="abc.hetzner.com")["why"])
+check("اپراتور ایرانی هم",
+      "واقعی" in N.owner("1.2.3.4", ptr="x.mci.ir")["why"],
+      "مدیر باید بداند بستن این یعنی از دست دادن مشتری")
+
+_short = [k for k in list(N.HOSTING_HINTS) + list(N.IRAN_ISP_HINTS)
+          if len(k) <= 3]
+check("هیچ سرنخی آن‌قدر کوتاه نیست که همه را بگیرد", not _short,
+      "، ".join(_short) if _short else f"{len(N.HOSTING_HINTS)} دیتاسنتر، "
+      f"{len(N.IRAN_ISP_HINTS)} اپراتور")
+
+
 
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R

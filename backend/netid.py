@@ -420,7 +420,12 @@ def rdns_many(ips, timeout=1.2, workers=16, budget=3.0):
     if not todo:
         return out
 
-    with ThreadPoolExecutor(max_workers=min(workers, len(todo))) as pool:
+    # با «with» کار نمی‌کنیم: خروج از آن shutdown(wait=True) می‌زند و
+    # منتظر نخ‌هایی می‌ماند که همین حالا در حال اجرا هستند. یعنی بودجه
+    # سقف واقعی نبود — یک resolverِ کند می‌توانست صفحه را همان‌قدر
+    # معطل کند که قبل از موازی‌کردن معطل می‌کرد.
+    pool = ThreadPoolExecutor(max_workers=min(workers, len(todo)))
+    try:
         futures = {pool.submit(rdns, n, timeout): n for n in todo}
         done, pending = wait(futures, timeout=budget)
         for f in done:
@@ -430,9 +435,12 @@ def rdns_many(ips, timeout=1.2, workers=16, budget=3.0):
             except Exception:
                 out[n] = ""
         for f in pending:
-            # وقت تمام شد — این آدرس بدون نام می‌ماند، ولی صفحه باز می‌شود
-            f.cancel()
+            # وقت تمام شد — این آدرس بدون نام می‌ماند، ولی صفحه باز می‌شود.
+            # نخی که هنوز می‌دود در پس‌زمینه تمام می‌کند و نتیجه‌اش به
+            # کش می‌رود، پس دفعه‌ی بعد رایگان است.
             out.setdefault(futures[f], "")
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
     return out
 
 
@@ -455,18 +463,22 @@ def rdns(ip, timeout=1.5):
     if hit and now - hit[0] <= _RDNS_TTL:
         return hit[1]
 
-    old = socket.getdefaulttimeout()
+    # setdefaulttimeout عمداً استفاده *نمی‌شود*.
+    #
+    # آن مقدار سراسریِ کل پردازه است، نه مالِ این نخ. rdns_many تا
+    # شانزده‌تا از همین تابع را هم‌زمان می‌دواند، پس نخ‌ها مقدار
+    # همدیگر را به‌عنوان «مقدار قبلی» می‌خواندند و آخری ۱.۲ ثانیه را
+    # برای همیشه در پردازه جا می‌گذاشت — روی هر سوکت دیگری هم که
+    # بعداً مهلت صریح نداشت.
+    #
+    # و در عمل هم کاری نمی‌کرد: gethostbyaddr از resolver سیستم
+    # استفاده می‌کند و مهلت خودش را دارد. مهارِ زمان کار rdns_many
+    # است، نه این‌جا.
     name = ""
     try:
-        socket.setdefaulttimeout(timeout)
         name = socket.gethostbyaddr(n)[0]
     except Exception:
         name = ""
-    finally:
-        try:
-            socket.setdefaulttimeout(old)
-        except Exception:
-            pass
 
     _RDNS_CACHE[n] = (now, name)
     return name
