@@ -4,6 +4,22 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — A receipt arriving as the deadline passed refunded the coins anyway
+
+`handle_receipt` checked the deadline, then wrote the receipt and set the order to
+awaiting — unconditionally.
+
+The sweeper that expires unpaid orders runs on the scheduler thread, outside the
+per-chat lock, every two minutes. If it fired between that check and that write,
+it expired the order and released the reserved coins. The write then set the
+order back to awaiting with the receipt attached, so the admin approved it
+normally — while the coins had already gone back to the customer. They kept the
+discount and the coins.
+
+The write is conditional on the order still being pending now, and when it is not,
+the customer is told the deadline just passed and to send the receipt to support
+rather than being left thinking it was filed.
+
 ### Fixed — Two renewals at once charged twice and extended once
 
 `extend_subscription` reads the current expiry from the panel and writes the new

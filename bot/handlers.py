@@ -640,11 +640,18 @@ def handle_receipt(ctx, msg, user, state_data):
                             "برای ثبت پرداخت، <b>عکس رسید</b> یا "
                             "<b>متن پیامک بانک</b> را بفرستید.")
 
-    ctx.db.exec(
-        """UPDATE orders SET status='awaiting', receipt_type=?, receipt_file=?,
-                             receipt_text=? WHERE tenant_id=? AND id=?""",
-        (rtype, rfile, rtext, ctx.tid, order_id)
-    )
+    # شرطی، نه بی‌قید: بین بررسی مهلت در بالا و همین لحظه، جاروکشِ
+    # زمان‌بند می‌تواند سفارش را منقضی کرده و سکه‌ها را پس داده باشد.
+    if not ctx.db.attach_receipt(order_id, rtype, rfile, rtext):
+        ctx.db.clear_state(user["tg_id"])
+        return ctx.bot.send(
+            user["tg_id"],
+            "⌛️ درست همین لحظه مهلت این سفارش تمام شد.\n\n"
+            "اگر واریز کرده‌اید نگران نباشید — رسیدتان را برای پشتیبانی "
+            "بفرستید تا دستی ثبت شود.\n"
+            "وگرنه از «خرید اشتراک» یک سفارش تازه بسازید.",
+            keyboard=main_menu(ctx, user))
+
     ctx.db.clear_state(user["tg_id"])
 
     plan = ctx.db.get_plan(order["plan_id"])

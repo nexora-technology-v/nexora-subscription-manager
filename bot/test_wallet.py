@@ -850,6 +850,59 @@ check("و رد شدن، پول را برمی‌گرداند",
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("رسیدی که دقیقاً لحظه‌ی پایان مهلت می‌رسد")
+
+# handle_receipt مهلت را بررسی می‌کرد و بعد وضعیت را بی‌قید به
+# awaiting می‌نوشت. بین آن دو، جاروکشِ زمان‌بند — که قفلِ چت را
+# ندارد — می‌تواند سفارش را منقضی کند و سکه‌های رزروشده را پس بدهد.
+#
+# نتیجه: سفارش برای تایید می‌رفت، ولی سکه‌ها هم به مشتری برگشته
+# بودند. یعنی هم تخفیف را گرفته بود، هم سکه‌هایش را.
+
+pid_rc = d.exec(
+    "INSERT INTO plans (tenant_id, name, gb, days, price) VALUES (?,?,?,?,?)",
+    (tid, "رسیدی", 50, 30, 150000))
+
+urc = new_user(0)
+o_ok = d.create_order(urc["id"], pid_rc, 150000, 150000)
+check("رسید روی سفارش باز ثبت می‌شود",
+      d.attach_receipt(o_ok["id"], "text", None, "واریز شد"))
+check("و وضعیت awaiting می‌شود",
+      d.get_order(o_ok["id"])["status"] == "awaiting")
+check("متن رسید ذخیره شده",
+      d.get_order(o_ok["id"])["receipt_text"] == "واریز شد")
+
+# حالا سفارشی که جاروکش همین الان منقضی‌اش کرده
+o_late = d.create_order(urc["id"], pid_rc, 150000, 150000)
+d.exec("UPDATE orders SET status='expired' WHERE tenant_id=? AND id=?",
+       (tid, o_late["id"]))
+check("رسید روی سفارش منقضی ثبت نمی‌شود",
+      not d.attach_receipt(o_late["id"], "text", None, "دیر رسید"),
+      "وگرنه سفارش برمی‌گشت ولی سکه‌ها پس داده شده بودند")
+check("و وضعیتش دست‌نخورده می‌ماند",
+      d.get_order(o_late["id"])["status"] == "expired")
+
+# و روی سفارشی که قبلاً تایید شده هم نه
+o_done = d.create_order(urc["id"], pid_rc, 150000, 150000)
+d.exec("UPDATE orders SET status='approved' WHERE tenant_id=? AND id=?",
+       (tid, o_done["id"]))
+check("روی سفارش تاییدشده هم ثبت نمی‌شود",
+      not d.attach_receipt(o_done["id"], "text", None, "دوباره"))
+
+check("دو بار فرستادن رسید، دومی رد می‌شود",
+      not d.attach_receipt(o_ok["id"], "text", None, "دوباره"),
+      "سفارش دیگر pending نیست")
+
+check("کد از نسخه‌ی شرطی استفاده می‌کند",
+      "ctx.db.attach_receipt(order_id" in SRC,
+      "نوشتن بی‌قید همان چیزی بود که مسابقه را ممکن می‌کرد")
+check("و به مشتری می‌گوید چه شد",
+      "درست همین لحظه مهلت این سفارش تمام شد" in SRC,
+      "سکوت یعنی مشتری فکر می‌کند رسیدش ثبت شده")
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

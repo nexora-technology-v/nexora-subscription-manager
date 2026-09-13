@@ -654,6 +654,30 @@ class TenantDB:
                 (amount, self.tid, referrer_id))
             return True
 
+    def attach_receipt(self, order_id, rtype, rfile, rtext):
+        """
+        ثبت رسید روی سفارش — فقط اگر هنوز در انتظار پرداخت باشد.
+
+        برمی‌گرداند: ثبت شد یا نه.
+
+        چرا شرطی: جاروکشِ سفارش‌های منقضی روی نخ زمان‌بند می‌دود و
+        قفلِ چت را ندارد. اگر مشتری دقیقاً لحظه‌ی پایان مهلت رسید
+        بفرستد، جاروکش سفارش را منقضی می‌کند و سکه‌های رزروشده را پس
+        می‌دهد — و نوشتنِ بی‌قیدِ رسید بلافاصله سفارش را به awaiting
+        برمی‌گرداند.
+
+        نتیجه: سفارش برای تایید می‌رود، ولی سکه‌ها هم به مشتری
+        برگشته‌اند. تخفیف را گرفته و سکه‌هایش را هم نگه داشته.
+        """
+        with conn() as c:
+            cur = c.execute(
+                """UPDATE orders
+                      SET status='awaiting', receipt_type=?, receipt_file=?,
+                          receipt_text=?
+                    WHERE tenant_id=? AND id=? AND status='pending'""",
+                (rtype, rfile, rtext, self.tid, order_id))
+            return bool(cur.rowcount)
+
     def claim_renewal(self, sub_id, stale_minutes=5):
         """
         قفل‌کردن یک اشتراک برای تمدید. اتمی.
