@@ -3014,10 +3014,10 @@ def do_reject(ctx, order_id, admin_tg_id, reason):
     مشتری باید بداند چرا رد شده و چه کاری بکند — وگرنه یا پیگیری
     نمی‌کند (فروش از دست می‌رود) یا با عصبانیت به پشتیبانی می‌زند.
     """
-    ctx.db.exec(
-        "UPDATE orders SET status='rejected', reviewed_by=?, admin_note=?, "
-        "reviewed_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?",
-        (admin_tg_id, reason, ctx.tid, order_id))
+    # شرطی: سفارشی که کانفیگش ساخته شده رد نمی‌شود، و رد دوباره هم
+    # پیام دوم به مشتری نمی‌فرستد.
+    if not ctx.db.mark_rejected(order_id, admin_tg_id, reason):
+        return False
 
     o = ctx.db.get_order(order_id)
     if not o:

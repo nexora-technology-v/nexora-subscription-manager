@@ -654,6 +654,32 @@ class TenantDB:
                 (amount, self.tid, referrer_id))
             return True
 
+    def mark_rejected(self, order_id, admin_tg_id, reason):
+        """
+        رد سفارش — فقط اگر تحویل نشده باشد. برمی‌گرداند: رد شد یا نه.
+
+        چرا شرطی: رد شدن از دو راه می‌آید — دکمه‌ی گروه مدیریت
+        (داخل قفل چت) و مسیر پنل که نخ زمان‌بند اجرایش می‌کند (بیرون
+        از آن قفل). و تایید هم همین دو راه را دارد.
+
+        بدون شرط، رد و تایید می‌توانستند هم‌زمان اجرا شوند: مشتری
+        کانفیگش را می‌گرفت، پیام «سفارشتان رد شد» را هم می‌گرفت، و
+        سکه‌های رزروشده هم به او برمی‌گشت. سه چیز که با هم جور
+        نیستند.
+
+        سفارشی که sub_id دارد یعنی کانفیگش ساخته شده — آن دیگر رد
+        نمی‌شود.
+        """
+        with conn() as c:
+            cur = c.execute(
+                """UPDATE orders
+                      SET status='rejected', reviewed_by=?, admin_note=?,
+                          reviewed_at=CURRENT_TIMESTAMP
+                    WHERE tenant_id=? AND id=?
+                      AND status <> 'rejected' AND sub_id IS NULL""",
+                (admin_tg_id, reason, self.tid, order_id))
+            return bool(cur.rowcount)
+
     def attach_receipt(self, order_id, rtype, rfile, rtext):
         """
         ثبت رسید روی سفارش — فقط اگر هنوز در انتظار پرداخت باشد.
@@ -759,8 +785,20 @@ class TenantDB:
                            OR (sub_id IS NULL
                                AND (reviewed_at IS NULL
                                     OR reviewed_at <
-                                       datetime('now', ?))))""",
+                                       datetime('now', ?))))
+                      -- ردِ تازه یعنی مسابقه، نه تصمیم.
+                      --
+                      -- ادمینی که سفارشی را اشتباهی رد کرده باید
+                      -- بتواند بعداً تاییدش کند، پس ردِ قدیمی مانع
+                      -- نیست. ولی ردی که همین چند دقیقه پیش اتفاق
+                      -- افتاده، تقریباً همیشه یعنی مسیر پنل و دکمه‌ی
+                      -- گروه با هم اجرا شده‌اند — و نتیجه‌اش مشتری‌ای
+                      -- است که هم پیام رد می‌گیرد هم کانفیگ.
+                      AND NOT (status = 'rejected'
+                               AND reviewed_at IS NOT NULL
+                               AND reviewed_at >= datetime('now', ?))""",
                 (admin_tg_id, self.tid, order_id,
+                 f"-{int(stale_minutes)} minutes",
                  f"-{int(stale_minutes)} minutes"))
             return bool(cur.rowcount)
 

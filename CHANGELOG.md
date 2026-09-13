@@ -4,6 +4,24 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — An order could be rejected and approved at the same time
+
+Rejection arrives by two routes as well: the button in the admin group, inside the
+per-chat lock, and the panel route, which the scheduler runs outside it. Approval
+has the same two routes.
+
+Nothing stopped both from happening. The customer would receive their config, a
+message saying the order was rejected, and their reserved coins back — three
+outcomes that contradict each other.
+
+Rejection is conditional now: an order whose config already exists cannot be
+rejected, and rejecting twice does nothing, so the customer does not get a second
+rejection message.
+
+Approval refuses an order rejected in the last five minutes, because a rejection
+that recent is a race rather than a decision. An older rejection still allows
+approval — an admin who rejected by mistake has to be able to put it right.
+
 ### Fixed — A receipt arriving as the deadline passed refunded the coins anyway
 
 `handle_receipt` checked the deadline, then wrote the receipt and set the order to

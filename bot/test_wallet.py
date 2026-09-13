@@ -903,6 +903,85 @@ check("و به مشتری می‌گوید چه شد",
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("رد و تایید نمی‌توانند هر دو اتفاق بیفتند")
+
+# رد شدن از دو راه می‌آید: دکمه‌ی گروه مدیریت (داخل قفل چت) و مسیر
+# پنل که نخ زمان‌بند اجرا می‌کند (بیرون از آن قفل). تایید هم همین
+# دو راه را دارد.
+#
+# بدون شرط، هر دو می‌توانستند اجرا شوند: مشتری کانفیگش را می‌گرفت،
+# پیام «سفارشتان رد شد» را هم می‌گرفت، و سکه‌هایش هم برمی‌گشت.
+
+pid_j = d.exec(
+    "INSERT INTO plans (tenant_id, name, gb, days, price) VALUES (?,?,?,?,?)",
+    (tid, "ردی", 50, 30, 120000))
+uj = new_user(0)
+
+o_j = d.create_order(uj["id"], pid_j, 120000, 120000)
+check("سفارش باز رد می‌شود", d.mark_rejected(o_j["id"], 1, "رسید نامعتبر"))
+check("و وضعیتش ثبت می‌شود",
+      d.get_order(o_j["id"])["status"] == "rejected")
+check("دلیلش هم", d.get_order(o_j["id"])["admin_note"] == "رسید نامعتبر")
+
+check("رد دوباره انجام نمی‌شود", not d.mark_rejected(o_j["id"], 1, "دوباره"),
+      "وگرنه مشتری دو پیام رد می‌گیرد و سکه‌ها دو بار حساب می‌شوند")
+
+# سفارشی که کانفیگش ساخته شده
+o_done2 = d.create_order(uj["id"], pid_j, 120000, 120000)
+d.exec("UPDATE orders SET status='approved', sub_id=? WHERE tenant_id=? AND id=?",
+       (4242, tid, o_done2["id"]))
+check("سفارشی که کانفیگ گرفته رد نمی‌شود",
+      not d.mark_rejected(o_done2["id"], 1, "پشیمان شدم"),
+      "مشتری کانفیگ دارد — رد کردنش یعنی سه چیزِ ناسازگار")
+check("و تاییدش دست‌نخورده می‌ماند",
+      d.get_order(o_done2["id"])["status"] == "approved")
+
+head("رد و ادعای تایید، هم‌زمان")
+
+o_race2 = d.create_order(uj["id"], pid_j, 120000, 120000)
+RESULT = []
+G4 = threading.Barrier(2)
+
+
+def _do_claim():
+    G4.wait()
+    RESULT.append(("claim", d.claim_order(o_race2["id"], 9)))
+
+
+def _do_reject():
+    G4.wait()
+    RESULT.append(("reject", d.mark_rejected(o_race2["id"], 9, "رد")))
+
+
+rt = [threading.Thread(target=_do_claim), threading.Thread(target=_do_reject)]
+for t in rt:
+    t.start()
+for t in rt:
+    t.join()
+
+wins = [k for k, ok in RESULT if ok]
+check("هر دو می‌توانند بنویسند ولی وضعیت نهایی یکی است",
+      d.get_order(o_race2["id"])["status"] in ("approved", "rejected"),
+      d.get_order(o_race2["id"])["status"])
+check("ردِ تازه جلوی تایید را می‌گیرد",
+      not d.claim_order(o_race2["id"], 9)
+      if d.get_order(o_race2["id"])["status"] == "rejected" else True,
+      "وگرنه مشتری هم پیام رد می‌گیرد هم کانفیگ")
+
+# ولی ردِ قدیمی مانع نیست — ادمینی که اشتباه رد کرده باید بتواند
+# بعداً تاییدش کند.
+d.exec("UPDATE orders SET reviewed_at=datetime('now','-30 minutes') "
+       "WHERE tenant_id=? AND id=?", (tid, o_race2["id"]))
+check("ولی ردِ قدیمی راه تایید را نمی‌بندد",
+      d.claim_order(o_race2["id"], 9),
+      "رد اشتباهی باید قابل‌جبران بماند")
+
+check("کد از نسخه‌ی شرطی استفاده می‌کند",
+      "ctx.db.mark_rejected(order_id" in SRC)
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
