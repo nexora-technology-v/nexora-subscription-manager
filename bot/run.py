@@ -400,9 +400,21 @@ def process_panel_approvals():
             ctx = handlers.Ctx(tg, tenant)
 
             if r["status"] == "panel_reject":
-                handlers.do_reject(ctx, oid, 0,
-                                   r["admin_note"] or "رسید تایید نشد.")
-                log.info("سفارش %s از پنل رد شد", oid)
+                done = handlers.do_reject(ctx, oid, 0,
+                                          r["admin_note"] or "رسید تایید نشد.")
+                if done:
+                    log.info("سفارش %s از پنل رد شد", oid)
+                else:
+                    # رد شرطی است و تنها دلیل شکستش این است که کانفیگ
+                    # ساخته شده. سفارش باید از حالت panel_reject بیرون
+                    # بیاید، وگرنه هر بیست ثانیه دوباره تلاش می‌شود و
+                    # صف تا ابد همین یکی را می‌چرخاند.
+                    log.warning("سفارش %s رد نشد — کانفیگش ساخته شده", oid)
+                    with db.conn() as cx:
+                        cx.execute(
+                            "UPDATE orders SET status='approved', admin_note=? "
+                            "WHERE id=? AND status='panel_reject'",
+                            ("رد نشد چون کانفیگ قبلاً تحویل شده بود", oid))
                 continue
 
             ok, note = handlers.approve_order(ctx, oid, admin_tg_id=0)

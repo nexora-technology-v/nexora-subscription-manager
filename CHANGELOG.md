@@ -4,6 +4,23 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — Callers still claimed the rejection went through
+
+Making rejection conditional left three callers reporting success regardless. The
+admin was told "order #N was rejected and the customer has been informed" even
+when nothing had been sent.
+
+That was a regression I introduced in the change above: before rejection could
+refuse, the sentence was always true.
+
+All three now read the result. The two admin paths say what actually happened, and
+the scheduler logs the real outcome.
+
+The scheduler needed more than a message. A rejection it could not perform left
+the order in `panel_reject`, which is exactly what it scans for — so it would have
+retried the same order every twenty seconds forever. It now moves the order out of
+that state with a note saying the config had already been delivered.
+
 ### Fixed — An order could be rejected and approved at the same time
 
 Rejection arrives by two routes as well: the button in the admin group, inside the

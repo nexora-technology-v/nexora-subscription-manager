@@ -2573,7 +2573,15 @@ def admin_input(ctx, user, chat_id, text, state, data):
                       kb([[("‹ منوی مدیریت", "admin")]]))
 
     if kind == "reject" and target:
-        do_reject(ctx, int(target), user["tg_id"], txt or "رسید تأیید نشد.")
+        if not do_reject(ctx, int(target), user["tg_id"],
+                         txt or "رسید تأیید نشد."):
+            # رد حالا شرطی است: سفارشی که کانفیگ گرفته یا قبلاً رد
+            # شده، رد نمی‌شود. گفتن «رد شد» در آن حالت دروغ است.
+            return _reply(ctx, chat_id, None,
+                          f"سفارش <code>#{target}</code> رد نشد — یا کانفیگش "
+                          "ساخته شده، یا قبلاً رد شده بود.\n\n"
+                          "وضعیتش را از فهرست سفارش‌ها ببینید.",
+                          back_kb("adm:orders"))
         return _reply(ctx, chat_id, None,
                       f"❌ سفارش #{target} رد شد و دلیلش به مشتری رسید.",
                       back_kb("adm:orders"))
@@ -2998,8 +3006,15 @@ def _on_callback(ctx, cq):
                            "اگر مطمئنید واریز کرده‌اید، به پشتیبانی پیام بدهید.",
             }
             ctx.db.clear_state(frm["id"])
-            do_reject(ctx, int(oid), frm["id"],
-                      reasons.get(code, "رسید تأیید نشد."))
+            done = do_reject(ctx, int(oid), frm["id"],
+                             reasons.get(code, "رسید تأیید نشد."))
+            if not done:
+                # دکمه‌ها را برمی‌داریم ولی ادمین باید بداند چرا
+                # چیزی به مشتری نرفت
+                ctx.bot.answer_cb(
+                    cq["id"],
+                    "رد نشد — یا کانفیگش ساخته شده یا قبلاً رد شده بود.",
+                    alert=True)
             return ctx.bot.edit_markup(chat_id, mid, None)
 
     except (ValueError, TypeError):
