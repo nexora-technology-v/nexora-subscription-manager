@@ -4,6 +4,34 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — A tunnel with every port dead reported "unknown"
+
+`save_metrics` kept the first TCP probe that came back `ok` and discarded the
+rest. The agent reports a dead port as `{"ok": false, "loss": 100}` — it knows
+exactly how bad it is — but that row was thrown away for not being `ok`.
+
+So a tunnel with every port down stored a sample of nothing: no latency, and no
+loss either. The trend chart showed a gap and the quality read "نامشخص" for a
+tunnel that was completely down. And a tunnel with half its ports dead read
+"عالی", because the one surviving port's numbers were the only ones recorded.
+
+Loss is now averaged over every port, counting a dead one as 100, and latency
+comes from the ports that answered. A sample where nothing answered is stored as
+100% loss and reads "قطع" — a state the panel now has a colour for. A sample
+with no data at all still reads "نامشخص": no news and bad news are different
+things.
+
+### Fixed — Editing a tunnel skipped every check that creating one does
+
+`create_tunnel` validates the transport against the engine's list, the bridge
+port against 1024–65535, and rejects an empty name or remote host.
+`update_tunnel` validated none of them — the same value that was refused at
+creation went in through a PUT without a word. The config then generated wrong
+and the only symptom was a tunnel that didn't work. An empty bridge port
+surfaced Python's own English `int()` message as the API error.
+
+Both doors now share `_check_transport` and `_check_bridge`.
+
 ### Fixed — The firewall's SSH guard only knew about port 22
 
 Every guard in `firewall.py` compared against the literal 22: `sshProtected`,

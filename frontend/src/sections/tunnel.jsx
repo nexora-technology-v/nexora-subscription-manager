@@ -848,6 +848,7 @@ export const QUALITY_COLOR = {
   "خوب": "#5AA9E6",
   "متوسط": "var(--warn)",
   "ضعیف": "var(--danger)",
+  "قطع": "var(--danger)",
   "نامشخص": "var(--muted)",
 };
 

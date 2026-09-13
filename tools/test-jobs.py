@@ -18,6 +18,7 @@
 اجرا:  python3 tools/test-jobs.py
 """
 import importlib.util
+import io
 import os
 import sys
 import tempfile
@@ -371,8 +372,114 @@ check("موتور ناشناخته رد می‌شود",
       _raises(lambda: T.build_config(dict(TPL, engine="هیچ"), "iran")))
 
 
+# ═══════════════════════════════════════════════════════════
+head("تانلی که قطع است نباید «نامشخص» گزارش شود")
+
+# ایجنت برای پورت مرده {"ok": False, "loss": 100} می‌فرستد — یعنی
+# دقیقاً می‌داند صد درصد قطع است. ثبت‌کننده اولین پورتِ *سالم* را
+# برمی‌داشت و بقیه را دور می‌ریخت، پس وقتی هیچ پورتی سالم نبود هیچ
+# عددی ثبت نمی‌شد و کیفیت «نامشخص» می‌ماند — برای تانلی که کار
+# نمی‌کرد. و وقتی نصف پورت‌ها مرده بودند، «عالی» گزارش می‌شد.
+
+TUN_ID = T.create_tunnel({
+    "name": "سنجش", "engine": "backhaul", "node_id": NID,
+    "remote_host": "1.2.3.4", "ports": [443, 8443],
+})
+
+DEAD = {"tcp": {"443": {"ok": False, "loss": 100, "tries": 5},
+                "8443": {"ok": False, "loss": 100, "tries": 5}}}
+HALF = {"tcp": {"443": {"ok": True, "avg": 40.0, "min": 38.0, "max": 44.0,
+                        "jitter": 2.0, "loss": 0},
+                "8443": {"ok": False, "loss": 100, "tries": 5}}}
+GOOD = {"tcp": {"443": {"ok": True, "avg": 40.0, "min": 38.0, "max": 44.0,
+                        "jitter": 2.0, "loss": 0},
+                "8443": {"ok": True, "avg": 50.0, "min": 46.0, "max": 55.0,
+                         "jitter": 3.0, "loss": 0}}}
+
+d = T._tcp_summary(DEAD["tcp"])
+check("قطعِ کامل صد درصد پرت ثبت می‌کند", d.get("loss") == 100, str(d.get("loss")))
+check("و تاخیری ادعا نمی‌کند", d.get("avg") is None)
+check("و می‌گوید چند پورت از چند تا بالاست",
+      d.get("up") == 0 and d.get("ports") == 2)
+
+h = T._tcp_summary(HALF["tcp"])
+check("یک پورت مرده از دو تا یعنی ۵۰ درصد پرت", h.get("loss") == 50,
+      f"قبلاً ۰ ثبت می‌شد — «عالی» برای تانلی که نصفش مرده بود")
+check("تاخیر فقط از پورت‌های سالم می‌آید", h.get("avg") == 40.0, str(h.get("avg")))
+
+g = T._tcp_summary(GOOD["tcp"])
+check("سالم: میانگین هر دو پورت", g.get("avg") == 45.0, str(g.get("avg")))
+check("کمینه و بیشینه از کل پورت‌ها",
+      g.get("min") == 38.0 and g.get("max") == 55.0)
+check("فهرست خالی چیزی ثبت نمی‌کند", T._tcp_summary({}) == {})
+check("ردیف بی‌شکل نمی‌شکندش", T._tcp_summary({"443": "خراب"}) == {})
+
+T.save_metrics(TUN_ID, DEAD)
+m = T.get_metrics(TUN_ID)
+check("کیفیتِ تانلِ قطع «قطع» است", m["summary"]["quality"] == "قطع",
+      m["summary"]["quality"])
+check("و میانگین پرتش صد است", m["summary"]["lossAvg"] == 100)
+
+TUN2 = T.create_tunnel({
+    "name": "سنجش ۲", "engine": "backhaul", "node_id": NID,
+    "remote_host": "1.2.3.4", "ports": [443],
+})
+T.save_metrics(TUN2, GOOD)
+m2 = T.get_metrics(TUN2)
+check("تانل سالم هنوز «عالی» است", m2["summary"]["quality"] == "عالی",
+      m2["summary"]["quality"])
+
+TUN3 = T.create_tunnel({
+    "name": "سنجش ۳", "engine": "backhaul", "node_id": NID,
+    "remote_host": "1.2.3.4", "ports": [443],
+})
+T.save_metrics(TUN3, {"tcp": {}})
+m3 = T.get_metrics(TUN3)
+check("سنجشِ بی‌داده هنوز «نامشخص» است", m3["summary"]["quality"] == "نامشخص",
+      "نبودِ خبر با خبرِ بد فرق دارد")
+
+JSX = io.open(os.path.join(ROOT, "frontend", "src", "sections", "tunnel.jsx"),
+              encoding="utf-8").read()
+check("پنل برای «قطع» رنگ دارد", '"قطع": "var(--danger)"' in JSX,
+      "کلید ناشناخته خاکستری می‌شد — رنگِ «نمی‌دانم»")
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
+# ═══════════════════════════════════════════════════════════
+head("ویرایش تانل باید همان‌قدر سخت‌گیر باشد که ساختش")
+
+# ساخت تانل پروتکل و پورت ارتباط و آدرس را بررسی می‌کرد، ویرایش
+# هیچ‌کدام را. همان مقداری که موقع ساخت رد می‌شد با یک PUT می‌نشست،
+# بی‌هیچ خطایی — و تنها نشانه‌اش این بود که تانل کار نمی‌کرد.
+
+EDIT_ID = T.create_tunnel({
+    "name": "ویرایش", "engine": "backhaul", "node_id": NID,
+    "remote_host": "1.2.3.4", "ports": [443],
+})
+
+check("پروتکلی که موتور نمی‌شناسد رد می‌شود",
+      _raises(lambda: T.update_tunnel(EDIT_ID, {"transport": "کبوتر"})))
+check("پروتکل درست پذیرفته می‌شود",
+      T.update_tunnel(EDIT_ID, {"transport": "ws"}) is True,
+      "backhaul ws را می‌شناسد")
+check("پورت ارتباط زیر ۱۰۲۴ رد می‌شود",
+      _raises(lambda: T.update_tunnel(EDIT_ID, {"bridge_port": 80})))
+check("پورت ارتباط خالی هم رد می‌شود — نه خطای انگلیسی int()",
+      _raises(lambda: T.update_tunnel(EDIT_ID, {"bridge_port": ""})))
+check("آدرس سرور خارجِ خالی رد می‌شود",
+      _raises(lambda: T.update_tunnel(EDIT_ID, {"remote_host": "   "})))
+check("نام خالی رد می‌شود",
+      _raises(lambda: T.update_tunnel(EDIT_ID, {"name": ""})))
+check("ویرایش معتبر هنوز می‌نشیند",
+      T.update_tunnel(EDIT_ID, {"bridge_port": 3090,
+                                "remote_host": "5.6.7.8"}) is True)
+_e = T.get_tunnel(EDIT_ID)
+check("و واقعاً ذخیره شد",
+      _e["bridge_port"] == 3090 and _e["remote_host"] == "5.6.7.8",
+      f"{_e['bridge_port']} / {_e['remote_host']}")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

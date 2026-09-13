@@ -381,6 +381,27 @@ def validate_ports(ports, report=False):
     return (out, dropped) if report else out
 
 
+def _check_transport(engine, transport):
+    """پروتکل انتقال باید همانی باشد که این موتور می‌شناسد."""
+    if engine not in ENGINES:
+        raise ValueError(f"موتور ناشناخته: {engine}")
+    if transport not in ENGINES[engine]["transports"]:
+        raise ValueError(
+            f"{ENGINES[engine]['name']} از {transport} پشتیبانی نمی‌کند")
+    return transport
+
+
+def _check_bridge(value):
+    """پورت ارتباط — همان بازه‌ای که ساختِ تانل قبول می‌کند."""
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("پورت ارتباط نامعتبر است")
+    if not (1024 <= port <= 65535):
+        raise ValueError("پورت ارتباط باید بین ۱۰۲۴ تا ۶۵۵۳۵ باشد")
+    return port
+
+
 def create_tunnel(data):
     name = (data.get("name") or "").strip()[:60]
     if not name:
@@ -390,9 +411,8 @@ def create_tunnel(data):
     if engine not in ENGINES:
         raise ValueError(f"موتور ناشناخته: {engine}")
 
-    transport = data.get("transport") or ENGINES[engine]["default_transport"]
-    if transport not in ENGINES[engine]["transports"]:
-        raise ValueError(f"{ENGINES[engine]['name']} از {transport} پشتیبانی نمی‌کند")
+    transport = _check_transport(
+        engine, data.get("transport") or ENGINES[engine]["default_transport"])
 
     try:
         node_id = int(data.get("node_id"))
@@ -403,12 +423,7 @@ def create_tunnel(data):
     if not remote:
         raise ValueError("آدرس سرور خارج لازم است")
 
-    try:
-        bridge = int(data.get("bridge_port") or 3080)
-    except (TypeError, ValueError):
-        raise ValueError("پورت ارتباط نامعتبر است")
-    if not (1024 <= bridge <= 65535):
-        raise ValueError("پورت ارتباط باید بین ۱۰۲۴ تا ۶۵۵۳۵ باشد")
+    bridge = _check_bridge(data.get("bridge_port") or 3080)
 
     ports, dropped_ports = validate_ports(data.get("ports"), report=True)
     if not ports:
@@ -506,16 +521,36 @@ def update_tunnel(tid, data):
     if not cur:
         raise ValueError("تانل پیدا نشد")
 
+    # ساخت تانل این‌ها را بررسی می‌کرد، ویرایش هیچ‌کدام را.
+    #
+    # یعنی همان مقداری که موقع ساخت رد می‌شد، با یک PUT می‌نشست:
+    # پروتکلی که موتور نمی‌شناسد، پورت ارتباط صفر، آدرس سرور خارجِ
+    # خالی. هیچ خطایی هم نمی‌داد — تانل ساخته می‌شد، پیکربندی خراب
+    # می‌رفت روی سرور، و تنها نشانه‌اش این بود که کار نمی‌کرد.
     fields, params = [], []
-    for key, col in (("name", "name"), ("remote_host", "remote_host"),
-                     ("transport", "transport")):
-        if key in data:
-            fields.append(f"{col} = ?")
-            params.append(str(data[key]).strip()[:120])
+
+    if "name" in data:
+        name = str(data["name"]).strip()[:60]
+        if not name:
+            raise ValueError("نام تانل لازم است")
+        fields.append("name = ?")
+        params.append(name)
+
+    if "remote_host" in data:
+        remote = str(data["remote_host"]).strip()[:120]
+        if not remote:
+            raise ValueError("آدرس سرور خارج لازم است")
+        fields.append("remote_host = ?")
+        params.append(remote)
+
+    if "transport" in data:
+        fields.append("transport = ?")
+        params.append(_check_transport(cur.get("engine"),
+                                       str(data["transport"]).strip()))
 
     if "bridge_port" in data:
         fields.append("bridge_port = ?")
-        params.append(int(data["bridge_port"]))
+        params.append(_check_bridge(data["bridge_port"]))
 
     if "ports" in data:
         ports, dropped_ports = validate_ports(data["ports"], report=True)
@@ -961,6 +996,59 @@ def finish_job(job_id, ok, result=""):
         c.close()
 
 
+def _tcp_summary(tcp):
+    """
+    یک عدد از همه‌ی پورت‌ها، نه از اولینِ سالم.
+
+    قبلاً اولین پورتی که جواب داده بود برداشته می‌شد و بقیه دور
+    ریخته می‌شدند. دو چیز را پنهان می‌کرد، هر دو دقیقاً وقتی که
+    مدیر بیشتر از همیشه به عدد درست نیاز داشت:
+
+      ۱. تانلی که *همه‌ی* پورت‌هایش قطع بودند هیچ عددی ثبت نمی‌کرد.
+         ایجنت برای پورت مرده {"ok": False, "loss": 100} می‌فرستد —
+         یعنی دقیقاً می‌داند صد درصد قطع است — ولی چون ok نبود کنار
+         گذاشته می‌شد. نمودار جای خالی نشان می‌داد و کیفیت «نامشخص»
+         می‌شد، برای تانلی که اصلاً کار نمی‌کرد.
+
+      ۲. تانلی که نصف پورت‌هایش مرده بودند «عالی» گزارش می‌شد، چون
+         عددِ همان یک پورتِ سالم ثبت شده بود و پرتی بقیه هیچ‌جا
+         شمرده نمی‌شد.
+
+    حالا پرت از روی *همه‌ی* پورت‌ها میانگین گرفته می‌شود (پورت مرده
+    صد حساب می‌شود) و تاخیر از آن‌هایی که جواب داده‌اند.
+    """
+    rows = [v for v in (tcp or {}).values() if isinstance(v, dict)]
+    if not rows:
+        return {}
+
+    oks = [v for v in rows if v.get("ok")]
+
+    def _mean(key, src):
+        xs = [v[key] for v in src if isinstance(v.get(key), (int, float))]
+        return round(sum(xs) / len(xs), 1) if xs else None
+
+    losses = []
+    for v in rows:
+        val = v.get("loss")
+        if isinstance(val, (int, float)):
+            losses.append(float(val))
+        else:
+            losses.append(0.0 if v.get("ok") else 100.0)
+
+    mins = [v["min"] for v in oks if isinstance(v.get("min"), (int, float))]
+    maxs = [v["max"] for v in oks if isinstance(v.get("max"), (int, float))]
+
+    return {
+        "avg": _mean("avg", oks),
+        "jitter": _mean("jitter", oks),
+        "min": min(mins) if mins else None,
+        "max": max(maxs) if maxs else None,
+        "loss": round(sum(losses) / len(losses)) if losses else None,
+        "ports": len(rows),
+        "up": len(oks),
+    }
+
+
 def save_metrics(tunnel_id, data):
     """
     ثبت یک سنجش.
@@ -968,11 +1056,7 @@ def save_metrics(tunnel_id, data):
     فقط ۱۰۰ نمونه‌ی آخر هر تانل نگه داشته می‌شود — بیشتر از این
     برای دیدن روند لازم نیست و دیتابیس را بی‌دلیل بزرگ می‌کند.
     """
-    tcp = {}
-    for v in (data.get("tcp") or {}).values():
-        if v.get("ok"):
-            tcp = v
-            break
+    tcp = _tcp_summary(data.get("tcp"))
 
     icmp = data.get("icmp") or {}
     http = data.get("http") or {}
@@ -1029,12 +1113,16 @@ def get_metrics(tunnel_id, limit=40):
 
     # کیفیت — همان چیزی که کاربر می‌خواهد بداند
     a = summary["average"]
-    l = summary["lossAvg"] or 0
-    if a is None:
+    l = summary["lossAvg"]
+    if l is not None and l >= 100:
+        # هیچ پورتی جواب نداده. تاخیری هم در کار نیست که بشود سنجید،
+        # ولی این «نمی‌دانم» نیست — این بدترین حالت ممکن است.
+        summary["quality"] = "قطع"
+    elif a is None:
         summary["quality"] = "نامشخص"
-    elif l > 5 or a > 300:
+    elif (l or 0) > 5 or a > 300:
         summary["quality"] = "ضعیف"
-    elif l > 1 or a > 150:
+    elif (l or 0) > 1 or a > 150:
         summary["quality"] = "متوسط"
     elif a > 60:
         summary["quality"] = "خوب"
