@@ -7066,17 +7066,35 @@ def agent_job_result(payload: dict, x_agent_token: str = Header(None)):
     # JSON ناقص می‌شد، تجزیه می‌افتاد، و خطا در except بی‌صدا گم
     # می‌شد — کار «موفق» ثبت می‌شد و هیچ داده‌ای ذخیره نمی‌شد.
     full = str(p.get("result") or "")
-    TUN.finish_job(jid, ok, full[:4000])
+
+    # فقط صاحبِ کار می‌تواند ببنددش، و دستور را از روی ردیفِ خودِ کار
+    # می‌خوانیم نه از چیزی که در پاسخ نوشته شده.
+    action = TUN.finish_job(jid, ok, full[:4000], node_id=node["id"])
+    if action is None:
+        TUN.log(node_id=node["id"], level="warn",
+                message=f"نتیجه‌ی کار {jid} رد شد — این کار برای این نود نیست")
+        raise HTTPException(status_code=404,
+                            detail="این کار برای این نود نیست")
     result = full
 
     # نتیجه‌ی سنجش را جدا نگه می‌داریم تا روند قابل دیدن باشد
-    if ok and p.get("action") == "monitor" and p.get("tunnel_id"):
+    if ok and action == "monitor" and p.get("tunnel_id"):
         try:
-            TUN.save_metrics(int(p["tunnel_id"]), json.loads(result))
-        except Exception:
-            pass
+            _tid = int(p["tunnel_id"])
+        except (TypeError, ValueError):
+            _tid = None
+        # شناسه‌ی تانل از خودِ پاسخ می‌آید؛ بدون این بررسی هر نودی
+        # می‌توانست سنجش جعلی روی تاریخچه‌ی تانلِ نود دیگری بنویسد.
+        if _tid is not None and TUN.tunnel_on_node(_tid, node["id"]):
+            try:
+                TUN.save_metrics(_tid, json.loads(result))
+            except Exception:
+                pass
+        elif _tid is not None:
+            TUN.log(node_id=node["id"], level="warn",
+                    message=f"سنجشِ تانل {_tid} رد شد — روی این نود نیست")
 
-    if ok and p.get("action") == "health":
+    if ok and action == "health":
         try:
             data = json.loads(result)
             TUN.save_health(node["id"], data)
@@ -7084,10 +7102,10 @@ def agent_job_result(payload: dict, x_agent_token: str = Header(None)):
         except Exception:
             pass
 
-    if ok and p.get("action") in ("sysmon", "firewall"):
+    if ok and action in ("sysmon", "firewall"):
         try:
             TUN.save_sysmon(node["id"], {
-                "kind": p["action"],
+                "kind": action,
                 "data": json.loads(result),
             })
         except Exception:

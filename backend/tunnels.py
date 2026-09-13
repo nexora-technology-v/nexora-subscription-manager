@@ -985,13 +985,55 @@ def take_jobs(node_id, limit=5):
         c.close()
 
 
-def finish_job(job_id, ok, result=""):
+def finish_job(job_id, ok, result="", node_id=None):
+    """
+    بستن یک کار. برمی‌گرداند: دستورِ ثبت‌شده‌ی کار، یا None.
+
+    node_id که داده شود یعنی فقط صاحبِ کار می‌تواند ببنددش. بدون آن،
+    هر نودی با توکن خودش می‌توانست کار *نود دیگری* را «انجام شد»
+    اعلام کند — پنل کار را بسته می‌دید و هیچ‌کس نمی‌فهمید که روی آن
+    سرور هیچ اتفاقی نیفتاده.
+
+    دستور را هم از روی ردیفِ ذخیره‌شده برمی‌گردانیم، نه از چیزی که
+    ایجنت در پاسخ نوشته: تصمیم‌های بعدی (ذخیره‌ی سنجش، سلامت،
+    مانیتورینگ) نباید به حرفِ خودِ فرستنده تکیه کنند.
+    """
     c = conn()
     try:
+        row = c.execute(
+            "SELECT node_id, action FROM jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+        if not row:
+            return None
+        if node_id is not None and int(row["node_id"] or 0) != int(node_id):
+            return None
+
         c.execute("""UPDATE jobs SET status = ?, result = ?, done_at = ?
                      WHERE id = ?""",
                   ("done" if ok else "failed", str(result)[:2000], now(), job_id))
         c.commit()
+        return row["action"]
+    finally:
+        c.close()
+
+
+def tunnel_on_node(tunnel_id, node_id):
+    """
+    آیا این تانل واقعاً روی این نود است؟
+
+    شناسه‌ی تانل در پاسخِ ایجنت می‌آید، و بدون این بررسی هر نودی
+    می‌توانست سنجش جعلی روی تاریخچه‌ی تانلِ هر نود دیگری بنویسد.
+    هر دو سرِ تانل پذیرفته‌اند، چون سنجش از هر طرفی ممکن است بیاید.
+    """
+    c = conn()
+    try:
+        r = c.execute(
+            "SELECT node_id, foreign_node FROM tunnels WHERE id = ?",
+            (tunnel_id,)).fetchone()
+        if not r:
+            return False
+        return int(node_id) in {int(r["node_id"] or 0),
+                                int(r["foreign_node"] or 0)}
     finally:
         c.close()
 

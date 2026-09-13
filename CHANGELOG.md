@@ -4,6 +4,25 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Security — One node could close another node's jobs and write its metrics
+
+`/api/agent/job-result` authenticated the node, then acted on whatever the body
+said. `finish_job` was called with the job id alone, so any node with a valid
+token could mark *any* node's job done — the panel would show the work finished
+while nothing had happened on that server. `save_metrics` took `tunnel_id`
+straight from the body, so a node could write invented latency and loss into any
+tunnel's history, including a tunnel it has nothing to do with.
+
+The Iran node is the most exposed machine in this system. Whoever holds one of
+those tokens should be able to speak for that node and nothing else.
+
+`finish_job` now takes the node and refuses a job that does not belong to it, and
+it returns the job's *stored* action rather than trusting the one in the reply —
+so the sender no longer decides where its own result gets filed. Metrics are
+written only after `tunnel_on_node` confirms the tunnel really is on that node
+(either end of it, since a probe can come from either side). Both refusals are
+logged against the node that tried.
+
 ### Security — Nothing stopped someone guessing the admin password
 
 The whole system sits behind one password: the panel, customer records, the x-ui

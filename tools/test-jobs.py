@@ -480,6 +480,65 @@ check("و واقعاً ذخیره شد",
       f"{_e['bridge_port']} / {_e['remote_host']}")
 
 
+# ═══════════════════════════════════════════════════════════
+head("یک نود نباید به کار و سنجشِ نود دیگر دست بزند")
+
+# هر نود توکن خودش را دارد، ولی نتیجه‌ی کار فقط با شناسه‌ی کار
+# پذیرفته می‌شد. سرور ایران در دسترس‌ترین ماشین این سامانه است؛ اگر
+# یکی از آن‌ها به‌دست کسی بیفتد، می‌توانست کارهای نودهای دیگر را
+# «انجام شد» اعلام کند — پنل کار را بسته می‌دید و هیچ‌کس نمی‌فهمید
+# روی آن سرور هیچ اتفاقی نیفتاده.
+
+OTHER = T.create_node("سرور دوم")["id"]
+
+_j = T.queue_job(NID, "restart", {})
+check("نود دیگر نمی‌تواند کار را ببندد",
+      T.finish_job(_j, True, "دروغ", node_id=OTHER) is None)
+check("و کار دست‌نخورده می‌ماند", status_of(_j)["status"] == "queued",
+      status_of(_j)["status"])
+check("صاحبش می‌تواند", T.finish_job(_j, True, "شد", node_id=NID) == "restart",
+      "دستور را از روی ردیفِ خودِ کار برمی‌گرداند، نه از پاسخِ ایجنت")
+check("و حالا بسته است", status_of(_j)["status"] == "done")
+check("کار ناموجود هم None است", T.finish_job(999999, True, "", node_id=NID) is None)
+check("بدون node_id رفتار قبلی می‌ماند",
+      T.finish_job(T.queue_job(NID, "restart", {}), True, "") == "restart",
+      "صداکننده‌های داخلی که نودی ندارند نباید بشکنند")
+
+# ── سنجش ──
+#
+# شناسه‌ی تانل از خودِ پاسخ می‌آمد و هیچ‌جا بررسی نمی‌شد. یعنی یک نود
+# می‌توانست تاخیر و پرتِ ساختگی روی تاریخچه‌ی تانلِ نود دیگری بنویسد.
+MINE = T.create_tunnel({
+    "name": "مال من", "engine": "backhaul", "node_id": NID,
+    "remote_host": "1.2.3.4", "ports": [443],
+})
+THEIRS = T.create_tunnel({
+    "name": "مال دیگری", "engine": "backhaul", "node_id": OTHER,
+    "remote_host": "5.6.7.8", "ports": [443],
+})
+
+check("تانل خودی پذیرفته می‌شود", T.tunnel_on_node(MINE, NID) is True)
+check("تانل نود دیگر رد می‌شود", T.tunnel_on_node(MINE, OTHER) is False)
+check("تانل ناموجود رد می‌شود", T.tunnel_on_node(999999, NID) is False)
+
+PAIRED = T.create_tunnel({
+    "name": "دو سر", "engine": "backhaul", "node_id": NID,
+    "foreign_node": OTHER, "remote_host": "5.6.7.8", "ports": [443],
+})
+check("سرِ دومِ تانل هم پذیرفته می‌شود",
+      T.tunnel_on_node(PAIRED, OTHER) is True,
+      "سنجش ممکن است از هر طرفی بیاید")
+
+APP = io.open(os.path.join(ROOT, "backend", "app.py"), encoding="utf-8").read()
+check("مسیر ایجنت صاحبِ کار را بررسی می‌کند",
+      'node_id=node["id"]' in APP and "این کار برای این نود نیست" in APP)
+check("و تانل را قبل از ذخیره‌ی سنجش",
+      "tunnel_on_node" in APP)
+check("و دستور را از پاسخِ ایجنت نمی‌خواند",
+      'p.get("action") ==' not in APP,
+      "وگرنه فرستنده تعیین می‌کند نتیجه‌اش کجا نوشته شود")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

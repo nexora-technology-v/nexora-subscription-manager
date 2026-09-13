@@ -97,7 +97,12 @@ check("ستون در صورت نبود ساخته می‌شود",
       "ALTER TABLE nodes ADD COLUMN sysmon" in TUN,
       "نصب‌های قدیمی بدون مهاجرت دستی")
 check("app نتیجه‌ی sysmon را ذخیره می‌کند",
-      'p.get("action") in ("sysmon", "firewall")' in APP)
+      'action in ("sysmon", "firewall")' in APP)
+_jr = APP[APP.index("def agent_job_result"):]
+_jr = _jr[:_jr.index(chr(10) + "@app.")]
+check("و دستور را از ردیفِ خودِ کار می‌خواند",
+      'p.get("action")' not in _jr,
+      "وگرنه فرستنده تعیین می‌کند نتیجه‌اش کجا نوشته شود")
 
 head("حلقه ۵ · پنل می‌خواند")
 
