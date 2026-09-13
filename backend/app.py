@@ -2639,7 +2639,8 @@ def firewall_block_attackers(payload: dict, x_admin_password: str = Header(...))
             skipped.append(ip)
             continue
         try:
-            ok, note = fw.block_ip(ip, comment="nexora: brute-force")
+            ok, note = fw.block_ip(ip, comment="nexora: brute-force",
+                                   protect=_auth_ip.get())
             (done if ok else failed).append({"ip": ip, "note": note})
         except Exception as e:
             failed.append({"ip": ip, "note": str(e)})
@@ -2753,7 +2754,8 @@ def firewall_block_ip(payload: dict, x_admin_password: str = Header(...)):
     if p.get("unblock"):
         ok, note = fw.unblock_ip(ip)
     else:
-        ok, note = fw.block_ip(ip, comment=p.get("comment") or "از پنل نکسورا")
+        ok, note = fw.block_ip(ip, comment=p.get("comment") or "از پنل نکسورا",
+                               protect=_auth_ip.get())
 
     if not ok:
         raise HTTPException(status_code=400, detail=note)
@@ -8143,7 +8145,8 @@ def firewall_blackhole(payload: dict, x_admin_password: str = Header(...)):
     if p.get("unblock"):
         ok, note = fw.blackhole_remove(ip)
     else:
-        ok, note = fw.blackhole_add(ip, note=p.get("note") or "از پنل نکسورا")
+        ok, note = fw.blackhole_add(ip, note=p.get("note") or "از پنل نکسورا",
+                                    protect=_auth_ip.get())
 
     if not ok:
         raise HTTPException(status_code=400, detail=note)
@@ -8285,7 +8288,8 @@ def firewall_blackhole_bulk(payload: dict, x_admin_password: str = Header(...)):
         raise HTTPException(status_code=400,
                             detail="حداکثر ۲۰۰۰ آدرس در هر بار")
 
-    return fw.blackhole_bulk(raw, note=p.get("note") or "ورودی دسته‌ای",
+    return fw.blackhole_bulk(raw, protect=_auth_ip.get(),
+                             note=p.get("note") or "ورودی دسته‌ای",
                              remove=bool(p.get("unblock")))
 
 

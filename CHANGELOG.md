@@ -4,6 +4,28 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — "Block attackers" could block the owner
+
+`firewall.py` opens by saying no operation may cut off the owner's SSH, and every
+path to enabling the firewall or deleting a rule goes through that guard. Blocking
+an IP did not.
+
+The owner's own address can land in the failed-login list — a few mistyped
+passwords is enough. One click on block-attackers then runs `ufw insert 1 deny
+from <their address>`: position one, ahead of the rule allowing SSH. That path
+has no rollback timer, so the way back is the provider's console.
+
+`block_ip` only checked the string's shape, so it also accepted `127.0.0.1`,
+`10.x`, and `0.0.0.0/0` — the last one, inserted first, takes the whole server
+off the network.
+
+One `block_refusal` now sits in front of every blocking path — single, bulk, and
+blackhole. It refuses the address the request itself came from (and any range
+containing it), loopback, private and link-local, "all addresses", and anything
+shorter than /8. A /8 is still allowed, since blocking a country is a real use.
+The routes pass the caller's address from the same `ContextVar` the login
+lockout uses.
+
 ### Fixed — Every renewal told the customer their quota was nearly gone
 
 Renewing adds to the panel's quota and does not reset the usage counter, so both

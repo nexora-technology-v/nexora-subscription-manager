@@ -11,6 +11,7 @@
 از این نگهبان رد می‌شود.
 """
 import glob
+import ipaddress
 import os
 import re
 import shutil
@@ -687,10 +688,63 @@ def apply_plan(rules, confirm=False):
     return True, msg, results
 
 
-def block_ip(ip, comment=None):
+#: کم‌ترین طول پیشوندی که می‌پذیریم — کوتاه‌تر از این یعنی نصف
+#: اینترنت. بستن یک /8 برای مسدودکردن یک کشور معنا دارد؛ /0 تا /7 نه.
+MIN_PREFIX_V4 = 8
+MIN_PREFIX_V6 = 16
+
+
+def block_refusal(ip, protect=None):
+    """
+    چرا این آدرس را نباید بست — یا None اگر اشکالی ندارد.
+
+    قاعده‌ی طلایی این فایل می‌گوید هیچ عملیاتی نباید دسترسی SSH مدیر
+    را قطع کند، ولی بستن آی‌پی از این نگهبان رد نمی‌شد. آی‌پی خودِ
+    مدیر هم می‌تواند در فهرست تلاش‌های ناموفق بنشیند — چند بار اشتباه
+    زدن رمز کافی است — و بعد یک کلیک روی «بستن مهاجم‌ها» قاعده را
+    *در جایگاه اول* می‌نشاند، جلوتر از قاعده‌ی مجازِ SSH. این مسیر
+    ساعت‌شمار بازگشت هم ندارد.
+
+    protect آدرسی است که همین درخواست از آن آمده. هر چیز دیگری هم
+    که بستنش یعنی قطع‌کردن خودمان این‌جا رد می‌شود: لوپ‌بک، آدرس
+    داخلی، و رنجی که آن‌قدر بزرگ است که معنایش «همه».
+    """
+    raw = str(ip or "").strip()
+    if not _ip_ok(raw):
+        return "آدرس نامعتبر"
+
+    try:
+        net = ipaddress.ip_network(raw, strict=False)
+    except ValueError:
+        return "آدرس نامعتبر"
+
+    if protect:
+        try:
+            if ipaddress.ip_address(str(protect).strip()) in net:
+                return ("این همان آدرسی است که خودتان از آن وصل‌اید — "
+                        "بستنش یعنی قطع‌شدن دسترسی خودتان")
+        except ValueError:
+            pass
+
+    if net.is_loopback:
+        return "لوپ‌بک است — بستنش فقط خود سرور را می‌شکند"
+    if net.is_unspecified:
+        return "این یعنی «همه‌ی آدرس‌ها»"
+    if net.is_private or net.is_link_local:
+        return "آدرس داخلی است، نه مهاجم از بیرون"
+
+    floor = MIN_PREFIX_V4 if net.version == 4 else MIN_PREFIX_V6
+    if net.prefixlen < floor:
+        return (f"این رنج بیش از حد بزرگ است (/{net.prefixlen}) — "
+                f"دست‌کم /{floor} لازم است")
+    return None
+
+
+def block_ip(ip, comment=None, protect=None):
     """بستن کامل یک آی‌پی — برای وقتی یک مبدأ دارد سرور را می‌خورد."""
-    if not re.match(r"^[0-9a-fA-F:.]+(/\d{1,3})?$", str(ip or "")):
-        return False, "آدرس نامعتبر"
+    why = block_refusal(ip, protect)
+    if why:
+        return False, why
     if not available():
         return False, "ufw نصب نیست"
 
@@ -951,7 +1005,7 @@ def blackhole_list():
     return out_set
 
 
-def blackhole_add(ip, note=None):
+def blackhole_add(ip, note=None, protect=None):
     """
     بستن یک آدرس بدون فایروال.
 
@@ -972,8 +1026,9 @@ def blackhole_add(ip, note=None):
     حمله‌ی حجمی، فایروال لازم است.
     """
     ip = str(ip or "").strip()
-    if not _ip_ok(ip):
-        return False, "آدرس نامعتبر"
+    why = block_refusal(ip, protect)
+    if why:
+        return False, why
     if not blackhole_available():
         return False, "دستور ip روی این سرور نیست"
 
@@ -1111,7 +1166,7 @@ def blackhole_verify(ip):
             "why": "کرنل مسیر عادی برایش دارد — بسته نیست"}
 
 
-def blackhole_bulk(ips, note=None, remove=False):
+def blackhole_bulk(ips, note=None, remove=False, protect=None):
     """
     بستن یا بازکردن دسته‌ای.
 
@@ -1133,7 +1188,7 @@ def blackhole_bulk(ips, note=None, remove=False):
         if remove:
             ok, msg = blackhole_remove(ip)
         else:
-            ok, msg = blackhole_add(ip, note=note)
+            ok, msg = blackhole_add(ip, note=note, protect=protect)
         rows.append({"ip": ip, "ok": ok, "note": msg})
 
     good = sum(1 for r in rows if r["ok"])

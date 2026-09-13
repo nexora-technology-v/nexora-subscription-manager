@@ -429,6 +429,66 @@ os.environ.pop("XUI_DB_PATH", None)
 
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
+# ═══════════════════════════════════════════════════════════
+head("بستن آی‌پی نباید خودِ مدیر را ببندد")
+
+# قاعده‌ی طلایی این فایل می‌گوید هیچ عملیاتی نباید دسترسی SSH مدیر را
+# قطع کند — ولی بستن آی‌پی از این نگهبان رد نمی‌شد. آی‌پی خودِ مدیر
+# می‌تواند در فهرست تلاش‌های ناموفق بنشیند (چند بار اشتباه زدن رمز
+# کافی است) و بعد یک کلیک روی «بستن مهاجم‌ها» قاعده را در جایگاه
+# *اول* می‌نشاند، جلوتر از قاعده‌ی مجازِ SSH. و این مسیر ساعت‌شمار
+# بازگشت ندارد.
+
+check("آدرس خودِ درخواست‌دهنده بسته نمی‌شود",
+      "وصل‌اید" in (FW.block_refusal("5.6.7.8", protect="5.6.7.8") or ""),
+      FW.block_refusal("5.6.7.8", protect="5.6.7.8"))
+check("رنجی که آدرس خودش را در بر می‌گیرد هم",
+      FW.block_refusal("5.6.0.0/16", protect="5.6.7.8") is not None,
+      "بستن رنج هم همان نتیجه را دارد")
+check("ولی آدرس واقعاً غریبه پذیرفته می‌شود",
+      FW.block_refusal("91.99.12.4", protect="5.6.7.8") is None)
+
+check("لوپ‌بک رد می‌شود", FW.block_refusal("127.0.0.1") is not None)
+check("آدرس داخلی رد می‌شود", FW.block_refusal("192.168.1.5") is not None,
+      "مهاجمِ بیرونی آدرس داخلی ندارد")
+check("۱۰.x هم", FW.block_refusal("10.0.0.7") is not None)
+check("«همه‌ی آدرس‌ها» رد می‌شود", FW.block_refusal("0.0.0.0") is not None,
+      "در جایگاه اول یعنی قطع کامل سرور")
+
+check("رنج بیش از حد بزرگ رد می‌شود",
+      FW.block_refusal("1.0.0.0/4") is not None,
+      "/4 یعنی یک‌شانزدهم اینترنت")
+check("ولی یک /8 برای بستن یک کشور مجاز است",
+      FW.block_refusal("5.0.0.0/8") is None,
+      "کاربرد واقعی دارد، پس ردش نمی‌کنیم")
+check("آدرس بی‌معنا رد می‌شود", FW.block_refusal("سلام") is not None)
+check("خالی هم", FW.block_refusal("") is not None)
+# 2001:db8:: رنج مستندات است و پایتون هم خصوصی حسابش می‌کند — آدرس
+# جهانی واقعی لازم است
+check("آی‌پی‌شش جهانی پذیرفته می‌شود",
+      FW.block_refusal("2606:4700:4700::1111") is None,
+      str(FW.block_refusal("2606:4700:4700::1111")))
+check("ولی رنج مستندات آی‌پی‌شش رد می‌شود",
+      FW.block_refusal("2001:db8::1") is not None)
+
+# بدون ufw هم باید *قبل* از «ufw نصب نیست» رد شود — یعنی پیام درست
+# را بدهد، نه پیامی که مدیر را دنبال نخود سیاه بفرستد
+_real = FW.available
+FW.available = lambda: False
+# نام _ok نه: همان شمارنده‌ی پاسِ این فایل است
+_bok, _bnote = FW.block_ip("127.0.0.1")
+check("پیام خطا دلیل واقعی را می‌گوید",
+      not _bok and "لوپ‌بک" in _bnote, _bnote)
+FW.available = _real
+
+APP = io.open(os.path.join(ROOT, "backend", "app.py"), encoding="utf-8").read()
+check("هر سه مسیرِ بستن آدرسِ خودی را می‌فرستند",
+      APP.count("protect=_auth_ip.get()") >= 3,
+      "تک‌تک، دسته‌ای، و بلک‌هول")
+check("مسیر دسته‌ای بلک‌هول هم",
+      "blackhole_bulk(raw, protect=" in APP)
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 if not _fail:
     print(f"  {D}فایروال سرویس خودش را قطع نمی‌کند{X}")
