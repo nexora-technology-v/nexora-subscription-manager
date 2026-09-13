@@ -587,6 +587,78 @@ check("حلقه بی‌پایان نمی‌شود",
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("دو تایید هم‌زمان، یک کانفیگ")
+
+# نگهبان قدیمی وضعیت را می‌خواند و approved را *بعد از* ساخت کانفیگ
+# می‌نوشت. فاصله‌ی بین این دو یک رفت‌وبرگشت کامل با x-ui است.
+#
+# ربات هشت نخ دارد و دکمه‌ی تایید در گروه مدیریت است. دو بار زدن، دو
+# ادمین، یا تایید از پنل هم‌زمان با دکمه‌ی تلگرام — هر دو نخ نگهبان
+# را رد می‌کردند و مشتری با یک پرداخت دو کانفیگ می‌گرفت.
+
+pid_r = d.exec(
+    "INSERT INTO plans (tenant_id, name, gb, days, price) VALUES (?,?,?,?,?)",
+    (tid, "پلن رقابت", 50, 30, 300000))
+
+WINNERS = []
+BARRIER = threading.Barrier(2)
+
+
+def _claim_race(order_id):
+    BARRIER.wait()
+    if d.claim_order(order_id, 111):
+        WINNERS.append(order_id)
+
+
+ur = new_user(0)
+o_race = d.create_order(ur["id"], pid_r, 300000, 300000)
+
+ts = [threading.Thread(target=_claim_race, args=(o_race["id"],))
+      for _ in range(2)]
+for t in ts:
+    t.start()
+for t in ts:
+    t.join()
+
+check("فقط یکی از دو نخ ادعا را می‌برد", len(WINNERS) == 1,
+      f"{len(WINNERS)} برنده")
+check("و سفارش approved شده", d.get_order(o_race["id"])["status"] == "approved")
+
+check("تلاش سوم هم رد می‌شود", not d.claim_order(o_race["id"], 111),
+      "تا وقتی ادعا تازه است، کسی دیگر نمی‌تواند")
+
+head("ادعای مانده گیر نمی‌کند")
+
+# نخی که وسط ساخت مرده: approved است، sub_id ندارد، و قدیمی شده
+d.exec("UPDATE orders SET reviewed_at=datetime('now','-20 minutes') "
+       "WHERE tenant_id=? AND id=?", (tid, o_race["id"]))
+check("ادعای کهنه دوباره قابل‌گرفتن است",
+      d.claim_order(o_race["id"], 222),
+      "وگرنه سفارشی که نخش مرده برای همیشه گیر می‌کند")
+
+head("سفارشی که کانفیگش ساخته شده، دیگر نه")
+
+d.exec("UPDATE orders SET sub_id=? WHERE tenant_id=? AND id=?",
+       (999, tid, o_race["id"]))
+d.exec("UPDATE orders SET reviewed_at=datetime('now','-20 minutes') "
+       "WHERE tenant_id=? AND id=?", (tid, o_race["id"]))
+check("با sub_id، ادعا رد می‌شود", not d.claim_order(o_race["id"], 333),
+      "کانفیگ ساخته شده — تحویل دوباره یعنی دو کانفیگ برای یک پرداخت")
+
+head("و کد، ادعا را پیش از ساخت می‌گیرد")
+
+check("approve_order اول ادعا می‌کند",
+      "ctx.db.claim_order(order_id, admin_tg_id)" in SRC,
+      "نه بعد از ساخت کانفیگ")
+check("و شکست ساخت ادعا را پس می‌دهد",
+      "_unclaim(" in SRC,
+      "وگرنه سفارشِ شکست‌خورده approved می‌ماند و تلاش دوباره ممکن نیست")
+check("پس‌دادن فقط وقتی کانفیگ ساخته نشده",
+      "AND sub_id IS NULL" in SRC)
+
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

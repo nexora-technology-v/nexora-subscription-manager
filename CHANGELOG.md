@@ -4,6 +4,28 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — Two approvals at once gave one payment two configs
+
+`approve_order` read the order's status, provisioned the config, and only then
+marked it approved. The gap between the read and the mark is a full round trip to
+x-ui — seconds.
+
+The bot runs eight threads and the approve button sits in the admin group. A
+double tap, two admins, or a panel approval landing while someone presses the
+Telegram button: both threads pass the guard, both provision, and the customer
+gets two configs for one payment. The referrer is rewarded twice as well, since
+neither approval is marked yet when the "first purchase?" check runs. Only the
+affiliate commission survived, because its table has a uniqueness constraint.
+
+The order is now claimed atomically before anything else happens — one conditional
+UPDATE, and whoever loses is told the order is already being processed.
+
+A claim that goes stale is re-claimable after five minutes, so a thread that dies
+mid-provision does not strand the order. And a failed provision releases the claim
+with the error, which keeps the existing "you can try again" behaviour: without
+that, a failure would leave the order marked approved with no config and no way
+back.
+
 ### Added — Data paths are checked across the installer, the code and the CLI
 
 Three places have to agree about where files live: `install.sh`, which writes the

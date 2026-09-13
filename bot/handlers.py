@@ -864,17 +864,23 @@ def approve_order(ctx, order_id, admin_tg_id):
     if order["status"] == "approved" and order.get("sub_id"):
         return False, "این سفارش قبلاً تایید شده و کانفیگش ساخته شده"
 
-    def _mark_approved():
+    # ادعای اتمی، *قبل* از هر کاری.
+    #
+    # فقط یک نخ می‌تواند برنده شود؛ بقیه همین‌جا برمی‌گردند. بدون این،
+    # دو تایید هم‌زمان هر دو نگهبان بالا را رد می‌کردند و مشتری با یک
+    # پرداخت دو کانفیگ می‌گرفت.
+    if not ctx.db.claim_order(order_id, admin_tg_id):
+        return False, "این سفارش همین حالا در حال پردازش است"
+
+    def _unclaim(note):
+        """ادعا را پس می‌دهیم تا تلاش دوباره ممکن بماند."""
         ctx.db.exec(
-            """UPDATE orders SET status='approved', reviewed_by=?,
-                                 reviewed_at=CURRENT_TIMESTAMP
-               WHERE tenant_id=? AND id=?""",
-            (admin_tg_id, ctx.tid, order_id)
-        )
+            "UPDATE orders SET status='awaiting', admin_note=? "
+            "WHERE tenant_id=? AND id=? AND sub_id IS NULL",
+            (note[:180], ctx.tid, order_id))
 
     # شارژ کیف پول کانفیگ ندارد — فقط موجودی اضافه می‌شود
     if order.get("kind") == "topup":
-        _mark_approved()
         u = ctx.db.get_user_by_id(order["user_id"])
         ctx.db.add_balance(u["id"], order["amount"], "topup",
                            "شارژ کیف پول", order_id)
@@ -917,11 +923,11 @@ def approve_order(ctx, order_id, admin_tg_id):
 
     ok, result = provision(ctx, order_id)
     if not ok:
-        ctx.db.exec("UPDATE orders SET admin_note=? WHERE tenant_id=? AND id=?",
-                    (f"خطای ساخت: {result}", ctx.tid, order_id))
+        # ادعا را پس می‌دهیم، وگرنه سفارشی که ساختش شکست خورده
+        # approved می‌ماند و هیچ‌کس نمی‌تواند دوباره تلاش کند.
+        _unclaim(f"خطای ساخت: {result}")
         return False, result
 
-    _mark_approved()
     user = ctx.db.get_user_by_id(order["user_id"])
 
     # پورسانت همکار فروش — بعد از ساخت موفق کانفیگ، چون تا وقتی

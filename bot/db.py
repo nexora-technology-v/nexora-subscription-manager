@@ -605,6 +605,39 @@ class TenantDB:
                 (self.tid, user_id)).fetchone()
             return True, (row["coins"] if row else 0)
 
+    def claim_order(self, order_id, admin_tg_id, stale_minutes=5):
+        """
+        ادعای انحصاری یک سفارش، پیش از ساخت کانفیگ. اتمی.
+
+        چرا لازم است: تایید سفارش اول وضعیت را می‌خواند و *بعد از*
+        ساخت موفق کانفیگ آن را approved می‌کرد. فاصله‌ی بین این دو یک
+        رفت‌وبرگشت کامل با x-ui است — چند ثانیه.
+
+        ربات هشت نخ دارد و دکمه‌ی تایید در گروه مدیریت است. دو بار
+        زدن، دو ادمین، یا تایید از پنل هم‌زمان با دکمه‌ی تلگرام: هر
+        دو نخ نگهبان را رد می‌کنند، هر دو کانفیگ می‌سازند، و مشتری با
+        یک پرداخت دو کانفیگ می‌گیرد و معرفش دو بار سکه.
+
+        شرط اتمی این را از ریشه می‌بندد: فقط یکی می‌تواند برنده شود.
+
+        ادعای مانده هم دوباره قابل‌گرفتن است — اگر نخی وسط ساخت مرد،
+        سفارش برای همیشه گیر نمی‌کند.
+        """
+        with conn() as c:
+            cur = c.execute(
+                """UPDATE orders
+                      SET status='approved', reviewed_by=?,
+                          reviewed_at=CURRENT_TIMESTAMP
+                    WHERE tenant_id=? AND id=?
+                      AND (status <> 'approved'
+                           OR (sub_id IS NULL
+                               AND (reviewed_at IS NULL
+                                    OR reviewed_at <
+                                       datetime('now', ?))))""",
+                (admin_tg_id, self.tid, order_id,
+                 f"-{int(stale_minutes)} minutes"))
+            return bool(cur.rowcount)
+
     def release_coins(self, order_id):
         """
         سکه‌های رزروشده‌ی یک سفارش را برمی‌گرداند. تعدادِ رزروهای
