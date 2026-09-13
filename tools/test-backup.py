@@ -19,6 +19,7 @@
 اجرا:  python3 tools/test-backup.py
 """
 import importlib.util
+import io
 import os
 import sqlite3
 import sys
@@ -231,6 +232,81 @@ check("جدولی که در فایل نبود دست‌نخورده می‌ما�
 
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
+# ═══════════════════════════════════════════════════════════
+head("کپی گرفتن از دیتابیسی که WAL دارد")
+
+# bot.db با WAL کار می‌کند. هر چیزی که هنوز به فایل اصلی منتقل نشده
+# در «-wal» می‌نشیند، نه در خود فایل. پس cp ساده می‌تواند ساعت‌ها
+# سفارش و پرداخت را جا بگذارد — و این دقیقاً همان نسخه‌ای است که
+# «قبل از بازگردانی» گرفته می‌شد و rollback به آن برمی‌گردد.
+
+import shutil as _sh   # noqa: E402
+
+_wd = tempfile.mkdtemp()
+_src = os.path.join(_wd, "wal.db")
+_c = sqlite3.connect(_src)
+_c.execute("PRAGMA journal_mode=WAL")
+_c.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, amount INTEGER)")
+_c.commit()
+# ردیف‌هایی که در WAL می‌مانند: چک‌پوینت نمی‌زنیم
+_c.executemany("INSERT INTO orders (amount) VALUES (?)",
+               [(i * 1000,) for i in range(1, 51)])
+_c.commit()
+
+check("‎-wal واقعاً محتوا دارد",
+      os.path.exists(_src + "-wal") and os.path.getsize(_src + "-wal") > 0,
+      "بدون این، تست چیزی را نمی‌سنجد")
+
+# ── کپی ساده‌ی فایل: همان کاری که قبلاً می‌شد ──
+_plain = os.path.join(_wd, "plain.db")
+_sh.copy2(_src, _plain)
+_p = sqlite3.connect(_plain)
+try:
+    _plain_n = _p.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
+except Exception:
+    _plain_n = -1
+_p.close()
+
+# ── کپی سازگار ──
+_good = os.path.join(_wd, "good.db")
+APP._sqlite_copy(_src, _good)
+_g = sqlite3.connect(_good)
+_good_n = _g.execute("SELECT COUNT(*) FROM orders").fetchone()[0]
+_g.close()
+_c.close()
+
+check("کپی سازگار همه‌ی ردیف‌ها را دارد", _good_n == 50, f"{_good_n} از ۵۰")
+check("و کپی ساده کمتر داشت", _plain_n < 50,
+      f"cp ساده {_plain_n} ردیف"
+      + (" — فایل اصلاً خوانده نشد" if _plain_n < 0 else "")
+      + "؛ همین‌ها بودند که گم می‌شدند")
+check("کپی سازگار فایل جانبی جا نمی‌گذارد",
+      not os.path.exists(_good + "-wal"),
+      "یک فایل تنها که هر جا بگذاریدش درست خوانده می‌شود")
+
+SRC = io.open(os.path.join(ROOT, "backend", "app.py"), encoding="utf-8").read()
+check("نسخه‌ی امنِ پیش از بازگردانی از همین راه گرفته می‌شود",
+      "_sqlite_copy(BOT_DB, safety)" in SRC,
+      "وگرنه توری که برای نجات پهن شده خودش سوراخ است")
+check("و اگر گرفته نشد، لاگ می‌شود",
+      "نسخه‌ی امنِ پیش از بازگردانی گرفته نشد" in SRC,
+      "قبلاً بی‌صدا None می‌شد و بازگردانی جلو می‌رفت")
+check("بازگردانی یکجا انجام می‌شود",
+      "BEGIN IMMEDIATE" in SRC and "con.rollback()" in SRC,
+      "خالی‌کردن همه‌ی جدول‌ها و بعد شکستن، بدترین حالت است")
+
+CLI = io.open(os.path.join(ROOT, "nexora-cli.sh"), encoding="utf-8").read()
+check("اسنپ‌شات هم از .backup استفاده می‌کند",
+      ".backup '$SNAP_DEST/$db'" in CLI)
+check("و اگر sqlite3 نبود، ‎-wal را همراه می‌برد",
+      '"$SRC-wal"' in CLI)
+check("بازگردانی ‎-wal کهنه‌ی مقصد را برمی‌دارد",
+      'rm -f "$INSTALL_DIR/data/$RDB-wal"' in CLI,
+      "گذاشتن فایل تازه کنار WAL قدیمی می‌تواند خرابش کند")
+check("و tunnels.db هم برمی‌گردد", "restore_db tunnels.db" in CLI,
+      "در اسنپ‌شات بود ولی در بازگردانی نبود")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

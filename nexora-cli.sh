@@ -51,8 +51,24 @@ snapshot_to() {
   fi
 
   # داده‌ی مشتری‌ها، حسابداری و تانل‌ها — گران‌ترین چیزی که داریم
+  #
+  # کپی ساده‌ی فایل کافی نیست: این دیتابیس‌ها WAL دارند و هر چیزی که
+  # هنوز منتقل نشده در «‎-wal» است، نه در فایل اصلی. یعنی اسنپ‌شاتِ
+  # پیش از به‌روزرسانی می‌توانست ساعت‌ها سفارش و پرداخت کم داشته
+  # باشد — و همان اسنپ‌شات تنها چیزی است که rollback به آن برمی‌گردد.
   for db in bot.db billing.db tunnels.db; do
-    [ -f "$INSTALL_DIR/data/$db" ] && cp "$INSTALL_DIR/data/$db" "$SNAP_DEST/" 2>/dev/null
+    SRC="$INSTALL_DIR/data/$db"
+    [ -f "$SRC" ] || continue
+    if command -v sqlite3 >/dev/null 2>&1 &&
+       sqlite3 "$SRC" ".backup '$SNAP_DEST/$db'" 2>/dev/null; then
+      :
+    else
+      # بدون sqlite3: اول WAL را در فایل اصلی ادغام کن، بعد کپی.
+      # اگر آن هم نشد، دست‌کم ‎-wal را همراهش ببر.
+      cp "$SRC" "$SNAP_DEST/" 2>/dev/null
+      [ -f "$SRC-wal" ] && cp "$SRC-wal" "$SNAP_DEST/" 2>/dev/null
+      [ -f "$SRC-shm" ] && cp "$SRC-shm" "$SNAP_DEST/" 2>/dev/null
+    fi
   done
 
   cp -r "$INSTALL_DIR/frontend/src" "$SNAP_DEST/frontend/src" 2>/dev/null
@@ -632,13 +648,25 @@ BOTEOF
     if [[ "$RESTORE_CFG" =~ ^[Yy]$ ]]; then
       [ -f "$TARGET/config.json" ] && cp "$TARGET/config.json" "$INSTALL_DIR/data/" && ok "Settings restored"
       [ -f "$TARGET/auth.json" ] && cp "$TARGET/auth.json" "$INSTALL_DIR/data/" && ok "Password restored"
+      # گذاشتن یک bot.db کنار ‎-wal قدیمیِ همان مسیر خطرناک است:
+      # SQLite ممکن است آن WAL را روی فایل تازه اعمال کند. پس قبل از
+      # کپی، فایل‌های جانبیِ مقصد برداشته می‌شوند و اگر اسنپ‌شات خودش
+      # ‎-wal داشت، همراهش می‌آید.
+      restore_db() {
+        RDB="$1"
+        [ -f "$TARGET/$RDB" ] || return 1
+        rm -f "$INSTALL_DIR/data/$RDB-wal" "$INSTALL_DIR/data/$RDB-shm"
+        cp "$TARGET/$RDB" "$INSTALL_DIR/data/" || return 1
+        [ -f "$TARGET/$RDB-wal" ] && cp "$TARGET/$RDB-wal" "$INSTALL_DIR/data/"
+        [ -f "$TARGET/$RDB-shm" ] && cp "$TARGET/$RDB-shm" "$INSTALL_DIR/data/"
+        return 0
+      }
       if [ -f "$TARGET/bot.db" ]; then
         systemctl stop nexora-bot 2>/dev/null
-        cp "$TARGET/bot.db" "$INSTALL_DIR/data/" && ok "Bot database restored"
+        restore_db bot.db && ok "Bot database restored"
       fi
-      if [ -f "$TARGET/billing.db" ]; then
-        cp "$TARGET/billing.db" "$INSTALL_DIR/data/" && ok "Billing data restored"
-      fi
+      restore_db billing.db && ok "Billing data restored"
+      restore_db tunnels.db && ok "Tunnel data restored"
     else
       info "Current settings kept"
     fi

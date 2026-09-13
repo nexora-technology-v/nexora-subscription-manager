@@ -4,6 +4,33 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — Snapshots and safety copies were missing whatever was still in the WAL
+
+`bot.db` runs in WAL mode, so committed data lives in `bot.db-wal` until a
+checkpoint moves it into the main file. Both places that copied a database copied
+only the main file: the safety copy taken before a restore, and the snapshot
+`nexora update` takes before replacing anything — the one `nexora rollback` goes
+back to.
+
+In the test, a file copy of a database with fifty rows sitting in the WAL came
+back unreadable, not merely short. On a running server the loss would be quieter
+and worse: a snapshot missing the last stretch of orders and payments, which
+nobody notices until it is the only copy left.
+
+Dropping such a file next to a stale `-wal` is its own hazard, since SQLite may
+replay that WAL over it — so the restore path now clears the destination's `-wal`
+and `-shm` first.
+
+Both paths now take a consistent copy: SQLite's own backup in Python, `sqlite3
+.backup` in the shell, falling back to carrying `-wal` and `-shm` along when the
+`sqlite3` binary is missing. `tunnels.db` was in the snapshot but not in the
+restore, so it is restored now too.
+
+The restore itself was emptying every table and refilling them with no
+transaction around it. It is wrapped in `BEGIN IMMEDIATE` with a rollback, and a
+safety copy that fails to be taken is logged instead of silently becoming `None`
+while the restore proceeds anyway.
+
 ### Fixed — "Block attackers" could block the owner
 
 `firewall.py` opens by saying no operation may cut off the owner's SSH, and every

@@ -1856,6 +1856,33 @@ def bot_users_export(q: str = "", filter: str = "all", sort: str = "new",
                  'attachment; filename="nexora-bot-users.csv"'})
 
 
+def _sqlite_copy(src, dest):
+    """
+    کپی سازگار از یک دیتابیس SQLite.
+
+    کپی ساده‌ی فایل برای دیتابیسی که WAL دارد کافی نیست: هر چیزی که
+    هنوز به فایل اصلی منتقل نشده در «‎-wal» نشسته و در کپی نمی‌آید.
+    یعنی نسخه‌ای که «قبل از بازگردانی» گرفته می‌شد می‌توانست ساعت‌ها
+    سفارش و پرداخت کم داشته باشد — دقیقاً همان چیزی که قرار بود از
+    آن محافظت کند.
+
+    بدتر از کم‌داشتن: اگر همان فایلِ تنها بعداً کنار یک ‎-wal دیگر
+    گذاشته شود، SQLite ممکن است آن WAL را رویش اعمال کند.
+
+    backup() خودِ SQLite همه‌ی این‌ها را یک‌جا و سازگار می‌نویسد.
+    """
+    import sqlite3
+    s = sqlite3.connect(f"file:{src}?mode=ro", uri=True, timeout=15)
+    try:
+        d = sqlite3.connect(str(dest), timeout=15)
+        try:
+            s.backup(d)
+        finally:
+            d.close()
+    finally:
+        s.close()
+
+
 def _bot_rw():
     """اتصال نوشتنی به دیتابیس ربات (برای تنظیمات از پنل)."""
     import sqlite3
@@ -3201,16 +3228,20 @@ def bot_restore(payload: dict, x_admin_password: str = Header(...)):
 
     # نسخه‌ی امن قبل از بازیابی
     try:
-        import shutil
         safety = BOT_DB.with_name(
             f"bot-before-restore-{datetime.now():%Y%m%d-%H%M%S}.db")
-        shutil.copy2(BOT_DB, safety)
+        _sqlite_copy(BOT_DB, safety)
     except Exception:
+        log.warning("نسخه‌ی امنِ پیش از بازگردانی گرفته نشد", exc_info=True)
         safety = None
 
     con = _bot_rw()
     try:
         con.execute("PRAGMA foreign_keys=OFF")
+        # همه‌ی جدول‌ها اول خالی می‌شوند و بعد پر. اگر وسط کار چیزی
+        # بشکند، بدون تراکنشِ صریح نیمی از داده رفته است و نیمی
+        # برنگشته — و آن نسخه‌ی امن هم تازه همان‌جا لازم می‌شود.
+        con.execute("BEGIN IMMEDIATE")
         # فقط جدول‌هایی که هم در پشتیبان‌اند و هم در این دیتابیس
         # وجود دارند. این‌طور پشتیبانِ نسخه‌ی قدیمی‌تر هم بازمی‌گردد،
         # بدون اینکه جدولی که در آن نبوده خالی شود.
@@ -3262,6 +3293,10 @@ def bot_restore(payload: dict, x_admin_password: str = Header(...)):
             out["unknownTables"] = missing
         return out
     except Exception as e:
+        try:
+            con.rollback()
+        except Exception:
+            pass
         raise HTTPException(status_code=500, detail=f"بازیابی ناموفق: {str(e)[:200]}")
     finally:
         con.close()
