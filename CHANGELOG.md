@@ -4,6 +4,25 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — The customer who most needs to renew was the one shown no banner
+
+The subscription page's renew banner fired on `daysLeft >= 0 && daysLeft <=
+threshold`. `calculateDaysLeft` returns `-1` for a subscription that has already
+expired, so `-1 >= 0` is false and an expired customer fell through to the volume
+branch — which needs the quota to be nearly used up.
+
+A customer who ran out of *data* got the banner, because their remaining
+percentage hit zero. A customer who ran out of *time* got nothing: no banner, no
+renew button, no support link. The days counter said "منقضی" and that was the
+whole message.
+
+Expired now gets its own branch, with its own title and text in all four
+languages ("اشتراک شما منقضی شده" rather than "رو به اتمام", which is a different
+thing), and both are editable from the panel's banner settings. The banner is
+still suppressed when the client is disabled, since that banner takes over.
+
+The test drives the page through healthy, expiring, expired, and unlimited.
+
 ### Fixed — Yearly costs counted as zero in the monthly burden
 
 The expenses page has a card reading "هزینه‌ی ثابت ماهانه — این مبلغ را هر ماه

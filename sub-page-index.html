@@ -2781,6 +2781,8 @@
                 disabledSupportMsg: "سلام، کانفیگ من (نام کاربری: {username}) غیرفعال شده. لطفاً بررسی کنید.",
                 lowQuotaTitle: "اشتراک شما رو به اتمام است",
                 lowQuotaDescDays: "فقط {days} روز از اشتراک شما باقی مانده. برای جلوگیری از قطعی، همین حالا تمدید کنید.",
+                expiredBannerTitle: "اشتراک شما منقضی شده",
+                lowQuotaDescExpired: "اشتراک شما به پایان رسیده و اتصال شما قطع است. برای وصل‌شدن دوباره، تمدید کنید.",
                 lowQuotaDescVolume: "حجم اشتراک شما رو به اتمام است. برای جلوگیری از قطعی، همین حالا تمدید کنید.",
                 lowQuotaBtnText: "تمدید اشتراک",
                 referralTitleText: "معرفی به دوستان",
@@ -2816,6 +2818,8 @@
                 disabledSupportMsg: "Hi, my config (username: {username}) is disabled. Please check.",
                 lowQuotaTitle: "Your subscription is running out",
                 lowQuotaDescDays: "Only {days} day(s) left on your subscription. Renew now to avoid disconnection.",
+                expiredBannerTitle: "Your subscription has expired",
+                lowQuotaDescExpired: "Your subscription has ended and you are disconnected. Renew to get back online.",
                 lowQuotaDescVolume: "Your subscription data is running out. Renew now to avoid disconnection.",
                 lowQuotaBtnText: "Renew Subscription",
                 referralTitleText: "Refer Friends",
@@ -2851,6 +2855,8 @@
                 disabledSupportMsg: "Merhaba, konfigürasyonum (kullanıcı adı: {username}) devre dışı bırakıldı. Lütfen kontrol edin.",
                 lowQuotaTitle: "Aboneliğiniz tükeniyor",
                 lowQuotaDescDays: "Aboneliğinizden sadece {days} gün kaldı. Bağlantı kesilmesini önlemek için şimdi yenileyin.",
+                expiredBannerTitle: "Aboneliğinizin süresi doldu",
+                lowQuotaDescExpired: "Aboneliğiniz sona erdi ve bağlantınız kesildi. Tekrar bağlanmak için yenileyin.",
                 lowQuotaDescVolume: "Abonelik verileriniz tükeniyor. Bağlantı kesilmesini önlemek için şimdi yenileyin.",
                 lowQuotaBtnText: "Aboneliği Yenile",
                 referralTitleText: "Arkadaşlarını Davet Et",
@@ -2886,6 +2892,8 @@
                 disabledSupportMsg: "مرحباً، تم تعطيل التكوين الخاص بي (اسم المستخدم: {username}). يرجى التحقق.",
                 lowQuotaTitle: "اشتراكك على وشك الانتهاء",
                 lowQuotaDescDays: "تبقى {days} يوم فقط من اشتراكك. جدد الآن لتجنب الانقطاع.",
+                expiredBannerTitle: "انتهى اشتراكك",
+                lowQuotaDescExpired: "انتهى اشتراكك وتم قطع اتصالك. جدّد للعودة للاتصال.",
                 lowQuotaDescVolume: "بيانات اشتراكك على وشك النفاد. جدد الآن لتجنب الانقطاع.",
                 lowQuotaBtnText: "تجديد الاشتراك",
                 referralTitleText: "دعوة الأصدقاء",
@@ -3604,8 +3612,20 @@
             const percentRemaining = sanaeiClientData.percentRemaining;
             let show = false;
             let desc = '';
+            let title = null;
 
-            if (typeof daysLeft === 'number' && daysLeft >= 0 && daysLeft <= daysThreshold) {
+            // منقضی‌شده: daysLeft برابر -1 است.
+            //
+            // شرط پایین «daysLeft >= 0» بود، پس دقیقاً همان مشتری‌ای
+            // که باید همین حالا تمدید کند هیچ بنری نمی‌دید. اگر با
+            // حجم تمام می‌کرد بنر می‌گرفت (درصد به صفر می‌رسید) ولی
+            // اگر با زمان تمام می‌کرد، نه.
+            if (daysLeft === -1) {
+                show = true;
+                title = txt(cfgBanners.expiredTitle, data.expiredBannerTitle);
+                desc = txt(cfgBanners.lowQuotaDescExpired,
+                           data.lowQuotaDescExpired);
+            } else if (typeof daysLeft === 'number' && daysLeft >= 0 && daysLeft <= daysThreshold) {
                 show = true;
                 const tpl = txt(cfgBanners.lowQuotaDescDays, data.lowQuotaDescDays);
                 desc = tpl.replace('{days}', daysLeft);
@@ -3616,7 +3636,8 @@
 
             if (show && isEnabled !== false && bannersEnabled) {
                 lowQuotaBanner.style.display = 'flex';
-                setText('lowQuotaTitle', txt(cfgBanners.lowQuotaTitle, data.lowQuotaTitle));
+                setText('lowQuotaTitle',
+                        title || txt(cfgBanners.lowQuotaTitle, data.lowQuotaTitle));
                 setText('lowQuotaDesc', desc);
                 setText('lowQuotaBtnText', txt(cfgBanners.lowQuotaButtonText, data.lowQuotaBtnText));
                 const qBtn = document.getElementById('lowQuotaBtn');

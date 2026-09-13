@@ -232,6 +232,52 @@ async function run() {
     check('تعویض زبان', false, e.message);
   }
 
+  // ═══ مشتریِ منقضی‌شده باید بنر تمدید ببیند ═══
+  //
+  // calculateDaysLeft برای اشتراکِ تمام‌شده -1 برمی‌گرداند، ولی شرط
+  // بنر «daysLeft >= 0» بود. یعنی دقیقاً همان کسی که باید همین حالا
+  // تمدید کند، هیچ دعوتی به تمدید نمی‌دید. اگر حجمش تمام می‌شد بنر
+  // می‌گرفت (درصد به صفر می‌رسید)، ولی اگر زمانش تمام می‌شد نه.
+  try {
+    const banner = doc.getElementById('lowQuotaBanner');
+
+    // sanaeiClientData با let تعریف شده، پس روی window ننشسته —
+    // باید در دامنه‌ی خود صفحه اجرا شود.
+    const drive = (days, pct) => window.eval(
+      `sanaeiClientData.daysLeft = ${days};`
+      + (pct === undefined ? '' : ` sanaeiClientData.percentRemaining = ${pct};`)
+      + ' updateAlertBanners();');
+
+    drive(30, 90);
+    check('مشتری سالم بنر نمی‌بیند', banner.style.display === 'none',
+          banner.style.display);
+
+    drive(-1);
+    check('مشتری منقضی بنر می‌بیند', banner.style.display === 'flex',
+          banner.style.display);
+
+    // innerText در jsdom تازه نمی‌شود و مقدار اولیه‌ی HTML را
+    // برمی‌گرداند؛ صفحه textContent می‌نویسد، پس همان را می‌خوانیم.
+    const title = doc.getElementById('lowQuotaTitle').textContent || '';
+    const desc = doc.getElementById('lowQuotaDesc').textContent || '';
+    check('عنوانش می‌گوید منقضی شده، نه رو به اتمام',
+          title.includes('منقضی'), title);
+    check('متنش هم درباره‌ی پایان است، نه نزدیک‌شدن',
+          desc.includes('پایان') || desc.includes('منقضی'), desc);
+
+    drive(2);
+    check('هشدار «رو به اتمام» هنوز کار می‌کند',
+          banner.style.display === 'flex'
+          && (doc.getElementById('lowQuotaDesc').textContent || '').includes('2'),
+          doc.getElementById('lowQuotaDesc').textContent);
+
+    drive(null, 100);
+    check('اشتراک نامحدود بنر نمی‌گیرد', banner.style.display === 'none',
+          'daysLeft = null یعنی بی‌پایان');
+  } catch(e) {
+    check('بنر منقضی‌شده', false, e.message);
+  }
+
   // ═══ نتیجه ═══
   const passed = results.filter(Boolean).length;
   console.log('\n' + '─'.repeat(46));

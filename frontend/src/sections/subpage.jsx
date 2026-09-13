@@ -479,6 +479,13 @@ export function BannersSection({ config, setConfig }) {
                 <textarea className="fx-input" rows={2} value={b.lowQuotaDescVolume || ""} onChange={(e) => update({ lowQuotaDescVolume: e.target.value })}
                   placeholder="حجم اشتراک شما رو به اتمام است. همین حالا تمدید کنید." />
               </Field>
+              <Field label="عنوان بنر منقضی‌شده">
+                <input className="fx-input" value={b.expiredTitle || ""} onChange={(e) => update({ expiredTitle: e.target.value })} placeholder="اشتراک شما منقضی شده" />
+              </Field>
+              <Field label="متن بنر منقضی‌شده" hint="وقتی زمان اشتراک تمام شده — نه رو به اتمام">
+                <textarea className="fx-input" rows={2} value={b.lowQuotaDescExpired || ""} onChange={(e) => update({ lowQuotaDescExpired: e.target.value })}
+                  placeholder="اشتراک شما به پایان رسیده و اتصال شما قطع است. برای وصل‌شدن دوباره، تمدید کنید." />
+              </Field>
               <div className="fx-g3 grid grid-cols-2 gap-3">
                 <Field label="متن دکمه">
                   <input className="fx-input" value={b.lowQuotaButtonText || ""} onChange={(e) => update({ lowQuotaButtonText: e.target.value })} placeholder="تمدید اشتراک" />
