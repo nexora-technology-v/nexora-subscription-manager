@@ -6,6 +6,7 @@
 
 اجرا:  python3 bot/test_flow.py
 """
+import io
 import json
 import os
 import sys
@@ -687,6 +688,25 @@ if okp:
                (tid, resp["id"]), one=True)
     check("اولین اینباند فعال انتخاب شد", made and made["inbound_id"] == 28,
           f"inbound #{made['inbound_id'] if made else '—'}")
+
+# ═══════════════════════════════════════════════════════════
+section("همکار نمی‌تواند مشتریِ خودش شود")
+
+# مسیر «دعوت دوست» شرط خوددعوتی را داشت، مسیر همکاری نداشت. همکاری
+# که هنوز با ربات کار نکرده، با بازکردن لینک خودش مشتریِ خودش می‌شد
+# و از هر خریدِ خودش پورسانت می‌گرفت — تخفیفی که قرار نبود باشد.
+
+HSRC = io.open(H.__file__, encoding="utf-8").read()
+_blk = HSRC[HSRC.index('if arg.startswith("aff_")'):]
+_blk = _blk[:_blk.index("u = ctx.db.create_user")]
+check("شرط خودمعرفی برای همکار هم هست",
+      'affiliate.get("tg_id") == tg_user["id"]' in _blk,
+      "همان قاعده‌ای که مسیر دعوت دوست دارد")
+check("و در آن حالت اصلا وصل نمی‌شود", "affiliate = None" in _blk)
+check("مسیر دعوت دوست هنوز شرط خودش را دارد",
+      'inviter["tg_id"] != tg_user["id"]' in _blk,
+      "اصلاح این یکی نباید آن یکی را برداشته باشد")
+
 
 os.unlink(tmp)
 

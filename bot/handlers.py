@@ -2731,6 +2731,14 @@ def _get_or_create(ctx, tg_user, ref=None):
     arg = (ref or "").strip()
     if arg.startswith("aff_"):
         affiliate = DB.affiliate_by_code(ctx.tid, arg[4:])
+        # همکار نمی‌تواند خودش را معرفی کند.
+        #
+        # مسیر «دعوت دوست» همین شرط را داشت و این یکی نداشت. همکاری
+        # که هنوز با ربات کار نکرده، با بازکردن لینک خودش مشتریِ خودش
+        # می‌شد و از هر خریدِ خودش پورسانت می‌گرفت — یعنی تخفیفی که
+        # قرار نبود وجود داشته باشد.
+        if affiliate and affiliate.get("tg_id") == tg_user["id"]:
+            affiliate = None
     elif arg:
         inviter = ctx.db.get_user_by_ref(arg)
         # کاربر نمی‌تواند خودش را دعوت کند

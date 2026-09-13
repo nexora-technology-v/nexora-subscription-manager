@@ -4,6 +4,15 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — An affiliate could be their own customer
+
+The friend-referral path refuses a self-invite. The affiliate path had no such
+check, so an affiliate who had never used the bot could open their own `aff_`
+link, become their own attributed customer, and earn commission on every purchase
+they made themselves.
+
+Same rule, both paths now.
+
 ### Fixed — Snapshots and safety copies were missing whatever was still in the WAL
 
 `bot.db` runs in WAL mode, so committed data lives in `bot.db-wal` until a
