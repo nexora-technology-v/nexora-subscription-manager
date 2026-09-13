@@ -1417,7 +1417,10 @@ def show_subs(ctx, user, chat_id, message_id):
         if d is None:
             lines.append("⏳ بدون محدودیت زمانی")
         elif expired:
-            lines.append(f"⛔ {F.b(f'{core.fa(abs(d))} روز پیش')} منقضی شده")
+            gone = core.days_past(s.get("expires_at"))
+            lines.append(
+                f"⛔ {F.b('امروز')} منقضی شد" if gone < 1 else
+                f"⛔ {F.b(f'{core.fa(gone)} روز پیش')} منقضی شده")
         else:
             line = f"⏳ {F.b(f'{core.fa(d)} روز')} اعتبار"
             if s.get("expires_at"):

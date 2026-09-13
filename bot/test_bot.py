@@ -287,6 +287,45 @@ s2 = B.stats()
 check("آمار مستاجر دوم جداست", s2["users"] == 1 and s2.get("revenue", 0) == 0,
       f"{s2['users']} کاربر")
 
+# ═══════════════════ چند روز از انقضا گذشته ═══════════════════
+section("چند روز از انقضا گذشته")
+
+# days_left عمداً هیچ‌وقت منفی نمی‌دهد — ده‌ها جا روی «صفر یعنی تمام
+# شده» حساب باز کرده‌اند. ولی صفحه‌ی «اشتراک‌های من» از همان برای
+# ساختن «چند روز پیش منقضی شده» استفاده می‌کرد، پس همیشه می‌نوشت
+# «۰ روز پیش» — چه دیروز تمام شده بود چه سه ماه پیش.
+
+from datetime import datetime as _d3, timedelta as _t3
+
+
+def _iso(days):
+    return (_d3.now() + _t3(days=days)).isoformat()
+
+
+check("منقضی‌شده‌ی دیروز یک روز", core.days_past(_iso(-1.2)) == 1,
+      str(core.days_past(_iso(-1.2))))
+check("منقضی‌شده‌ی سی روز پیش، سی", core.days_past(_iso(-30.5)) == 30,
+      str(core.days_past(_iso(-30.5))))
+check("اشتراک فعال صفر است", core.days_past(_iso(10)) == 0)
+check("بدون تاریخ هم صفر", core.days_past(None) == 0)
+check("تاریخ خراب خطا نمی‌دهد", core.days_past("چیزی نیست") == 0)
+
+check("days_left همچنان منفی نمی‌دهد", core.days_left(_iso(-30)) == 0,
+      "قرارداد قبلی دست‌نخورده — جاهای دیگر رویش حساب کرده‌اند")
+check("و دو تابع با هم جور درمی‌آیند",
+      core.days_left(_iso(-5)) == 0 and core.days_past(_iso(-5)) == 5)
+
+_SRC_H = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "handlers.py"), encoding="utf-8").read()
+check("صفحه‌ی اشتراک‌ها از تابع تازه استفاده می‌کند",
+      'core.days_past(s.get("expires_at"))' in _SRC_H,
+      "وگرنه همچنان «۰ روز پیش» می‌نویسد")
+check("و برای امروز جمله‌ی درست دارد",
+      "منقضی شد" in _SRC_H,
+      "«۰ روز پیش منقضی شده» جمله‌ی فارسی نیست")
+
+
+
 os.unlink(tmp)
 
 # ═══════════════════ نتیجه ═══════════════════

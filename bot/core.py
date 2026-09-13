@@ -301,6 +301,26 @@ def days_left(expires_at):
     return max(int(delta.total_seconds() // 86400), 0) if delta.total_seconds() > 0 else 0
 
 
+def days_past(expires_at):
+    """
+    چند روز از انقضا گذشته. اگر هنوز منقضی نشده یا تاریخ ندارد: صفر.
+
+    days_left عمداً هیچ‌وقت منفی نمی‌دهد — ده‌ها جا روی «صفر یعنی
+    تمام شده» حساب باز کرده‌اند. ولی همین یعنی با آن نمی‌شود گفت
+    *چند وقت* پیش تمام شده: صفحه‌ی «اشتراک‌های من» برای هر اشتراک
+    منقضی می‌نوشت «۰ روز پیش منقضی شده»، چه دیروز تمام شده بود چه
+    سه ماه پیش.
+    """
+    if not expires_at:
+        return 0
+    try:
+        exp = datetime.fromisoformat(expires_at)
+    except (ValueError, TypeError):
+        return 0
+    gone = (datetime.now() - exp).total_seconds()
+    return int(gone // 86400) if gone > 0 else 0
+
+
 def make_email(tenant_prefix, tg_id, seq=1):
     """
     ساخت شناسه‌ی کلاینت در 3x-ui.

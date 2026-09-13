@@ -4,6 +4,20 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — Every expired subscription said it expired "0 days ago"
+
+`days_left` never returns a negative number. That is deliberate: a lot of code
+treats zero as "finished", and the reminder scheduler, auto-renew and the traffic
+warning all rely on it.
+
+But the "my subscriptions" screen used the same value to build "expired N days
+ago", so N was always zero. A customer whose subscription ended yesterday and one
+whose ended three months ago read the same line.
+
+A separate `days_past` answers that question; `days_left` keeps its contract
+untouched. The screen also says "expired today" rather than "0 days ago", which
+is not a sentence anyone writes.
+
 ### Fixed — A new config could land on an existing customer's identifier
 
 The identifier for a new config came from the *count* of a customer's
