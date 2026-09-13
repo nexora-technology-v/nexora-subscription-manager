@@ -1049,6 +1049,72 @@ check("و حتی در شکست واقعی، سفارشِ تحویل‌شده ر�
 
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
+# ═══════════════════════════════════════════════════════════
+head("لغو و انقضای هم‌زمان نباید دو بار سکه برگرداند")
+
+# release_coins از دو نخ صدا زده می‌شود: جاروکشِ سفارش‌های منقضی در
+# زمان‌بند، و مسیر لغو و رد در خودِ گفتگو. قفلِ هر گفتگو زمان‌بند را
+# در بر نمی‌گیرد. الگوی قبلی «بخوان، سکه را برگردان، بعد released
+# کن» بود — سه دستور جدا، پس هر دو نخ همان یک ردیف hold را می‌دیدند
+# و هر دو پرداخت می‌کردند. سکه تخفیف است، یعنی پول.
+
+import threading as _th  # noqa: E402
+
+_ru = new_user(0)
+d.add_coins(_ru["id"], 100, "admin", "شارژ تست")
+_ro = d.create_order(_ru["id"], pid_r, 300000, 270000, coins_used=30)["id"]
+d.spend_coins(_ru["id"], 30, "hold", "رزرو سفارش", order_id=_ro)
+
+_before = d.q("SELECT coins FROM users WHERE tenant_id=? AND id=?",
+              (d.tid, _ru["id"]), one=True)["coins"]
+check("سکه رزرو شد", _before == 70, str(_before))
+
+_res = []
+_go = _th.Barrier(2)
+
+
+def _racer():
+    _go.wait()
+    _res.append(d.release_coins(_ro))
+
+
+_ts = [_th.Thread(target=_racer) for _ in range(2)]
+for _x in _ts:
+    _x.start()
+for _x in _ts:
+    _x.join()
+
+_after = d.q("SELECT coins FROM users WHERE tenant_id=? AND id=?",
+             (d.tid, _ru["id"]), one=True)["coins"]
+check("سکه دقیقاً یک بار برگشت", _after == 100,
+      f"{_after} — دو بار یعنی ۱۳۰")
+check("و فقط یکی از دو نخ کاری کرد", sorted(_res) == [0, 1], str(_res))
+check("رزرو دیگر باز نیست",
+      not d.q("SELECT 1 FROM coin_tx WHERE tenant_id=? AND order_id=? "
+              "AND kind='hold'", (d.tid, _ro)))
+
+# دفتر و موجودی باید بخوانند
+# همه‌ی ردیف‌ها شمرده می‌شوند، از جمله رزروی که نامش released شده:
+# تغییرِ نام مبلغِ آن ردیف را پاک نمی‌کند، و نباید بکند — رزرو واقعاً
+# از موجودی کم شده بود و بازگشتش ردیف جداگانه‌ای دارد.
+_sum = d.q("SELECT COALESCE(SUM(amount),0) s FROM coin_tx "
+           "WHERE tenant_id=? AND user_id=?",
+           (d.tid, _ru["id"]), one=True)["s"]
+check("جمع دفتر با موجودی می‌خواند", _sum == _after,
+      f"دفتر {_sum} · موجودی {_after}")
+
+# ── تراکنشی که هیچ پولی جابه‌جا نکرده نباید ثبت شود ──
+check("شارژ کاربر ناموجود تراکنش نمی‌سازد",
+      d.add_balance(999999, 50_000, "admin", "کاربر ناموجود") is False,
+      "وگرنه دفتر چیزی را نشان می‌دهد که هیچ‌وقت جابه‌جا نشد")
+check("و سکه‌اش هم", d.add_coins(999999, 50, "admin", "کاربر ناموجود") is False)
+check("ولی کاربر واقعی هنوز شارژ می‌شود",
+      d.add_balance(_ru["id"], 1000, "topup", "تست") is True)
+_ghost = d.q("SELECT COUNT(*) n FROM wallet_tx WHERE tenant_id=? AND user_id=?",
+             (d.tid, 999999), one=True)["n"]
+check("هیچ تراکنشی برای کاربر ناموجود نماند", _ghost == 0, str(_ghost))
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

@@ -4,6 +4,32 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — Cancelling as the order expired refunded the coins twice
+
+`release_coins` read the held rows, credited the coins back, and only then
+renamed the hold to `released` — three separate statements. Its docstring said a
+double refund was impossible because the rename hides the row from the next pass,
+which is only true if nothing runs in between.
+
+Something does. It is called from two threads: the sweeper that expires stale
+orders, which lives in the scheduler, and the cancel and reject paths, which live
+behind the per-chat lock. The scheduler is not behind that lock — the same
+boundary every other race in this file was found on. A customer tapping cancel at
+the moment the sweeper expires the same order means both see the same `hold` row
+and both pay it back. Coins are a discount, so that is money.
+
+Each hold is now claimed with a conditional update and paid only by the thread
+that won it. The order is deliberate: if something dies between the claim and the
+payment, the coins are not returned — bad, but visible and fixable. Paying twice
+is silent. The test runs the two callers against each other on a barrier.
+
+Also: `add_coins`, `add_balance` and the referral reward wrote their ledger row
+whether or not the balance update matched a user, so the books could record a
+movement that never happened. Now no row moves, no transaction is written, and
+the referral reward gives back the once-per-friend slot it would otherwise have
+consumed for nothing. This one has no live trigger — nothing deletes users — but
+the ledger should not be able to drift from the balance by construction.
+
 ### Security — One node could close another node's jobs and write its metrics
 
 `/api/agent/job-result` authenticated the node, then acted on whatever the body

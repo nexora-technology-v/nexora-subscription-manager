@@ -649,9 +649,16 @@ class TenantDB:
                  self.tid, referred_id))
             if not cur.rowcount:
                 return False
-            c.execute(
+            paid = c.execute(
                 "UPDATE users SET coins = coins + ? WHERE tenant_id=? AND id=?",
                 (amount, self.tid, referrer_id))
+            if not paid.rowcount:
+                # معرف دیگر نیست. ردیفِ پاداش را هم پس می‌گیریم، وگرنه
+                # جای «یک پاداش برای هر دوست» را اشغال می‌کند بی‌آنکه
+                # چیزی پرداخت شده باشد.
+                c.execute("DELETE FROM coin_tx WHERE tenant_id=? AND id=?",
+                          (self.tid, cur.lastrowid))
+                return False
             return True
 
     def mark_rejected(self, order_id, admin_tg_id, reason):
@@ -813,19 +820,39 @@ class TenantDB:
         می‌زد و رزرو را باز می‌گذاشت — و چون جاروکش همیشه زودتر از
         مشتری به سفارش می‌رسد، عملاً *مسیر اصلیِ* انقضا همان بود.
 
-        دو بار برگرداندن ممکن نیست: رزرو بعد از بازگشت به «released»
-        تغییر نام می‌دهد، پس دفعه‌ی بعد پیدا نمی‌شود.
+        هر رزرو *اول* ادعا می‌شود و بعد پرداخت.
+
+        قبلاً برعکس بود: بخوان، سکه را برگردان، بعد رزرو را released
+        کن. سه دستور جدا. و این تابع از دو نخ صدا زده می‌شود — جاروکشِ
+        سفارش‌های منقضی در زمان‌بند، و مسیر لغو و رد در خودِ گفتگو.
+        قفلِ هر گفتگو زمان‌بند را در بر نمی‌گیرد، پس اگر مشتری همان
+        لحظه‌ای «لغو» بزند که جاروکش سفارشش را منقضی می‌کند، هر دو
+        همان یک ردیفِ hold را می‌بینند و هر دو سکه را برمی‌گردانند.
+        مشتری دو برابر سکه می‌گیرد، و سکه تخفیف است — یعنی پول.
+
+        با ادعای اتمی، بازنده‌ی مسابقه هیچ سطری را عوض نمی‌کند و
+        چیزی هم پرداخت نمی‌کند. ترتیب عمدی است: اگر بین ادعا و
+        پرداخت چیزی قطع شود، سکه برنمی‌گردد — که بد است ولی دیدنی و
+        قابل جبران. برعکسش، دو بار پرداختن، بی‌صدا است.
         """
         held = self.q(
             "SELECT * FROM coin_tx WHERE tenant_id=? AND order_id=? "
             "AND kind='hold'", (self.tid, order_id))
+        freed = 0
         for tx in held:
+            with conn() as c:
+                cur = c.execute(
+                    "UPDATE coin_tx SET kind='released' "
+                    "WHERE tenant_id=? AND id=? AND kind='hold'",
+                    (self.tid, tx["id"]))
+                if not cur.rowcount:
+                    # نخ دیگری همین رزرو را برداشته
+                    continue
             self.add_coins(tx["user_id"], abs(int(tx["amount"])), "refund",
                            f"بازگشت سکه — سفارش #{order_id}",
                            order_id=order_id)
-            self.exec("UPDATE coin_tx SET kind='released' "
-                      "WHERE tenant_id=? AND id=?", (self.tid, tx["id"]))
-        return len(held)
+            freed += 1
+        return freed
 
     def add_coins(self, user_id, amount, kind, note=None, ref_user_id=None, order_id=None):
         """
@@ -835,16 +862,23 @@ class TenantDB:
         ندارد و موجودی را منفی هم می‌کند.
         """
         with conn() as c:
-            c.execute(
+            # اگر کاربری به‌روز نشد، تراکنشی هم ثبت نمی‌شود.
+            #
+            # وگرنه دفتر چیزی را نشان می‌دهد که هیچ‌وقت جابه‌جا نشده:
+            # تراکنش «+۵۰ سکه» ثبت است و موجودی همان است که بود.
+            cur = c.execute(
                 "UPDATE users SET coins = coins + ? WHERE tenant_id=? AND id=?",
                 (amount, self.tid, user_id)
             )
+            if not cur.rowcount:
+                return False
             c.execute(
                 """INSERT INTO coin_tx (tenant_id, user_id, amount, kind, note,
                                         ref_user_id, order_id)
                    VALUES (?,?,?,?,?,?,?)""",
                 (self.tid, user_id, amount, kind, note, ref_user_id, order_id)
             )
+            return True
 
     # ---------- کیف پول ----------
     def add_balance(self, user_id, amount, kind, note=None, order_id=None):
@@ -855,15 +889,19 @@ class TenantDB:
         تابع شرطی ندارد و موجودی را منفی هم می‌کند.
         """
         with conn() as c:
-            c.execute(
+            # همان قاعده‌ی add_coins: بدون جابه‌جایی، بدون تراکنش.
+            cur = c.execute(
                 "UPDATE users SET balance = balance + ? WHERE tenant_id=? AND id=?",
                 (amount, self.tid, user_id)
             )
+            if not cur.rowcount:
+                return False
             c.execute(
                 """INSERT INTO wallet_tx (tenant_id, user_id, amount, kind, note, order_id)
                    VALUES (?,?,?,?,?,?)""",
                 (self.tid, user_id, amount, kind, note, order_id)
             )
+            return True
 
     def spend_balance(self, user_id, amount, kind, note=None, order_id=None):
         """
