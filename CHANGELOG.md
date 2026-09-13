@@ -4,6 +4,26 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — A stuck auto-renewal repeated the same failure every hour
+
+Auto-renew runs hourly over every subscription with a day or less left. When it
+failed, nothing recorded that it had: the next hour tried the identical thing and
+failed identically. One customer whose panel call was broken produced 24 orders a
+day, 24 charge-and-refund cycles against their wallet, and 24 identical warnings
+in the admin group — which is also how the next real warning gets lost.
+
+Failures are now counted on the subscription and the next attempt is pushed back
+by that many hours, up to six. It is never abandoned: giving up means the
+customer is cut off without being told. The admin group hears the first failure
+and then every sixth; the rest go to the log. After three, the customer is told
+directly, with the manual renew button and the sentence they most need — nothing
+was taken from their wallet.
+
+A deleted plan was the silent version of the same thing: `auto_renew_subscription`
+returned immediately with no message at all, so auto-renew stayed switched on,
+never ran, and the customer believed they were covered right up to being cut off.
+They and the admin are now told once.
+
 ### Fixed — Cancelling as the order expired refunded the coins twice
 
 `release_coins` read the held rows, credited the coins back, and only then

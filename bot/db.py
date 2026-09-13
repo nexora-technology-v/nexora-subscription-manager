@@ -315,6 +315,16 @@ def _migrate(con):
         # اجرا شود — هر دو یک مبدأ می‌خوانند و هر دو همان یک ماه را
         # می‌نویسند. مشتری دو بار پول می‌دهد و یک ماه می‌گیرد.
         ("subscriptions", "renewing_at", "TEXT"),
+        # تمدید خودکاری که شکست می‌خورد.
+        #
+        # تمدید خودکار هر ساعت اجرا می‌شود و شکستش معمولاً همان شکستِ
+        # دفعه‌ی پیش است — پنل خواب است، پلن حذف شده، اینباند رفته.
+        # بدون این دو ستون، همان خطا شبانه‌روز تکرار می‌شد: ۲۴ سفارش،
+        # ۲۴ بار برداشت و بازگرداندن پول، و ۲۴ هشدار در گروه مدیریت
+        # برای یک مشتری. عقب‌نشینی تدریجی جلوی سیل را می‌گیرد بی‌آنکه
+        # تمدید را رها کند — چون رهاکردنش یعنی مشتری بی‌صدا قطع شود.
+        ("subscriptions", "renew_fails", "INTEGER DEFAULT 0"),
+        ("subscriptions", "renew_retry_at", "TEXT"),
     ]
     for table, col, spec in adds:
         try:
@@ -726,6 +736,33 @@ class TenantDB:
                            OR renewing_at < datetime('now', ?))""",
                 (self.tid, sub_id, f"-{int(stale_minutes)} minutes"))
             return bool(cur.rowcount)
+
+    def renew_failed(self, sub_id, max_hours=6):
+        """
+        یک شکستِ تمدید خودکار را ثبت می‌کند و می‌گوید چندمین است.
+
+        تلاش بعدی به اندازه‌ی همان شماره ساعت عقب می‌افتد، تا سقف
+        max_hours. پس شکستِ پایدار به‌جای ۲۴ بار در روز، چهار پنج بار
+        تلاش می‌شود — و هیچ‌وقت هم کاملاً رها نمی‌شود.
+        """
+        with conn() as c:
+            row = c.execute(
+                "SELECT COALESCE(renew_fails,0) n FROM subscriptions "
+                "WHERE tenant_id=? AND id=?", (self.tid, sub_id)).fetchone()
+            n = int(row["n"] if row else 0) + 1
+            hours = min(n, int(max_hours))
+            c.execute(
+                "UPDATE subscriptions SET renew_fails=?, "
+                "renew_retry_at=datetime('now', ?) "
+                "WHERE tenant_id=? AND id=?",
+                (n, f"+{hours} hours", self.tid, sub_id))
+            return n
+
+    def renew_succeeded(self, sub_id):
+        """پرونده‌ی شکست‌ها بسته می‌شود."""
+        self.exec(
+            "UPDATE subscriptions SET renew_fails=0, renew_retry_at=NULL "
+            "WHERE tenant_id=? AND id=?", (self.tid, sub_id))
 
     def release_renewal(self, sub_id):
         """آزادکردن قفل تمدید — چه موفق، چه ناموفق."""

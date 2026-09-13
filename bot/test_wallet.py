@@ -1115,6 +1115,84 @@ _ghost = d.q("SELECT COUNT(*) n FROM wallet_tx WHERE tenant_id=? AND user_id=?",
 check("هیچ تراکنشی برای کاربر ناموجود نماند", _ghost == 0, str(_ghost))
 
 
+# ═══════════════════════════════════════════════════════════
+head("تمدید خودکارِ شکست‌خورده نباید هر ساعت تکرار شود")
+
+# تمدید خودکار ساعتی اجرا می‌شود، و شکستش تقریباً همیشه همان شکستِ
+# دفعه‌ی پیش است: پنل خواب است، اینباند رفته، پلن حذف شده. بدون
+# عقب‌نشینی، یک مشتریِ گیرکرده روزی ۲۴ سفارش می‌ساخت، ۲۴ بار پول
+# برداشته و برگردانده می‌شد، و ۲۴ هشدار در گروه مدیریت می‌نشست —
+# که یعنی هشدارِ واقعیِ بعدی هم گم می‌شود.
+
+_su = new_user(0)
+_ssid = d.exec(
+    """INSERT INTO subscriptions (tenant_id, user_id, plan_id, client_email,
+                                  client_uuid, inbound_id, expires_at,
+                                  is_active, auto_renew)
+       VALUES (?,?,?,?,?,?,datetime('now','+1 day'),1,1)""",
+    (d.tid, _su["id"], pid_r, "renew_test", "uuid-renew", 1))
+
+_fresh = d.q("SELECT renew_fails, renew_retry_at FROM subscriptions "
+             "WHERE tenant_id=? AND id=?", (d.tid, _ssid), one=True)
+check("اشتراک تازه هیچ شکستی ندارد",
+      (_fresh["renew_fails"] or 0) == 0 and _fresh["renew_retry_at"] is None)
+
+check("اولین شکست شماره‌ی ۱ می‌گیرد", d.renew_failed(_ssid) == 1)
+_r1 = d.q("SELECT renew_retry_at FROM subscriptions WHERE tenant_id=? AND id=?",
+          (d.tid, _ssid), one=True)["renew_retry_at"]
+check("و تلاش بعدی عقب می‌افتد", _r1 is not None, str(_r1))
+
+check("شکست دوم شماره‌ی ۲", d.renew_failed(_ssid) == 2)
+_r2 = d.q("SELECT renew_retry_at FROM subscriptions WHERE tenant_id=? AND id=?",
+          (d.tid, _ssid), one=True)["renew_retry_at"]
+check("و دیرتر از قبلی", _r2 > _r1, f"{_r1} → {_r2}")
+
+for _ in range(8):
+    _n = d.renew_failed(_ssid)
+check("شمارش ادامه دارد", _n == 10, str(_n))
+_r10 = d.q("SELECT renew_retry_at FROM subscriptions WHERE tenant_id=? AND id=?",
+           (d.tid, _ssid), one=True)["renew_retry_at"]
+check("ولی فاصله از سقف بالاتر نمی‌رود",
+      _r10 <= d.q("SELECT datetime('now','+6 hours') x", (), one=True)["x"],
+      "رهاکردن تمدید یعنی مشتری بی‌صدا قطع شود — فقط کندش می‌کنیم")
+
+# زمان‌بند باید نوبتِ نرسیده را رد کند
+_picked = d.q(
+    """SELECT s.id FROM subscriptions s JOIN users u ON u.id = s.user_id
+       WHERE s.tenant_id=? AND s.is_active=1 AND s.auto_renew=1
+         AND (s.renew_retry_at IS NULL
+              OR s.renew_retry_at <= datetime('now'))""", (d.tid,))
+check("اشتراکِ عقب‌افتاده در نوبت این ساعت نیست",
+      _ssid not in [p["id"] for p in _picked],
+      "همان شرطی که run.py می‌زند")
+
+d.renew_succeeded(_ssid)
+_after = d.q("SELECT renew_fails, renew_retry_at FROM subscriptions "
+             "WHERE tenant_id=? AND id=?", (d.tid, _ssid), one=True)
+check("تمدید موفق پرونده را می‌بندد",
+      (_after["renew_fails"] or 0) == 0 and _after["renew_retry_at"] is None)
+_picked2 = d.q(
+    """SELECT s.id FROM subscriptions s
+       WHERE s.tenant_id=? AND s.auto_renew=1
+         AND (s.renew_retry_at IS NULL
+              OR s.renew_retry_at <= datetime('now'))""", (d.tid,))
+check("و دوباره در نوبت می‌آید", _ssid in [p["id"] for p in _picked2])
+
+HSRC = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "handlers.py"), encoding="utf-8").read()
+check("هشدار گروه فقط اول و هر شش بار می‌آید",
+      "n == 1 or n % 6 == 0" in HSRC,
+      "وگرنه هشدارِ واقعیِ بعدی لای تکرارها گم می‌شود")
+check("بعد از سه شکست به مشتری هم گفته می‌شود",
+      "_tell_renew_stuck" in HSRC,
+      "او باید بداند که باید دستی تمدید کند")
+check("و پلنِ حذف‌شده دیگر بی‌صدا نیست",
+      "_renew_gave_up" in HSRC,
+      "قبلاً return خالی بود: تمدید هیچ‌وقت اجرا نمی‌شد و کسی نمی‌فهمید")
+check("پیام می‌گوید پولی کم نشده", "پولی از کیف پولتان کم نشده" in HSRC,
+      "اولین سوال مشتری همین است")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

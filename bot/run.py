@@ -343,10 +343,14 @@ def run_auto_renew():
         d = db.TenantDB(t["id"])
         tg = Bot(t["bot_token"])
 
+        # اشتراکی که تلاش بعدی‌اش هنوز نرسیده کنار گذاشته می‌شود.
+        # بدون این، شکستِ پایدار هر ساعت تکرار می‌شد.
         subs = d.q(
             """SELECT s.*, u.tg_id, u.balance FROM subscriptions s
                JOIN users u ON u.id = s.user_id
-               WHERE s.tenant_id=? AND s.is_active=1 AND s.auto_renew=1""",
+               WHERE s.tenant_id=? AND s.is_active=1 AND s.auto_renew=1
+                 AND (s.renew_retry_at IS NULL
+                      OR s.renew_retry_at <= datetime('now'))""",
             (t["id"],)
         )
 

@@ -3177,6 +3177,54 @@ def send_traffic_notice(tenant, bot, sub, used_gb, total_gb):
         log.warning("هشدار حجم ارسال نشد (%s): %s", sub["tg_id"], e)
 
 
+def _renew_gave_up(ctx, sub, why):
+    """
+    تمدید خودکاری که اصلاً نمی‌تواند اجرا شود.
+
+    یک بار به مشتری و گروه گفته می‌شود، نه هر ساعت.
+    """
+    n = ctx.db.renew_failed(sub["id"], max_hours=24)
+    if n != 1:
+        return
+    user = ctx.db.get_user_by_id(sub["user_id"])
+    if not user:
+        return
+    try:
+        ctx.bot.send(
+            user["tg_id"],
+            F.join(
+                F.title("تمدید خودکار انجام نشد", "⚠️"),
+                why + ".",
+                F.quote("برای اینکه اشتراکتان قطع نشود، دستی تمدید کنید "
+                        "یا به پشتیبانی پیام بدهید."),
+            ),
+            keyboard=kb([[("📊 اشتراک‌های من", "mysubs")]]))
+    except TelegramError:
+        pass
+    ctx.notify_group(
+        f"⚠️ تمدید خودکار ممکن نیست\n👤 <code>{user['tg_id']}</code>\n"
+        f"{esc(why)}", topic="alerts")
+
+
+def _tell_renew_stuck(ctx, user, sub, plan):
+    """بعد از چند شکست پیاپی، مشتری باید خودش دست به کار شود."""
+    try:
+        srow = {k: sub[k] for k in sub.keys()} if hasattr(sub, "keys") else dict(sub)
+        ctx.bot.send(
+            user["tg_id"],
+            F.join(
+                F.title("تمدید خودکار چند بار ناموفق بود", "⚠️"),
+                F.lines(f"📦 {F.b(ctx.sub_label(srow, plan_name=plan['name']))}"),
+                "پولی از کیف پولتان کم نشده.",
+                F.quote("برای اینکه اشتراکتان قطع نشود، دستی تمدید کنید "
+                        "یا به پشتیبانی پیام بدهید."),
+            ),
+            keyboard=kb([[("🔁 تمدید دستی", f"renew:{sub['id']}")],
+                         [("📊 اشتراک‌های من", "mysubs")]]))
+    except TelegramError:
+        pass
+
+
 def auto_renew_subscription(tenant, bot, sub):
     """
     تمدید خودکار از کیف پول.
@@ -3187,6 +3235,10 @@ def auto_renew_subscription(tenant, bot, sub):
     ctx = Ctx(bot, tenant)
     plan = ctx.db.get_plan(sub["plan_id"]) if sub["plan_id"] else None
     if not plan:
+        # پلن حذف شده. قبلاً این‌جا بی‌صدا برمی‌گشت: تمدید خودکار
+        # روشن می‌ماند، هیچ‌وقت اجرا نمی‌شد، و مشتری تا لحظه‌ی قطع‌شدن
+        # فکر می‌کرد پوشش دارد.
+        _renew_gave_up(ctx, sub, "پلن این اشتراک دیگر موجود نیست")
         return
 
     user = ctx.db.get_user_by_id(sub["user_id"])
@@ -3244,6 +3296,8 @@ def auto_renew_subscription(tenant, bot, sub):
 
     ok, result = provision(ctx, order["id"])
     if ok:
+        ctx.db.renew_succeeded(sub["id"])
+
         # تمدید خودکار هم فروش است — همکار باید سهمش را بگیرد.
         # قبلاً فقط مسیر کارت پورسانت ثبت می‌کرد، پس همکاری که مشتری
         # آورده بود از تمدیدهای خودکار او هیچ نمی‌گرفت.
@@ -3280,8 +3334,20 @@ def auto_renew_subscription(tenant, bot, sub):
         # پول برمی‌گردد تا کاربر ضرر نکند
         ctx.db.add_balance(user["id"], plan["price"], "refund",
                            "بازگشت وجه — تمدید خودکار ناموفق")
-        ctx.notify_group(f"⚠️ تمدید خودکار ناموفق\n👤 <code>{user['tg_id']}</code>\n"
-                         f"خطا: {esc(str(result))}", topic="alerts")
+
+        # همان خطا هر ساعت تکرار می‌شود. بدون شمردن، گروه مدیریت
+        # شبانه‌روز یک پیام را می‌گیرد و هشدارِ واقعیِ بعدی گم می‌شود.
+        n = ctx.db.renew_failed(sub["id"])
+        if n == 1 or n % 6 == 0:
+            ctx.notify_group(
+                f"⚠️ تمدید خودکار ناموفق (بار {core.fa(n)})\n"
+                f"👤 <code>{user['tg_id']}</code>\n"
+                f"خطا: {esc(str(result))}", topic="alerts")
+        else:
+            log.warning("تمدید خودکار اشتراک %s بار %s ناموفق: %s",
+                        sub["id"], n, result)
+        if n == 3:
+            _tell_renew_stuck(ctx, user, sub, plan)
 
 
 def send_daily_report(tenant):
