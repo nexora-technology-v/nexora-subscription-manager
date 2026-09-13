@@ -4,6 +4,8 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.11.0]
+
 ### Fixed — "بدون نرخ" never said why, and a rate could vanish on save
 
 Five different situations end in "بدون نرخ", and the phrase tells you none of

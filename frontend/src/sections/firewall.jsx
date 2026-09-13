@@ -530,13 +530,18 @@ export function FirewallRules({ password }) {
             text={q || act !== "all" || only !== "all"
               ? "با این فیلتر چیزی نیست" : "هنوز قاعده‌ای ثبت نشده"} />
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table className="fx-table">
-              <thead>
-                <tr><th>#</th><th>مقصد</th><th>عمل</th><th>مبدأ</th><th></th></tr>
-              </thead>
-              <tbody>
-                {rules.map((r) => {
+          <LongList items={rules} initial={12} label="قاعده"
+            container={(rows) => (
+              <div style={{ overflowX: "auto" }}>
+                <table className="fx-table">
+                  <thead>
+                    <tr><th>#</th><th>مقصد</th><th>عمل</th><th>مبدأ</th><th></th></tr>
+                  </thead>
+                  <tbody>{rows}</tbody>
+                </table>
+              </div>
+            )}>
+                {(r) => {
                   const meta = FW_ACTIONS.find(([v]) => v === r.action.toLowerCase());
                   return (
                     <tr key={r.num}>
@@ -569,10 +574,8 @@ export function FirewallRules({ password }) {
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
+                }}
+          </LongList>
         )}
 
         {r_note(d)}

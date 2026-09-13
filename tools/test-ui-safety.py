@@ -239,6 +239,16 @@ _unbounded = []
 for _name in ("sec.processes", "sec.services", "conn.byIp"):
     if f"{_name}.map(" in MON:
         _unbounded.append(_name)
+FW = io.open(os.path.join(ROOT, "frontend", "src", "sections",
+                          "firewall.jsx"), encoding="utf-8").read()
+check("جدول قاعده‌های فایروال هم صفحه‌بندی شد",
+      "items={rules} initial={12}" in FW and "rules.map(" not in FW,
+      "روی سروری با ده‌ها قاعده، جدول تا ته صفحه می‌رفت")
+
+INT = io.open(os.path.join(ROOT, "frontend", "src", "sections",
+                           "intrusion.jsx"), encoding="utf-8").read()
+check("جدول تلاش‌های نفوذ صفحه‌بندی دارد", "usePager(shown, 15)" in INT)
+
 check("فهرست‌های بلندِ دیگر هم مستقیم map نمی‌شوند", not _unbounded,
       "، ".join(_unbounded) if _unbounded else "همه از LongList رد می‌شوند")
 
