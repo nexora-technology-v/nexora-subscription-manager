@@ -989,9 +989,11 @@ class XUI:
         new_exp = base + add_days * 86400 * 1000 if add_days else cur_exp
 
         changes = {"expiryTime": new_exp, "enable": True}
+        total_bytes = int(current.get("totalGB") or 0)
         if add_gb is not None:
-            cur_gb = int(current.get("totalGB") or 0)
-            changes["totalGB"] = cur_gb + int(add_gb * 1024 ** 3) if add_gb else 0
+            changes["totalGB"] = (total_bytes + int(add_gb * 1024 ** 3)
+                                  if add_gb else 0)
+            total_bytes = changes["totalGB"]
 
         self.update_client(inbound_id, client_uuid,
                            email=email or current.get("email"), **changes)
@@ -1002,7 +1004,14 @@ class XUI:
             except XUIError:
                 pass
 
-        return {"expiry_ms": new_exp}
+        # حجمِ نهایی را هم برمی‌گردانیم.
+        #
+        # تمدید حجم را *جمع* می‌کند و شمارنده‌ی مصرف را صفر نمی‌کند،
+        # پس هر دو عدد روی هم می‌روند و با هم می‌خوانند. ولی ربات
+        # حجمِ ذخیره‌شده‌اش را به‌روز نمی‌کرد و همان اندازه‌ی پلن
+        # می‌ماند — یعنی مصرفِ تجمعی با سقفِ یک دوره سنجیده می‌شد.
+        # صداکننده این عدد را می‌نویسد تا دو طرف یکی بمانند.
+        return {"expiry_ms": new_exp, "total_bytes": total_bytes}
 
     def set_enabled(self, inbound_id, client_uuid, enabled: bool, email=None):
         return self.update_client(inbound_id, client_uuid, email=email,

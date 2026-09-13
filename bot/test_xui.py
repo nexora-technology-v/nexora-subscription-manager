@@ -16,7 +16,9 @@
 
 اجرا:  python3 test_xui.py
 """
+import io
 import json
+import os
 import re
 import sys
 import threading
@@ -317,6 +319,54 @@ check("و برای آدرس امن است",
       res["sub_id"])
 check("ایمیل کلاینت دست‌نخورده می‌ماند", panel["email"] == EMAIL,
       "برند صفحه‌ی اشتراک از ایمیل خوانده می‌شود، نه از آدرس")
+
+# ═══════════════ حجم بعد از تمدید ═══════════════
+section("حجم بعد از تمدید")
+
+# تمدید حجم را *جمع* می‌کند و شمارنده‌ی مصرف را صفر نمی‌کند، پس هر دو
+# عدد روی هم می‌روند و با هم می‌خوانند. ولی ربات حجمِ ذخیره‌شده‌اش را
+# به‌روز نمی‌کرد و همان اندازه‌ی پلن می‌ماند — یعنی مصرفِ تجمعی با
+# سقفِ یک دوره سنجیده می‌شد. مشتری‌ای که ۴۵ از ۱۰۰ گیگ خرج کرده بود
+# «۹۰٪» می‌دید و همان روز اولِ دوره‌ی تازه هشدار اتمام حجم می‌گرفت.
+
+_g = X.XUI(BASE, "admin", "admin")
+_ge = "nexora_777_1"
+_gr = _g.create_subscription(41, _ge, gb=50, days=30, tg_id=777,
+                             inbound_ids=[41])
+_gp = _g.find_client(41, email=_ge)
+check("حجم اولیه ۵۰ گیگ است", _gp["totalGB"] == 50 * 1024 ** 3,
+      str(_gp["totalGB"]))
+
+_ext = _g.extend_subscription(41, _gr["uuid"], add_days=30, add_gb=50,
+                              email=_ge)
+check("تمدید حجم نهایی را برمی‌گرداند", "total_bytes" in _ext,
+      "بدون این، ربات باید همان فرمول را دوباره بنویسد و از پنل جدا بیفتد")
+check("و عددش با پنل می‌خواند",
+      _ext["total_bytes"] == _g.find_client(41, email=_ge)["totalGB"],
+      str(_ext["total_bytes"]))
+check("حجم جمع شده، نه جایگزین",
+      _ext["total_bytes"] == 100 * 1024 ** 3,
+      f"{_ext['total_bytes'] / 1024 ** 3:.0f} گیگ")
+check("و به گیگ درست تبدیل می‌شود",
+      int(round(_ext["total_bytes"] / (1024 ** 3))) == 100)
+
+# تمدید با پلن نامحدود
+_ext2 = _g.extend_subscription(41, _gr["uuid"], add_days=30, add_gb=0,
+                               email=_ge)
+check("پلن نامحدود حجم را صفر می‌کند", _ext2["total_bytes"] == 0,
+      "صفر در x-ui یعنی نامحدود")
+
+# تمدید بدون دست‌زدن به حجم
+_ext3 = _g.extend_subscription(41, _gr["uuid"], add_days=10, email=_ge)
+check("تمدیدِ فقط‌زمان حجم را دست نمی‌زند", _ext3["total_bytes"] == 0,
+      "همان چیزی که بود برمی‌گردد، نه None")
+
+HSRC = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "handlers.py"), encoding="utf-8").read()
+check("ربات همان عدد را ذخیره می‌کند",
+      'ext.get("total_bytes")' in HSRC and "SET expires_at=?, gb=?" in HSRC,
+      "وگرنه نوار مصرف و هشدار ۸۰٪ هر دو با سقف اشتباه می‌سنجند")
+
 
 # ═══════════════ خواندن ═══════════════
 section("خواندن کلاینت")

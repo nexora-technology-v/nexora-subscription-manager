@@ -4,6 +4,24 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — Every renewal told the customer their quota was nearly gone
+
+Renewing adds to the panel's quota and does not reset the usage counter, so both
+numbers accumulate together and stay comparable. The bot never updated its own
+stored `gb`, which kept the size of a single plan.
+
+So from the first renewal onward, lifetime usage was being measured against one
+period's allowance. Someone on a 50 GB plan who had used 45 GB renewed to a real
+100 GB cap — and the bot still read it as 45 of 50. On day one of the new period
+they saw "۹۰٪" and an orange dot in اشتراک‌های من, and the hourly job sent them
+the 80% warning telling them to top up. Every renewal after that made it worse:
+95 of 50, then 145 of 50.
+
+`extend_subscription` now returns the quota that actually landed on the panel and
+the renewal stores that, so the two sides cannot drift. Taking the panel's number
+rather than recomputing the same sum in a second place is the point — that is how
+they came apart to begin with.
+
 ### Fixed — A stuck auto-renewal repeated the same failure every hour
 
 Auto-renew runs hourly over every subscription with a day or less left. When it

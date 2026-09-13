@@ -1148,24 +1148,38 @@ def provision(ctx, order_id):
                     # ایمیل را هم می‌دهیم: در 3x-ui نسخه‌ی ۳ شناسه‌ی
                     # اصلی کلاینت ایمیل است و جست‌وجو با آن مطمئن‌تر
                     # از uuid است
-                    ctx.xui.extend_subscription(
+                    ext = ctx.xui.extend_subscription(
                         sub["inbound_id"], sub["client_uuid"],
                         plan["days"], plan["gb"],
                         email=sub.get("client_email"))
                     new_exp = _add_days_iso(sub["expires_at"], plan["days"])
+
+                    # حجم را از همان چیزی می‌گیریم که روی پنل نشست.
+                    #
+                    # تمدید حجم را جمع می‌کند و شمارنده‌ی مصرف را صفر
+                    # نمی‌کند. ربات ولی همان اندازه‌ی پلن را نگه
+                    # می‌داشت، پس بعد از اولین تمدید مصرفِ تجمعی با
+                    # سقفِ یک دوره سنجیده می‌شد: مشتری که ۴۵ از ۱۰۰
+                    # گیگ خرج کرده بود «۹۰٪» می‌دید و هشدار اتمام حجم
+                    # می‌گرفت، همان روز اولِ دوره‌ی تازه.
+                    new_gb = sub.get("gb") or 0
+                    if isinstance(ext, dict) and ext.get("total_bytes") is not None:
+                        new_gb = int(round(ext["total_bytes"] / (1024 ** 3)))
                     ctx.db.exec(
-                        """UPDATE subscriptions SET expires_at=?, is_active=1,
+                        """UPDATE subscriptions SET expires_at=?, gb=?,
+                           is_active=1,
                            notified_7d=0, notified_3d=0, notified_1d=0,
                            notified_80p=0
                            WHERE tenant_id=? AND id=?""",
-                        (new_exp, ctx.tid, sub["id"])
+                        (new_exp, new_gb, ctx.tid, sub["id"])
                     )
                     ctx.db.exec(
                         "UPDATE orders SET sub_id=? WHERE tenant_id=? AND id=?",
                         (sub["id"], ctx.tid, order_id))
                 finally:
                     ctx.db.release_renewal(sub["id"])
-                return True, {**sub, "expires_at": new_exp, "renewed": True}
+                return True, {**sub, "expires_at": new_exp, "gb": new_gb,
+                              "renewed": True}
 
         email = _free_email(ctx, user, prefix)
 
