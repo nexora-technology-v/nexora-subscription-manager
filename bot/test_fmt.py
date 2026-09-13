@@ -292,6 +292,46 @@ check("صفحه‌ی تمدید همین اسم را نشان می‌دهد",
 
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R
+# ═══════════════════════════════════════════════════════════
+head("نگهبان HTML باید همان چیزی را بگیرد که تلگرام رد می‌کند")
+
+# send وقتی check ایرادی ببیند پیام را *بدون قالب* می‌فرستد. پس هر
+# ایراد کاذب یعنی یک پیام تخت‌شده، و هر ایرادِ ازدست‌رفته یعنی پیامی
+# که تلگرام پس می‌زند و مشتری هیچ‌وقت نمی‌بیند.
+
+check("بلوک کد با زبان سالم است", F.check(F.pre("ls -la", "bash")) == [],
+      "شکل مستندِ خود تلگرام — قبلاً «بی‌اثر» علامت می‌خورد و تخت می‌شد")
+check("ولی تگ داخل code هنوز ایراد است",
+      any("بی‌اثر" in p for p in F.check("<code><b>x</b></code>")))
+check("و تگ داخل خودِ code در pre هم",
+      any("بی‌اثر" in p for p in F.check("<pre><code><b>x</b></code></pre>")))
+
+check("«<»ی که تگ نساخته گرفته می‌شود",
+      any("«<»" in p for p in F.check("کاربر a<b عزیز")),
+      "نامی با < و یک esc جاافتاده — تلگرام کل پیام را رد می‌کند")
+check("تگ نیمه‌تمام هم", any("«<»" in p for p in F.check("نام: <script")))
+check("«>» تنها ایراد نیست", F.check("۵ > ۳") == [],
+      "تلگرام این یکی را قبول می‌کند")
+check("متن امن‌شده هنوز سالم است", F.check(F.b("a<b>c")) == [])
+
+check("صفت نامعتبر روی <a> گرفته می‌شود",
+      any("صفت نامعتبر" in p
+          for p in F.check('<a href="https://x/"چیزی">t</a>')),
+      "قبلاً فقط «href هست یا نه» سنجیده می‌شد")
+check("لینک سالم رد نمی‌شود",
+      F.check(F.link("متن", "https://nexora.ir/sub/abc?x=1&y=2")) == [])
+check("لینک تودرتو گرفته می‌شود",
+      any("تودرتو" in p for p in
+          F.check('<a href="https://a">x<a href="https://b">y</a></a>')))
+check("صفت روی تگی که صفت نمی‌گیرد",
+      any("صفت نامعتبر" in p for p in F.check('<b class="x">t</b>')))
+check("blockquote expandable مجاز است",
+      F.check(F.quote_more("یک", "دو")) == [])
+check("اسپویلر مجاز است", F.check(F.spoiler("x")) == [])
+check("موجودیت شانزده‌شانزدهی ایراد نیست", F.check("a &#x27; b") == [],
+      "قبلاً فقط ده‌دهی شناخته می‌شد")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

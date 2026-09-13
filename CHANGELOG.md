@@ -4,6 +4,29 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Fixed — The HTML guard missed what Telegram rejects and flagged what it accepts
+
+`send` runs every outgoing message through `fmt.check`, and sends it stripped of
+all formatting if anything is reported. So a false report flattens a message, and
+a missed one means Telegram refuses it and the customer sees nothing at all.
+
+It did both.
+
+Missed: a `<` that never became a complete tag. `check` only looked at fully
+formed `<tag>` matches, so a customer name containing `<` with one forgotten
+`esc()` sailed through — and Telegram rejects the whole message for an unclosed
+start tag. Also missed: an invalid attribute (`<a href="https://x/"anything">`
+passed because the test was only whether `href="` appeared anywhere), a link
+nested in a link, and an attribute on a tag that takes none. Hex entities like
+`&#x27;` were reported as unescaped `&`.
+
+Flagged wrongly: `<pre><code class="language-bash">` — Telegram's own documented
+form for a code block with a language, which `fmt.pre(text, lang)` generates. The
+first message to use one would have been silently flattened.
+
+All 43 rendered bot screens still pass, so nothing legitimate was caught by the
+tighter rules.
+
 ### Fixed — A tunnel with every port dead reported "unknown"
 
 `save_metrics` kept the first TCP probe that came back `ok` and discarded the

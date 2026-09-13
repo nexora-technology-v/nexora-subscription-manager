@@ -237,7 +237,24 @@ ALLOWED = {"b", "strong", "i", "em", "u", "ins", "s", "strike", "del",
 #: داخل اینها قالب‌بندی کار نمی‌کند، پس تگ تودرتو یعنی اشتباه منطقی
 LITERAL = {"code", "pre"}
 
+#: تگ‌هایی که هیچ صفتی نمی‌گیرند
+_BARE = None   # در _ATTRS مقداردهی می‌شود
+
 _TAG = re.compile(r"<(/?)([a-zA-Z-]+)([^>]*)>")
+
+#: تنها صفت‌هایی که تلگرام برای هر تگ می‌پذیرد.
+#:
+#: بدون این، «href=" هست یا نه» تنها چیزی بود که سنجیده می‌شد — پس
+#: <a href="https://x/"چیزی"> از نگهبان رد می‌شد و تلگرام پیام را
+#: پس می‌زد.
+_ATTRS = {
+    "a": re.compile(r'^\s*href="[^"<>]*"\s*$'),
+    "code": re.compile(r'^\s*(class="language-[\w.+#-]+")?\s*$'),
+    "blockquote": re.compile(r"^\s*(expandable)?\s*$"),
+    "span": re.compile(r'^\s*class="tg-spoiler"\s*$'),
+}
+
+_BARE = re.compile(r"^\s*$")
 
 
 def check(text):
@@ -251,8 +268,10 @@ def check(text):
     """
     problems = []
     stack = []
+    spans = []
     for m in _TAG.finditer(text):
         closing, name, attrs = m.group(1), m.group(2).lower(), m.group(3)
+        spans.append((m.start(), m.end()))
 
         if name not in ALLOWED:
             problems.append(f"تگ ناشناخته: <{name}>")
@@ -268,20 +287,43 @@ def check(text):
                 stack.pop()
             continue
 
-        # داخل code/pre هیچ تگی نباید باشد
-        if stack and stack[-1] in LITERAL:
+        # داخل code/pre هیچ تگی نباید باشد — جز <code> بلافاصله داخل
+        # <pre>، که شکل مستندِ خودِ تلگرام برای بلوک کد با زبان است.
+        # قبلاً همین شکل «بی‌اثر» علامت می‌خورد، و چون send وقتی
+        # ایرادی ببیند پیام را بدون قالب می‌فرستد، اولین بلوک کدِ
+        # زبان‌دار بی‌صدا تخت می‌شد.
+        if stack and stack[-1] in LITERAL and not (stack[-1] == "pre"
+                                                   and name == "code"):
             problems.append(f"<{name}> داخل <{stack[-1]}> بی‌اثر است")
+
+        if name == "a" and "a" in stack:
+            problems.append("<a> داخل <a> — تلگرام لینک تودرتو را رد می‌کند")
 
         if name == "a" and 'href="' not in attrs:
             problems.append("<a> بدون href")
+        elif not _ATTRS.get(name, _BARE).match(attrs):
+            problems.append(f"<{name}> با صفت نامعتبر: {attrs.strip()[:40]}")
 
         stack.append(name)
 
     for name in stack:
         problems.append(f"<{name}> بسته نشده")
 
+    # «<»ی که تگ کامل نساخته — همان چیزی که این نگهبان برای آن هست
+    #
+    # قبلاً فقط تگ‌های *کامل* دیده می‌شدند، پس نامی مثل «a<b» از
+    # نگهبان رد می‌شد و تلگرام پیام را پس می‌زد: مشتری هیچ چیزی
+    # نمی‌دید و هیچ‌جا هم ثبت نمی‌شد که چرا.
+    covered = set()
+    for a, z in spans:
+        covered.update(range(a, z))
+    for idx, ch in enumerate(text):
+        if ch == "<" and idx not in covered:
+            problems.append(f"«<» امن‌سازی‌نشده در نویسه‌ی {idx}")
+            break
+
     # & تنهایی هم پیام را می‌شکند
-    for m in re.finditer(r"&(?!(amp|lt|gt|quot|#\d+);)", text):
+    for m in re.finditer(r"&(?!(amp|lt|gt|quot|#x?[0-9a-fA-F]+);)", text):
         problems.append(f"& امن‌سازی‌نشده در نویسه‌ی {m.start()}")
         break
 
