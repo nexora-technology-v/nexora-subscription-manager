@@ -648,6 +648,101 @@ check("کارت می‌گوید این عدد از کجا آمده",
       "عددی که بی‌توضیح بالا برود، مدیر فکر می‌کند اشتباه است")
 
 
+# ═══════════════════════════════════════════════════════════
+head("تمدیدی که واسطه مستقیم در پنل زده باید دیده شود")
+
+# پنل دست واسطه است. او کانفیگ را همان‌جا در x-ui تمدید می‌کند و
+# هیچ‌جا ثبت نمی‌شود — نه در ربات، نه در x-ui که تاریخچه ندارد. مدیر
+# نمی‌فهمد کدام مشتری تمدید کرده و چند بار؛ فقط می‌بیند واسطه چند
+# کانفیگ دارد.
+#
+# جدول renewals از روز اول وجود داشت، با توضیحی که می‌گفت «از امروز
+# خودمان ثبت می‌کنیم» — ولی هیچ‌جای کد چیزی در آن نمی‌نوشت.
+
+import time as _t  # noqa: E402
+
+_DAY = 86400000
+_now = int(_t.time() * 1000)
+
+
+def _cl(email, exp_ms, gb=50):
+    return {"email": email, "group": "g1", "expiry": exp_ms,
+            "totalGB": gb * 1024 ** 3, "used": 0, "enable": True,
+            "createdAt": _now - 60 * _DAY, "limitIp": 0}
+
+
+_bc = APP._billing_conn()
+try:
+    _bc.execute("DELETE FROM client_seen")
+    _bc.execute("DELETE FROM renewals")
+    _bc.commit()
+
+    # اولین خواندن: هنوز چیزی نمی‌دانیم، پس تمدیدی ثبت نمی‌شود
+    APP._record_seen(_bc, [_cl("a@x", _now + 10 * _DAY)])
+    _n = _bc.execute("SELECT COUNT(*) c FROM renewals").fetchone()["c"]
+    check("اولین دیدن تمدید حساب نمی‌شود", _n == 0,
+          "هیچ مبنایی برای مقایسه نیست")
+
+    _seen = _bc.execute(
+        "SELECT last_expiry FROM client_seen WHERE email='a@x'").fetchone()
+    check("ولی انقضا به خاطر سپرده می‌شود",
+          _seen and _seen["last_expiry"] == _now + 10 * _DAY,
+          "بدون این، دفعه‌ی بعد هم چیزی فهمیده نمی‌شود")
+
+    # واسطه یک ماه تمدید می‌کند
+    APP._record_seen(_bc, [_cl("a@x", _now + 40 * _DAY)])
+    _r = [dict(r) for r in _bc.execute("SELECT * FROM renewals")]
+    check("تمدید یک‌ماهه دیده شد", len(_r) == 1, f"{len(_r)} ردیف")
+    check("و یک ماه حساب شد", _r and _r[0]["months"] == 1,
+          str(_r[0]["months"]) if _r else "-")
+    check("و به نام همان کانفیگ", _r and _r[0]["email"] == "a@x")
+
+    # خواندن دوباره بدون تغییر — نباید دو بار ثبت شود
+    APP._record_seen(_bc, [_cl("a@x", _now + 40 * _DAY)])
+    _n = _bc.execute("SELECT COUNT(*) c FROM renewals").fetchone()["c"]
+    check("خواندن دوباره تمدید تکراری نمی‌سازد", _n == 1, f"{_n} ردیف")
+
+    # تغییر چندروزه اصلاح دستی است، نه فروش
+    APP._record_seen(_bc, [_cl("a@x", _now + 45 * _DAY)])
+    _n = _bc.execute("SELECT COUNT(*) c FROM renewals").fetchone()["c"]
+    check("جابه‌جایی چندروزه تمدید حساب نمی‌شود", _n == 1,
+          "کمتر از ۲۰ روز معمولاً اصلاح دستی است")
+
+    # تمدید سه‌ماهه
+    APP._record_seen(_bc, [_cl("a@x", _now + 135 * _DAY)])
+    _r = [dict(r) for r in _bc.execute(
+        "SELECT * FROM renewals ORDER BY id DESC LIMIT 1")]
+    check("تمدید سه‌ماهه هم درست شمرده می‌شود",
+          _r and _r[0]["months"] == 3, str(_r[0]["months"]) if _r else "-")
+
+    # انقضایی که عقب کشیده شده تمدید نیست
+    APP._record_seen(_bc, [_cl("a@x", _now + 5 * _DAY)])
+    _n = _bc.execute("SELECT COUNT(*) c FROM renewals").fetchone()["c"]
+    check("عقب‌رفتن انقضا تمدید نیست", _n == 2, f"{_n} ردیف")
+finally:
+    _bc.close()
+
+# ── ثبت‌شده باید کف باشد، نه سقف ──
+#
+# ثبت از روزی شروع می‌شود که نکسورا نصب شده. کانفیگی که دو سال سابقه
+# دارد و یک تمدیدِ ثبت‌شده، نباید «۲ ماه» بشود.
+_old = {"email": "b@x", "group": "g1", "expiry": _now + 30 * _DAY,
+        "totalGB": 50 * 1024 ** 3, "used": 0, "enable": True,
+        "createdAt": _now - 720 * _DAY, "limitIp": 0}
+_m, _k, _d = APP._months_for(_old, {"b@x": 1})
+check("سابقه‌ی قدیمی با یک تمدیدِ ثبت‌شده کوچک نمی‌شود", _m >= 24,
+      f"{_m} ماه — تخمینِ فاصله‌ی ساخت تا انقضا برنده می‌شود")
+
+# و برعکس: وقتی تخمین کم می‌آورد، ثبت‌شده نجاتش می‌دهد
+_short = {"email": "c@x", "group": "g1", "expiry": _now + 30 * _DAY,
+          "totalGB": 50 * 1024 ** 3, "used": 0, "enable": True,
+          "createdAt": _now - 10 * _DAY, "limitIp": 0}
+_m2, _k2, _d2 = APP._months_for(_short, {"c@x": 5})
+check("تمدید با «تاریخ تازه» دیگر گم نمی‌شود", _m2 == 6,
+      f"{_m2} ماه — تخمین ۱ می‌داد، ثبت‌شده ۶ می‌گوید")
+check("و منبعش صریح گفته می‌شود", _k2 == "ثبت‌شده", _k2)
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

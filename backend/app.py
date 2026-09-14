@@ -4206,7 +4206,15 @@ def _billing_conn():
             email      TEXT PRIMARY KEY,
             group_key  TEXT,
             first_seen TEXT NOT NULL,
-            last_seen  TEXT
+            last_seen  TEXT,
+            -- آخرین انقضایی که از این کلاینت دیدیم.
+            --
+            -- بدون این، تمدید اصلاً قابل تشخیص نیست: پنل دست واسطه
+            -- است، او مستقیم در x-ui تمدید می‌کند، و x-ui هیچ
+            -- تاریخچه‌ای نگه نمی‌دارد. تنها راه فهمیدنش این است که
+            -- خودمان انقضا را به خاطر بسپاریم و دفعه‌ی بعد مقایسه
+            -- کنیم — اگر جلو رفته باشد، تمدید شده.
+            last_expiry INTEGER
         );
 
         -- لاگ تمدید: x-ui تاریخچه ندارد، پس از امروز خودمان ثبت می‌کنیم
@@ -4611,8 +4619,15 @@ def _months_for(cl, logged, since=None, first_seen=None):
     """
     from datetime import datetime as _dt
 
-    if cl["email"] in logged:
-        return 1 + logged[cl["email"]], "ثبت‌شده", 0
+    # تمدیدهای ثبت‌شده یک *کف* هستند، نه جایگزین تخمین.
+    #
+    # قبلاً همین‌جا return می‌شد. ولی ثبت از روزی شروع می‌شود که
+    # نکسورا نصب شده؛ کانفیگی که دو سال سابقه دارد و یک تمدیدِ
+    # ثبت‌شده، «۲ ماه» می‌شد به‌جای ۲۵ ماه — یعنی ثبت‌کردن تمدیدها
+    # صورتحساب را *بدتر* می‌کرد.
+    #
+    # پایین هر دو حساب می‌شوند و بزرگ‌ترشان برمی‌گردد.
+    floor = 1 + logged.get(cl["email"], 0) if cl["email"] in logged else 0
 
     exp = cl.get("expiry")
 
@@ -4628,11 +4643,11 @@ def _months_for(cl, logged, since=None, first_seen=None):
         source = "اولین‌دید"
 
     if not exp or exp <= 0 or created is None:
-        return 1, "پیش‌فرض", 0
+        return (floor, "ثبت‌شده", 0) if floor > 1 else (1, "پیش‌فرض", 0)
 
     exp_ms = _ms(exp)
     if exp_ms is None:
-        return 1, "پیش‌فرض", 0
+        return (floor, "ثبت‌شده", 0) if floor > 1 else (1, "پیش‌فرض", 0)
 
     days = (exp_ms - created) / 86400000.0
     if days <= 0:
@@ -4641,11 +4656,20 @@ def _months_for(cl, logged, since=None, first_seen=None):
         # «یک ماه» حساب می‌شد.
         days = (_dt.now().timestamp() * 1000 - created) / 86400000.0
         if days <= 0:
-            return 1, "منقضی", 0
+            return (floor, "ثبت‌شده", 0) if floor > 1 else (1, "منقضی", 0)
         months = _months_from_days(days)
+        if floor > months:
+            return floor, "ثبت‌شده", 0
         return months, source + " (منقضی)", 0
 
     months = _months_from_days(days)
+
+    # تمدیدی که دیده‌ایم از تخمین بیشتر است — یعنی انقضا یک جایی عقب
+    # کشیده شده (تمدید با «تاریخ تازه» به‌جای «افزودن روز»). آن‌وقت
+    # فاصله‌ی ساخت تا انقضا کوتاه‌تر از واقعیت است و تخمین کم می‌آورد.
+    if floor > months:
+        return floor, "ثبت‌شده", 0
+
     drift = abs(days - months * 30)
     if source == "ساخت" and drift <= 2:
         return months, "قطعی", 0
@@ -4800,6 +4824,65 @@ def _bot_sold_emails():
 
 
 
+#: انقضا باید دست‌کم این‌قدر جلو برود تا «تمدید» حساب شود.
+#
+#  کمتر از این معمولاً اصلاح دستی چند روزه است، نه فروش.
+RENEWAL_MIN_DAYS = 20
+
+
+def _detect_renewals(bcon, clients, known, today):
+    """
+    تمدیدهایی که واسطه مستقیم در x-ui انجام داده را پیدا و ثبت می‌کند.
+
+    پنل دست واسطه است. او کانفیگ را همان‌جا تمدید می‌کند و هیچ‌کجا
+    ثبت نمی‌شود — نه در ربات، نه در x-ui که اصلاً تاریخچه ندارد. پس
+    مدیر نمی‌فهمد کدام مشتری تمدید کرده و چند بار؛ فقط می‌بیند واسطه
+    چند کانفیگ دارد. برای حساب‌وکتاب کافی نیست.
+
+    تنها راهش این است: هر بار که فهرست کلاینت‌ها را می‌خوانیم، انقضای
+    هر کدام را به خاطر بسپاریم. دفعه‌ی بعد اگر انقضا *جلو* رفته باشد،
+    بین این دو خواندن تمدید شده.
+
+    محدودیتش را صریح بگوییم: تاریخِ ثبت، تاریخِ *دیدن* است نه تاریخ
+    واقعی تمدید. اگر ماهی یک بار صفحه‌ی حسابداری باز شود، تمدید ثبت
+    می‌شود ولی تا یک ماه دیرتر. تعدادش درست است، تاریخش تقریبی.
+    """
+    rows = []
+    upd = []
+    for c in clients:
+        em = c.get("email")
+        if not em:
+            continue
+        exp = _epoch_ms(c.get("expiry"))
+        if not exp or exp <= 0:
+            continue
+        prev = known.get(em)
+        upd.append((exp, em))
+        if not prev or prev <= 0:
+            continue
+        gained = (exp - int(prev)) / 86400000.0
+        if gained < RENEWAL_MIN_DAYS:
+            continue
+        months = max(1, _months_from_days(gained))
+        rows.append((em, c.get("group") or "", months, today))
+
+    try:
+        if rows:
+            bcon.executemany(
+                "INSERT INTO renewals (email, group_key, months, created_at) "
+                "VALUES (?,?,?,?)", rows)
+        if upd:
+            bcon.executemany(
+                "UPDATE client_seen SET last_expiry=?, last_seen=date('now') "
+                "WHERE email=?", upd)
+        if rows or upd:
+            bcon.commit()
+        if rows:
+            log.info("تمدید تازه ثبت شد: %s کانفیگ", len(rows))
+    except Exception:
+        log.debug("ثبت تمدید ناموفق", exc_info=True)
+
+
 def _record_seen(bcon, clients):
     """
     اولین و آخرین باری که هر کلاینت دیده شده را ثبت می‌کند.
@@ -4812,25 +4895,42 @@ def _record_seen(bcon, clients):
     """
     now = datetime.now().strftime("%Y-%m-%d")
     out = {}
+    known = {}
     try:
-        for r in bcon.execute("SELECT email, first_seen FROM client_seen"):
+        # ستون در نصب‌های قدیمی نیست — بی‌سروصدا اضافه‌اش می‌کنیم.
+        cols = {r[1] for r in bcon.execute("PRAGMA table_info(client_seen)")}
+        if "last_expiry" not in cols:
+            bcon.execute("ALTER TABLE client_seen ADD COLUMN last_expiry INTEGER")
+            bcon.commit()
+        for r in bcon.execute(
+                "SELECT email, first_seen, last_expiry FROM client_seen"):
             out[r["email"]] = r["first_seen"]
+            known[r["email"]] = r["last_expiry"]
     except Exception:
         return out
 
-    fresh = [(c["email"], c.get("group") or "", now, now)
+    # کلاینت تازه *قبل* از تشخیص درج می‌شود، و با انقضای همین لحظه.
+    #
+    # اگر بعدش درج شود، آن UPDATE به هیچ سطری نمی‌خورد و ردیف با
+    # last_expiry خالی ساخته می‌شود — یعنی مبنای مقایسه یک دور دیرتر
+    # جا می‌افتد و اولین تمدیدِ هر کانفیگ برای همیشه از دست می‌رود.
+    fresh = [(c["email"], c.get("group") or "", now, now,
+              _epoch_ms(c.get("expiry")))
              for c in clients if c.get("email") and c["email"] not in out]
     if fresh:
         try:
             bcon.executemany(
                 "INSERT OR IGNORE INTO client_seen "
-                "(email, group_key, first_seen, last_seen) VALUES (?,?,?,?)",
-                fresh)
+                "(email, group_key, first_seen, last_seen, last_expiry) "
+                "VALUES (?,?,?,?,?)", fresh)
             bcon.commit()
-            for em, _g, fs, _l in fresh:
+            for em, _g, fs, _l, exp in fresh:
                 out[em] = fs
+                known[em] = exp
         except Exception:
             log.debug("ثبت اولین دیدن ناموفق", exc_info=True)
+
+    _detect_renewals(bcon, clients, known, now)
 
     try:
         bcon.executemany(

@@ -4,6 +4,41 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.13.0]
+
+### Added — Renewals made in the panel are now recorded
+
+The reseller holds the x-ui panel and renews configs there directly. Nothing
+recorded it: not the bot, which never saw it, and not x-ui, which keeps no
+history at all. So the owner could see how many configs a reseller had, but never
+which customer renewed or how many times — which is not enough to settle an
+account.
+
+The `renewals` table has been in the schema since the beginning, under a comment
+saying x-ui has no history so we record it ourselves. Nothing ever wrote to it.
+
+Now `client_seen` remembers each config's expiry, and every read compares it to
+the last one. An expiry that jumped forward by twenty days or more is a renewal:
+it gets logged with the config, the months gained, and the date. Smaller moves
+are treated as manual corrections, and an expiry moved backwards is not a renewal.
+
+Be clear about the limit: the recorded date is when it was *seen*, not when it
+happened. Open accounting once a month and the renewal is still counted, just
+dated late. The count is right; the date is approximate.
+
+### Fixed — A recorded renewal used to shrink the bill instead of growing it
+
+`_months_for` returned `1 + recorded renewals` and stopped there. Recording starts
+the day Nexora is installed, so a config with two years of history and one
+recorded renewal would have billed as two months instead of twenty-five — meaning
+the moment renewals started being recorded, invoices would have collapsed.
+
+The recorded count is a floor now, not a replacement. The estimate from creation
+to expiry still wins when it is larger, and the recorded count takes over only
+when it is bigger — which is exactly the case the estimate cannot see: a renewal
+done by setting a fresh expiry date rather than adding days, which shortens the
+span and hides the history.
+
 ## [1.12.0]
 
 ### Fixed — A rate you defined is now used, even when it does not match exactly
