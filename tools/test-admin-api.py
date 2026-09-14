@@ -10,6 +10,7 @@
 اجرا:  python3 tools/test-admin-api.py
 """
 import io
+import json
 import os
 import sys
 import tempfile
@@ -544,6 +545,157 @@ except Exception as e:
     _blank = getattr(e, "status_code", 0) == 409
 check("نماینده‌ی بی‌گروه هیچ چیز نمی‌بیند", _blank,
       "نه اینکه «همه» را ببیند — آن بدترین حالت پیش‌فرض است")
+
+
+# ═══════════════════════════════════════════════════════════
+head("نوشتن نماینده در پنل — محافظ‌ها")
+
+# از این‌جا به بعد نماینده در x-ui می‌نویسد، و x-ui همان جایی است که
+# کانفیگ مشتری‌های واقعی زندگی می‌کند. سه قاعده که هیچ‌کدام قابل
+# مذاکره نیست، و این بخش دقیقاً همان‌ها را می‌سنجد.
+
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("UPDATE tenants SET portal_group='goroh-a', portal_enabled=1,"
+                " credit=300000 WHERE portal_slug='hossein'")
+    for _pc in ("panel_url", "panel_user", "panel_pass", "panel_token"):
+        try:
+            _bd.execute(f"ALTER TABLE tenants ADD COLUMN {_pc} TEXT")
+        except Exception:
+            pass
+    _bd.execute("UPDATE tenants SET panel_url='http://x', panel_user='u',"
+                " panel_pass='p' WHERE parent_id IS NULL")
+    _bd.commit()
+finally:
+    _bd.close()
+
+_T = AP._tenant_by_slug("hossein")
+
+
+class _FakeXUI:
+    """پنل ساختگی — فقط برای دیدن اینکه چه چیزی به آن داده می‌شود."""
+    calls = []
+
+    def __init__(self, *a, **k):
+        pass
+
+    def find_client(self, inbound_id, email=None, client_uuid=None):
+        if email in ("a1", "a2"):
+            return {"id": "uuid-" + email, "inboundIds": [7], "email": email}
+        if email == "b1":
+            return {"id": "uuid-b1", "inboundIds": [9], "email": "b1"}
+        return None
+
+    def extend_subscription(self, ib, uuid, add_days=0, add_gb=None, email=None):
+        _FakeXUI.calls.append(("extend", ib, uuid, add_days, add_gb, email))
+        return {"expiry_ms": 1800000000000, "total_bytes": 0}
+
+    def set_enabled(self, ib, uuid, enabled, email=None):
+        _FakeXUI.calls.append(("enable", ib, uuid, enabled, email))
+        return True
+
+
+AP._portal_xui = lambda t: (_FakeXUI(), Exception)
+
+# نرخ گروه
+_bc = AP._billing_conn()
+try:
+    _bc.execute("DELETE FROM group_config WHERE group_key='goroh-a'")
+    _bc.execute(
+        "INSERT INTO group_config (group_key,label,billable,rates) VALUES (?,?,?,?)",
+        ("goroh-a", "گروه الف", 1,
+         json.dumps([{"gb": 50, "price": 100000, "perDevice": 20000}])))
+    _bc.execute("DELETE FROM renewals")
+    _bc.commit()
+finally:
+    _bc.close()
+
+# ── قاعده ۲: کانفیگ نماینده‌ی دیگر دست‌نیافتنی است ──
+_FakeXUI.calls = []
+try:
+    AP.portal_renew({"email": "b1", "months": 1}, _T)
+    _blocked = False
+except Exception as e:
+    _blocked = getattr(e, "status_code", 0) == 404
+check("تمدید کانفیگ نماینده‌ی دیگر رد می‌شود", _blocked,
+      "ایمیل فرستادن هیچ چیزی را ثابت نمی‌کند")
+check("و اصلاً به پنل نمی‌رسد", not _FakeXUI.calls,
+      "رد باید قبل از هر نوشتنی اتفاق بیفتد")
+
+try:
+    AP.portal_toggle({"email": "b1", "enable": False}, _T)
+    _blocked2 = False
+except Exception as e:
+    _blocked2 = getattr(e, "status_code", 0) == 404
+check("خاموش‌کردن کانفیگ نماینده‌ی دیگر هم رد می‌شود", _blocked2)
+
+# ── تمدید درست ──
+_FakeXUI.calls = []
+_before = _sq3.connect(str(AP.BOT_DB))
+_c0 = _before.execute("SELECT credit FROM tenants WHERE portal_slug='hossein'"
+                      ).fetchone()[0]
+_before.close()
+
+_res = AP.portal_renew({"email": "a1", "months": 2}, _T)
+check("تمدید انجام شد", _res["ok"] and _res["months"] == 2)
+check("و به پنل با uuid و اینباند درست رفت",
+      _FakeXUI.calls and _FakeXUI.calls[0][1] == 7
+      and _FakeXUI.calls[0][2] == "uuid-a1",
+      str(_FakeXUI.calls[:1]))
+check("روزها دو برابر شد", _FakeXUI.calls[0][3] == 60, str(_FakeXUI.calls[0][3]))
+
+# ── قاعده ۳: اعتبار اتمی کم شد ──
+_after = _sq3.connect(str(AP.BOT_DB))
+_c1 = _after.execute("SELECT credit FROM tenants WHERE portal_slug='hossein'"
+                     ).fetchone()[0]
+_after.close()
+# ۵۰ گیگ = ۱۰۰٬۰۰۰ پایه، ۲ دستگاه یعنی ۱ کاربر اضافه = ۲۰٬۰۰۰، دو ماه
+check("اعتبار به اندازه‌ی درست کم شد", _c0 - _c1 == 240000,
+      f"{_c0} → {_c1} · انتظار ۲۴۰٬۰۰۰")
+check("و همان مبلغ گزارش شد", _res["charged"] == 240000, str(_res["charged"]))
+
+# ── و این تمام دلیل وجود این پنل: ثبت دقیق ──
+_bc = AP._billing_conn()
+try:
+    _rn = [dict(r) for r in _bc.execute("SELECT * FROM renewals")]
+finally:
+    _bc.close()
+check("تمدید دقیق ثبت شد", len(_rn) == 1 and _rn[0]["months"] == 2,
+      "دیگر لازم نیست از فاصله‌ی ساخت تا انقضا حدس زده شود")
+check("به نام همان کانفیگ و گروه",
+      _rn and _rn[0]["email"] == "a1" and _rn[0]["group_key"] == "goroh-a")
+
+# ── اعتبار که کم بیاید ──
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("UPDATE tenants SET credit=1000 WHERE portal_slug='hossein'")
+    _bd.commit()
+finally:
+    _bd.close()
+_FakeXUI.calls = []
+try:
+    AP.portal_renew({"email": "a1", "months": 1}, AP._tenant_by_slug("hossein"))
+    _poor = False
+except Exception as e:
+    _poor = getattr(e, "status_code", 0) == 402
+check("اعتبار ناکافی جلوی تمدید را می‌گیرد", _poor)
+check("و هیچ چیزی روی پنل عوض نمی‌شود", not _FakeXUI.calls,
+      "کسر قبل از کار است، پس شکستش یعنی کار اصلاً شروع نمی‌شود")
+
+# ── ماه نامعتبر ──
+try:
+    AP.portal_renew({"email": "a1", "months": 99}, _T)
+    _bad = False
+except Exception as e:
+    _bad = getattr(e, "status_code", 0) == 400
+check("تعداد ماه بی‌معنا رد می‌شود", _bad)
+
+APP_SRC = io.open(os.path.join(str(ROOT), "backend", "app.py"),
+                  encoding="utf-8").read()
+check("کسر اعتبار اتمی است",
+      "WHERE id=? AND credit >= ?" in APP_SRC,
+      "بخوان-بعد-کم‌کن بین آن دو جا برای درخواست دیگر باز می‌گذارد")
+check("و اگر پنل شکست خورد پول برمی‌گردد", "_portal_refund" in APP_SRC)
 
 
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

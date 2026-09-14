@@ -4,6 +4,39 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.16.0]
+
+### Added — Resellers can renew and disable from their own panel
+
+This is the half that makes the accounting real. A renewal done here is written
+down the moment it happens — the config, the months, the date, the amount — so the
+invoice stops reconstructing history from the gap between creation and expiry and
+starts reading a ledger.
+
+Three rules govern the write path, and the tests check each one:
+
+**The group never comes from the request.** It is read from the reseller's own
+row, every time.
+
+**Anything about to change is fetched from the panel first and its group checked
+there.** A reseller sending someone else's config name proves nothing. A config
+from another group answers "not found" — the same answer as one that does not
+exist, so the portal cannot be used to discover which names are real. The refusal
+happens before any write is attempted.
+
+**Credit is taken atomically and before the work.** The condition lives inside the
+`UPDATE`, not in a read followed by a write — that gap is exactly the race closed
+in the bot's wallet earlier today. If the panel then fails, the credit goes back.
+
+Price comes from the rates the owner defined for that group, including the
+per-user rate, and is recomputed server-side; the amount the portal displays is a
+preview and never the figure charged. A reseller on unlimited credit is invoiced
+at month end as before.
+
+The portal also finds the config's live record on the panel before writing rather
+than acting on the snapshot it listed from, since the unique id and inbound are
+not in that snapshot and the write has to land on what is there now.
+
 ## [1.15.0]
 
 ### Added — Reseller portal

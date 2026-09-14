@@ -8639,6 +8639,293 @@ def portal_summary(t: dict = Depends(portal_tenant)):
     }
 
 
+
+# ═══════════════════════════════════════════════════════════
+#  پنل نماینده — نوشتن
+#
+#  تا این‌جا نماینده فقط می‌خواند. از این‌جا به بعد در x-ui می‌نویسد،
+#  و x-ui همان جایی است که کانفیگ مشتری‌های واقعی زندگی می‌کند. پس
+#  سه قاعده که هیچ‌کدام قابل مذاکره نیست:
+#
+#    ۱. گروه هرگز از درخواست خوانده نمی‌شود. همیشه از ردیف مستاجر.
+#    ۲. هر کانفیگی که قرار است تغییر کند، اول از پنل خوانده می‌شود و
+#       گروهش سنجیده می‌شود. اینکه نماینده ایمیلش را فرستاده هیچ
+#       چیزی را ثابت نمی‌کند.
+#    ۳. کسر اعتبار اتمی است و *قبل* از کار انجام می‌شود؛ اگر کار
+#       شکست خورد برمی‌گردد.
+# ═══════════════════════════════════════════════════════════
+
+def _portal_xui(t):
+    """
+    اتصال x-ui برای این نماینده.
+
+    اگر خودش پنل جدا دارد، همان. وگرنه پنل مالک — چون در نصب معمول
+    یک x-ui هست و گروه‌ها داخلش از هم جدا می‌شوند.
+    """
+    import importlib.util as _iu
+    _p = Path(__file__).resolve().parent.parent / "bot" / "xui.py"
+    _sp = _iu.spec_from_file_location("_portal_xui_mod", _p)
+    _m = _iu.module_from_spec(_sp)
+    _sp.loader.exec_module(_m)
+
+    row = t if t.get("panel_url") else None
+    if row is None:
+        con = _bot_conn()
+        try:
+            r = con.execute(
+                "SELECT * FROM tenants WHERE parent_id IS NULL "
+                "ORDER BY id LIMIT 1").fetchone() if con else None
+            row = dict(r) if r else None
+        finally:
+            if con:
+                con.close()
+    if not row or not row.get("panel_url"):
+        raise HTTPException(status_code=503,
+                            detail="اتصال به پنل تنظیم نشده — با پشتیبانی تماس بگیرید")
+    return _m.XUI(row.get("panel_url"), row.get("panel_user"),
+                  row.get("panel_pass"), row.get("panel_token")), _m.XUIError
+
+
+def _portal_find(t, email):
+    """
+    یک کانفیگ از گروهِ همین نماینده — یا خطا.
+
+    گروه از *پنل* خوانده می‌شود، نه از درخواست. اینکه نماینده ایمیلی
+    فرستاده هیچ چیزی را ثابت نمی‌کند؛ ممکن است ایمیل مشتری نماینده‌ی
+    دیگری باشد.
+    """
+    group = _portal_group(t)
+    clients, _k, err = _read_xui_clients()
+    if clients is None:
+        raise HTTPException(status_code=400, detail=err)
+    for cl in clients:
+        if cl.get("email") == email:
+            if (cl.get("group") or "") != group:
+                # پیام همان «پیدا نشد» است: وگرنه می‌شود فهمید کدام
+                # ایمیل‌ها در گروه‌های دیگر وجود دارند.
+                raise HTTPException(status_code=404, detail="کانفیگ پیدا نشد")
+            return cl
+    raise HTTPException(status_code=404, detail="کانفیگ پیدا نشد")
+
+
+def _portal_live(t, email):
+    """
+    نسخه‌ی زنده‌ی یک کانفیگ از خودِ پنل — بعد از اینکه گروهش تایید شد.
+
+    دو مرحله عمدی است:
+
+      اول _portal_find که از عکسِ دیتابیس می‌خواند و گروه را می‌سنجد.
+      این‌جا تصمیم دسترسی گرفته می‌شود و ارزان است.
+
+      بعد پرسیدن از خودِ پنل، چون شناسه‌ی یکتا و اینباند در آن عکس
+      نیستند و نوشتن باید روی چیزی انجام شود که *همین حالا* روی پنل
+      است، نه آنچه آخرین بار خوانده‌ایم.
+
+    برمی‌گرداند: (ردیف عکس, ردیف زنده, uuid, inbound_id)
+    """
+    snap = _portal_find(t, email)        # گروه این‌جا سنجیده می‌شود
+    xui, _E = _portal_xui(t)
+    try:
+        live = xui.find_client(0, email=email)
+    except Exception as e:
+        raise HTTPException(status_code=502,
+                            detail=f"پنل پاسخ نداد: {str(e)[:140]}")
+    if not live:
+        raise HTTPException(status_code=404, detail="کانفیگ روی پنل پیدا نشد")
+
+    uuid = live.get("id") or live.get("uuid") or live.get("client_uuid")
+    ib = live.get("inboundId") or live.get("inbound_id")
+    if not ib:
+        ids = live.get("inboundIds") or []
+        if isinstance(ids, list) and ids:
+            ib = ids[0]
+    try:
+        ib = int(ib or 0)
+    except (TypeError, ValueError):
+        ib = 0
+    return snap, live, uuid, ib
+
+
+def _portal_rates(t):
+    """نرخ‌های گروه این نماینده، از تنظیمات حسابداری."""
+    group = _portal_group(t)
+    con = _billing_conn()
+    try:
+        r = con.execute("SELECT * FROM group_config WHERE group_key=?",
+                        (group,)).fetchone()
+        conf = dict(r) if r else {}
+    finally:
+        con.close()
+    try:
+        rates = json.loads(conf.get("rates") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        rates = []
+    return conf, (rates if isinstance(rates, list) else [])
+
+
+def _portal_charge(t, amount, note):
+    """
+    کسر اعتبار — اتمی، و فقط وقتی نماینده پیش‌پرداخت است.
+
+    برمی‌گرداند: (اجازه هست؟, پیام)
+
+    شرط داخل خودِ UPDATE است. الگوی «اول بخوان، اگر کافی بود کم کن»
+    بین آن دو جا برای یک درخواست دیگر باز می‌گذارد — همان مسابقه‌ای
+    که امروز در کیف پول ربات بسته شد.
+    """
+    credit = t.get("credit")
+    if credit is None or int(credit) < 0:
+        return True, "بدهکاری"          # نامحدود: آخر ماه صورتحساب
+    amount = max(0, int(amount or 0))
+    if amount <= 0:
+        return True, "رایگان"
+
+    con = _bot_rw()
+    try:
+        cur = con.execute(
+            "UPDATE tenants SET credit = credit - ? WHERE id=? AND credit >= ?",
+            (amount, t["id"], amount))
+        if not cur.rowcount:
+            row = con.execute("SELECT credit FROM tenants WHERE id=?",
+                              (t["id"],)).fetchone()
+            have = int((row["credit"] if row else 0) or 0)
+            return False, (f"اعتبار کافی نیست — لازم {amount:,} تومان، "
+                           f"موجودی {have:,} تومان")
+        con.commit()
+    finally:
+        con.close()
+    log.info("اعتبار نماینده %s کم شد: %s (%s)", t["id"], amount, note)
+    return True, "کسر شد"
+
+
+def _portal_refund(t, amount):
+    """برگرداندن اعتبار وقتی کار روی پنل شکست خورد."""
+    credit = t.get("credit")
+    if credit is None or int(credit) < 0 or not amount:
+        return
+    con = _bot_rw()
+    try:
+        con.execute("UPDATE tenants SET credit = credit + ? WHERE id=?",
+                    (int(amount), t["id"]))
+        con.commit()
+    finally:
+        con.close()
+
+
+def _portal_log_renewal(t, email, months):
+    """
+    تمدید را همان لحظه و دقیق ثبت می‌کند.
+
+    این تمام دلیلِ وجود این پنل است. وقتی نماینده در x-ui کار می‌کرد
+    هیچ ردی نمی‌ماند و صورتحساب مجبور بود از فاصله‌ی ساخت تا انقضا
+    حدس بزند. این‌جا تاریخ و تعداد ماه *واقعی* است، نه تخمینی.
+    """
+    con = _billing_conn()
+    try:
+        con.execute(
+            "INSERT INTO renewals (email, group_key, months, created_at) "
+            "VALUES (?,?,?,?)",
+            (email, t.get("portal_group") or "", int(months),
+             datetime.now().strftime("%Y-%m-%d")))
+        con.commit()
+    except Exception:
+        log.warning("ثبت تمدید نماینده ناموفق", exc_info=True)
+    finally:
+        con.close()
+
+
+@app.get("/api/portal/plans")
+def portal_plans(t: dict = Depends(portal_tenant)):
+    """
+    چیزهایی که این نماینده می‌تواند بسازد — از روی نرخ‌های گروه خودش.
+
+    نرخ همان چیزی است که مالک تعریف کرده؛ نماینده نمی‌تواند عددی
+    بفرستد که قیمت را عوض کند.
+    """
+    conf, rates = _portal_rates(t)
+    out = []
+    for r in rates:
+        try:
+            gb = max(0, int(r.get("gb", 0) or 0))
+            price = max(0, int(r.get("price", 0) or 0))
+            per = max(0, int(r.get("perDevice", 0) or 0))
+        except (TypeError, ValueError):
+            continue
+        out.append({"gb": gb, "price": price, "perDevice": per,
+                    "label": "نامحدود" if gb == 0 else f"{gb} گیگ"})
+    credit = t.get("credit")
+    return {"plans": out,
+            "prepaid": credit is not None and int(credit or 0) >= 0,
+            "credit": credit,
+            "perGb": _price_per_gb(conf) or 0}
+
+
+@app.post("/api/portal/renew")
+def portal_renew(payload: dict, t: dict = Depends(portal_tenant)):
+    """
+    تمدید یک کانفیگ — و ثبت دقیقش.
+    """
+    p = payload or {}
+    email = str(p.get("email") or "").strip()
+    try:
+        months = int(p.get("months") or 1)
+    except (TypeError, ValueError):
+        months = 1
+    if not 1 <= months <= 12:
+        raise HTTPException(status_code=400, detail="تعداد ماه باید بین ۱ تا ۱۲ باشد")
+
+    cl, _live, uuid, ib = _portal_live(t, email)
+    _conf, rates = _portal_rates(t)
+    gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
+    amount, base, _per, _extra = _line_amount(gb, rates, months,
+                                              cl.get("limitIp"))
+    if base is None:
+        raise HTTPException(
+            status_code=409,
+            detail="برای این حجم نرخی تعریف نشده — با پشتیبانی تماس بگیرید")
+
+    ok, why = _portal_charge(t, amount, f"تمدید {email}")
+    if not ok:
+        raise HTTPException(status_code=402, detail=why)
+
+    xui, _XUIError = _portal_xui(t)
+    try:
+        # حجم هم به همان اندازه‌ی ماه‌ها اضافه می‌شود — همان کاری که
+        # تمدید از مسیر ربات می‌کند، پس مصرف و سقف با هم بالا می‌روند
+        # و درصدها معنا می‌دهند.
+        res = xui.extend_subscription(
+            ib, uuid,
+            add_days=months * 30,
+            add_gb=(gb * months) if gb else 0,
+            email=email)
+    except Exception as e:
+        _portal_refund(t, amount)
+        raise HTTPException(status_code=502,
+                            detail=f"پنل تمدید را انجام نداد: {str(e)[:140]}")
+
+    _portal_log_renewal(t, email, months)
+    return {"ok": True, "email": email, "months": months,
+            "charged": amount,
+            "expiryMs": (res or {}).get("expiry_ms")}
+
+
+@app.post("/api/portal/toggle")
+def portal_toggle(payload: dict, t: dict = Depends(portal_tenant)):
+    """فعال یا غیرفعال کردن یک کانفیگ — فقط از گروه خودش."""
+    p = payload or {}
+    email = str(p.get("email") or "").strip()
+    want = bool(p.get("enable"))
+    _cl, _live, uuid, ib = _portal_live(t, email)
+
+    xui, _E = _portal_xui(t)
+    try:
+        xui.set_enabled(ib, uuid, want, email=email)
+    except Exception as e:
+        raise HTTPException(status_code=502,
+                            detail=f"پنل تغییر را انجام نداد: {str(e)[:140]}")
+    return {"ok": True, "email": email, "enabled": want}
+
+
 @app.post("/api/portal/logout")
 def portal_logout(x_portal_token: str = Header(None)):
     _PORTAL_SESSIONS.pop(str(x_portal_token or ""), None)

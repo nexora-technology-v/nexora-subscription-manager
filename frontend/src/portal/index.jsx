@@ -11,8 +11,8 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, Calendar, Check, Clock, Database, LogOut, Loader2,
-  RefreshCw, Search, Users, Wallet,
+  AlertTriangle, Check, Database, LogOut, Loader2, Power,
+  RefreshCw, Search, Users, Wallet, X,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -125,6 +125,103 @@ function Stat({ icon: Icon, label, value, hint, color }) {
   );
 }
 
+function RenewBox({ token, row, plans, onDone, onClose }) {
+  const [months, setMonths] = useState(1);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  // قیمت را از همان نرخی می‌گیریم که مالک تعریف کرده. این فقط
+  // نمایش است — سرور خودش دوباره حساب می‌کند و عددِ سرور ملاک است.
+  const tier = (plans?.plans || []).find((p) => p.gb === row.gb)
+    || (plans?.plans || []).find((p) => p.gb > row.gb)
+    || (plans?.plans || [])[0];
+  const extra = row.devices > 1 ? row.devices - 1 : 0;
+  const each = tier ? tier.price + (tier.perDevice || 0) * extra : null;
+  const total = each === null ? null : each * months;
+
+  const go = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const j = await api("/api/portal/renew", {
+        token, method: "POST", body: { email: row.email, months },
+      });
+      onDone(`${row.email} برای ${faNum(months)} ماه تمدید شد`
+        + (j.charged ? ` — ${faNum(j.charged)} تومان` : ""));
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
+      alignItems: "center", justifyContent: "center", padding: 16,
+      background: "rgba(0,0,0,.6)",
+    }} onClick={onClose}>
+      <div className="fx-card p-5" style={{ width: 360, maxWidth: "100%" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[14px] font-semibold text-white">تمدید کانفیگ</div>
+          <button onClick={onClose} className="fx-ico-btn"
+            style={{ width: 28, height: 28 }} aria-label="بستن">
+            <X size={13} />
+          </button>
+        </div>
+
+        <div className="text-[13px] mb-3" dir="ltr"
+          style={{ fontFamily: "var(--mono)", color: "var(--dim)" }}>
+          {row.email}
+        </div>
+
+        <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
+          چند ماه
+        </label>
+        <div className="flex gap-1.5 flex-wrap mb-3">
+          {[1, 2, 3, 6, 12].map((m) => (
+            <button key={m} onClick={() => setMonths(m)}
+              className="px-3 py-2 rounded-lg text-[13px]"
+              style={{
+                background: months === m ? "rgba(43,127,214,.18)" : "transparent",
+                border: `1px solid ${months === m ? "rgba(43,127,214,.45)" : "var(--border)"}`,
+                color: months === m ? "var(--accent-2)" : "var(--muted)",
+              }}>
+              {faNum(m)}
+            </button>
+          ))}
+        </div>
+
+        {total !== null && (
+          <div className="rounded-xl p-3 mb-3 text-[13px]"
+            style={{ background: "var(--surface-3)", color: "var(--dim)" }}>
+            حدود <b style={{ color: "var(--accent-2)" }}>{faNum(total)}</b> تومان
+            {extra > 0 && (
+              <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+                شامل {faNum(extra)} کاربر اضافه
+              </div>
+            )}
+          </div>
+        )}
+
+        {err && (
+          <p className="text-[13px] mb-3 flex items-start gap-1.5"
+            style={{ color: "var(--danger)" }}>
+            <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+          </p>
+        )}
+
+        <button onClick={go} disabled={busy}
+          className="fx-btn w-full py-2.5 text-[13px] flex items-center justify-center gap-2">
+          {busy && <Loader2 size={13} className="animate-spin" />} تمدید کن
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 function Dashboard({ token, onOut }) {
   const [me, setMe] = useState(null);
   const [sum, setSum] = useState(null);
@@ -132,17 +229,22 @@ function Dashboard({ token, onOut }) {
   const [err, setErr] = useState("");
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
+  const [plans, setPlans] = useState(null);
+  const [renew, setRenew] = useState(null);
+  const [note, setNote] = useState("");
 
   const load = useCallback(async () => {
     setBusy(true);
     setErr("");
     try {
-      const [m, s, c] = await Promise.all([
+      const [m, s, c, pl] = await Promise.all([
         api("/api/portal/me", { token }),
         api("/api/portal/summary", { token }).catch((e) => ({ _err: e.message })),
         api("/api/portal/configs", { token }).catch((e) => ({ _err: e.message })),
+        api("/api/portal/plans", { token }).catch(() => null),
       ]);
       setMe(m);
+      setPlans(pl && !pl._err ? pl : null);
       setSum(s && s._err ? null : s);
       setList(c && c._err ? null : c);
       if (c && c._err) setErr(c._err);
@@ -157,6 +259,20 @@ function Dashboard({ token, onOut }) {
   }, [token, onOut]);
 
   useEffect(() => { load(); }, [load]);
+
+  const toggle = async (row) => {
+    setNote("");
+    try {
+      await api("/api/portal/toggle", {
+        token, method: "POST",
+        body: { email: row.email, enable: !row.active },
+      });
+      setNote(`${row.email} ${row.active ? "غیرفعال" : "فعال"} شد`);
+      load();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
 
   const rows = (list?.configs || []).filter(
     (c) => !q || String(c.email).toLowerCase().includes(q.toLowerCase()));
@@ -188,6 +304,15 @@ function Dashboard({ token, onOut }) {
             </button>
           </div>
         </div>
+
+        {note && (
+          <div className="fx-card p-4 mb-4 flex items-start gap-2"
+            style={{ borderColor: "rgba(52,211,153,.3)" }}>
+            <Check size={15} style={{ color: "var(--ok)" }}
+              className="shrink-0 mt-0.5" />
+            <span className="text-[13px]" style={{ color: "var(--dim)" }}>{note}</span>
+          </div>
+        )}
 
         {err && (
           <div className="fx-card p-4 mb-4 flex items-start gap-2"
@@ -251,7 +376,7 @@ function Dashboard({ token, onOut }) {
                 <thead>
                   <tr>
                     <th>نام کاربر</th><th>حجم</th><th>مصرف</th>
-                    <th>دستگاه</th><th>انقضا</th><th>وضعیت</th>
+                    <th>دستگاه</th><th>انقضا</th><th>وضعیت</th><th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -286,6 +411,22 @@ function Dashboard({ token, onOut }) {
                           <span style={{ color: "var(--muted)" }}>غیرفعال</span>
                         )}
                       </td>
+                      <td>
+                        <div className="flex items-center gap-1.5 justify-end">
+                          <button onClick={() => setRenew(c)}
+                            className="fx-btn-g px-2.5 py-1.5 text-[12px]
+                                       flex items-center gap-1">
+                            <RefreshCw size={12} /> تمدید
+                          </button>
+                          <button onClick={() => toggle(c)}
+                            className="fx-ico-btn" style={{ width: 28, height: 28 }}
+                            aria-label={c.active ? "غیرفعال کن" : "فعال کن"}
+                            title={c.active ? "غیرفعال کن" : "فعال کن"}>
+                            <Power size={12}
+                              style={{ color: c.active ? "var(--muted)" : "var(--ok)" }} />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -294,6 +435,12 @@ function Dashboard({ token, onOut }) {
           )}
         </div>
       </div>
+
+      {renew && (
+        <RenewBox token={token} row={renew} plans={plans}
+          onClose={() => setRenew(null)}
+          onDone={(m) => { setRenew(null); setNote(m); setErr(""); load(); }} />
+      )}
     </div>
   );
 }
