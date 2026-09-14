@@ -844,6 +844,18 @@ PY
     fi
     ;;
 
+  fix-flow)
+    # همه‌ی کلاینت‌های vless روی یک flow. بدون آرگومان فقط گزارش
+    # می‌دهد؛ با --fix می‌نویسد.
+    if [ -f "$INSTALL_DIR/tools/fix-flow.py" ]; then
+      shift
+      python3 "$INSTALL_DIR/tools/fix-flow.py" "$@"
+    else
+      err "tools/fix-flow.py پیدا نشد — اول nexora update بزنید"
+      exit 1
+    fi
+    ;;
+
   billing-why|why-unpriced)
     # چرا یک کانفیگ «بدون نرخ» است — نرخ‌های ثبت‌شده، نام گروه‌ها در
     # x-ui، و اینکه کدام حجم با کدام نرخ جور در می‌آید. هیچ رمز، نام
@@ -1065,6 +1077,7 @@ PYEOF
     echo -e "  ${C_WHITE}nexora doctor${C_RESET}                 ${C_DIM}check and auto-fix common problems${C_RESET}"
     echo -e "  ${C_WHITE}nexora billing-why${C_RESET}            ${C_DIM}why a config shows as having no rate${C_RESET}"
     echo -e "  ${C_WHITE}nexora reseller list${C_RESET}          ${C_DIM}reseller portal accounts${C_RESET}"
+    echo -e "  ${C_WHITE}nexora fix-flow${C_RESET}               ${C_DIM}put every vless client on the same flow${C_RESET}"
     echo -e "  ${C_WHITE}nexora password${C_RESET}               ${C_DIM}change admin password${C_RESET}"
     echo -e "  ${C_WHITE}nexora diagnose${C_RESET}               ${C_DIM}troubleshoot template issues${C_RESET}"
     echo ""

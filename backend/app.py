@@ -8664,6 +8664,34 @@ def _days_left(expiry):
     return int((ms - _epoch_ms(datetime.now())) / 86400000.0)
 
 
+def _sub_base(t):
+    """
+    پایه‌ی لینک اشتراک — از تنظیمات مستاجر، همان کلیدی که ربات می‌خواند.
+
+    اگر نماینده تنظیم خودش را داشته باشد همان، وگرنه تنظیم مالک.
+    """
+    def _read(row):
+        try:
+            st = json.loads((row or {}).get("settings") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            return ""
+        return (st.get("sub_base_url") or "").strip() if isinstance(st, dict) else ""
+
+    own = _read(t)
+    if own:
+        return own.rstrip("/")
+    con = _bot_conn()
+    try:
+        r = con.execute("SELECT settings FROM tenants WHERE parent_id IS NULL "
+                        "ORDER BY id LIMIT 1").fetchone() if con else None
+        return _read(dict(r) if r else {}).rstrip("/")
+    except Exception:
+        return ""
+    finally:
+        if con:
+            con.close()
+
+
 def _portal_group(t):
     """
     گروه x-ui این نماینده. اگر تعریف نشده باشد، هیچ چیزی نشان نمی‌دهیم.
@@ -8692,6 +8720,12 @@ def portal_configs(t: dict = Depends(portal_tenant)):
     if clients is None:
         raise HTTPException(status_code=400, detail=err)
 
+    # لینک اشتراک هر کانفیگ.
+    #
+    # نماینده موقع ساخت یک بار می‌دیدش و بعد هیچ راهی برای پیدا
+    # کردنش نداشت — یعنی مشتری‌ای که لینکش را گم می‌کرد، نماینده
+    # هم نمی‌توانست کمکش کند.
+    base = _sub_base(t)
     out = []
     for cl in clients:
         if (cl.get("group") or "") != group:
@@ -8711,6 +8745,8 @@ def portal_configs(t: dict = Depends(portal_tenant)):
             "daysLeft": _days_left(cl.get("expiry")),
             "active": bool(cl["enable"]),
             "subId": cl.get("subId") or "",
+            "subUrl": (f"{base}/{cl.get('subId') or cl['email']}"
+                       if base else ""),
         })
 
     out.sort(key=lambda x: (x.get("createdGregorian") or "9999", x["email"]))
@@ -9159,26 +9195,8 @@ def portal_create(payload: dict, t: dict = Depends(portal_tenant)):
     if months > 1:
         _portal_log_renewal(t, email, months - 1)
 
-    # لینک اشتراک از تنظیمات مستاجر — همان کلیدی که ربات می‌خواند.
-    sub_url = None
-    try:
-        row = t if t.get("settings") else None
-        if row is None:
-            con = _bot_conn()
-            try:
-                r = con.execute("SELECT settings FROM tenants "
-                                "WHERE parent_id IS NULL ORDER BY id LIMIT 1"
-                                ).fetchone() if con else None
-                row = dict(r) if r else {}
-            finally:
-                if con:
-                    con.close()
-        st = json.loads((row or {}).get("settings") or "{}")
-        base_url = (st.get("sub_base_url") or "").strip()
-        if base_url:
-            sub_url = f"{base_url.rstrip('/')}/{(client or {}).get('subId') or email}"
-    except Exception:
-        sub_url = None
+    _b = _sub_base(t)
+    sub_url = (f"{_b}/{(client or {}).get('subId') or email}") if _b else None
 
     return {"ok": True, "email": email, "gb": gb, "months": months,
             "devices": devices, "charged": amount,

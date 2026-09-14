@@ -923,6 +923,42 @@ check("جداکردن توکن را پاک می‌کند", not _gone)
 
 
 # ═══════════════════════════════════════════════════════════
+head("نماینده باید لینک اشتراک مشتری‌اش را ببیند")
+
+# نماینده لینک را فقط موقع ساخت یک بار می‌دید. مشتری‌ای که لینکش را
+# گم می‌کرد، نماینده هم نمی‌توانست کمکش کند.
+
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    # یک مستاجر ریشه‌ی واقعی لازم است: نماینده‌ها باید parent داشته
+    # باشند وگرنه جست‌وجوی «ریشه» به خودشان می‌رسد.
+    _bd.execute("DELETE FROM tenants WHERE name='مالک'")
+    _bd.execute("INSERT INTO tenants (name, parent_id, is_active, settings) "
+                "VALUES ('مالک', NULL, 1, ?)",
+                (json.dumps({"sub_base_url": "https://sub.example.ir/sub"}),))
+    _root = _bd.execute("SELECT id FROM tenants WHERE name='مالک'").fetchone()[0]
+    _bd.execute("UPDATE tenants SET parent_id=? WHERE name<>'مالک'", (_root,))
+    _bd.execute("UPDATE tenants SET portal_group='goroh-a', portal_enabled=1,"
+                " settings='{}' WHERE portal_slug='hossein'")
+    _bd.commit()
+finally:
+    _bd.close()
+
+AP._read_xui_clients = lambda *a, **k: (_ALL, [], None)
+_cfgs = AP.portal_configs(AP._tenant_by_slug("hossein"))
+_first = _cfgs["configs"][0] if _cfgs["configs"] else {}
+check("هر ردیف لینک اشتراک دارد", bool(_first.get("subUrl")),
+      str(_first.get("subUrl")))
+check("و لینک با شناسه‌ی همان کانفیگ ساخته شده",
+      str(_first.get("subUrl", "")).endswith(_first.get("subId")
+                                             or _first.get("email", "")),
+      _first.get("subUrl", ""))
+check("پایه از تنظیمات مالک آمد",
+      "sub.example.ir" in str(_first.get("subUrl")),
+      "نماینده تنظیم خودش را نداشت، پس تنظیم مالک")
+
+
+# ═══════════════════════════════════════════════════════════
 head("پلن‌های مالک با پلن‌های نماینده قاطی نمی‌شوند")
 
 # تا وقتی یک ربات بود فرقی نمی‌کرد. از وقتی نماینده ربات خودش را

@@ -4,6 +4,25 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.20.0]
+
+### Added — The reseller can see each customer's subscription link
+
+They saw it once, at the moment they created the config, and then had no way to
+find it again — so a customer who lost their link was someone the reseller could
+not help. Every row in their list now has a copy button for it.
+
+### Added — `nexora fix-flow`
+
+New configs already carry `xtls-rprx-vision`: it is the default in the panel client
+that both the bot and the reseller portal use, and nothing overrides it. Configs
+made by hand in x-ui, or left over from older versions, can be missing it — and a
+REALITY config without the flow does not connect.
+
+Run it to see which clients are missing or on a different flow; run it with `--fix`
+to set them. Only vless inbounds are touched, since flow means nothing on the
+others, and it says to restart x-ui afterwards.
+
 ## [1.19.2]
 
 ### Fixed — A reseller's plans appeared in the owner's plan list

@@ -11,8 +11,8 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, Bot, Check, Copy, Database, LogOut, Loader2, Plus, Power,
-  RefreshCw, Search, Trash2, Users, Wallet, X,
+  AlertTriangle, Bot, Check, Copy, Database, Link2, LogOut, Loader2, Plus,
+  Power, RefreshCw, Search, Trash2, Users, Wallet, X,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -555,6 +555,7 @@ function Dashboard({ token, onOut }) {
   const [renew, setRenew] = useState(null);
   const [making, setMaking] = useState(false);
   const [botOpen, setBotOpen] = useState(false);
+  const [copied, setCopied] = useState("");
   const [note, setNote] = useState("");
 
   const load = useCallback(async () => {
@@ -750,6 +751,23 @@ function Dashboard({ token, onOut }) {
                       </td>
                       <td>
                         <div className="flex items-center gap-1.5 justify-end">
+                          {/* لینک اشتراک — نماینده فقط موقع ساخت یک بار
+                              می‌دیدش و بعد راهی برای پیدا کردنش نداشت. */}
+                          {c.subUrl && (
+                            <button className="fx-ico-btn"
+                              style={{ width: 28, height: 28 }}
+                              aria-label={`کپی لینک ${c.email}`}
+                              title="کپی لینک اشتراک"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(c.subUrl);
+                                setCopied(c.email);
+                                setTimeout(() => setCopied(""), 1600);
+                              }}>
+                              {copied === c.email
+                                ? <Check size={12} style={{ color: "var(--ok)" }} />
+                                : <Link2 size={12} />}
+                            </button>
+                          )}
                           <button onClick={() => setRenew(c)}
                             className="fx-btn-g px-2.5 py-1.5 text-[12px]
                                        flex items-center gap-1">
