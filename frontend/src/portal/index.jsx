@@ -11,8 +11,8 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, Bot, Check, Copy, Database, Link2, LogOut, Loader2, Package,
-  Plus, Power, RefreshCw, Search, Trash2, Users, Wallet, X,
+  AlertTriangle, Bot, Check, Copy, Database, FileText, Link2, LogOut, Loader2,
+  Package, Plus, Power, RefreshCw, Search, Trash2, Users, Wallet, X, XCircle,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -681,6 +681,207 @@ function PlansBox({ token, onClose, onNote }) {
 }
 
 
+function OrdersBox({ token, onClose, onNote }) {
+  const [rows, setRows] = useState(null);
+  const [tab, setTab] = useState("open");
+  const [busy, setBusy] = useState(0);
+  const [err, setErr] = useState("");
+  const [shot, setShot] = useState(null);
+  const [rejecting, setRejecting] = useState(null);
+  const [reason, setReason] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const j = await api(`/api/portal/orders?status=${tab}`, { token });
+      setRows(j.orders || []);
+    } catch (e) { setErr(e.message); }
+  }, [token, tab]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // مسیرها صریح‌اند، نه ساخته‌شده از رشته.
+  //
+  // `/order/${id}/${what}` کار می‌کرد ولی تست درزها نمی‌توانست
+  // بررسی کند مسیری که صدا می‌زنیم واقعاً وجود دارد — و آن تست
+  // همان چیزی است که جلوی صداکردن مسیر ناموجود را می‌گیرد.
+  const act = async (id, what, body) => {
+    setBusy(id);
+    setErr("");
+    try {
+      const path = what === "approve"
+        ? `/api/portal/order/${id}/approve`
+        : `/api/portal/order/${id}/reject`;
+      await api(path, { token, method: "POST", body });
+      onNote(what === "approve"
+        ? `سفارش #${faNum(id)} تایید شد — کانفیگ برای مشتری رفت`
+        : `سفارش #${faNum(id)} رد شد`);
+      setRejecting(null);
+      setReason("");
+      load();
+    } catch (e) { setErr(e.message); } finally { setBusy(0); }
+  };
+
+  // رسید را با توکن نشست می‌گیریم، نه با آدرس مستقیم: آن آدرس
+  // توکن ربات را در خودش دارد.
+  const openShot = async (id) => {
+    try {
+      const res = await fetch(`${API_URL}/api/portal/order/${id}/receipt`, {
+        headers: { "X-Portal-Token": token },
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(errText(j.detail, "رسید باز نشد"));
+      }
+      setShot(URL.createObjectURL(await res.blob()));
+    } catch (e) { setErr(e.message); }
+  };
+
+  const TABS = [["open", "در انتظار"], ["approved", "تاییدشده"],
+                ["rejected", "ردشده"]];
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
+      alignItems: "flex-start", justifyContent: "center", padding: 16,
+      background: "rgba(0,0,0,.6)", overflowY: "auto",
+    }} onClick={onClose}>
+      <div className="fx-card p-5" style={{ width: 640, maxWidth: "100%", marginTop: 24 }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[14px] font-semibold text-white">
+            سفارش‌های مشتری‌های شما
+          </div>
+          <button onClick={onClose} className="fx-ico-btn"
+            style={{ width: 28, height: 28 }} aria-label="بستن">
+            <X size={13} />
+          </button>
+        </div>
+
+        <div className="flex gap-1.5 mb-4">
+          {TABS.map(([k, lbl]) => (
+            <button key={k} onClick={() => { setTab(k); setRows(null); }}
+              className="px-3 py-2 rounded-lg text-[13px]"
+              style={{
+                background: tab === k ? "rgba(43,127,214,.18)" : "transparent",
+                border: `1px solid ${tab === k ? "rgba(43,127,214,.45)" : "var(--border)"}`,
+                color: tab === k ? "var(--accent-2)" : "var(--muted)",
+              }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+
+        {err && (
+          <p className="text-[13px] mb-3 flex items-start gap-1.5"
+            style={{ color: "var(--danger)" }}>
+            <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+          </p>
+        )}
+
+        {!rows ? (
+          <p className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
+            در حال بارگذاری…
+          </p>
+        ) : !rows.length ? (
+          <p className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
+            {tab === "open" ? "سفارشی در انتظار نیست" : "چیزی این‌جا نیست"}
+          </p>
+        ) : rows.map((o) => (
+          <div key={o.id} className="rounded-xl p-3.5 mb-2.5"
+            style={{ background: "var(--surface-3)",
+                     border: "1px solid var(--border)" }}>
+            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+              <div>
+                <span className="text-[13px] text-white font-semibold">
+                  {o.customer}
+                </span>
+                <span className="text-[12px] mr-2" style={{ color: "var(--muted)" }}>
+                  #{faNum(o.id)} · {o.planName}
+                </span>
+              </div>
+              <span className="text-[14px] font-bold"
+                style={{ color: "var(--accent-2)" }}>
+                {faNum(o.amount)} تومان
+              </span>
+            </div>
+
+            <div className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
+              {o.kind === "renew" ? "تمدید" : o.kind === "topup" ? "شارژ کیف پول" : "خرید تازه"}
+              {o.paidFrom === "wallet" ? " · از کیف پول" : " · کارت به کارت"}
+              {o.gb !== null && o.gb !== undefined
+                && ` · ${o.gb === 0 ? "نامحدود" : `${faNum(o.gb)} گیگ`}`}
+            </div>
+
+            {o.receiptText && (
+              <div className="text-[12px] rounded-lg p-2 mb-2"
+                style={{ background: "rgba(0,0,0,.2)", color: "var(--dim)" }}>
+                {o.receiptText}
+              </div>
+            )}
+
+            {o.note && (
+              <div className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
+                {o.note}
+              </div>
+            )}
+
+            {rejecting === o.id ? (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <input value={reason} autoFocus
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="دلیل رد — مشتری همین را می‌بیند"
+                  className="fx-input text-[13px] flex-1" style={{ minWidth: 200 }} />
+                <button disabled={busy === o.id || !reason.trim()}
+                  onClick={() => act(o.id, "reject", { reason })}
+                  className="fx-btn px-3 py-2 text-[13px]">بفرست</button>
+                <button onClick={() => { setRejecting(null); setReason(""); }}
+                  className="fx-btn-g px-3 py-2 text-[13px]">انصراف</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {o.hasReceipt && (
+                  <button onClick={() => openShot(o.id)}
+                    className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1">
+                    <FileText size={12} /> دیدن رسید
+                  </button>
+                )}
+                {o.status !== "approved" && (
+                  <>
+                    <button disabled={busy === o.id}
+                      onClick={() => act(o.id, "approve")}
+                      className="fx-btn px-3 py-2 text-[13px] flex items-center gap-1">
+                      {busy === o.id ? <Loader2 size={12} className="animate-spin" />
+                        : <Check size={12} />} تایید و ساخت کانفیگ
+                    </button>
+                    {o.status !== "rejected" && (
+                      <button onClick={() => setRejecting(o.id)}
+                        className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1">
+                        <XCircle size={12} /> رد
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {shot && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 3100, display: "flex",
+          alignItems: "center", justifyContent: "center", padding: 16,
+          background: "rgba(0,0,0,.85)",
+        }} onClick={(e) => { e.stopPropagation(); setShot(null); }}>
+          <img src={shot} alt="رسید پرداخت"
+            style={{ maxWidth: "100%", maxHeight: "90vh", borderRadius: 12 }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function Dashboard({ token, onOut }) {
   const [me, setMe] = useState(null);
   const [sum, setSum] = useState(null);
@@ -693,6 +894,7 @@ function Dashboard({ token, onOut }) {
   const [making, setMaking] = useState(false);
   const [botOpen, setBotOpen] = useState(false);
   const [plansOpen, setPlansOpen] = useState(false);
+  const [ordersOpen, setOrdersOpen] = useState(false);
   const [copied, setCopied] = useState("");
   const [note, setNote] = useState("");
 
@@ -756,6 +958,10 @@ function Dashboard({ token, onOut }) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => setOrdersOpen(true)}
+              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
+              <FileText size={13} /> سفارش‌ها
+            </button>
             <button onClick={() => setPlansOpen(true)}
               className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
               <Package size={13} /> پلن‌های ربات
@@ -952,6 +1158,11 @@ function Dashboard({ token, onOut }) {
 
       {plansOpen && (
         <PlansBox token={token} onClose={() => setPlansOpen(false)}
+          onNote={(m) => { setNote(m); setErr(""); }} />
+      )}
+
+      {ordersOpen && (
+        <OrdersBox token={token} onClose={() => { setOrdersOpen(false); load(); }}
           onNote={(m) => { setNote(m); setErr(""); }} />
       )}
     </div>

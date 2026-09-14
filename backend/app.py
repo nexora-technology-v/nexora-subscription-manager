@@ -9621,6 +9621,227 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
     return {"ok": True, "count": len(clean)}
 
 
+
+# ═══════════════════════════════════════════════════════════
+#  سفارش‌های نماینده — رسید و تایید
+#
+#  مشتریِ نماینده از رباتِ *او* سفارش می‌دهد و رسید می‌فرستد. تا
+#  امروز تنها جایی که می‌شد تاییدش کرد گروه مدیریت تلگرام بود؛ اگر
+#  نماینده گروه نداشت، سفارش برای همیشه در انتظار می‌ماند.
+#
+#  تاییدکردن یعنی: پول گرفته شده، کانفیگ ساخته شود، مشتری خبردار
+#  شود. همان کاری که ربات می‌کند — و عمداً *همان کد* را صدا می‌زنیم،
+#  نه یک نسخه‌ی دوم. مسیر پول دو پیاده‌سازی برنمی‌دارد؛ هر اصلاحی که
+#  به یکی برسد و به دیگری نه، یک باگ بی‌صداست.
+# ═══════════════════════════════════════════════════════════
+
+_BOT_MODS = {}
+
+
+def _bot_handlers():
+    """
+    ماژول handlers ربات، با bot/ روی مسیر.
+
+    handlers با نام‌های مسطح import می‌کند (core، db، tg)، پس تا وقتی
+    آن پوشه روی sys.path نباشد بارگذاری نمی‌شود.
+    """
+    if "handlers" in _BOT_MODS:
+        return _BOT_MODS["handlers"]
+    import sys as _sys
+    bot_dir = str(Path(__file__).resolve().parent.parent / "bot")
+    if bot_dir not in _sys.path:
+        _sys.path.insert(0, bot_dir)
+    try:
+        import handlers as _h          # noqa: E402
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"منطق ربات بارگذاری نشد: {type(e).__name__}")
+    _BOT_MODS["handlers"] = _h
+    return _h
+
+
+def _portal_bot_ctx(t):
+    """
+    زمینه‌ی ربات این نماینده — برای پیام‌دادن به مشتری و ساخت کانفیگ.
+
+    بدون توکن ربات نمی‌شود به مشتری خبر داد، و تاییدِ بی‌خبر یعنی
+    مشتری پولش را داده و هیچ‌چیز نمی‌بیند.
+    """
+    h = _bot_handlers()
+    if not t.get("bot_token"):
+        raise HTTPException(
+            status_code=409,
+            detail="برای تایید سفارش باید ربات خودتان را وصل کنید — "
+                   "وگرنه مشتری خبردار نمی‌شود")
+    row = _tenant_row(t["id"]) or t
+    return h, h.Ctx(h.Bot(row["bot_token"]), row)
+
+
+def _portal_order(t, oid):
+    """سفارشی از مستاجر خودش — یا خطا."""
+    con = _bot_conn()
+    if not con:
+        raise HTTPException(status_code=503, detail="دیتابیس ربات در دسترس نیست")
+    try:
+        r = con.execute(
+            "SELECT * FROM orders WHERE id=? AND tenant_id=?",
+            (oid, t["id"])).fetchone()
+    finally:
+        con.close()
+    if not r:
+        # همان پیام «پیدا نشد» برای سفارش نماینده‌ی دیگر: وگرنه
+        # می‌شود از این‌جا فهمید چه شناسه‌هایی وجود دارند.
+        raise HTTPException(status_code=404, detail="سفارش پیدا نشد")
+    return dict(r)
+
+
+@app.get("/api/portal/orders")
+def portal_orders(status: str = "open", limit: int = 50,
+                  t: dict = Depends(portal_tenant)):
+    """
+    سفارش‌های مشتری‌های این نماینده.
+
+    پیش‌فرض فقط آن‌هایی که کاری می‌خواهند: رسید آمده و منتظر تایید
+    است، یا هنوز رسیدی نیامده.
+    """
+    con = _bot_conn()
+    if not con:
+        return {"ready": False, "orders": []}
+    want = {"open": ("pending", "awaiting"),
+            "approved": ("approved",), "rejected": ("rejected", "expired")}
+    picked = want.get(status, want["open"])
+    ph = ",".join("?" * len(picked))
+    try:
+        rows = [dict(r) for r in con.execute(
+            f"""SELECT o.*, u.tg_id, u.first_name, u.username,
+                       p.name AS plan_name, p.gb, p.days
+                  FROM orders o
+                  JOIN users u ON u.id = o.user_id
+             LEFT JOIN plans p ON p.id = o.plan_id
+                 WHERE o.tenant_id=? AND o.status IN ({ph})
+              ORDER BY o.id DESC LIMIT ?""",
+            [t["id"]] + list(picked) + [max(1, min(int(limit or 50), 200))])]
+    except Exception as e:
+        return {"ready": False, "error": str(e)[:120], "orders": []}
+    finally:
+        con.close()
+
+    out = []
+    for r in rows:
+        out.append({
+            "id": r["id"],
+            "customer": r.get("first_name") or r.get("username") or "مشتری",
+            "tgId": r.get("tg_id"),
+            "kind": r.get("kind") or "new",
+            "amount": r.get("amount") or 0,
+            "planName": r.get("plan_name") or "—",
+            "gb": r.get("gb"), "days": r.get("days"),
+            "status": r.get("status"),
+            "paidFrom": r.get("paid_from") or "card",
+            "hasReceipt": bool(r.get("receipt_file")),
+            "receiptText": r.get("receipt_text") or "",
+            "createdAt": r.get("created_at"),
+            "note": r.get("admin_note") or "",
+        })
+    return {"ready": True, "orders": out,
+            "openCount": sum(1 for x in out if x["status"] == "awaiting")}
+
+
+@app.get("/api/portal/order/{oid}/receipt")
+def portal_receipt(oid: int, t: dict = Depends(portal_tenant)):
+    """
+    عکس رسید، از تلگرام و از راه رباتِ خودِ نماینده.
+
+    فایل مستقیم پاس داده می‌شود نه آدرسش: آن آدرس توکن ربات را در
+    خودش دارد و دادنش به مرورگر یعنی لو دادن توکن.
+    """
+    o = _portal_order(t, oid)
+    if not o.get("receipt_file"):
+        raise HTTPException(status_code=404, detail="این سفارش رسید عکسی ندارد")
+    if not t.get("bot_token"):
+        raise HTTPException(status_code=409, detail="ربات وصل نیست")
+
+    import urllib.request
+    tok = t["bot_token"]
+    try:
+        with urllib.request.urlopen(
+                f"https://api.telegram.org/bot{tok}/getFile"
+                f"?file_id={o['receipt_file']}", timeout=15) as r:
+            info = json.loads(r.read().decode("utf-8", "replace"))
+        path = ((info.get("result") or {}).get("file_path") or "")
+        if not path:
+            raise HTTPException(status_code=404, detail="تلگرام فایل را نداد")
+        with urllib.request.urlopen(
+                f"https://api.telegram.org/file/bot{tok}/{path}",
+                timeout=30) as r:
+            blob = r.read()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502,
+                            detail=f"رسید گرفته نشد: {type(e).__name__}")
+
+    kind = "image/jpeg"
+    if path.lower().endswith(".png"):
+        kind = "image/png"
+    elif path.lower().endswith(".pdf"):
+        kind = "application/pdf"
+    return Response(content=blob, media_type=kind,
+                    headers={"Cache-Control": "private, max-age=300"})
+
+
+@app.post("/api/portal/order/{oid}/approve")
+def portal_order_approve(oid: int, t: dict = Depends(portal_tenant)):
+    """
+    تایید سفارش — همان مسیری که ربات می‌رود.
+
+    ادعای اتمی، ساخت کانفیگ، خبردادن به مشتری، پورسانت. هیچ‌کدام
+    این‌جا دوباره نوشته نشده.
+    """
+    o = _portal_order(t, oid)
+    if o.get("status") == "approved" and o.get("sub_id"):
+        raise HTTPException(status_code=409,
+                            detail="این سفارش قبلاً تایید شده و کانفیگش ساخته شده")
+
+    h, ctx = _portal_bot_ctx(t)
+    try:
+        ok, note = h.approve_order(ctx, oid, admin_tg_id=0)
+    except Exception as e:
+        log.exception("تایید سفارش نماینده ناموفق")
+        raise HTTPException(status_code=502, detail=f"تایید ناموفق: {str(e)[:140]}")
+
+    if not ok:
+        if note == getattr(h, "ORDER_BUSY", None):
+            raise HTTPException(
+                status_code=409,
+                detail="این سفارش همین حالا از مسیر دیگری در حال پردازش است")
+        raise HTTPException(status_code=400, detail=str(note)[:200])
+    return {"ok": True, "id": oid}
+
+
+@app.post("/api/portal/order/{oid}/reject")
+def portal_order_reject(oid: int, payload: dict = None,
+                        t: dict = Depends(portal_tenant)):
+    """رد سفارش با دلیل — مشتری همان دلیل را می‌بیند."""
+    o = _portal_order(t, oid)
+    reason = str((payload or {}).get("reason") or "").strip()[:200]
+    if not reason:
+        raise HTTPException(status_code=400,
+                            detail="دلیل رد را بنویسید — مشتری همین را می‌بیند")
+
+    h, ctx = _portal_bot_ctx(t)
+    try:
+        done = h.do_reject(ctx, oid, 0, reason)
+    except Exception as e:
+        log.exception("رد سفارش نماینده ناموفق")
+        raise HTTPException(status_code=502, detail=f"رد ناموفق: {str(e)[:140]}")
+    if not done:
+        raise HTTPException(status_code=409,
+                            detail="رد نشد — کانفیگ این سفارش ساخته شده")
+    return {"ok": True, "id": oid}
+
+
 @app.post("/api/portal/logout")
 def portal_logout(x_portal_token: str = Header(None)):
     _PORTAL_SESSIONS.pop(str(x_portal_token or ""), None)

@@ -4,6 +4,35 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.23.0]
+
+### Added — Receipts and approvals in the reseller portal
+
+A reseller's customer orders through their bot and sends a receipt. Until now the
+only place to approve it was a Telegram admin group, so a reseller without one had
+orders that sat pending forever.
+
+Their portal now has a سفارش‌ها screen: who ordered, what, how much, the receipt —
+opened inline — and approve or reject with a reason the customer sees.
+
+Approving calls the bot's own `approve_order`, not a second copy of it. The path
+that takes someone's money and gives them a config does not get two
+implementations; a fix that reaches one and not the other is a bug nobody sees.
+That means the reseller's approval inherits the atomic claim, the provisioning,
+the customer message and the commission — including the "another thread already
+has this order" answer, so a reseller cannot double-provision by clicking twice.
+
+Two things it refuses. Approving without a bot attached, because the customer
+would have paid and been told nothing. And rejecting without a reason, because the
+reason is what the customer reads.
+
+Receipts are fetched through the server rather than linked: a Telegram file URL
+carries the bot token in it, and handing that to a browser hands over the token.
+
+Everything is scoped to the reseller's own tenant, and another reseller's order
+answers "not found" — the same answer as one that does not exist, so the screen
+cannot be used to find out which ids are real.
+
 ## [1.22.0]
 
 ### Added — "نیاز به تنظیم": the groups earning you nothing, in one place

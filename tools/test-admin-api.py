@@ -1196,6 +1196,118 @@ check("پلن آزمایشی دست نماینده نیست", '"is_trial": 0,' i
       "کانفیگ رایگان روی سرور مالک ساخته می‌شود — تصمیمش با اوست")
 
 
+# ═══════════════════════════════════════════════════════════
+head("رسید و تایید سفارش در پنل نماینده")
+
+# مشتریِ نماینده از رباتِ او سفارش می‌دهد و رسید می‌فرستد. تا امروز
+# تنها جای تاییدش گروه تلگرام بود؛ نماینده‌ای که گروه نداشت، سفارشش
+# برای همیشه در انتظار می‌ماند.
+
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("""CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER,
+        user_id INTEGER, plan_id INTEGER, kind TEXT, amount INTEGER,
+        base_amount INTEGER, coins_used INTEGER, paid_from TEXT,
+        status TEXT, receipt_type TEXT, receipt_file TEXT,
+        receipt_text TEXT, admin_note TEXT, sub_id INTEGER,
+        created_at TEXT)""")
+    _bd.execute("""CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER,
+        tg_id INTEGER, first_name TEXT, username TEXT)""")
+    _bd.execute("DELETE FROM orders")
+    _bd.execute("DELETE FROM users WHERE tg_id IN (7001, 7002)")
+
+    _h = AP._tenant_by_slug("hossein")
+    _b = AP._tenant_by_slug("bastan")
+    _bd.execute("INSERT INTO users (tenant_id,tg_id,first_name) VALUES (?,?,?)",
+                (_h["id"], 7001, "مشتریِ حسین"))
+    _u1 = _bd.execute("SELECT id FROM users WHERE tg_id=7001").fetchone()[0]
+    _bd.execute("INSERT INTO users (tenant_id,tg_id,first_name) VALUES (?,?,?)",
+                (_b["id"], 7002, "مشتریِ دیگری"))
+    _u2 = _bd.execute("SELECT id FROM users WHERE tg_id=7002").fetchone()[0]
+
+    _bd.execute("INSERT INTO orders (tenant_id,user_id,kind,amount,base_amount,"
+                "paid_from,status,receipt_file,created_at) "
+                "VALUES (?,?,'new',250000,250000,'card','awaiting','file-1',"
+                "'2026-09-15')", (_h["id"], _u1))
+    _mine = _bd.execute("SELECT id FROM orders WHERE user_id=?", (_u1,)).fetchone()[0]
+    _bd.execute("INSERT INTO orders (tenant_id,user_id,kind,amount,base_amount,"
+                "paid_from,status,created_at) "
+                "VALUES (?,?,'new',99000,99000,'card','awaiting','2026-09-15')",
+                (_b["id"], _u2))
+    _theirs = _bd.execute("SELECT id FROM orders WHERE user_id=?", (_u2,)).fetchone()[0]
+    _bd.commit()
+finally:
+    _bd.close()
+
+_T4 = AP._tenant_by_slug("hossein")
+
+_lst = AP.portal_orders(t=_T4)
+_ids = [o["id"] for o in _lst["orders"]]
+check("فقط سفارش‌های مشتری‌های خودش", _ids == [_mine], str(_ids))
+check("سفارش نماینده‌ی دیگر نیست", _theirs not in _ids,
+      "همان محدودسازی‌ای که همه‌جای این پنل هست")
+check("و می‌گوید رسید دارد", _lst["orders"][0]["hasReceipt"] is True)
+check("مبلغ و نام مشتری می‌آید",
+      _lst["orders"][0]["amount"] == 250000
+      and _lst["orders"][0]["customer"] == "مشتریِ حسین")
+
+# دست‌درازی به سفارش دیگری
+for _fn, _nm in ((AP.portal_order_approve, "تایید"),
+                 (AP.portal_receipt, "دیدن رسید")):
+    try:
+        _fn(_theirs, t=_T4)
+        _blocked = False
+    except Exception as e:
+        _blocked = getattr(e, "status_code", 0) == 404
+    check(f"{_nm} سفارش نماینده‌ی دیگر رد می‌شود", _blocked,
+          "پیامش همان «پیدا نشد» است — وگرنه می‌شود شناسه‌ها را کشف کرد")
+
+try:
+    AP.portal_order_reject(_theirs, {"reason": "چون"}, t=_T4)
+    _rb = False
+except Exception as e:
+    _rb = getattr(e, "status_code", 0) == 404
+check("رد سفارش نماینده‌ی دیگر هم", _rb)
+
+# بدون ربات نمی‌شود تایید کرد
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("UPDATE tenants SET bot_token=NULL WHERE portal_slug='hossein'")
+    _bd.commit()
+finally:
+    _bd.close()
+try:
+    AP.portal_order_approve(_mine, t=AP._tenant_by_slug("hossein"))
+    _nobot = False
+except Exception as e:
+    _nobot = getattr(e, "status_code", 0) == 409
+check("بدون ربات، تایید ممکن نیست", _nobot,
+      "تاییدِ بی‌خبر یعنی مشتری پولش را داده و هیچ‌چیز نمی‌بیند")
+
+# دلیل رد اجباری است
+try:
+    AP.portal_order_reject(_mine, {"reason": "  "}, t=AP._tenant_by_slug("hossein"))
+    _nore = False
+except Exception as e:
+    _nore = getattr(e, "status_code", 0) == 400
+check("رد بدون دلیل ممکن نیست", _nore, "مشتری همان دلیل را می‌بیند")
+
+APO = io.open(os.path.join(str(ROOT), "backend", "app.py"),
+              encoding="utf-8").read()
+check("تایید همان کد ربات را صدا می‌زند",
+      "h.approve_order(ctx, oid" in APO,
+      "مسیر پول دو پیاده‌سازی برنمی‌دارد")
+check("رد هم همین‌طور", "h.do_reject(ctx, oid" in APO)
+check("و «همین حالا در حال پردازش» را هم می‌فهمد",
+      "ORDER_BUSY" in APO,
+      "وگرنه نماینده دوباره تایید می‌زند، درست وقتی که نباید")
+check("رسید با توکن ربات پاس داده می‌شود نه آدرسش",
+      "api.telegram.org/file/bot" in APO and "Response(content=blob" in APO,
+      "آن آدرس توکن ربات را در خودش دارد")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)
