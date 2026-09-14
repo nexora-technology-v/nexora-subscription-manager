@@ -833,6 +833,18 @@ PY
     fi
     ;;
 
+  billing-why|why-unpriced)
+    # چرا یک کانفیگ «بدون نرخ» است — نرخ‌های ثبت‌شده، نام گروه‌ها در
+    # x-ui، و اینکه کدام حجم با کدام نرخ جور در می‌آید. هیچ رمز، نام
+    # مشتری یا شماره‌ای چاپ نمی‌شود، پس خروجی قابل فرستادن است.
+    if [ -f "$INSTALL_DIR/tools/billing-why.py" ]; then
+      python3 "$INSTALL_DIR/tools/billing-why.py"
+    else
+      err "tools/billing-why.py پیدا نشد — اول nexora update بزنید"
+      exit 1
+    fi
+    ;;
+
   doctor)
     logo
     echo -e "  ${C_BOLD}System Check${C_RESET}"
@@ -1040,6 +1052,7 @@ PYEOF
     echo -e "  ${C_WHITE}nexora snapshots${C_RESET}              ${C_DIM}list saved versions${C_RESET}"
     echo -e "  ${C_WHITE}nexora bot${C_RESET}                    ${C_DIM}manage the Telegram bot${C_RESET}"
     echo -e "  ${C_WHITE}nexora doctor${C_RESET}                 ${C_DIM}check and auto-fix common problems${C_RESET}"
+    echo -e "  ${C_WHITE}nexora billing-why${C_RESET}            ${C_DIM}why a config shows as having no rate${C_RESET}"
     echo -e "  ${C_WHITE}nexora password${C_RESET}               ${C_DIM}change admin password${C_RESET}"
     echo -e "  ${C_WHITE}nexora diagnose${C_RESET}               ${C_DIM}troubleshoot template issues${C_RESET}"
     echo ""
