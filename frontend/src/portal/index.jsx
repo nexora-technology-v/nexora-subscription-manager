@@ -11,8 +11,8 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, Bot, Check, Copy, Database, Link2, LogOut, Loader2, Plus,
-  Power, RefreshCw, Search, Trash2, Users, Wallet, X,
+  AlertTriangle, Bot, Check, Copy, Database, Link2, LogOut, Loader2, Package,
+  Plus, Power, RefreshCw, Search, Trash2, Users, Wallet, X,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -544,6 +544,143 @@ function BotBox({ token, onClose, onNote }) {
 }
 
 
+function PlansBox({ token, onClose, onNote }) {
+  const [rows, setRows] = useState(null);
+  const [hasBot, setHasBot] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const j = await api("/api/portal/bot-plans", { token });
+      setRows(j.plans || []);
+      setHasBot(!!j.hasBot);
+    } catch (e) { setErr(e.message); }
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const patch = (i, p) => setRows(rows.map((r, k) => (k === i ? { ...r, ...p } : r)));
+  const add = () => setRows([...(rows || []), {
+    name: "", gb: 50, days: 30, ip_limit: 2, price: 0, is_active: true,
+  }]);
+  const drop = (i) => setRows(rows.filter((_, k) => k !== i));
+
+  const save = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const j = await api("/api/portal/bot-plans", {
+        token, method: "PUT", body: { plans: rows },
+      });
+      onNote(`${faNum(j.count)} پلن ذخیره شد`);
+      load();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
+      alignItems: "flex-start", justifyContent: "center", padding: 16,
+      background: "rgba(0,0,0,.6)", overflowY: "auto",
+    }} onClick={onClose}>
+      <div className="fx-card p-5" style={{ width: 620, maxWidth: "100%", marginTop: 24 }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-[14px] font-semibold text-white">
+            پلن‌های ربات شما
+          </div>
+          <button onClick={onClose} className="fx-ico-btn"
+            style={{ width: 28, height: 28 }} aria-label="بستن">
+            <X size={13} />
+          </button>
+        </div>
+
+        <p className="text-[12px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+          این قیمتی است که به مشتری خودتان می‌فروشید. آنچه بابت هر کانفیگ به
+          ما می‌دهید جداست و از نرخ‌های گروه شما می‌آید.
+        </p>
+
+        {!hasBot && (
+          <div className="rounded-xl p-3 mb-4 text-[12px]"
+            style={{ background: "rgba(251,191,36,.07)",
+                     border: "1px solid rgba(251,191,36,.22)",
+                     color: "var(--warn)" }}>
+            هنوز رباتی وصل نکرده‌اید — این پلن‌ها جایی نمایش داده نمی‌شوند.
+          </div>
+        )}
+
+        {!rows ? (
+          <p className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
+            در حال بارگذاری…
+          </p>
+        ) : (
+          <>
+            {rows.map((r, i) => (
+              <div key={i} className="rounded-xl p-3 mb-2.5"
+                style={{ background: "var(--surface-3)",
+                         border: "1px solid var(--border)" }}>
+                <div className="flex items-center gap-2 mb-2">
+                  <input value={r.name} placeholder="نام پلن"
+                    onChange={(e) => patch(i, { name: e.target.value })}
+                    className="fx-input text-[13px] flex-1" />
+                  <button onClick={() => patch(i, { is_active: !r.is_active })}
+                    className="fx-ico-btn" style={{ width: 30, height: 30 }}
+                    title={r.is_active ? "فعال" : "غیرفعال"}
+                    aria-label={r.is_active ? "غیرفعال کن" : "فعال کن"}>
+                    <Power size={12} style={{
+                      color: r.is_active ? "var(--ok)" : "var(--muted)" }} />
+                  </button>
+                  <button onClick={() => drop(i)} className="fx-ico-btn"
+                    style={{ width: 30, height: 30 }} aria-label="حذف پلن">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {[["gb", "حجم (GB)"], ["days", "روز"],
+                    ["ip_limit", "کاربر"], ["price", "قیمت"]].map(([k, lbl]) => (
+                    <div key={k}>
+                      <label className="text-[11px] block mb-1"
+                        style={{ color: "var(--muted)" }}>{lbl}</label>
+                      <input type="number" dir="ltr" min="0" value={r[k] ?? 0}
+                        onChange={(e) => patch(i, { [k]: Number(e.target.value) || 0 })}
+                        className="fx-input text-[13px] text-center"
+                        style={{ fontFamily: "var(--mono)" }} />
+                    </div>
+                  ))}
+                </div>
+                <div className="text-[11px] mt-1.5" style={{ color: "var(--muted)" }}>
+                  حجم ۰ یعنی نامحدود · کاربر ۰ یعنی بدون محدودیت
+                </div>
+              </div>
+            ))}
+
+            <button onClick={add}
+              className="fx-btn-g w-full py-2.5 text-[13px] flex items-center
+                         justify-center gap-1.5 mb-3">
+              <Plus size={13} /> پلن تازه
+            </button>
+
+            {err && (
+              <p className="text-[13px] mb-3 flex items-start gap-1.5"
+                style={{ color: "var(--danger)" }}>
+                <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+              </p>
+            )}
+
+            <button onClick={save} disabled={busy}
+              className="fx-btn w-full py-2.5 text-[13px] flex items-center
+                         justify-center gap-2">
+              {busy && <Loader2 size={13} className="animate-spin" />} ذخیره
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function Dashboard({ token, onOut }) {
   const [me, setMe] = useState(null);
   const [sum, setSum] = useState(null);
@@ -555,6 +692,7 @@ function Dashboard({ token, onOut }) {
   const [renew, setRenew] = useState(null);
   const [making, setMaking] = useState(false);
   const [botOpen, setBotOpen] = useState(false);
+  const [plansOpen, setPlansOpen] = useState(false);
   const [copied, setCopied] = useState("");
   const [note, setNote] = useState("");
 
@@ -618,6 +756,10 @@ function Dashboard({ token, onOut }) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => setPlansOpen(true)}
+              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
+              <Package size={13} /> پلن‌های ربات
+            </button>
             <button onClick={() => setBotOpen(true)}
               className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
               <Bot size={13} style={{ color: me?.hasBot ? "var(--ok)" : "var(--muted)" }} />
@@ -805,6 +947,11 @@ function Dashboard({ token, onOut }) {
 
       {botOpen && (
         <BotBox token={token} onClose={() => { setBotOpen(false); load(); }}
+          onNote={(m) => { setNote(m); setErr(""); }} />
+      )}
+
+      {plansOpen && (
+        <PlansBox token={token} onClose={() => setPlansOpen(false)}
           onNote={(m) => { setNote(m); setErr(""); }} />
       )}
     </div>

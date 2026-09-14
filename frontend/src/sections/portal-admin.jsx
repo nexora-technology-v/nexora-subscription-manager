@@ -6,7 +6,8 @@
  */
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle, Check, Copy, Key, Link2, Loader2, Power, RefreshCw, Users,
+  AlertTriangle, Check, Copy, History, Key, Link2, Loader2, Plus, Power,
+  RefreshCw, Users, Wallet,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -44,6 +45,11 @@ function Row({ t, groups, password, onSaved, setMsg }) {
   const [pw, setPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState("");
+  const [topup, setTopup] = useState("");
+  const [log, setLog] = useState(null);
+
+  // credit منفی یعنی بدون سقف: آخر ماه صورتحساب می‌گیرد.
+  const prepaid = t.credit !== null && Number(t.credit) >= 0;
 
   const link = slug ? `${window.location.origin}/r/${slug}` : "";
 
@@ -74,6 +80,39 @@ function Row({ t, groups, password, onSaved, setMsg }) {
   };
 
   const on = !!t.portalEnabled;
+
+  const setCredit = async (body, what) => {
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/tenant/${t.id}/credit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json",
+                   "X-Admin-Password": password },
+        body: JSON.stringify(body),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(errText(j.detail, "ثبت نشد"));
+      setTopup("");
+      setMsg({ t: "ok", m: what });
+      onSaved();
+    } catch (e) {
+      setMsg({ t: "err", m: e.message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const showLog = async () => {
+    if (log) { setLog(null); return; }
+    try {
+      const j = await fetch(
+        `${API_URL}/api/admin/tenant/${t.id}/credit-log`,
+        { headers: { "X-Admin-Password": password } }).then((r) => r.json());
+      setLog(j.rows || []);
+    } catch {
+      setMsg({ t: "err", m: "تاریخچه خوانده نشد" });
+    }
+  };
 
   return (
     <div className="fx-card p-5 mb-3">
@@ -166,6 +205,80 @@ function Row({ t, groups, password, onSaved, setMsg }) {
           </div>
         </div>
       )}
+
+      {/* ── اعتبار ── */}
+      <div className="rounded-xl p-3.5 mt-3"
+        style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Wallet size={14} style={{ color: "var(--accent-2)" }} />
+            <span className="text-[13px]" style={{ color: "var(--muted)" }}>
+              {prepaid ? "اعتبار باقی‌مانده" : "بدون سقف"}
+            </span>
+            <span className="text-[14px] font-bold"
+              style={{ color: prepaid
+                ? (Number(t.credit) > 0 ? "var(--ok)" : "var(--danger)")
+                : "var(--dim)" }}>
+              {prepaid ? `${faNum(t.credit)} تومان` : "صورتحساب ماهانه"}
+            </span>
+          </div>
+          <button onClick={showLog} className="fx-btn-g px-2.5 py-1.5 text-[12px]
+                                               flex items-center gap-1">
+            <History size={12} /> تاریخچه
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <input type="number" dir="ltr" value={topup}
+            onChange={(e) => setTopup(e.target.value)}
+            placeholder="مبلغ شارژ"
+            className="fx-input text-[13px]"
+            style={{ width: 150, fontFamily: "var(--mono)" }} />
+          <button disabled={busy || !topup}
+            onClick={() => setCredit({ amount: Number(topup) },
+              `اعتبار ${faNum(Math.abs(Number(topup)))} تومان `
+              + (Number(topup) > 0 ? "شارژ شد" : "برداشت شد"))}
+            className="fx-btn px-3 py-2 text-[13px] flex items-center gap-1">
+            <Plus size={12} /> اعمال
+          </button>
+          {prepaid ? (
+            <button disabled={busy}
+              onClick={() => setCredit({ unlimited: true },
+                "روی بدهکاری تنظیم شد — آخر ماه صورتحساب می‌گیرد")}
+              className="fx-btn-g px-3 py-2 text-[13px]">
+              بدون سقف کن
+            </button>
+          ) : (
+            <span className="text-[12px]" style={{ color: "var(--muted)" }}>
+              برای پیش‌پرداخت کردن، یک مبلغ مثبت وارد کنید
+            </span>
+          )}
+        </div>
+
+        {log && (
+          <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+            {!log.length ? (
+              <div className="text-[12px]" style={{ color: "var(--muted)" }}>
+                هنوز تغییری ثبت نشده
+              </div>
+            ) : log.map((r, i) => (
+              <div key={i} className="flex items-center justify-between gap-2
+                                      py-1.5 text-[12px]">
+                <span style={{ color: r.amount >= 0 ? "var(--ok)" : "var(--dim)" }}>
+                  {r.amount >= 0 ? "+" : "−"}{faNum(Math.abs(r.amount))}
+                </span>
+                <span style={{ color: "var(--muted)", flex: 1, textAlign: "right" }}>
+                  {r.note}
+                </span>
+                <span dir="ltr" style={{ color: "var(--muted)",
+                                         fontFamily: "var(--mono)" }}>
+                  {String(r.created_at || "").slice(0, 16)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* چه چیزی مانده تا این نماینده بتواند وارد شود.
           بدون این، تنها بازخوردی که مدیر می‌گرفت «رمز نادرست است»

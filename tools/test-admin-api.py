@@ -1057,6 +1057,145 @@ check("ولی خودِ رمز را نمی‌دهد", "rooz-e-khoob-1" not in str
       "پنل فقط باید بداند هست یا نه")
 
 
+# ═══════════════════════════════════════════════════════════
+head("شارژ اعتبار نماینده")
+
+# بدون این، مدل پیش‌پرداخت فقط روی کاغذ کار می‌کرد: هیچ راهی برای
+# شارژکردن نبود جز دست‌زدن به دیتابیس.
+
+AP.load_password = lambda: "testpw"
+AP._auth_fails.clear()
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("UPDATE tenants SET credit=0 WHERE portal_slug='hossein'")
+    _bd.execute("DELETE FROM credit_tx")
+    _bd.commit()
+except Exception:
+    pass
+finally:
+    _bd.close()
+
+_cid = AP._tenant_by_slug("hossein")["id"]
+
+_c = AP.tenant_credit(_cid, {"amount": 500000, "note": "شارژ اول"},
+                      x_admin_password="testpw")
+check("شارژ انجام شد", _c["credit"] == 500000, str(_c["credit"]))
+
+_c = AP.tenant_credit(_cid, {"amount": -200000}, x_admin_password="testpw")
+check("برداشت هم کار می‌کند", _c["credit"] == 300000, str(_c["credit"]))
+
+try:
+    AP.tenant_credit(_cid, {"amount": -999999}, x_admin_password="testpw")
+    _neg = False
+except Exception as e:
+    _neg = getattr(e, "status_code", 0) == 400
+check("اعتبار منفی نمی‌شود", _neg,
+      "منفی در این سیستم معنای دیگری دارد: بدون سقف")
+
+try:
+    AP.tenant_credit(_cid, {"amount": 0}, x_admin_password="testpw")
+    _z = False
+except Exception as e:
+    _z = getattr(e, "status_code", 0) == 400
+check("مبلغ صفر رد می‌شود", _z)
+
+_c = AP.tenant_credit(_cid, {"unlimited": True}, x_admin_password="testpw")
+check("بدون سقف کردن کار می‌کند", _c["credit"] == -1 and _c["mode"] == "بدهکاری")
+
+_c = AP.tenant_credit(_cid, {"amount": 100000}, x_admin_password="testpw")
+check("و برگشت به پیش‌پرداخت از صفر شروع می‌شود", _c["credit"] == 100000,
+      f"{_c['credit']} — نه از منفی یک")
+
+# دفتر
+_lg = AP.tenant_credit_log(_cid, x_admin_password="testpw")
+# چهار تغییرِ واقعی: شارژ، برداشت، بدون‌سقف، شارژ دوباره.
+# آن دو تای ردشده عمداً ثبت نمی‌شوند — دفتر باید کاری را نشان بدهد
+# که انجام شده، نه تلاشی را که نشده.
+check("هر تغییرِ انجام‌شده در دفتر ثبت شده", len(_lg["rows"]) == 4,
+      f"{len(_lg['rows'])} سطر")
+check("و تلاش‌های ردشده ثبت نشده‌اند",
+      not any(r["amount"] == -999999 for r in _lg["rows"]))
+check("و مانده‌ی بعد از هر تغییر هم هست",
+      _lg["rows"][0]["balance"] == 100000, str(_lg["rows"][0]["balance"]))
+check("و یادداشتش", "شارژ اول" in str(_lg["rows"]),
+      "عددِ credit به‌تنهایی تاریخچه ندارد")
+
+# خرجِ خودِ نماینده هم باید در همین دفتر بیفتد
+_spent = AP._portal_charge(AP._tenant_by_slug("hossein"), 30000, "تست خرج")
+check("کسر از سمت نماینده هم ثبت می‌شود", _spent[0])
+_lg2 = AP.tenant_credit_log(_cid, x_admin_password="testpw")
+check("و در دفتر با علامت منفی می‌نشیند",
+      any(r["amount"] == -30000 for r in _lg2["rows"]),
+      "وگرنه معلوم نیست اعتبار کجا رفت")
+
+
+# ═══════════════════════════════════════════════════════════
+head("پلن‌های ربات نماینده")
+
+# رباتش بالا می‌آمد ولی مغازه‌اش خالی بود: plans به مستاجر محدود است
+# و نماینده هیچ راهی برای ساختن پلن نداشت.
+
+_T3 = AP._tenant_by_slug("hossein")
+_other = AP._tenant_by_slug("bastan")
+
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("""CREATE TABLE IF NOT EXISTS plans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER,
+        name TEXT, description TEXT, gb INTEGER, days INTEGER,
+        ip_limit INTEGER, price INTEGER, inbound_id INTEGER,
+        is_active INTEGER, is_trial INTEGER, sort_order INTEGER)""")
+    _bd.execute("DELETE FROM plans")
+    _bd.execute("INSERT INTO plans (tenant_id,name,gb,days,price,is_active,"
+                "sort_order) VALUES (?,?,?,?,?,1,0)",
+                (_other["id"], "مال نماینده‌ی دیگر", 10, 30, 50000))
+    _oid = _bd.execute("SELECT id FROM plans").fetchone()[0]
+    _bd.commit()
+finally:
+    _bd.close()
+
+_r = AP.portal_bot_plans_save(
+    {"plans": [{"name": "ماهانه ۵۰", "gb": 50, "days": 30,
+                "ip_limit": 2, "price": 250000}]}, _T3)
+check("پلن ساخته شد", _r["ok"] and _r["count"] == 1)
+
+_mine = AP.portal_bot_plans(_T3)
+check("و فقط مال خودش را می‌بیند",
+      len(_mine["plans"]) == 1 and _mine["plans"][0]["name"] == "ماهانه ۵۰")
+
+_theirs = AP.portal_bot_plans(_other)
+check("پلن نماینده‌ی دیگر دست‌نخورده ماند",
+      len(_theirs["plans"]) == 1
+      and _theirs["plans"][0]["name"] == "مال نماینده‌ی دیگر",
+      "ذخیره‌ی یکی نباید پلن‌های دیگری را پاک کند")
+
+# فرستادن شناسه‌ی پلن نماینده‌ی دیگر نباید کاری بکند
+AP.portal_bot_plans_save(
+    {"plans": [{"id": _oid, "name": "دزدیده", "gb": 1, "days": 1,
+                "price": 1}]}, _T3)
+_theirs2 = AP.portal_bot_plans(_other)
+check("شناسه‌ی پلن دیگری هم کاری نمی‌کند",
+      _theirs2["plans"] and _theirs2["plans"][0]["name"] == "مال نماینده‌ی دیگر",
+      "به‌روزرسانی با WHERE id=? AND tenant_id=? محدود است")
+
+try:
+    AP.portal_bot_plans_save({"plans": [{"name": "", "gb": 1}]}, _T3)
+    _noname = False
+except Exception as e:
+    _noname = getattr(e, "status_code", 0) == 400
+check("پلن بی‌نام رد می‌شود", _noname)
+
+_r2 = AP.portal_bot_plans_save({"plans": []}, _T3)
+check("فهرست خالی همه‌ی پلن‌های خودش را پاک می‌کند", _r2["count"] == 0)
+check("ولی باز هم مال دیگری سر جایش است",
+      len(AP.portal_bot_plans(_other)["plans"]) == 1)
+
+APS = io.open(os.path.join(str(ROOT), "backend", "app.py"),
+              encoding="utf-8").read()
+check("پلن آزمایشی دست نماینده نیست", '"is_trial": 0,' in APS,
+      "کانفیگ رایگان روی سرور مالک ساخته می‌شود — تصمیمش با اوست")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

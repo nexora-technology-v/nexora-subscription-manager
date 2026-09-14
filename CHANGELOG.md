@@ -4,6 +4,41 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.21.0]
+
+### Added — Topping up a reseller's credit, with a ledger
+
+Prepaid resellers worked in every respect except the one that matters: there was
+no way to give them credit short of editing the database. The card in
+حسابداری ← پنل نمایندگی now shows the balance, takes an amount to add or take
+back, and switches a reseller between prepaid and month-end billing.
+
+Every change is written to a ledger, because the `credit` column alone is not a
+record — it moves every time the reseller creates or renews anything, so there was
+no way to answer "when was this topped up, and by how much". The reseller's own
+spending lands in the same ledger, so the balance can always be explained. The two
+rejected cases — an amount that would go negative, and zero — write nothing: a
+ledger should show what happened, not what was attempted.
+
+Negative credit already means "no ceiling, invoice at month end", so top-up
+refuses to take a balance below zero rather than quietly turning a reseller into
+an unlimited one.
+
+### Added — A reseller can set up their own bot's plans
+
+Attaching a bot gave a reseller a shop with nothing in it: `plans` is per-tenant
+and they had no way to add any. They can now define what their own bot sells —
+name, quota, days, devices, price, and whether it is listed.
+
+That price is what they charge their customers. What they owe for each config is a
+separate thing and still comes from the rates you set for their group; nothing in
+this screen touches it.
+
+Every read and write is scoped to their tenant. Saving their list cannot delete
+another reseller's plans, and sending another reseller's plan id changes nothing.
+Trial plans stay with the owner — a free config is still created on the owner's
+server, so it is the owner's call.
+
 ## [1.20.0]
 
 ### Added — The reseller can see each customer's subscription link

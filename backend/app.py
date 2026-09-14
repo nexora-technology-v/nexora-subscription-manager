@@ -8481,6 +8481,84 @@ def portal_tenant(x_portal_token: str = Header(None)):
     return t
 
 
+@app.post("/api/admin/tenant/{tid}/credit")
+def tenant_credit(tid: int, payload: dict, x_admin_password: str = Header(...)):
+    """
+    شارژ یا اصلاح اعتبار یک نماینده.
+
+    amount مثبت یعنی شارژ، منفی یعنی برداشت. unlimited=true یعنی
+    نماینده بدون سقف کار کند و آخر ماه صورتحساب بگیرد.
+
+    هر تغییری در دفتر ثبت می‌شود — عددِ credit به‌تنهایی تاریخچه
+    ندارد و با هر ساخت و تمدید عوض می‌شود.
+    """
+    check_auth(x_admin_password)
+    p = payload or {}
+    note = str(p.get("note") or "").strip()[:200]
+
+    con = _bot_rw()
+    try:
+        row = con.execute("SELECT name, credit FROM tenants WHERE id=?",
+                          (tid,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="نماینده پیدا نشد")
+
+        if p.get("unlimited"):
+            con.execute("UPDATE tenants SET credit=-1 WHERE id=?", (tid,))
+            _credit_log(con, tid, 0, -1, note or "بدون سقف — صورتحساب ماهانه")
+            con.commit()
+            return {"ok": True, "credit": -1, "mode": "بدهکاری"}
+
+        try:
+            amount = int(p.get("amount"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="مبلغ نامعتبر است")
+        if amount == 0:
+            raise HTTPException(status_code=400, detail="مبلغ صفر است")
+
+        cur_credit = int(row["credit"] or 0)
+        if cur_credit < 0:
+            # از بدهکاری به پیش‌پرداخت: از صفر شروع می‌شود، نه از -۱
+            base = 0
+        else:
+            base = cur_credit
+        new = base + amount
+        if new < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"اعتبار منفی می‌شود — موجودی فعلی {base:,} تومان")
+
+        con.execute("UPDATE tenants SET credit=? WHERE id=?", (new, tid))
+        _credit_log(con, tid, amount, new,
+                    note or ("شارژ از پنل" if amount > 0 else "برداشت از پنل"))
+        con.commit()
+    finally:
+        con.close()
+
+    log.info("اعتبار نماینده %s تغییر کرد: %s → %s", tid, base, new)
+    return {"ok": True, "credit": new, "mode": "پیش‌پرداخت"}
+
+
+@app.get("/api/admin/tenant/{tid}/credit-log")
+def tenant_credit_log(tid: int, limit: int = 40,
+                      x_admin_password: str = Header(...)):
+    """تاریخچه‌ی اعتبار یک نماینده — شارژها و برداشت‌ها."""
+    check_auth(x_admin_password)
+    con = _bot_conn()
+    if not con:
+        return {"ready": False, "rows": []}
+    try:
+        rows = [dict(r) for r in con.execute(
+            "SELECT amount, balance, note, created_at FROM credit_tx "
+            "WHERE tenant_id=? ORDER BY id DESC LIMIT ?",
+            (tid, max(1, min(int(limit or 40), 200))))]
+        return {"ready": True, "rows": rows}
+    except Exception as e:
+        return {"ready": False, "error": str(e)[:120], "rows": []}
+    finally:
+        con.close()
+
+
 @app.get("/api/admin/tenant/portal-list")
 def tenant_portal_list(x_admin_password: str = Header(...)):
     """
@@ -8919,6 +8997,25 @@ def _portal_rates(t):
     return conf, (rates if isinstance(rates, list) else [])
 
 
+def _credit_log(con, tid, amount, balance, note):
+    """
+    یک سطر در دفتر اعتبار. شکستش نباید کار اصلی را متوقف کند.
+
+    روی همان اتصالی می‌نویسد که تغییر اعتبار را انجام داده، تا اگر
+    آن تراکنش برنگردد این هم برنگردد.
+    """
+    try:
+        con.execute("""CREATE TABLE IF NOT EXISTS credit_tx (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL,
+            amount INTEGER NOT NULL, balance INTEGER, note TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
+        con.execute(
+            "INSERT INTO credit_tx (tenant_id, amount, balance, note) "
+            "VALUES (?,?,?,?)", (tid, int(amount), balance, str(note or "")[:200]))
+    except Exception:
+        log.debug("ثبت دفتر اعتبار ناموفق", exc_info=True)
+
+
 def _portal_charge(t, amount, note):
     """
     کسر اعتبار — اتمی، و فقط وقتی نماینده پیش‌پرداخت است.
@@ -8947,6 +9044,10 @@ def _portal_charge(t, amount, note):
             have = int((row["credit"] if row else 0) or 0)
             return False, (f"اعتبار کافی نیست — لازم {amount:,} تومان، "
                            f"موجودی {have:,} تومان")
+        left = con.execute("SELECT credit FROM tenants WHERE id=?",
+                           (t["id"],)).fetchone()
+        _credit_log(con, t["id"], -amount,
+                    int((left["credit"] if left else 0) or 0), note)
         con.commit()
     finally:
         con.close()
@@ -8963,6 +9064,11 @@ def _portal_refund(t, amount):
     try:
         con.execute("UPDATE tenants SET credit = credit + ? WHERE id=?",
                     (int(amount), t["id"]))
+        row = con.execute("SELECT credit FROM tenants WHERE id=?",
+                          (t["id"],)).fetchone()
+        _credit_log(con, t["id"], int(amount),
+                    int((row["credit"] if row else 0) or 0),
+                    "بازگشت — کار روی پنل انجام نشد")
         con.commit()
     finally:
         con.close()
@@ -9370,6 +9476,114 @@ def portal_brand(payload: dict, t: dict = Depends(portal_tenant)):
     finally:
         con.close()
     return {"ok": True}
+
+
+
+# ═══════════════════════════════════════════════════════════
+#  پلن‌های رباتِ نماینده
+#
+#  رباتش بالا می‌آمد ولی مغازه‌اش خالی بود: جدول plans به مستاجر
+#  محدود است و نماینده هیچ راهی برای ساختن پلن نداشت.
+#
+#  این‌جا قیمتی که او به *مشتری خودش* می‌فروشد تعیین می‌شود. قیمتی
+#  که خودش به مالک می‌دهد چیز دیگری است و از نرخ‌های گروهش می‌آید —
+#  آن یکی دست او نیست و نباید باشد.
+# ═══════════════════════════════════════════════════════════
+
+@app.get("/api/portal/bot-plans")
+def portal_bot_plans(t: dict = Depends(portal_tenant)):
+    """پلن‌هایی که ربات این نماینده می‌فروشد."""
+    con = _bot_conn()
+    if not con:
+        return {"ready": False, "plans": []}
+    try:
+        rows = [dict(r) for r in con.execute(
+            "SELECT id, name, description, gb, days, ip_limit, price, "
+            "is_active, is_trial, sort_order FROM plans "
+            "WHERE tenant_id=? ORDER BY sort_order, id", (t["id"],))]
+        return {"ready": True, "plans": rows, "hasBot": bool(t.get("bot_token"))}
+    except Exception as e:
+        return {"ready": False, "error": str(e)[:120], "plans": []}
+    finally:
+        con.close()
+
+
+@app.put("/api/portal/bot-plans")
+def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
+    """
+    ذخیره‌ی پلن‌های ربات نماینده.
+
+    همه‌چیز به مستاجر خودش محدود است: به‌روزرسانی با
+    `WHERE id=? AND tenant_id=?`، حذفِ آن‌هایی که در فهرست نیامده‌اند
+    هم فقط داخل همین مستاجر. یعنی حتی اگر نماینده شناسه‌ی پلن
+    نماینده‌ی دیگری را بفرستد، هیچ اتفاقی نمی‌افتد.
+    """
+    plans = (payload or {}).get("plans")
+    if not isinstance(plans, list):
+        raise HTTPException(status_code=400, detail="فهرست پلن نامعتبر است")
+    if len(plans) > 40:
+        raise HTTPException(status_code=400, detail="حداکثر ۴۰ پلن")
+
+    clean = []
+    for i, p in enumerate(plans):
+        if not isinstance(p, dict):
+            continue
+        name = str(p.get("name") or "").strip()[:60]
+        if not name:
+            raise HTTPException(status_code=400,
+                                detail=f"پلن شماره {i + 1} نام ندارد")
+        try:
+            gb = max(0, int(p.get("gb") or 0))
+            days = max(0, int(p.get("days") or 0))
+            ip_limit = max(0, int(p.get("ip_limit") or 0))
+            price = max(0, int(p.get("price") or 0))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400,
+                                detail=f"عددهای پلن «{name}» نامعتبرند")
+        clean.append({
+            "id": p.get("id"), "name": name,
+            "description": str(p.get("description") or "").strip()[:200],
+            "gb": gb, "days": days, "ip_limit": ip_limit, "price": price,
+            "is_active": 1 if p.get("is_active", True) else 0,
+            # آزمایشی فقط دست مالک است: پلن رایگان یعنی کانفیگی که
+            # کسی پولش را نمی‌دهد ولی روی سرور او ساخته می‌شود.
+            "is_trial": 0,
+            "sort": i,
+        })
+
+    con = _bot_rw()
+    try:
+        keep = [int(p["id"]) for p in clean if p.get("id")]
+        if keep:
+            ph = ",".join("?" * len(keep))
+            con.execute(
+                f"DELETE FROM plans WHERE tenant_id=? AND id NOT IN ({ph})",
+                [t["id"]] + keep)
+        else:
+            con.execute("DELETE FROM plans WHERE tenant_id=?", (t["id"],))
+
+        for p in clean:
+            vals = (p["name"], p["description"], p["gb"], p["days"],
+                    p["ip_limit"], p["price"], p["is_active"], p["is_trial"],
+                    p["sort"])
+            if p.get("id"):
+                con.execute(
+                    "UPDATE plans SET name=?,description=?,gb=?,days=?,"
+                    "ip_limit=?,price=?,is_active=?,is_trial=?,sort_order=? "
+                    "WHERE id=? AND tenant_id=?", vals + (p["id"], t["id"]))
+            else:
+                con.execute(
+                    "INSERT INTO plans (name,description,gb,days,ip_limit,"
+                    "price,is_active,is_trial,sort_order,tenant_id) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)", vals + (t["id"],))
+        con.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ذخیره نشد: {str(e)[:120]}")
+    finally:
+        con.close()
+    return {"ok": True, "count": len(clean)}
 
 
 @app.post("/api/portal/logout")

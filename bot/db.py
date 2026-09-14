@@ -353,6 +353,25 @@ def _migrate(con):
         except sqlite3.Error:
             pass
 
+    # دفتر شارژ اعتبار نماینده‌ها.
+    #
+    # بدون این، تنها ردِ یک شارژ عددِ credit است — و آن عدد با هر
+    # ساخت و تمدیدِ نماینده عوض می‌شود. یعنی هیچ‌وقت نمی‌شد فهمید
+    # کِی و چقدر شارژ شده. برای چیزی که پول است کافی نیست.
+    try:
+        con.execute("""CREATE TABLE IF NOT EXISTS credit_tx (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            amount     INTEGER NOT NULL,
+            balance    INTEGER,
+            note       TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )""")
+        con.execute("CREATE INDEX IF NOT EXISTS idx_credit_tenant "
+                    "ON credit_tx(tenant_id, id DESC)")
+    except sqlite3.Error:
+        pass
+
     # نام پلن اشتراک‌های قدیمی را از جدول پلن‌ها پر می‌کنیم.
     #
     # تا وقتی پلن هنوز هست این کار شدنی است؛ بعد از حذفش دیگر هیچ
