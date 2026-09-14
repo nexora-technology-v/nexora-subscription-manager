@@ -211,6 +211,14 @@ check("پنل فیلدش را دارد", "perDevice: Math.max(0" in UI)
 check("و فرمول را جلوی چشم نشان می‌دهد", "نرخ پایه شامل کاربر اول است" in UI,
       "وگرنه معلوم نیست عدد از کجا آمده")
 
+check("خط زیر مبلغ کل، همان مبلغ را توضیح می‌دهد",
+      "dev_total = sum(" in APP and "base_total = t[\"due\"] - dev_total" in APP,
+      "قبلاً «۱۱۰ ماه × ۱۹۰٬۰۰۰» بود که با مبلغ بالا نمی‌خواند")
+check("نشانه‌ی تمدید قرص است، نه نوار سرتاسری",
+      "c.roundRect(x + (w - pw) / 2" in APP,
+      "ردیف‌های پشت‌سرهم به هم می‌چسبیدند و یک نوار یکپارچه می‌شدند")
+check("ردیف روی فوتر نمی‌افتد", "BOTTOM = 11.5 * mm" in APP)
+
 JD = io.open(os.path.join(ROOT, "frontend", "src", "ui", "jalali.jsx"),
              encoding="utf-8").read()
 check("تقویم از کادر والد بیرون می‌زند", 'position: "fixed"' in JD,

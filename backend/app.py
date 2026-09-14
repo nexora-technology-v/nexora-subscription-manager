@@ -6445,9 +6445,20 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
                       money(t["due"]) + " " + _fa("تومان"))
     c.setFont(F, 6.5)
     c.setFillColor(colors.HexColor("#9FB0CD"))
-    rate0 = inv["rates"][0]["price"] if inv.get("rates") else 0
-    c.drawRightString(W - MR - 3 * mm, y - 17 * mm,
-                      f"{t['months']} " + _fa("ماه") + f" × {money(rate0)} " + _fa("تومان"))
+    # این خط باید همان مبلغ بالا را توضیح بدهد.
+    #
+    # قبلاً «۱۱۰ ماه × ۱۹۰٬۰۰۰» بود — یعنی فقط نرخ پایه‌ی اولین پله.
+    # از وقتی نرخ کاربر اضافه شد، آن ضرب دیگر با مبلغ نمی‌خواند:
+    # فاکتور بالایش ۲۵٬۳۰۰٬۰۰۰ می‌نوشت و زیرش ضربی که ۲۰٬۹۰۰٬۰۰۰
+    # می‌شد. فاکتوری که خودش را نقض کند، هیچ عددش قابل اعتماد نیست.
+    dev_total = sum(l.get("deviceAmount") or 0 for l in lines)
+    base_total = t["due"] - dev_total
+    if dev_total:
+        note = (_fa("پایه") + f" {money(base_total)} + "
+                + _fa("کاربر اضافه") + f" {money(dev_total)}")
+    else:
+        note = f"{t['months']} " + _fa("ماه") + _fa(" اشتراک")
+    c.drawRightString(W - MR - 3 * mm, y - 17 * mm, note)
 
     cards = [
         (_fa("تعداد کانفیگ"), str(t["configs"]),
@@ -6495,7 +6506,7 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
     ]
     tw = sum(w for _, w, _ in cols)
     x0 = W - MR - tw
-    ROW = 8.4 * mm
+    ROW = 7.9 * mm
 
     def draw_thead(yy):
         c.setFillColor(NAVY)
@@ -6530,7 +6541,9 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
     # صفحه‌ای که جمع‌ها رویش می‌آیند، به اندازه‌ی سه ردیف فضای
     # اضافه لازم دارد. بدون این حساب، یا ته صفحه خالی می‌ماند یا
     # جمع‌ها به صفحه‌ی بعد می‌افتند.
-    BOTTOM = 10 * mm
+    # فوتر روی ۷ میلی‌متری است و حدود ۳ میلی‌متر ارتفاع دارد. ردیفی
+    # که پایه‌اش زیر این خط بیفتد، کفش روی فوتر می‌نشیند.
+    BOTTOM = 11.5 * mm
     TOTALS_H = 20 * mm          # جمع گروه + جمع کل
 
 
@@ -6567,10 +6580,17 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
         x = x0 + tw
         for i, ((label, w, align), v) in enumerate(zip(cols, vals)):
             x -= w
-            # سلول تمدید رنگی
+            # نشانه‌ی تمدید: قرصِ کوچک دور عدد.
+            #
+            # قبلاً کل سلول رنگ می‌شد — به بلندای ROW و به عرض ستون.
+            # ردیف‌های پشت‌سرهم که تمدید داشتند به هم می‌چسبیدند و یک
+            # نوار آبیِ یکپارچه می‌ساختند که از سرستون شروع می‌شد؛
+            # نه عددها خوانده می‌شدند نه معلوم بود مال کدام ردیف است.
             if label == "تمدید" and ln["renewals"]:
+                pw, ph = 7 * mm, 4.6 * mm
                 c.setFillColor(REN)
-                c.rect(x, y - 1.2 * mm, w, ROW, fill=1, stroke=0)
+                c.roundRect(x + (w - pw) / 2, y - 0.9 * mm, pw, ph,
+                            1.6 * mm, fill=1, stroke=0)
                 c.setFillColor(RENT)
                 c.setFont(FB, 8.2)
             elif label in ("ماه", "مبلغ (تومان)"):

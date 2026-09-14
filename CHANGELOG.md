@@ -4,6 +4,32 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.14.1]
+
+### Fixed — The invoice contradicted its own total
+
+Under "مبلغ قابل پرداخت" the PDF printed "۱۱۰ ماه × ۱۹۰٬۰۰۰" — months times the
+first tier's base rate. Once a per-user rate existed that multiplication stopped
+matching: the box said 25,300,000 and the line under it worked out to 20,900,000,
+missing the 4,400,000 of extra-user charges.
+
+Every row was correct. The explanation was not, which is worse: an invoice that
+disagrees with itself makes all of its numbers untrustworthy. It now breaks the
+total into base and extra-user charges, which add up to the number above them.
+
+### Fixed — The renewal column ran together into one blue band
+
+The renewal marker filled the whole cell, the full column width and the full row
+height. Consecutive renewed configs merged into a single unbroken block starting
+at the header, so the numbers were hard to read and it wasn't clear which row each
+belonged to. It's a small pill around the number now.
+
+### Changed — Rows no longer sit on the footer, and one more fits per page
+
+The last row on a page could reach below the page number. The bottom margin
+accounts for the footer now, and a slightly shorter row height gives back what
+that cost.
+
 ## [1.14.0]
 
 ### Added — A per-user rate on every rate tier
