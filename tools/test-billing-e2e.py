@@ -743,6 +743,98 @@ check("تمدید با «تاریخ تازه» دیگر گم نمی‌شود", _
 check("و منبعش صریح گفته می‌شود", _k2 == "ثبت‌شده", _k2)
 
 
+# ═══════════════════════════════════════════════════════════
+head("شماره‌ی صفحه‌ی فاکتور PDF")
+
+# فوتر اولِ هر صفحه کشیده می‌شد، یعنی صفحه‌ی اول قبل از اینکه تعداد
+# کل حساب شود. نتیجه: فاکتور ۹۴ کانفیگی شش صفحه بود و پایین صفحه‌ی
+# اولش می‌نوشت «صفحه ۱ از ۱» — مدیر فکر می‌کرد تمام شده و بقیه‌ی
+# کانفیگ‌ها از قلم افتاده‌اند.
+#
+# تعداد کل هم پیش‌بینی می‌شد و همیشه یک صفحه‌ی اضافه برای توضیحات
+# فرض می‌کرد، پس حتی وقتی درست کشیده می‌شد عددش غلط بود.
+
+try:
+    import reportlab  # noqa: F401
+    _have_pdf = True
+except ImportError:
+    _have_pdf = False
+
+if not _have_pdf:
+    check("reportlab نصب نیست — این بخش رد شد", True, "روی سرور نصب است")
+else:
+    from reportlab.pdfgen import canvas as _pc
+    import unicodedata as _ud
+
+    def _mk_lines(n):
+        out = []
+        for i in range(n):
+            ren = 2 if i % 6 == 0 else (1 if i % 3 == 0 else 0)
+            out.append({
+                "email": "user%03d" % i, "gb": 200, "gbLabel": "200",
+                "usedGB": 98.2, "usagePct": (49 if i else None),
+                "limitIp": (0 if i == 12 else 2),
+                "createdJalali": "1405/04/30", "createdGregorian": "2026-07-21",
+                "expiryJalali": ("" if i == 12 else "1405/07/20"),
+                "expiryGregorian": "2026-10-12",
+                "days": (0 if i == 12 else 83.1),
+                "months": 1 + ren, "renewals": ren, "kind": "تخمینی",
+                "drift": 0, "price": 190000, "priceWhy": None,
+                "amount": 190000 * (1 + ren), "active": True,
+                "status": "فعال", "expiry": 1790000000000,
+            })
+        return out
+
+    def _footers_for(n):
+        """(تعداد فوتر, تعداد کلی که در فوترها نوشته شده)"""
+        lines = _mk_lines(n)
+        totals = {"configs": n, "months": 110, "renewals": 16,
+                  "renewalRate": 17.0, "quotaGB": 17680, "usedGB": 3885,
+                  "usagePct": 22.0, "due": 20900000, "paid": 0,
+                  "balance": 20900000, "unpriced": 0, "estimated": 16,
+                  "active": 73, "inactive": 17, "notStarted": 0, "noExpiry": 1}
+        real = APP.billing_invoice
+        APP.billing_invoice = lambda g, x_admin_password=None: {
+            "label": "g", "lines": lines, "totals": totals,
+            "unpricedVolumes": [], "unpricedWhy": [], "payments": [],
+            "paid": 0, "balance": 20900000, "totalAmount": 20900000,
+            "generatedAt": "1405/06/23", "review": []}
+        seen = []
+        orig = _pc.Canvas.drawCentredString
+
+        def spy(self, x, y, text, *a, **k):
+            if y < 30:
+                seen.append(text)
+            return orig(self, x, y, text, *a, **k)
+
+        _pc.Canvas.drawCentredString = spy
+        try:
+            APP.billing_invoice_pdf("g", x_admin_password="x")
+        finally:
+            _pc.Canvas.drawCentredString = orig
+            APP.billing_invoice = real
+
+        totals_written = set()
+        for t in seen:
+            d = "".join(ch for ch in _ud.normalize("NFKC", t) if ch.isdigit())
+            # بعد از bidi، اول تعداد کل می‌آید بعد شماره‌ی صفحه
+            totals_written.add(d[:len(str(len(seen)))])
+        return len(seen), totals_written
+
+    for _n in (1, 15, 94, 200):
+        _pages, _written = _footers_for(_n)
+        check("هر صفحه یک فوتر دارد (%d کانفیگ)" % _n, _pages >= 1,
+              "%d صفحه" % _pages)
+        check("و تعداد کل درست نوشته شده (%d کانفیگ)" % _n,
+              _written == {str(_pages)},
+              "نوشته: %s · واقعی: %d" % (sorted(_written), _pages))
+
+    check("جای خالی با خط تیره‌ی ساده پر می‌شود",
+          'DASH = "-"' in io.open(os.path.join(ROOT, "backend", "app.py"),
+                                  encoding="utf-8").read(),
+          "خط تیره‌ی بلند در فونت فارسیِ سرور گلیف ندارد و مربع می‌شود")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

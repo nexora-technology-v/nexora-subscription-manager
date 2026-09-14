@@ -4,6 +4,33 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.13.1]
+
+### Fixed — The invoice PDF said "page 1 of 1" on a six-page document
+
+The footer was drawn at the *top* of each page, from inside `header()`. The page
+total is only worked out after the first page has been laid out, so page one
+always printed "صفحه ۱ از ۱" — on a 94-config invoice that runs to six pages. The
+first page looked finished, with blank space under the last row, and the other 79
+configs looked lost.
+
+The total was wrong on the later pages too: it was predicted from row heights and
+always assumed one extra page for the notes, whether or not they needed one. Six
+pages, numbered "of 7".
+
+Nothing is predicted any more. Pages are held back and the footers are drawn at
+the end, when the count is certain.
+
+That change also surfaced a second bug: the final page was never closed, so the
+page holding the group totals and the notes was dropped from the file entirely.
+
+### Fixed — Empty cells printed as an empty box
+
+Blank values used an em dash. The Persian font on the server has no glyph for it,
+so every "no renewals", every missing expiry and every unknown percentage came out
+as a hollow square. The font probe only checks Persian letters, never the
+punctuation the table itself draws. A plain hyphen exists in every font.
+
 ## [1.13.0]
 
 ### Added — Renewals made in the panel are now recorded

@@ -5997,7 +5997,6 @@ def bot_users_report_pdf(days: int = 30, x_admin_password: str = Header(...)):
                             _fa(f"گزارش نکسورا — صفحه {page[0]}"))
 
     def header():
-        page[0] += 1
         c.setFillColor(colors.white)
         c.rect(0, 0, W, H, fill=1, stroke=0)
 
@@ -6218,7 +6217,47 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
     import io
     buf = io.BytesIO()
     W, H = landscape(A4)
-    c = pdfcanvas.Canvas(buf, pagesize=landscape(A4))
+    class _Numbered(pdfcanvas.Canvas):
+        """
+        بومی که «صفحه x از y» را درست می‌نویسد.
+
+        قبلاً تعداد کل از روی ارتفاع ردیف‌ها *پیش‌بینی* می‌شد، و
+        پیش‌بینی همیشه یک صفحه‌ی اضافه برای توضیحات فرض می‌کرد. روی
+        فاکتور ۹۴ کانفیگی، شش صفحه ساخته می‌شد و پایینشان می‌نوشت
+        «از ۷».
+
+        بدتر از آن: فوتر اولِ هر صفحه کشیده می‌شد، یعنی صفحه‌ی اول
+        قبل از محاسبه‌ی تعداد کل — پس همیشه «صفحه ۱ از ۱» بود و
+        فاکتور شش صفحه‌ای تمام‌شده به نظر می‌رسید.
+
+        این‌جا هیچ چیزی پیش‌بینی نمی‌شود: صفحه‌ها کنار گذاشته
+        می‌شوند و فوترها آخر کار، وقتی تعدادشان قطعی است، کشیده
+        می‌شوند.
+        """
+
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self._pages = []
+
+        def showPage(self):
+            self._pages.append(dict(self.__dict__))
+            self._startPage()
+
+        def save(self):
+            # صفحه‌ی جاری هنوز بسته نشده — بدون این، آخرین صفحه‌ی
+            # فاکتور (جمع‌ها و توضیحات) اصلاً در خروجی نمی‌آمد.
+            self._pages.append(dict(self.__dict__))
+            total = len(self._pages)
+            for i, state in enumerate(self._pages, 1):
+                self.__dict__.update(state)
+                self._draw_footer(i, total)
+                super().showPage()
+            super().save()
+
+        def _draw_footer(self, num, total):
+            pass        # پایین‌تر، وقتی فونت و رنگ ساخته شدند، جا می‌افتد
+
+    c = _Numbered(buf, pagesize=landscape(A4))
 
     # پالت روشن — برای چاپ
     NAVY = colors.HexColor("#1F3864")
@@ -6240,24 +6279,31 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
 
     stamp = datetime.now()
     jnow = inv.get("generatedAt") or stamp.strftime("%Y/%m/%d")
+    #: جای خالی در جدول.
+    #
+    #  خط تیره‌ی بلند (—) نبود: فونت فارسیِ سرور آن گلیف را ندارد و
+    #  به‌جایش مربع خالی چاپ می‌شد. آزمایشِ فونت فقط حروف فارسی را
+    #  می‌سنجد، نه علائمی که خودِ جدول می‌کشد. خط تیره‌ی ساده در هر
+    #  فونتی هست.
+    DASH = "-"
     inv_no = f"NX-{jnow.replace('/', '')}-1G"
 
     dates = [l.get("createdJalali") for l in lines if l.get("createdJalali")]
-    span = f"{min(dates)} تا {max(dates)}" if dates else "—"
+    span = f"{min(dates)} تا {max(dates)}" if dates else DASH
 
     ML, MR = 10 * mm, 10 * mm
     CW = W - ML - MR
     page = [0]
-    pages_total = [1]
+    def _footer(self, num, total):
+        self.setFont(F, 7)
+        self.setFillColor(MUTE)
+        self.drawCentredString(W / 2, 7 * mm,
+                               _fa(f"صفحه {num} از {total}"))
 
-    def footer():
-        c.setFont(F, 7)
-        c.setFillColor(MUTE)
-        c.drawCentredString(W / 2, 7 * mm,
-                            _fa(f"صفحه {page[0]} از {pages_total[0]}"))
+    _Numbered._draw_footer = _footer
 
     def header():
-        page[0] += 1
+        # شمارش صفحه کار بوم است، نه این‌جا.
         c.setFillColor(colors.white)
         c.rect(0, 0, W, H, fill=1, stroke=0)
 
@@ -6289,8 +6335,11 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
         c.setStrokeColor(NAVY)
         c.setLineWidth(1.8)
         c.line(ML, H - 26 * mm, W - MR, H - 26 * mm)
-        footer()
         return H - 34 * mm
+
+    def end_page():
+        """صفحه را می‌بندد. فوتر را خودِ بوم آخر کار می‌کشد."""
+        c.showPage()
 
     # ─────────── صفحه‌ی اول ───────────
     y = header()
@@ -6400,28 +6449,11 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
     BOTTOM = 10 * mm
     TOTALS_H = 20 * mm          # جمع گروه + جمع کل
 
-    first_cap = max(1, int((y - BOTTOM) / ROW))
-    rest_cap = max(1, int((H - 34 * mm - 6.5 * mm - BOTTOM) / ROW))
-
-    n = len(lines)
-    # فضای جمع‌ها فقط وقتی از صفحه‌ی اول کم می‌شود که همه‌ی ردیف‌ها
-    # همان‌جا جا شوند. وگرنه ردیف‌ها تا ته صفحه می‌آیند و جمع‌ها به
-    # صفحه‌ی بعد می‌روند — که بهتر از جا گذاشتن فضای خالی است.
-    if n <= first_cap - int(TOTALS_H / ROW):
-        pages_total[0] = 2          # جدول و جمع‌ها یک صفحه + توضیحات
-    else:
-        remaining = n - first_cap
-        extra = -(-remaining // rest_cap) if remaining > 0 else 0
-        # اگر ردیف‌های آخر جا برای جمع‌ها نگذارند، یک صفحه بیشتر
-        last_used = remaining - (extra - 1) * rest_cap if extra else n
-        if (rest_cap - last_used) * ROW < TOTALS_H:
-            extra += 1
-        pages_total[0] = 1 + extra + 1
 
     idx = 0
     for ln in lines:
         if y < BOTTOM:
-            c.showPage()
+            end_page()
             y = header()
             y = draw_thead(y)
 
@@ -6433,14 +6465,14 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
         vals = [
             str(idx),
             ln["email"][:30],
-            ln.get("createdJalali") or "—",
-            ln.get("expiryJalali") or "—",
-            str(ln["days"]) if ln["days"] else "—",
+            ln.get("createdJalali") or DASH,
+            ln.get("expiryJalali") or DASH,
+            str(ln["days"]) if ln["days"] else DASH,
             str(ln["months"]),
-            str(ln["renewals"]) if ln["renewals"] else "—",
+            str(ln["renewals"]) if ln["renewals"] else DASH,
             ln["gbLabel"],
             f"{ln['usedGB']}",
-            "—" if ln.get("usagePct") is None else f"{ln['usagePct']}٪",
+            DASH if ln.get("usagePct") is None else f"{ln['usagePct']}٪",
             "∞" if not ln["limitIp"] else str(ln["limitIp"]),
             money(ln["amount"]),
         ]
@@ -6478,7 +6510,7 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
 
     # جمع گروه — اگر جا نیست، صفحه‌ی جدید
     if y < BOTTOM + TOTALS_H:
-        c.showPage()
+        end_page()
         y = header()
         y = draw_thead(y)
 
@@ -6531,7 +6563,7 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
     need = 42 * mm + (min(len(review), 18) * 4.5 * mm + 14 * mm if review else 0)
 
     if y - need < 18 * mm:
-        c.showPage()
+        end_page()
         y = header()
     else:
         y -= 6 * mm
