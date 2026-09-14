@@ -800,6 +800,128 @@ check("گروه در ساخت از _portal_group می‌آید",
       "group=group)" in APP_SRC2 and "group = _portal_group(t)" in APP_SRC2)
 
 
+# ═══════════════════════════════════════════════════════════
+head("ربات شخصی نماینده")
+
+# زیرساختش از قبل بود: run.py برای هر مستاجرِ فعالی که توکن دارد یک
+# نخ جدا می‌سازد. پس کارِ این‌جا فقط ثبت توکن است — و مهم‌ترین بخشش
+# این است که توکن غلط *قبل از ذخیره* رد شود، وگرنه رباتی بالا می‌آید
+# که هیچ‌وقت جواب نمی‌دهد و نماینده نمی‌فهمد چرا.
+
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    for _c in ("bot_token", "bot_username", "settings"):
+        try:
+            _bd.execute(f"ALTER TABLE tenants ADD COLUMN {_c} TEXT")
+        except Exception:
+            pass
+    _bd.execute("UPDATE tenants SET bot_token=NULL, bot_username=NULL,"
+                " settings='{}' WHERE portal_slug='hossein'")
+    _bd.execute("UPDATE tenants SET bot_token='999888777:BBHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw' "
+                "WHERE portal_slug='bastan'")
+    _bd.commit()
+finally:
+    _bd.close()
+
+_TB = AP._tenant_by_slug("hossein")
+
+# تلگرام ساختگی
+_asked = []
+
+
+def _fake_me(tok, timeout=10):
+    _asked.append(tok)
+    if tok.startswith("111222333:"):
+        return True, "hossein_vpn_bot"
+    return False, "تلگرام این توکن را نمی‌شناسد"
+
+
+AP._tg_get_me = _fake_me
+
+# ── شکل غلط، بدون اینکه اصلاً از تلگرام پرسیده شود ──
+_asked.clear()
+for _bad, _why in (("", "توکن خالی"), ("abc", "بدون دونقطه"),
+                   ("1:2", "خیلی کوتاه")):
+    try:
+        AP.portal_bot_set({"token": _bad}, _TB)
+        _ok = False
+    except Exception as e:
+        _ok = getattr(e, "status_code", 0) == 400
+    check(f"{_why} رد می‌شود", _ok)
+check("و برای هیچ‌کدام تلگرام صدا زده نشد", not _asked,
+      "بررسی شکل قبل از شبکه است")
+
+# ── توکنی که مال حساب دیگری است ──
+try:
+    AP.portal_bot_set({"token": "999888777:BBHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"}, _TB)
+    _dup = False
+except Exception as e:
+    _dup = getattr(e, "status_code", 0) == 409
+check("توکن تکراری رد می‌شود", _dup)
+_dup_msg = ""
+try:
+    AP.portal_bot_set({"token": "999888777:BBHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"}, _TB)
+except Exception as e:
+    _dup_msg = str(getattr(e, "detail", ""))
+check("و نام صاحبش را نمی‌گوید", "دومی" not in _dup_msg,
+      "نماینده نباید بفهمد چه کسانی در سیستم هستند")
+
+# ── توکنی که تلگرام قبولش ندارد ──
+try:
+    AP.portal_bot_set({"token": "222333444:CCHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"}, _TB)
+    _rej = False
+except Exception as e:
+    _rej = getattr(e, "status_code", 0) == 400
+check("توکنی که تلگرام نمی‌شناسد ذخیره نمی‌شود", _rej)
+
+_row = _sq3.connect(str(AP.BOT_DB))
+_tok_now = _row.execute("SELECT bot_token FROM tenants WHERE portal_slug='hossein'"
+                        ).fetchone()[0]
+_row.close()
+check("و چیزی در دیتابیس ننشست", not _tok_now,
+      "وگرنه رباتی بالا می‌آمد که هیچ‌وقت جواب نمی‌دهد")
+
+# ── توکن درست ──
+_res = AP.portal_bot_set({"token": "111222333:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"}, _TB)
+check("توکن درست ثبت می‌شود", _res["ok"] and _res["username"] == "hossein_vpn_bot")
+
+_row = _sq3.connect(str(AP.BOT_DB))
+_r = _row.execute("SELECT bot_token, bot_username FROM tenants "
+                  "WHERE portal_slug='hossein'").fetchone()
+_row.close()
+check("و در ردیف خودش نشست", _r[0] == "111222333:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw" and _r[1] == "hossein_vpn_bot")
+
+# ── توکن هرگز برنمی‌گردد ──
+_st = AP.portal_bot_get(AP._tenant_by_slug("hossein"))
+check("وضعیت می‌گوید ربات هست", _st["hasBot"] and _st["username"] == "hossein_vpn_bot")
+check("ولی توکن را برنمی‌گرداند",
+      "token" not in _st and "111222333:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw" not in str(_st),
+      "حتی به صاحب خودش هم دوباره نشان داده نمی‌شود")
+
+# ── برند: فهرست مجاز ──
+AP.portal_brand({"brand": "وی‌پی‌ان حسین", "support_username": "hsupport",
+                 "panel_pass": "نفوذ", "credit": 99999999},
+                AP._tenant_by_slug("hossein"))
+_row = _sq3.connect(str(AP.BOT_DB))
+_s2 = _row.execute("SELECT settings, credit FROM tenants "
+                   "WHERE portal_slug='hossein'").fetchone()
+_row.close()
+_js = json.loads(_s2[0] or "{}")
+check("برند ذخیره شد", _js.get("brand") == "وی‌پی‌ان حسین")
+check("پشتیبانی هم", _js.get("support_username") == "hsupport")
+check("ولی کلید خارج از فهرست مجاز ننشست", "panel_pass" not in _js,
+      "settings کلیدهای حساس هم دارد — باز گذاشتنش یعنی نماینده چیزی "
+      "را عوض کند که مال او نیست")
+
+# ── جداکردن ──
+AP.portal_bot_del(AP._tenant_by_slug("hossein"))
+_row = _sq3.connect(str(AP.BOT_DB))
+_gone = _row.execute("SELECT bot_token FROM tenants WHERE portal_slug='hossein'"
+                     ).fetchone()[0]
+_row.close()
+check("جداکردن توکن را پاک می‌کند", not _gone)
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

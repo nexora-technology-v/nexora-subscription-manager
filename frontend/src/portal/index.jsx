@@ -11,8 +11,8 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, Check, Copy, Database, LogOut, Loader2, Plus, Power,
-  RefreshCw, Search, Users, Wallet, X,
+  AlertTriangle, Bot, Check, Copy, Database, LogOut, Loader2, Plus, Power,
+  RefreshCw, Search, Trash2, Users, Wallet, X,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -385,6 +385,165 @@ function NewBox({ token, plans, onDone, onClose }) {
 }
 
 
+function BotBox({ token, onClose, onNote }) {
+  const [st, setSt] = useState(null);
+  const [tok, setTok] = useState("");
+  const [brand, setBrand] = useState("");
+  const [support, setSupport] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const j = await api("/api/portal/bot", { token });
+      setSt(j);
+      setBrand(j.brand || "");
+      setSupport(j.supportUsername || "");
+    } catch (e) {
+      setErr(e.message);
+    }
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const j = await api("/api/portal/bot", {
+        token, method: "POST", body: { token: tok.trim() },
+      });
+      setTok("");
+      onNote(`ربات @${j.username} وصل شد — ${j.note}`);
+      load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveBrand = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      await api("/api/portal/brand", {
+        token, method: "POST",
+        body: { brand, support_username: support },
+      });
+      onNote("برند ذخیره شد");
+      load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const drop = async () => {
+    setBusy(true);
+    try {
+      await api("/api/portal/bot", { token, method: "DELETE" });
+      onNote("ربات جدا شد");
+      load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
+      alignItems: "center", justifyContent: "center", padding: 16,
+      background: "rgba(0,0,0,.6)", overflowY: "auto",
+    }} onClick={onClose}>
+      <div className="fx-card p-5" style={{ width: 420, maxWidth: "100%" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-[14px] font-semibold text-white">ربات تلگرام شما</div>
+          <button onClick={onClose} className="fx-ico-btn"
+            style={{ width: 28, height: 28 }} aria-label="بستن">
+            <X size={13} />
+          </button>
+        </div>
+
+        {st?.hasBot ? (
+          <div className="rounded-xl p-3 mb-4 flex items-center justify-between gap-2"
+            style={{ background: "rgba(52,211,153,.08)",
+                     border: "1px solid rgba(52,211,153,.25)" }}>
+            <div>
+              <div className="text-[13px]" style={{ color: "var(--ok)" }}>
+                وصل است
+              </div>
+              <div dir="ltr" className="text-[13px] mt-0.5"
+                style={{ fontFamily: "var(--mono)", color: "var(--dim)" }}>
+                @{st.username}
+              </div>
+            </div>
+            <button onClick={drop} disabled={busy} className="fx-ico-btn"
+              style={{ width: 32, height: 32 }} aria-label="جداکردن ربات"
+              title="جداکردن">
+              <Trash2 size={13} />
+            </button>
+          </div>
+        ) : (
+          <p className="text-[13px] mb-4 leading-relaxed"
+            style={{ color: "var(--muted)" }}>
+            یک ربات از <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>@BotFather</span>
+            {" "}بسازید و توکنش را این‌جا بگذارید. مشتری‌های شما با آن خرید
+            می‌کنند و برند خودتان را می‌بینند.
+          </p>
+        )}
+
+        <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
+          {st?.hasBot ? "جایگزینی توکن" : "توکن ربات"}
+        </label>
+        <input dir="ltr" value={tok} onChange={(e) => setTok(e.target.value)}
+          placeholder="123456:ABC-DEF..."
+          className="fx-input w-full mb-2 text-[13px]"
+          style={{ fontFamily: "var(--mono)" }} />
+        <button onClick={save} disabled={busy || !tok.trim()}
+          className="fx-btn w-full py-2.5 text-[13px] flex items-center
+                     justify-center gap-2 mb-4">
+          {busy && <Loader2 size={13} className="animate-spin" />} ثبت توکن
+        </button>
+
+        <div className="pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+          <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
+            نام برند شما
+          </label>
+          <input value={brand} onChange={(e) => setBrand(e.target.value)}
+            className="fx-input w-full mb-2 text-[13px]" />
+
+          <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
+            یوزرنیم پشتیبانی
+          </label>
+          <input dir="ltr" value={support}
+            onChange={(e) => setSupport(e.target.value.replace("@", ""))}
+            placeholder="yoursupport"
+            className="fx-input w-full mb-2 text-[13px]"
+            style={{ fontFamily: "var(--mono)" }} />
+
+          <button onClick={saveBrand} disabled={busy}
+            className="fx-btn-g w-full py-2.5 text-[13px]">
+            ذخیره‌ی برند
+          </button>
+        </div>
+
+        {err && (
+          <p className="text-[13px] mt-3 flex items-start gap-1.5"
+            style={{ color: "var(--danger)" }}>
+            <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function Dashboard({ token, onOut }) {
   const [me, setMe] = useState(null);
   const [sum, setSum] = useState(null);
@@ -395,6 +554,7 @@ function Dashboard({ token, onOut }) {
   const [plans, setPlans] = useState(null);
   const [renew, setRenew] = useState(null);
   const [making, setMaking] = useState(false);
+  const [botOpen, setBotOpen] = useState(false);
   const [note, setNote] = useState("");
 
   const load = useCallback(async () => {
@@ -457,6 +617,11 @@ function Dashboard({ token, onOut }) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={() => setBotOpen(true)}
+              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
+              <Bot size={13} style={{ color: me?.hasBot ? "var(--ok)" : "var(--muted)" }} />
+              ربات من
+            </button>
             <button onClick={load} disabled={busy}
               className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
               {busy ? <Loader2 size={13} className="animate-spin" />
@@ -618,6 +783,11 @@ function Dashboard({ token, onOut }) {
         <NewBox token={token} plans={plans}
           onClose={() => { setMaking(false); load(); }}
           onDone={() => { setNote("کانفیگ تازه ساخته شد"); setErr(""); }} />
+      )}
+
+      {botOpen && (
+        <BotBox token={token} onClose={() => { setBotOpen(false); load(); }}
+          onNote={(m) => { setNote(m); setErr(""); }} />
       )}
     </div>
   );

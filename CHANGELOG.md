@@ -4,6 +4,30 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.19.0]
+
+### Added — A reseller can attach their own Telegram bot
+
+The machinery for this has been there all along: the bot service runs a separate
+polling loop for every active tenant that has a token, each with its own branding,
+its own panel connection and its own customers, and `sync_workers` picks up
+anything new within thirty seconds. What was missing was a way for the reseller to
+supply the token.
+
+They paste it in their portal. The token is checked against Telegram's `getMe`
+before anything is written — a mistyped token would otherwise produce a bot that
+starts, never answers, and gives nobody a reason why. The shape is checked first,
+so garbage never reaches the network. Their bot is live within half a minute.
+
+A token already registered to another account is refused without naming who has
+it; a reseller should not be able to learn who else is in the system. The token is
+never returned by the API, not even to the reseller who set it.
+
+They can also set their brand name and support username. Those go through an
+allowlist of three keys rather than the whole settings object — settings also
+holds the panel connection and the admin group id, and leaving it open would let a
+reseller change things that are not theirs.
+
 ## [1.18.0]
 
 ### Added — "پنل نمایندگی" in the admin panel

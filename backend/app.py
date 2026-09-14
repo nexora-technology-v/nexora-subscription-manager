@@ -9145,6 +9145,158 @@ def portal_toggle(payload: dict, t: dict = Depends(portal_tenant)):
     return {"ok": True, "email": email, "enabled": want}
 
 
+
+# ═══════════════════════════════════════════════════════════
+#  ربات شخصی نماینده
+#
+#  زیرساختش از قبل هست: run.py برای هر مستاجرِ فعال که توکن دارد یک
+#  نخ polling جدا می‌سازد، با برند و پنل و مشتری‌های خودش. هر سی
+#  ثانیه هم sync_workers نگاه می‌کند چه چیزی تازه اضافه شده.
+#
+#  پس تنها کاری که این‌جا می‌ماند ثبت توکن است — و مهم‌ترین بخشش
+#  این است که توکنِ غلط قبل از ذخیره‌شدن رد شود. توکنی که تایپش
+#  اشتباه باشد، رباتی می‌سازد که بالا می‌آید و هیچ‌وقت جواب نمی‌دهد،
+#  و نماینده هیچ راهی ندارد بفهمد چرا.
+# ═══════════════════════════════════════════════════════════
+
+#: کلیدهایی که نماینده می‌تواند از برندش عوض کند.
+#
+#  فهرست مجاز، نه ممنوع: settings کلیدهای حساس هم دارد (اتصال پنل،
+#  شناسه‌ی گروه مدیریت) و باز گذاشتنش یعنی نماینده می‌تواند چیزهایی
+#  را عوض کند که مال او نیست.
+PORTAL_BRAND_KEYS = {"brand", "support_username", "channel_username"}
+
+
+def _tg_get_me(token, timeout=10):
+    """
+    توکن را از خودِ تلگرام می‌پرسد. برمی‌گرداند: (درست؟, نام کاربری یا پیام)
+    """
+    import urllib.request
+    import urllib.error
+    url = f"https://api.telegram.org/bot{token}/getMe"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            data = json.loads(r.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            return False, "تلگرام این توکن را نمی‌شناسد"
+        return False, f"تلگرام پاسخ نداد (HTTP {e.code})"
+    except Exception as e:
+        return False, f"تلگرام در دسترس نبود: {type(e).__name__}"
+    if not data.get("ok"):
+        return False, "تلگرام این توکن را نپذیرفت"
+    return True, (data.get("result") or {}).get("username") or ""
+
+
+@app.get("/api/portal/bot")
+def portal_bot_get(t: dict = Depends(portal_tenant)):
+    """
+    وضعیت ربات نماینده. توکن هرگز برنمی‌گردد — فقط اینکه هست یا نه.
+    """
+    try:
+        st = json.loads(t.get("settings") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        st = {}
+    return {
+        "hasBot": bool(t.get("bot_token")),
+        "username": t.get("bot_username") or "",
+        "brand": st.get("brand") or t.get("name") or "",
+        "supportUsername": st.get("support_username") or "",
+        "channelUsername": st.get("channel_username") or "",
+    }
+
+
+@app.post("/api/portal/bot")
+def portal_bot_set(payload: dict, t: dict = Depends(portal_tenant)):
+    """
+    ثبت یا جایگزینی توکن ربات نماینده.
+
+    توکن اول از تلگرام پرسیده می‌شود و تا وقتی تایید نشود ذخیره
+    نمی‌شود. ربات خودش تا حداکثر نیم دقیقه بعد بالا می‌آید.
+    """
+    token = str((payload or {}).get("token") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="توکن وارد نشده")
+    if ":" not in token or len(token) < 20:
+        raise HTTPException(status_code=400, detail="شکل توکن درست نیست")
+
+    con = _bot_conn()
+    try:
+        used = con.execute(
+            "SELECT name FROM tenants WHERE bot_token=? AND id<>?",
+            (token, t["id"])).fetchone() if con else None
+    finally:
+        if con:
+            con.close()
+    if used:
+        # نام مالکش را نمی‌گوییم — نماینده نباید بفهمد چه کسانی
+        # در سیستم هستند.
+        raise HTTPException(status_code=409,
+                            detail="این ربات قبلاً برای حساب دیگری ثبت شده")
+
+    ok, who = _tg_get_me(token)
+    if not ok:
+        raise HTTPException(status_code=400, detail=who)
+
+    con = _bot_rw()
+    try:
+        con.execute("UPDATE tenants SET bot_token=?, bot_username=? WHERE id=?",
+                    (token, who, t["id"]))
+        con.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ذخیره نشد: {str(e)[:120]}")
+    finally:
+        con.close()
+
+    log.info("نماینده %s ربات خودش را وصل کرد: @%s", t["id"], who)
+    return {"ok": True, "username": who,
+            "note": "ربات تا نیم دقیقه‌ی دیگر خودش بالا می‌آید"}
+
+
+@app.delete("/api/portal/bot")
+def portal_bot_del(t: dict = Depends(portal_tenant)):
+    """جداکردن ربات. نخِ در حال اجرا خودش تمیز خارج می‌شود."""
+    con = _bot_rw()
+    try:
+        con.execute("UPDATE tenants SET bot_token=NULL, bot_username=NULL "
+                    "WHERE id=?", (t["id"],))
+        con.commit()
+    finally:
+        con.close()
+    return {"ok": True}
+
+
+@app.post("/api/portal/brand")
+def portal_brand(payload: dict, t: dict = Depends(portal_tenant)):
+    """
+    برند رباتِ نماینده — فقط همان چند کلیدی که مال اوست.
+    """
+    p = payload or {}
+    try:
+        st = json.loads(t.get("settings") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        st = {}
+    if not isinstance(st, dict):
+        st = {}
+
+    touched = []
+    for k in PORTAL_BRAND_KEYS:
+        if k in p:
+            st[k] = str(p[k] or "").strip()[:80]
+            touched.append(k)
+    if not touched:
+        raise HTTPException(status_code=400, detail="چیزی برای تغییر نیست")
+
+    con = _bot_rw()
+    try:
+        con.execute("UPDATE tenants SET settings=? WHERE id=?",
+                    (json.dumps(st, ensure_ascii=False), t["id"]))
+        con.commit()
+    finally:
+        con.close()
+    return {"ok": True}
+
+
 @app.post("/api/portal/logout")
 def portal_logout(x_portal_token: str = Header(None)):
     _PORTAL_SESSIONS.pop(str(x_portal_token or ""), None)
