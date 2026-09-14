@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 """
-چرا این کانفیگ «بدون نرخ» است؟
+Why is a config billed as "no rate"?
 
-روی خودِ سرور اجرا می‌شود و سه چیزی را که تصمیم می‌گیرند یک ردیف نرخ
-می‌گیرد یا نه، کنار هم می‌گذارد:
+Runs on the server and puts the three deciding facts side by side:
 
-  ۱. نرخ‌هایی که برای هر گروه ثبت شده‌اند
-  ۲. نام گروه‌ها در x-ui، و اینکه با کلیدهای ثبت‌شده می‌خوانند یا نه
-  ۳. حجم واقعی کانفیگ‌های هر گروه، و اینکه با کدام نرخ جور در می‌آید
+  1. the rates recorded for each billing group
+  2. the group names as they actually appear in x-ui, and whether they
+     match the recorded keys
+  3. the real quota of each group's configs, and which rate it matches
 
-هیچ رمز، توکن، شماره تلفن یا نام مشتری چاپ نمی‌شود — فقط نام گروه،
-حجم، و عدد. خروجی را می‌شود مستقیم فرستاد.
+Output is English on purpose: Persian right-to-left text mixes badly with
+left-to-right terminal output, and this is meant to be copied and pasted.
 
-اجرا:  python3 tools/billing-why.py
+No password, token, customer name or phone number is printed.
+
+Run:  python3 tools/billing-why.py
 """
 import glob
 import json
@@ -25,6 +27,7 @@ G, R, Y, D, X = ("\033[38;5;42m", "\033[38;5;203m", "\033[38;5;221m",
 
 BILLING_PATHS = [
     "/opt/nexora/data/billing.db",
+    "/opt/nexora-panel/data/billing.db",
     "/root/nexora/data/billing.db",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                  "data", "billing.db"),
@@ -45,13 +48,13 @@ def _find(paths, extra_glob=None):
 
 
 def _open(path):
-    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=10)
+    con = sqlite3.connect("file:" + path + "?mode=ro", uri=True, timeout=10)
     con.row_factory = sqlite3.Row
     return con
 
 
 def _gb_of(total):
-    """همان تبدیلی که حسابداری می‌کند."""
+    """The same conversion the billing code does."""
     try:
         total = int(total or 0)
     except (TypeError, ValueError):
@@ -60,7 +63,10 @@ def _gb_of(total):
 
 
 def _price_for(gb, rates):
-    """کپی ساده‌ی منطق قیمت‌گذاری — تا بشود دقیقاً همان نتیجه را دید."""
+    """
+    Mirrors backend/app.py _price_with_reason, so what this prints is
+    what the panel will actually charge.
+    """
     valid = []
     for r in rates or []:
         try:
@@ -68,10 +74,12 @@ def _price_for(gb, rates):
         except (TypeError, ValueError, AttributeError):
             continue
     if not valid:
-        return None, "نرخی خوانده نشد"
+        return None, "no readable rate for this group"
+
     for g, price in valid:
         if g == gb:
             return price, None
+
     if gb > 0:
         higher = sorted((v for v in valid if v[0] > gb), key=lambda v: v[0])
         if higher:
@@ -79,8 +87,15 @@ def _price_for(gb, rates):
         vol = [v for v in valid if v[0] > 0]
         if vol:
             return max(vol, key=lambda v: v[0])[1], None
-        return None, "حجمی است، ولی فقط نرخ نامحدود تعریف شده"
-    return None, "نامحدود است، ولی نرخ نامحدود تعریف نشده"
+        flat = [v for v in valid if v[0] == 0]
+        if flat:
+            return flat[0][1], None
+        return None, "no rate in this group applies to " + str(gb) + " GB"
+
+    vol = [v for v in valid if v[0] > 0]
+    if vol:
+        return max(vol, key=lambda v: v[0])[1], None
+    return None, "no usable rate for this group"
 
 
 def main():
@@ -88,16 +103,16 @@ def main():
     xpath = _find(XUI_PATHS)
 
     if not bpath:
-        print(f"{R}billing.db پیدا نشد{X}")
+        print(R + "billing.db not found" + X)
         sys.exit(1)
     if not xpath:
-        print(f"{R}x-ui.db پیدا نشد{X}")
+        print(R + "x-ui.db not found" + X)
         sys.exit(1)
 
-    print(f"{D}billing: {bpath}{X}")
-    print(f"{D}x-ui:    {xpath}{X}\n")
+    print(D + "billing: " + bpath + X)
+    print(D + "x-ui:    " + xpath + X + "\n")
 
-    # ── ۱) نرخ‌های ثبت‌شده ──
+    # ── 1) recorded rates ──
     con = _open(bpath)
     conf = {}
     try:
@@ -111,41 +126,45 @@ def main():
     finally:
         con.close()
 
-    print(f"{Y}── گروه‌هایی که در حسابداری ثبت شده‌اند ──{X}")
+    print(Y + "-- groups configured in billing --" + X)
     if not conf:
-        print(f"  {R}هیچ گروهی ثبت نشده{X}")
+        print("  " + R + "none configured" + X)
     for k, d in sorted(conf.items()):
-        rates = d["_rates"]
-        rt = "، ".join(
-            ("نامحدود" if int(r.get("gb", 0) or 0) == 0 else f"{r.get('gb')}گیگ")
-            + f"={r.get('price')}"
-            for r in rates) or f"{R}هیچ نرخی{X}"
-        print(f"  «{k}»  محاسبه={'بله' if d.get('billable') else 'خیر'}  "
-              f"نرخ‌ها: {rt}")
+        parts = []
+        for r in d["_rates"]:
+            try:
+                g = int(r.get("gb", 0) or 0)
+            except (TypeError, ValueError):
+                g = 0
+            parts.append(("unlimited" if g == 0 else str(g) + "GB")
+                         + "=" + str(r.get("price")))
+        rt = ", ".join(parts) or (R + "NO RATES" + X)
+        print("  [" + k + "]  billable=" + ("yes" if d.get("billable") else "no")
+              + "  rates: " + rt)
         if d.get("per_gb"):
-            print(f"      {D}نرخ حجمی: {d['per_gb']} — نرخ‌های بالا نادیده "
-                  f"گرفته می‌شوند{X}")
+            print("      " + Y + "per-GB rate " + str(d["per_gb"])
+                  + " is set - the tiered rates above are IGNORED" + X)
         if d.get("settled_until"):
-            print(f"      {D}تسویه تا: {d['settled_until']} — قبلش شمرده "
-                  f"نمی‌شود{X}")
+            print("      " + D + "settled until " + str(d["settled_until"])
+                  + " - anything before is not counted" + X)
         if d.get("period_start"):
-            print(f"      {D}شروع دوره: {d['period_start']}{X}")
+            print("      " + D + "period starts " + str(d["period_start"]) + X)
 
-    # ── ۲) گروه‌های واقعی در x-ui ──
+    # ── 2) real groups in x-ui ──
     con = _open(xpath)
     try:
         cols = {r[1] for r in con.execute("PRAGMA table_info(clients)")}
         if "group_name" not in cols:
-            print(f"\n{R}جدول clients ستون group_name ندارد — این پنل "
-                  f"نسخه‌ی قدیمی است{X}")
+            print("\n" + R + "clients table has no group_name column - "
+                  "this panel is an older build" + X)
             sys.exit(1)
-        # نام ستون حجم بین نسخه‌های x-ui فرق می‌کند. مثل بک‌اند، از
-        # روی اسکیما انتخابش می‌کنیم نه از روی حدس.
+        # The quota column is named differently across x-ui builds. Pick it
+        # off the schema, like the backend does, instead of guessing.
         qcol = next((c for c in ("total_gb", "total", "totalGB") if c in cols),
                     None)
         if not qcol:
-            print(f"\n{R}ستون حجم در جدول clients پیدا نشد — ستون‌ها: "
-                  + "، ".join(sorted(cols)) + X)
+            print("\n" + R + "no quota column in clients - found: "
+                  + ", ".join(sorted(cols)) + X)
             sys.exit(1)
         rows = [{"group_name": r[0], "total": r[1], "enable": r[2]}
                 for r in con.execute(
@@ -158,42 +177,61 @@ def main():
         g = r.get("group_name") or ""
         groups.setdefault(g, []).append(r)
 
-    print(f"\n{Y}── گروه‌های واقعی در x-ui ──{X}")
+    print("\n" + Y + "-- real groups in x-ui --" + X)
+    billed = unpriced = unconfigured = 0
+
     for g, items in sorted(groups.items(), key=lambda kv: -len(kv[1])):
-        shown = g if g else "(بدون گروه)"
+        shown = g if g else "(no group)"
         known = g in conf
-        mark = f"{G}✓ ثبت شده{X}" if known else f"{R}✗ در حسابداری نیست{X}"
-        print(f"  «{shown}» — {len(items)} کانفیگ  {mark}")
+        mark = (G + "configured" + X) if known else (R + "NOT in billing" + X)
+        print("  [" + shown + "] - " + str(len(items)) + " configs  " + mark)
 
         if not known:
+            unconfigured += len(items)
             near = [k for k in conf if k.strip().lower() == g.strip().lower()]
             if near:
-                print(f"      {R}ولی «{near[0]}» ثبت شده — فقط فاصله یا "
-                      f"حروف بزرگ و کوچک فرق دارد{X}")
+                print("      " + R + "but [" + near[0] + "] is configured - "
+                      "differs only by spacing or letter case" + X)
             continue
 
         d = conf[g]
         if not d.get("billable"):
-            print(f"      {D}محاسبه خاموش است — این گروه اصلاً صورتحساب "
-                  f"نمی‌شود{X}")
+            print("      " + D + "billing is OFF for this group" + X)
             continue
         if d.get("per_gb"):
+            print("      " + D + "billed per GB used, not per config" + X)
             continue
 
-        # هر حجم، چند تا، و چه می‌شود
         buckets = {}
         for it in items:
-            buckets.setdefault(_gb_of(it.get("total")), 0)
-            buckets[_gb_of(it.get("total"))] += 1
+            gb = _gb_of(it.get("total"))
+            buckets[gb] = buckets.get(gb, 0) + 1
+
         for gb, n in sorted(buckets.items()):
             price, why = _price_for(gb, d["_rates"])
-            label = "نامحدود" if gb == 0 else f"{gb} گیگ"
+            label = "unlimited" if gb == 0 else str(gb) + "GB"
             if price is None:
-                print(f"      {R}✗ {n} کانفیگِ {label}: {why}{X}")
+                unpriced += n
+                print("      " + R + "X  " + str(n) + " x " + label
+                      + ": " + why + X)
             else:
-                print(f"      {G}✓ {n} کانفیگِ {label} → {price}{X}")
+                billed += price * n
+                print("      " + G + "OK " + str(n) + " x " + label
+                      + " -> " + format(price, ",") + X)
 
-    print(f"\n{D}هیچ نام مشتری، شماره یا رمزی در این خروجی نیست.{X}")
+    print("\n" + Y + "-- summary --" + X)
+    print("  monthly total for configured groups: "
+          + format(billed, ",") + " toman")
+    if unpriced:
+        print("  " + R + str(unpriced) + " configs still have no rate" + X)
+    else:
+        print("  " + G + "every config in a configured group has a rate" + X)
+    if unconfigured:
+        print("  " + Y + str(unconfigured)
+              + " configs are in groups with no billing setup at all" + X)
+
+    print("\n" + D + "No customer name, phone number or password is in this "
+          "output." + X)
 
 
 if __name__ == "__main__":

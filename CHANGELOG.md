@@ -4,6 +4,36 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.12.0]
+
+### Fixed — A rate you defined is now used, even when it does not match exactly
+
+On a real server: 257 configs, and only 29 of them were being billed.
+
+The `unlimited` group had one rate — unlimited = 190,000 — but 92 of its 94
+configs have a quota (88 at 200 GB, 4 at 20 GB). `Hossein dehlagi` was the same
+shape. The code refused to apply an unlimited rate to a config with a quota, on
+the reasoning that a volume rate cannot be generalised to unlimited. So 100
+configs priced at zero and the invoice was short by about 19.4 million toman a
+month.
+
+That reasoning had it backwards. Defining a rate for a group means the group has
+a price. "It does not match exactly, so nothing" answers a question nobody asked.
+
+Two symmetric fallbacks now close it: a config with a quota in a group whose only
+rate is unlimited takes that rate as the group's flat price, and an unlimited
+config in a group with only volume rates takes the highest tier — the same rule
+already used for a config larger than every tier.
+
+This can only turn a zero into a price. No line that already had one changes.
+
+### Changed — `nexora billing-why` prints English
+
+Persian right-to-left text mixes badly with left-to-right terminal output, and
+this is meant to be copied and pasted. It also now ends with a summary: the
+monthly total, how many configs still have no rate, and how many sit in groups
+with no billing setup at all.
+
 ## [1.11.1]
 
 ### Added — `nexora billing-why`
