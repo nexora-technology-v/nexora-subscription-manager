@@ -4,6 +4,18 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.19.2]
+
+### Fixed — A reseller's plans appeared in the owner's plan list
+
+Reading the plans was never scoped to a tenant, while saving them always was.
+With one bot that difference was invisible. As soon as a reseller can run their
+own bot — shipped yesterday — their plans show up in the owner's list, and
+deleting one from there answers `ok` and changes nothing, because the delete is
+scoped to the owner's own tenant.
+
+The read is scoped now, the same way the write always was.
+
 ## [1.19.1]
 
 ### Fixed — A reseller set up from the panel could not log in

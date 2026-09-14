@@ -2083,9 +2083,23 @@ def bot_plans_get(x_admin_password: str = Header(...)):
     if not con:
         return {"plans": [], "ready": False}
     try:
-        rows = con.execute(
-            "SELECT * FROM plans ORDER BY sort_order, id"
-        ).fetchall()
+        # به مستاجر اصلی محدود، مثل مسیر ذخیره.
+        #
+        # قبلاً بی‌قید بود. تا وقتی فقط یک ربات وجود داشت فرقی
+        # نمی‌کرد، ولی از وقتی نماینده می‌تواند ربات خودش را داشته
+        # باشد، پلن‌های او در فهرست پلن‌های مالک ظاهر می‌شدند — و
+        # چون *ذخیره* به مستاجر اصلی محدود است، حذفشان از آن فهرست
+        # پاسخ «ok» می‌داد و هیچ کاری نمی‌کرد.
+        root = con.execute(
+            "SELECT id FROM tenants WHERE parent_id IS NULL "
+            "ORDER BY id LIMIT 1").fetchone()
+        if root:
+            rows = con.execute(
+                "SELECT * FROM plans WHERE tenant_id=? ORDER BY sort_order, id",
+                (root["id"],)).fetchall()
+        else:
+            rows = con.execute(
+                "SELECT * FROM plans ORDER BY sort_order, id").fetchall()
         return {"plans": [dict(r) for r in rows], "ready": True}
     except Exception:
         return {"plans": [], "ready": True}
