@@ -4,6 +4,23 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.22.0]
+
+### Added — "نیاز به تنظیم": the groups earning you nothing, in one place
+
+On the real server 94 configs sat in seven groups that contributed nothing to any
+invoice, and no screen said so. The only symptom was a total lower than expected,
+with nothing to explain the gap — which is how it went unnoticed long enough to
+be worth almost as much as everything that was being billed.
+
+The groups page now opens with them: how many configs, which group, and which of
+the three reasons it is — billing switched off, no rates defined at all, or rates
+that do not cover the sizes those configs actually use. Each row has a button that
+opens that group for editing.
+
+Naming the reason is the point. "Nothing is counted here" sends you looking; "no
+rates defined" tells you what to do.
+
 ## [1.21.0]
 
 ### Added — Topping up a reseller's credit, with a ledger

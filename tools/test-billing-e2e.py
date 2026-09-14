@@ -835,6 +835,33 @@ else:
           "خط تیره‌ی بلند در فونت فارسیِ سرور گلیف ندارد و مربع می‌شود")
 
 
+# ═══════════════════════════════════════════════════════════
+head("گروه‌هایی که هیچ درآمدی از آن‌ها شمرده نمی‌شود")
+
+# روی سرور واقعی ۹۴ کانفیگ در هفت گروه بودند که در صورتحساب
+# نمی‌آمدند، و هیچ‌جای پنل این را یکجا نمی‌گفت. مدیر فقط می‌دید عدد
+# کل کمتر از انتظارش است.
+
+APP_SRC_NS = io.open(os.path.join(ROOT, "backend", "app.py"),
+                     encoding="utf-8").read()
+check("نمای کلی فهرست «نیاز به تنظیم» می‌دهد",
+      '"needsSetup": needs' in APP_SRC_NS)
+check("و جمع کانفیگ‌هایش را هم", '"needsSetupConfigs"' in APP_SRC_NS)
+check("گروه خاموش شناسایی می‌شود",
+      'if not g["billable"]' in APP_SRC_NS and "خاموش است" in APP_SRC_NS)
+check("گروه بدون نرخ هم", "هیچ نرخی تعریف نشده" in APP_SRC_NS)
+check("و گروهی که بعضی حجم‌هایش نرخ ندارند",
+      'elif g["unpriced"]' in APP_SRC_NS)
+check("گروه بی‌کانفیگ در فهرست نمی‌آید",
+      'if g["configs"] <= 0:' in APP_SRC_NS,
+      "گروه خالی چیزی برای تنظیم ندارد")
+
+BJ = io.open(os.path.join(ROOT, "frontend", "src", "sections", "billing.jsx"),
+             encoding="utf-8").read()
+check("پنل هم نشانش می‌دهد", "نیاز به تنظیم" in BJ)
+check("با دکمه‌ای که همان گروه را باز می‌کند", "setOpen(n.key)" in BJ)
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

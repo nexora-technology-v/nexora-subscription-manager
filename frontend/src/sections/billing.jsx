@@ -1601,6 +1601,43 @@ export function BillingGroups({ password }) {
       <SectionHead title="واسطه‌ها و نرخ"
         desc="گروه‌ها از ۳x-ui خوانده می‌شوند. برای هرکدام تعیین کنید واسطه است یا مشتری مستقیم." />
 
+      {/* گروه‌هایی که هیچ درآمدی از آن‌ها شمرده نمی‌شود.
+          بدون این، تنها نشانه‌اش این بود که عدد کل از انتظار کمتر
+          است — و هیچ‌جا نمی‌گفت چرا یا کدام گروه. */}
+      {(data.needsSetup || []).length > 0 && (
+        <div className="fx-card p-5 mb-4"
+          style={{ borderColor: "rgba(251,191,36,.3)" }}>
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle size={15} style={{ color: "var(--warn)" }} />
+            <span className="text-[14px] font-semibold text-white">
+              نیاز به تنظیم
+            </span>
+          </div>
+          <p className="text-[13px] mb-3" style={{ color: "var(--muted)" }}>
+            {faNum(data.needsSetupConfigs)} کانفیگ در{" "}
+            {faNum(data.needsSetup.length)} گروه در صورتحساب حساب نمی‌شوند.
+          </p>
+
+          {data.needsSetup.map((n) => (
+            <div key={n.key}
+              className="flex items-center justify-between gap-3 py-2 flex-wrap"
+              style={{ borderTop: "1px solid var(--border)" }}>
+              <div className="min-w-0">
+                <div className="text-[13px] text-white" dir="ltr"
+                  style={{ fontFamily: "var(--mono)" }}>{n.key}</div>
+                <div className="text-[12px] mt-0.5" style={{ color: "var(--warn)" }}>
+                  {faNum(n.configs)} کانفیگ · {n.why}
+                </div>
+              </div>
+              <button onClick={() => setOpen(n.key)}
+                className="fx-btn-g px-3 py-2 text-[13px] shrink-0">
+                تنظیم کن
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {data.groups.map((g) => {
         const d = get(g);
         const isOpen = open === g.name;

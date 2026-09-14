@@ -5229,9 +5229,44 @@ def _billing_overview_impl():
         g["uncertain"] = g["estimated"]
 
     billed = [g for g in out if g["billable"]]
+
+    # ── گروه‌هایی که هیچ درآمدی از آن‌ها شمرده نمی‌شود ──
+    #
+    # روی سرور واقعی ۹۴ کانفیگ در هفت گروه بودند که هیچ‌کدام در
+    # صورتحساب نمی‌آمدند، و هیچ‌جای پنل این را یکجا نمی‌گفت. مدیر
+    # فقط می‌دید که عدد کل کمتر از انتظارش است و دلیلش را نمی‌فهمید.
+    #
+    # هر ردیف می‌گوید *چه چیزی* کم است، نه فقط اینکه مشکلی هست.
+    needs = []
+    for g in out:
+        if g["configs"] <= 0:
+            continue
+        if not g["billable"]:
+            needs.append({
+                "key": g["key"], "configs": g["configs"],
+                "why": "محاسبه برای این گروه خاموش است",
+                "fix": "billable",
+            })
+        elif not g["rates"] and not g.get("perGb"):
+            needs.append({
+                "key": g["key"], "configs": g["configs"],
+                "why": "هیچ نرخی تعریف نشده",
+                "fix": "rates",
+            })
+        elif g["unpriced"]:
+            needs.append({
+                "key": g["key"], "configs": g["unpriced"],
+                "why": (list(g.get("unpricedWhy") or {})
+                        or ["نرخ این حجم‌ها تعریف نشده"])[0],
+                "fix": "rates",
+            })
+    needs.sort(key=lambda x: -x["configs"])
+
     return {
         "ready": True,
         "groups": out,
+        "needsSetup": needs,
+        "needsSetupConfigs": sum(x["configs"] for x in needs),
         "totalClients": total_clients,
         "botClients": sum(g.get("botOwned", 0) for g in out),
 
