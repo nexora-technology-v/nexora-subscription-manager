@@ -4,6 +4,33 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.17.0]
+
+### Added — Resellers can create configs from their own panel
+
+The last piece: a reseller picks a quota, a length and a device count, and gets a
+config with its subscription link. They never touch the owner's x-ui again.
+
+Creating is more dangerous than renewing, so two things are decided here and not
+by the request:
+
+**The group.** It comes from the reseller's own row and is passed to the panel as
+`groupName`. It is the only thing that decides whose config this is.
+
+**The name.** The reseller does not send one; it is generated as their own unique
+slug plus random hex. If they could name it, they could pick a name matching
+another group's pattern — and the subscription page picks its branding from the
+email prefix, so their customer would see someone else's brand, and the billing
+side might count the row under the wrong group.
+
+The quota must be one of the tiers the owner defined for that group. A reseller
+cannot create a size that has no rate, which would otherwise produce a config that
+shows up as "بدون نرخ" at month end and that nobody pays for.
+
+Also fixed while testing this: `int(payload.get("months") or 1)` turned a
+requested zero into one. Someone asking for zero months would have been given one
+and charged for it. Missing and zero are told apart now, on both create and renew.
+
 ## [1.16.0]
 
 ### Added — Resellers can renew and disable from their own panel

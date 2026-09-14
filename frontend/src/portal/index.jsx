@@ -11,7 +11,7 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, Check, Database, LogOut, Loader2, Power,
+  AlertTriangle, Check, Copy, Database, LogOut, Loader2, Plus, Power,
   RefreshCw, Search, Users, Wallet, X,
 } from "lucide-react";
 
@@ -222,6 +222,169 @@ function RenewBox({ token, row, plans, onDone, onClose }) {
 }
 
 
+function NewBox({ token, plans, onDone, onClose }) {
+  const tiers = plans?.plans || [];
+  const [gb, setGb] = useState(tiers[0] ? tiers[0].gb : 0);
+  const [months, setMonths] = useState(1);
+  const [devices, setDevices] = useState(1);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [made, setMade] = useState(null);
+
+  const tier = tiers.find((x) => x.gb === gb);
+  const extra = devices > 1 ? devices - 1 : 0;
+  const total = tier
+    ? (tier.price + (tier.perDevice || 0) * extra) * months : null;
+
+  const go = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const j = await api("/api/portal/config", {
+        token, method: "POST", body: { gb, months, devices },
+      });
+      setMade(j);
+      onDone();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
+      alignItems: "center", justifyContent: "center", padding: 16,
+      background: "rgba(0,0,0,.6)", overflowY: "auto",
+    }} onClick={onClose}>
+      <div className="fx-card p-5" style={{ width: 380, maxWidth: "100%" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[14px] font-semibold text-white">کانفیگ تازه</div>
+          <button onClick={onClose} className="fx-ico-btn"
+            style={{ width: 28, height: 28 }} aria-label="بستن">
+            <X size={13} />
+          </button>
+        </div>
+
+        {made ? (
+          <>
+            <div className="rounded-xl p-3 mb-3"
+              style={{ background: "rgba(52,211,153,.08)",
+                       border: "1px solid rgba(52,211,153,.25)" }}>
+              <div className="text-[13px] mb-2" style={{ color: "var(--ok)" }}>
+                ساخته شد
+              </div>
+              <div dir="ltr" className="text-[13px]"
+                style={{ fontFamily: "var(--mono)", color: "var(--dim)",
+                         wordBreak: "break-all" }}>
+                {made.email}
+              </div>
+            </div>
+            {made.subUrl && (
+              <div className="mb-3">
+                <div className="text-[12px] mb-1.5" style={{ color: "var(--muted)" }}>
+                  لینک اشتراک
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div dir="ltr" className="fx-input text-[12px] flex-1"
+                    style={{ fontFamily: "var(--mono)", overflow: "hidden",
+                             textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {made.subUrl}
+                  </div>
+                  <button className="fx-ico-btn" style={{ width: 32, height: 32 }}
+                    aria-label="کپی"
+                    onClick={() => navigator.clipboard?.writeText(made.subUrl)}>
+                    <Copy size={13} />
+                  </button>
+                </div>
+              </div>
+            )}
+            <button onClick={onClose} className="fx-btn w-full py-2.5 text-[13px]">
+              بستن
+            </button>
+          </>
+        ) : (
+          <>
+            <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
+              حجم
+            </label>
+            <div className="flex gap-1.5 flex-wrap mb-3">
+              {tiers.map((x) => (
+                <button key={x.gb} onClick={() => setGb(x.gb)}
+                  className="px-3 py-2 rounded-lg text-[13px]"
+                  style={{
+                    background: gb === x.gb ? "rgba(43,127,214,.18)" : "transparent",
+                    border: `1px solid ${gb === x.gb ? "rgba(43,127,214,.45)" : "var(--border)"}`,
+                    color: gb === x.gb ? "var(--accent-2)" : "var(--muted)",
+                  }}>
+                  {x.label}
+                </button>
+              ))}
+              {!tiers.length && (
+                <span className="text-[13px]" style={{ color: "var(--warn)" }}>
+                  هنوز نرخی برای شما تعریف نشده
+                </span>
+              )}
+            </div>
+
+            <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
+              چند ماه
+            </label>
+            <div className="flex gap-1.5 flex-wrap mb-3">
+              {[1, 2, 3, 6, 12].map((m) => (
+                <button key={m} onClick={() => setMonths(m)}
+                  className="px-3 py-2 rounded-lg text-[13px]"
+                  style={{
+                    background: months === m ? "rgba(43,127,214,.18)" : "transparent",
+                    border: `1px solid ${months === m ? "rgba(43,127,214,.45)" : "var(--border)"}`,
+                    color: months === m ? "var(--accent-2)" : "var(--muted)",
+                  }}>
+                  {faNum(m)}
+                </button>
+              ))}
+            </div>
+
+            <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
+              تعداد کاربر هم‌زمان
+            </label>
+            <input type="number" min="1" max="20" dir="ltr" value={devices}
+              onChange={(e) => setDevices(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+              className="fx-input w-full text-center mb-3"
+              style={{ fontFamily: "var(--mono)" }} />
+
+            {total !== null && (
+              <div className="rounded-xl p-3 mb-3 text-[13px]"
+                style={{ background: "var(--surface-3)", color: "var(--dim)" }}>
+                حدود <b style={{ color: "var(--accent-2)" }}>{faNum(total)}</b> تومان
+                {extra > 0 && (
+                  <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+                    شامل {faNum(extra)} کاربر اضافه
+                  </div>
+                )}
+              </div>
+            )}
+
+            {err && (
+              <p className="text-[13px] mb-3 flex items-start gap-1.5"
+                style={{ color: "var(--danger)" }}>
+                <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+              </p>
+            )}
+
+            <button onClick={go} disabled={busy || !tiers.length}
+              className="fx-btn w-full py-2.5 text-[13px] flex items-center justify-center gap-2">
+              {busy && <Loader2 size={13} className="animate-spin" />} بساز
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function Dashboard({ token, onOut }) {
   const [me, setMe] = useState(null);
   const [sum, setSum] = useState(null);
@@ -231,6 +394,7 @@ function Dashboard({ token, onOut }) {
   const [busy, setBusy] = useState(false);
   const [plans, setPlans] = useState(null);
   const [renew, setRenew] = useState(null);
+  const [making, setMaking] = useState(false);
   const [note, setNote] = useState("");
 
   const load = useCallback(async () => {
@@ -352,7 +516,15 @@ function Dashboard({ token, onOut }) {
 
         <div className="fx-card p-5">
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <div className="text-[14px] font-semibold text-white">کانفیگ‌های شما</div>
+            <div className="flex items-center gap-2">
+              <span className="text-[14px] font-semibold text-white">
+                کانفیگ‌های شما
+              </span>
+              <button onClick={() => setMaking(true)}
+                className="fx-btn px-3 py-1.5 text-[12px] flex items-center gap-1">
+                <Plus size={12} /> کانفیگ تازه
+              </button>
+            </div>
             <div className="relative">
               <Search size={13} className="absolute top-1/2 -translate-y-1/2 right-3"
                 style={{ color: "var(--muted)" }} />
@@ -440,6 +612,12 @@ function Dashboard({ token, onOut }) {
         <RenewBox token={token} row={renew} plans={plans}
           onClose={() => setRenew(null)}
           onDone={(m) => { setRenew(null); setNote(m); setErr(""); load(); }} />
+      )}
+
+      {making && (
+        <NewBox token={token} plans={plans}
+          onClose={() => { setMaking(false); load(); }}
+          onDone={() => { setNote("کانفیگ تازه ساخته شد"); setErr(""); }} />
       )}
     </div>
   );

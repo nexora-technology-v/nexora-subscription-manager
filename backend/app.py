@@ -8867,10 +8867,11 @@ def portal_renew(payload: dict, t: dict = Depends(portal_tenant)):
     """
     p = payload or {}
     email = str(p.get("email") or "").strip()
+    _mv = p.get("months")
     try:
-        months = int(p.get("months") or 1)
+        months = 1 if _mv is None or _mv == "" else int(_mv)
     except (TypeError, ValueError):
-        months = 1
+        raise HTTPException(status_code=400, detail="تعداد ماه نامعتبر است")
     if not 1 <= months <= 12:
         raise HTTPException(status_code=400, detail="تعداد ماه باید بین ۱ تا ۱۲ باشد")
 
@@ -8907,6 +8908,161 @@ def portal_renew(payload: dict, t: dict = Depends(portal_tenant)):
     return {"ok": True, "email": email, "months": months,
             "charged": amount,
             "expiryMs": (res or {}).get("expiry_ms")}
+
+
+
+def _portal_new_email(t, taken):
+    """
+    نام کانفیگ تازه — ساختِ ما، نه فرستاده‌ی نماینده.
+
+    اگر نماینده نام را می‌فرستاد، می‌توانست نامی بسازد که با الگوی
+    گروه دیگری بخواند. صفحه‌ی اشتراک برند را از پیشوند ایمیل تشخیص
+    می‌دهد، پس نامِ جعلی یعنی مشتری او برند نماینده‌ی دیگری را
+    می‌بیند — و بدتر، حسابداری هم ممکن است آن ردیف را جای دیگری
+    بشمارد.
+
+    پیشوند همان نشانیِ خودِ نماینده است که در کل سیستم یکتاست.
+    """
+    slug = "".join(ch for ch in str(t.get("portal_slug") or "nx")
+                   if ch.isalnum())[:12].lower() or "nx"
+    for _ in range(40):
+        name = f"{slug}_{_secrets.token_hex(4)}"
+        if name not in taken:
+            return name
+    raise HTTPException(status_code=500, detail="ساخت نام یکتا ممکن نشد")
+
+
+def _portal_inbound(t):
+    """اینباندی که کانفیگ روی آن ساخته می‌شود."""
+    ib = t.get("default_inbound")
+    if not ib:
+        con = _bot_conn()
+        try:
+            r = con.execute(
+                "SELECT default_inbound FROM tenants WHERE parent_id IS NULL "
+                "ORDER BY id LIMIT 1").fetchone() if con else None
+            ib = (r["default_inbound"] if r else None)
+        except Exception:
+            ib = None
+        finally:
+            if con:
+                con.close()
+    try:
+        ib = int(ib or 0)
+    except (TypeError, ValueError):
+        ib = 0
+    if ib <= 0:
+        raise HTTPException(
+            status_code=503,
+            detail="اینباند پیش‌فرض تنظیم نشده — با پشتیبانی تماس بگیرید")
+    return ib
+
+
+@app.post("/api/portal/config")
+def portal_create(payload: dict, t: dict = Depends(portal_tenant)):
+    """
+    ساخت کانفیگ تازه در گروهِ همین نماینده.
+
+    حجم باید یکی از پله‌هایی باشد که مالک برای این گروه تعریف کرده.
+    نماینده نمی‌تواند حجمی بسازد که نرخ ندارد — وگرنه ردیفی ساخته
+    می‌شود که سر ماه «بدون نرخ» می‌ماند و کسی پولش را نمی‌دهد.
+    """
+    p = payload or {}
+    group = _portal_group(t)
+    _conf, rates = _portal_rates(t)
+    if not rates:
+        raise HTTPException(status_code=409,
+                            detail="برای این گروه نرخی تعریف نشده")
+
+    # «نیامده» و «صفر آمده» یکی نیستند.
+    #
+    # int(p.get("months") or 1) صفر را بی‌صدا به یک تبدیل می‌کرد —
+    # یعنی کسی که صفر ماه خواسته، یک ماه می‌گرفت و پولش را می‌داد.
+    # وقتی پول در میان است، عوض‌کردن بی‌صدای خواسته‌ی کاربر غلط است.
+    def _num(key, default):
+        v = p.get(key)
+        if v is None or v == "":
+            return default
+        return int(v)
+
+    try:
+        gb = max(0, _num("gb", 0))
+        months = _num("months", 1)
+        devices = _num("devices", 1)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="ورودی نامعتبر است")
+
+    if not 1 <= months <= 12:
+        raise HTTPException(status_code=400, detail="تعداد ماه باید بین ۱ تا ۱۲ باشد")
+    if not 0 <= devices <= 20:
+        raise HTTPException(status_code=400, detail="تعداد کاربر باید بین ۰ تا ۲۰ باشد")
+
+    # حجم باید دقیقاً یکی از پله‌های تعریف‌شده باشد
+    tiers = set()
+    for r in rates:
+        try:
+            tiers.add(max(0, int(r.get("gb", 0) or 0)))
+        except (TypeError, ValueError):
+            continue
+    if gb not in tiers:
+        raise HTTPException(
+            status_code=400,
+            detail="این حجم در نرخ‌های گروه شما نیست")
+
+    amount, base, _per, _extra = _line_amount(gb, rates, months, devices)
+    if base is None:
+        raise HTTPException(status_code=409, detail="نرخ این حجم پیدا نشد")
+
+    clients, _k, err = _read_xui_clients()
+    if clients is None:
+        raise HTTPException(status_code=400, detail=err)
+    taken = {c.get("email") for c in clients}
+    email = _portal_new_email(t, taken)
+
+    ok, why = _portal_charge(t, amount, f"ساخت {email}")
+    if not ok:
+        raise HTTPException(status_code=402, detail=why)
+
+    inbound = _portal_inbound(t)
+    xui, _E = _portal_xui(t)
+    try:
+        # گروه از ردیف مستاجر می‌آید، نه از درخواست. این تنها جایی
+        # است که تعیین می‌کند کانفیگ تازه مال کیست.
+        client = xui.add_client(inbound, email, gb=gb, days=months * 30,
+                                ip_limit=devices, group=group)
+    except Exception as e:
+        _portal_refund(t, amount)
+        raise HTTPException(status_code=502,
+                            detail=f"پنل کانفیگ را نساخت: {str(e)[:140]}")
+
+    # ساخت هم مثل تمدید ثبت می‌شود: دوره‌ی اول هم فروش است.
+    if months > 1:
+        _portal_log_renewal(t, email, months - 1)
+
+    # لینک اشتراک از تنظیمات مستاجر — همان کلیدی که ربات می‌خواند.
+    sub_url = None
+    try:
+        row = t if t.get("settings") else None
+        if row is None:
+            con = _bot_conn()
+            try:
+                r = con.execute("SELECT settings FROM tenants "
+                                "WHERE parent_id IS NULL ORDER BY id LIMIT 1"
+                                ).fetchone() if con else None
+                row = dict(r) if r else {}
+            finally:
+                if con:
+                    con.close()
+        st = json.loads((row or {}).get("settings") or "{}")
+        base_url = (st.get("sub_base_url") or "").strip()
+        if base_url:
+            sub_url = f"{base_url.rstrip('/')}/{(client or {}).get('subId') or email}"
+    except Exception:
+        sub_url = None
+
+    return {"ok": True, "email": email, "gb": gb, "months": months,
+            "devices": devices, "charged": amount,
+            "uuid": (client or {}).get("id"), "subUrl": sub_url}
 
 
 @app.post("/api/portal/toggle")

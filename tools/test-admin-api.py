@@ -698,6 +698,108 @@ check("کسر اعتبار اتمی است",
 check("و اگر پنل شکست خورد پول برمی‌گردد", "_portal_refund" in APP_SRC)
 
 
+# ═══════════════════════════════════════════════════════════
+head("ساخت کانفیگ از پنل نماینده")
+
+# ساخت حساس‌تر از تمدید است: کانفیگ تازه باید *حتماً* در گروه خودش
+# بنشیند و نامش نباید با الگوی گروه دیگری بخواند — چون صفحه‌ی اشتراک
+# برند را از پیشوند ایمیل تشخیص می‌دهد.
+
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    try:
+        _bd.execute("ALTER TABLE tenants ADD COLUMN default_inbound INTEGER")
+    except Exception:
+        pass
+    _bd.execute("UPDATE tenants SET credit=1000000, default_inbound=7 "
+                "WHERE portal_slug='hossein'")
+    _bd.commit()
+finally:
+    _bd.close()
+_T2 = AP._tenant_by_slug("hossein")
+
+
+class _MakeXUI(_FakeXUI):
+    made = []
+
+    def add_client(self, inbound_id, email, gb=0, days=0, ip_limit=0,
+                   client_uuid=None, tg_id=None, sub_id=None, flow=None,
+                   group=None, inbound_ids=None):
+        _MakeXUI.made.append({"inbound": inbound_id, "email": email, "gb": gb,
+                              "days": days, "ip": ip_limit, "group": group})
+        return {"id": "new-uuid", "email": email, "subId": email}
+
+
+AP._portal_xui = lambda t: (_MakeXUI(), Exception)
+AP._read_xui_clients = lambda *a, **k: (_ALL, [], None)
+
+_MakeXUI.made = []
+_res = AP.portal_create({"gb": 50, "months": 2, "devices": 3}, _T2)
+check("کانفیگ ساخته شد", _res["ok"])
+
+_m = _MakeXUI.made[0] if _MakeXUI.made else {}
+check("گروهش از ردیف مستاجر آمد", _m.get("group") == "goroh-a",
+      "نه از درخواست — این تنها چیزی است که تعیین می‌کند مال کیست")
+check("روی اینباند پیش‌فرض ساخته شد", _m.get("inbound") == 7, str(_m.get("inbound")))
+check("حجم و روز درست رفت", _m.get("gb") == 50 and _m.get("days") == 60,
+      f"{_m.get('gb')} گیگ · {_m.get('days')} روز")
+check("تعداد کاربر هم", _m.get("ip") == 3)
+
+check("نامش با نشانی خودِ نماینده شروع می‌شود",
+      str(_m.get("email", "")).startswith("hossein_"),
+      "نماینده نام را نمی‌فرستد — می‌ساختیمش، وگرنه می‌توانست نام گروه دیگری بسازد")
+check("و تکراری نیست", _m.get("email") not in {c["email"] for c in _ALL})
+
+# قیمت: ۵۰ گیگ = ۱۰۰٬۰۰۰، دو کاربر اضافه × ۲۰٬۰۰۰، دو ماه
+check("مبلغ درست کسر شد", _res["charged"] == (100000 + 40000) * 2,
+      str(_res["charged"]))
+
+# ── حجمی که نرخ ندارد ──
+_MakeXUI.made = []
+try:
+    AP.portal_create({"gb": 999, "months": 1, "devices": 1}, _T2)
+    _bad = False
+except Exception as e:
+    _bad = getattr(e, "status_code", 0) == 400
+check("حجمی که در نرخ‌ها نیست رد می‌شود", _bad,
+      "وگرنه ردیفی ساخته می‌شود که سر ماه «بدون نرخ» می‌ماند")
+check("و چیزی روی پنل ساخته نمی‌شود", not _MakeXUI.made)
+
+# ── ورودی بی‌معنا ──
+for _bad_in, _why in ((({"gb": 50, "months": 0, "devices": 1}), "ماه صفر"),
+                      (({"gb": 50, "months": 99, "devices": 1}), "ماه ۹۹"),
+                      (({"gb": 50, "months": 1, "devices": 999}), "کاربر ۹۹۹")):
+    try:
+        AP.portal_create(_bad_in, _T2)
+        _ok = False
+    except Exception as e:
+        _ok = getattr(e, "status_code", 0) == 400
+    check(f"{_why} رد می‌شود", _ok)
+
+# ── اعتبار ناکافی ──
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("UPDATE tenants SET credit=5000 WHERE portal_slug='hossein'")
+    _bd.commit()
+finally:
+    _bd.close()
+_MakeXUI.made = []
+try:
+    AP.portal_create({"gb": 50, "months": 1, "devices": 1},
+                     AP._tenant_by_slug("hossein"))
+    _poor = False
+except Exception as e:
+    _poor = getattr(e, "status_code", 0) == 402
+check("اعتبار ناکافی جلوی ساخت را می‌گیرد", _poor)
+check("و کانفیگی ساخته نمی‌شود", not _MakeXUI.made,
+      "کسر قبل از کار است")
+
+APP_SRC2 = io.open(os.path.join(str(ROOT), "backend", "app.py"),
+                   encoding="utf-8").read()
+check("گروه در ساخت از _portal_group می‌آید",
+      "group=group)" in APP_SRC2 and "group = _portal_group(t)" in APP_SRC2)
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)
