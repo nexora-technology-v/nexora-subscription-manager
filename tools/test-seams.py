@@ -171,6 +171,15 @@ KNOWN_ORPHANS = {
         "پنل پرداخت ثبت می‌کند ولی دکمه‌ی حذف ندارد",
     "/api/admin/health/local":
         "سلامت سرور خود پنل — پنل فقط سرورهای دیگر را نشان می‌دهد",
+    # ── پنل نماینده: رابط کاربری‌اش هنوز ساخته نشده ──
+    "/api/admin/tenant/:p/portal":
+        "تنظیم دسترسی پنل نماینده — فاز بعد به پنل مدیر وصل می‌شود",
+    "/api/portal/:p/login":
+        "ورود نماینده — صفحه‌اش در فاز بعد ساخته می‌شود",
+    "/api/portal/logout":
+        "خروج نماینده — همراه همان صفحه",
+    "/api/portal/me":
+        "مشخصات نماینده‌ی وارد‌شده — همراه همان صفحه",
 }
 
 orphan = {r for r in routes - called if not r.startswith(PUBLIC)}
@@ -519,7 +528,31 @@ KNOWN_PUBLIC = {
     "/", "/api", "/api/docs", "/api/openapi.json",
     # ورود خودش نمی‌تواند رمز بخواهد
     "/api/login",
+    # ── پنل نماینده ──
+    #
+    # این‌ها check_auth ندارند چون رمز مدیر را نمی‌گیرند — از
+    # portal_tenant رد می‌شوند که نشست نماینده را می‌سنجد و ردیف
+    # مستاجر خودش را برمی‌گرداند. عمداً یک سطح جداست: مسیرهای مدیر
+    # همه فرض می‌کنند «تو صاحب سیستمی» و هیچ‌کدامشان نباید دست
+    # نماینده بیفتد.
+    "/api/portal/{slug}/login",     # ورود، مثل /api/login رمز نمی‌خواهد
+    "/api/portal/logout",           # فقط نشست خودش را پاک می‌کند
+    "/api/portal/me",               # پشت portal_tenant
 }
+
+# ── هر مسیر نماینده باید به مستاجر خودش محدود باشد ──
+#
+# همان کاری که بالاتر برای check_auth روی مسیرهای مدیر انجام شد.
+# مسیر نماینده‌ای که portal_tenant نداشته باشد یعنی یا احراز هویت
+# ندارد یا — بدتر — احراز هویت دارد و محدود نیست، که دقیقاً همان
+# باگی است که در مسیرهای ایجنت پیدا شد.
+_portal = [(p, n) for p, n in _routes if p.startswith("/api/portal")]
+_unguarded = [p for p, n in _portal
+              if not p.endswith(("/login", "/logout"))
+              and "portal_tenant" not in _ast.unparse(n)]
+check("هر مسیر نماینده به مستاجر خودش محدود است", not _unguarded,
+      "، ".join(_unguarded) if _unguarded
+      else f"{len(_portal)} مسیر، همه پشت portal_tenant")
 _new_public = [p for p in _public if p not in KNOWN_PUBLIC]
 check("مسیر عمومی تازه‌ای بی‌خبر اضافه نشده", not _new_public,
       ("، ".join(_new_public) if _new_public

@@ -325,6 +325,19 @@ def _migrate(con):
         # تمدید را رها کند — چون رهاکردنش یعنی مشتری بی‌صدا قطع شود.
         ("subscriptions", "renew_fails", "INTEGER DEFAULT 0"),
         ("subscriptions", "renew_retry_at", "TEXT"),
+        # ── ورود نماینده به پنل ──
+        #
+        # جدا از panel_user/panel_pass که مال خودِ x-ui است و هرگز
+        # نباید دست نماینده بیفتد. این‌ها فقط برای ورود به پنل
+        # نکسورا هستند.
+        #
+        # slug همان چیزی است که در آدرس می‌آید: /r/<slug>. مسیر
+        # انتخاب شد نه زیردامنه، چون زیردامنه برای هر نماینده یک
+        # رکورد DNS و یک گواهی می‌خواهد و راه‌اندازی‌اش دست مدیر
+        # است، نه دکمه‌ی پنل.
+        ("tenants", "portal_slug", "TEXT"),
+        ("tenants", "portal_pass", "TEXT"),
+        ("tenants", "portal_enabled", "INTEGER DEFAULT 0"),
     ]
     for table, col, spec in adds:
         try:
@@ -1099,6 +1112,62 @@ def get_tenant(tid):
     with conn() as c:
         r = c.execute("SELECT * FROM tenants WHERE id=?", (tid,)).fetchone()
     return dict(r) if r else None
+
+
+def tenant_by_slug(slug):
+    """
+    نماینده را از روی نشانیِ لینکش پیدا می‌کند.
+
+    فقط نماینده‌های فعال و آن‌هایی که پنلشان روشن شده. غیرفعال‌کردن
+    یک نماینده باید در همان لحظه دسترسی‌اش را ببندد، نه اینکه فقط
+    از فهرست پنهانش کند.
+    """
+    if not slug:
+        return None
+    with conn() as c:
+        r = c.execute(
+            "SELECT * FROM tenants WHERE portal_slug=? AND is_active=1 "
+            "AND COALESCE(portal_enabled,0)=1",
+            (str(slug).strip().lower(),)).fetchone()
+    return dict(r) if r else None
+
+
+def set_portal(tid, slug=None, password=None, enabled=None):
+    """
+    تنظیم دسترسی پنل یک نماینده. برمی‌گرداند: (موفق, پیام)
+
+    slug یکتاست چون آدرس است. تکراری بودنش یعنی دو نماینده به یک
+    لینک می‌رسند، که بدترین اشتباه ممکن در این مسیر است.
+    """
+    sets, vals = [], []
+    if slug is not None:
+        clean = "".join(ch for ch in str(slug).strip().lower()
+                        if ch.isalnum() or ch in "-_")[:32]
+        if not clean:
+            return False, "نشانی لینک نامعتبر است"
+        with conn() as c:
+            taken = c.execute(
+                "SELECT id FROM tenants WHERE portal_slug=? AND id<>?",
+                (clean, tid)).fetchone()
+        if taken:
+            return False, "این نشانی برای نماینده‌ی دیگری ثبت شده"
+        sets.append("portal_slug=?")
+        vals.append(clean)
+    if password is not None:
+        pw = str(password)
+        if len(pw) < 8:
+            return False, "رمز باید دست‌کم ۸ نویسه باشد"
+        sets.append("portal_pass=?")
+        vals.append(pw)
+    if enabled is not None:
+        sets.append("portal_enabled=?")
+        vals.append(1 if enabled else 0)
+    if not sets:
+        return False, "چیزی برای تغییر نیست"
+    vals.append(tid)
+    with conn() as c:
+        c.execute(f"UPDATE tenants SET {', '.join(sets)} WHERE id=?", vals)
+    return True, "ثبت شد"
 
 
 def get_tenant_by_token(token):

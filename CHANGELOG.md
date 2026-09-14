@@ -4,6 +4,36 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+### Added — Reseller portal, first phase: accounts and scoped login
+
+A reseller currently has to be handed the owner's x-ui panel. That means they can
+see every other reseller's configs and the owner's own direct customers, change
+anyone's quota, and delete configs. It is also the reason accounting has to guess
+at renewals: work done in x-ui is recorded nowhere.
+
+This is the foundation. Each reseller gets a slug and a password, reaches the
+panel at their own link, and logs into a session scoped to their tenant alone.
+The owner turns access on and off; turning it off closes any open session on the
+spot rather than letting it run to expiry.
+
+The reseller API is a **separate, small surface, not the owner's routes**. The
+admin API has 114 routes and every one of them assumes you own the system; handing
+those to a reseller would mean scoping each individually, and one missed route
+leaks everything. The same shape of bug turned up in the agent routes earlier
+today — a node that was authenticated but not scoped could close another node's
+jobs. So: allowlist, not denylist. Anything not written for the portal does not
+exist for a reseller. A seam test now enforces that every portal route passes
+through `portal_tenant`.
+
+What a reseller sees of themselves is deliberately thin — name, credit, discount,
+whether they have a bot. Never the bot token, never the x-ui password.
+
+Writing the tests caught a bug in this code before it shipped: the column was
+being created as `TEXT`, so the integer 1 was stored as `'1'`, and in SQLite
+`'1' = 1` is never true. No reseller could have logged in, and nothing would have
+been logged anywhere. The column has a type now, and the query casts, so servers
+that already created it as text still work.
+
 ## [1.14.1]
 
 ### Fixed — The invoice contradicted its own total

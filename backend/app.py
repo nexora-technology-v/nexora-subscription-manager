@@ -10,10 +10,12 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException, Header, Request, Response
+from fastapi import (FastAPI, HTTPException, Header, Request, Response,
+                     Depends)
 from fastapi.middleware.cors import CORSMiddleware
 import contextvars as _contextvars
 import hmac as _hmac
+import secrets as _secrets
 import ipaddress as _ipaddress
 import time as _time
 from fastapi.responses import HTMLResponse
@@ -8320,6 +8322,234 @@ def health_check_node(node_id: int, x_admin_password: str = Header(...)):
     _need_tunnels()
     TUN.queue_job(node_id, "health", {})
     return {"ok": True, "queued": True}
+
+
+
+# ═══════════════════════════════════════════════════════════
+#  پنل نماینده
+#
+#  چرا یک سطح API جداگانه، و نه استفاده از مسیرهای مدیریتی:
+#
+#  پنل مدیر ۱۱۴ مسیر دارد و همه‌شان فرض می‌کنند «تو صاحب سیستمی».
+#  دادنشان به نماینده یعنی هر کدام باید جداگانه به مستاجر خودش
+#  محدود شود — و کافی است یکی جا بیفتد تا نماینده داده‌ی بقیه را
+#  ببیند. همین کلاس اشتباه امروز در مسیرهای ایجنت پیدا شد: نودی که
+#  احراز هویت شده بود ولی محدود نشده بود، می‌توانست کار نود دیگر را
+#  ببندد.
+#
+#  پس فهرست مجاز، نه فهرست ممنوع: هر چیزی که این‌جا نوشته نشده،
+#  برای نماینده اصلاً وجود ندارد. اضافه‌کردن یک قابلیت تازه یک
+#  تصمیم آگاهانه است، نه چیزی که خودبه‌خود ارث برسد.
+# ═══════════════════════════════════════════════════════════
+
+def _tenant_row(tid):
+    """یک مستاجر از دیتابیس ربات — فقط خواندن."""
+    con = _bot_conn()
+    if not con:
+        return None
+    try:
+        r = con.execute("SELECT * FROM tenants WHERE id=?", (tid,)).fetchone()
+        return dict(r) if r else None
+    except Exception:
+        return None
+    finally:
+        con.close()
+
+
+def _tenant_by_slug(slug):
+    """
+    نماینده از روی نشانیِ لینکش.
+
+    فقط فعال‌ها و آن‌هایی که پنلشان روشن است. بستن یک نماینده باید
+    همان لحظه اثر کند، نه اینکه فقط از فهرست پنهانش کند.
+    """
+    con = _bot_conn()
+    if not con or not slug:
+        return None
+    try:
+        r = con.execute(
+            # CAST چون روی نصبی که این ستون قبلاً TEXT ساخته شده،
+            # مقدارش '1' است و '1' = 1 در SQLite غلط است.
+            "SELECT * FROM tenants WHERE portal_slug=? AND is_active=1 "
+            "AND CAST(COALESCE(portal_enabled,0) AS INTEGER)=1",
+            (str(slug).strip().lower(),)).fetchone()
+        return dict(r) if r else None
+    except Exception:
+        return None
+    finally:
+        con.close()
+
+
+#: نشست‌های باز نماینده — توکن به (شناسه‌ی مستاجر، زمان انقضا)
+_PORTAL_SESSIONS = {}
+PORTAL_TTL = 12 * 3600
+PORTAL_MAX = 2000
+
+
+def _portal_prune():
+    now = _time.time()
+    for k in [k for k, v in _PORTAL_SESSIONS.items() if v[1] < now]:
+        _PORTAL_SESSIONS.pop(k, None)
+    # سقف، تا نشست‌های رهاشده حافظه را نخورند
+    if len(_PORTAL_SESSIONS) > PORTAL_MAX:
+        for k in sorted(_PORTAL_SESSIONS, key=lambda k: _PORTAL_SESSIONS[k][1])[:500]:
+            _PORTAL_SESSIONS.pop(k, None)
+
+
+@app.post("/api/portal/{slug}/login")
+def portal_login(slug: str, payload: dict, request: Request):
+    """
+    ورود نماینده. همان سدّ حدس‌زدنِ رمز مدیر این‌جا هم هست.
+    """
+    ip = _auth_ip.get()
+    wait = _auth_locked(ip)
+    if wait:
+        raise HTTPException(
+            status_code=429,
+            detail=f"تلاش‌های ناموفق زیاد بود. {wait // 60 + 1} دقیقه‌ی دیگر "
+                   "دوباره امتحان کنید.",
+            headers={"Retry-After": str(wait)})
+
+    t = _tenant_by_slug(slug)
+    given = str((payload or {}).get("password") or "")
+
+    # نماینده‌ی ناموجود و رمز غلط یک پیام می‌گیرند: وگرنه می‌شود
+    # فهمید کدام نشانی‌ها واقعی‌اند.
+    ok = bool(t and t.get("portal_pass") and _hmac.compare_digest(
+        given.encode("utf-8"), str(t["portal_pass"]).encode("utf-8")))
+    if not ok:
+        rec = _auth_failed(ip)
+        left = AUTH_MAX_FAILS - rec["n"]
+        detail = "نشانی یا رمز نادرست است"
+        if 0 < left <= 3:
+            detail += f" — {left} تلاش دیگر تا قفل‌شدن موقت"
+        raise HTTPException(status_code=401, detail=detail)
+
+    _auth_ok(ip)
+    _portal_prune()
+    token = "nxp_" + _secrets.token_urlsafe(32)
+    _PORTAL_SESSIONS[token] = (int(t["id"]), _time.time() + PORTAL_TTL)
+    return {"ok": True, "token": token, "name": t["name"],
+            "expiresIn": PORTAL_TTL}
+
+
+def portal_tenant(x_portal_token: str = Header(None)):
+    """
+    مستاجرِ نشستِ جاری. هر مسیر نماینده از این رد می‌شود.
+
+    برمی‌گرداند: ردیف کامل مستاجر — تا صداکننده مجبور نباشد شناسه را
+    از جای دیگری بگیرد و اشتباهی مستاجر دیگری را بخواند.
+    """
+    rec = _PORTAL_SESSIONS.get(str(x_portal_token or ""))
+    if not rec or rec[1] < _time.time():
+        _PORTAL_SESSIONS.pop(str(x_portal_token or ""), None)
+        raise HTTPException(status_code=401, detail="نشست منقضی شده — دوباره وارد شوید")
+
+    t = _tenant_row(rec[0])
+    if (not t or not t.get("is_active")
+            or str(t.get("portal_enabled") or "0") in ("0", "", "None")):
+        # دسترسی همان لحظه بسته می‌شود، نه سر انقضای نشست.
+        _PORTAL_SESSIONS.pop(str(x_portal_token or ""), None)
+        raise HTTPException(status_code=403, detail="دسترسی این نماینده بسته شده")
+    return t
+
+
+@app.post("/api/admin/tenant/{tid}/portal")
+def tenant_portal_set(tid: int, payload: dict,
+                      x_admin_password: str = Header(...)):
+    """
+    تنظیم دسترسی پنل یک نماینده — از سمت مدیر.
+
+    نشانی یکتاست چون آدرس است؛ تکراری بودنش یعنی دو نماینده به یک
+    لینک می‌رسند.
+    """
+    check_auth(x_admin_password)
+    p = payload or {}
+    sets, vals = [], []
+
+    if "slug" in p:
+        clean = "".join(ch for ch in str(p.get("slug") or "").strip().lower()
+                        if ch.isalnum() or ch in "-_")[:32]
+        if not clean:
+            raise HTTPException(status_code=400, detail="نشانی لینک نامعتبر است")
+        con = _bot_conn()
+        taken = None
+        if con:
+            try:
+                taken = con.execute(
+                    "SELECT id FROM tenants WHERE portal_slug=? AND id<>?",
+                    (clean, tid)).fetchone()
+            finally:
+                con.close()
+        if taken:
+            raise HTTPException(
+                status_code=400, detail="این نشانی برای نماینده‌ی دیگری ثبت شده")
+        sets.append("portal_slug=?")
+        vals.append(clean)
+
+    if p.get("password"):
+        pw = str(p["password"])
+        if len(pw) < 8:
+            raise HTTPException(status_code=400,
+                                detail="رمز باید دست‌کم ۸ نویسه باشد")
+        sets.append("portal_pass=?")
+        vals.append(pw)
+
+    if "enabled" in p:
+        sets.append("portal_enabled=?")
+        vals.append(1 if p["enabled"] else 0)
+        if not p["enabled"]:
+            # بستن باید همان لحظه اثر کند، نه سر انقضای نشست.
+            for k in [k for k, v in _PORTAL_SESSIONS.items() if v[0] == tid]:
+                _PORTAL_SESSIONS.pop(k, None)
+
+    if not sets:
+        raise HTTPException(status_code=400, detail="چیزی برای تغییر نیست")
+
+    con = _bot_rw()
+    try:
+        cols = {r[1] for r in con.execute("PRAGMA table_info(tenants)")}
+        # نوعِ هر ستون مهم است.
+        #
+        # اگر portal_enabled را TEXT بسازیم، عدد ۱ به رشته‌ی '1'
+        # تبدیل می‌شود و در SQLite مقایسه‌ی '1' = 1 هیچ‌وقت درست
+        # نیست — یعنی هیچ نماینده‌ای نمی‌تواند وارد شود، بی‌آنکه
+        # هیچ خطایی جایی ثبت شود.
+        for col, typ in (("portal_slug", "TEXT"), ("portal_pass", "TEXT"),
+                         ("portal_enabled", "INTEGER DEFAULT 0")):
+            if col not in cols:
+                con.execute(f"ALTER TABLE tenants ADD COLUMN {col} {typ}")
+        vals.append(tid)
+        cur = con.execute(
+            f"UPDATE tenants SET {', '.join(sets)} WHERE id=?", vals)
+        if not cur.rowcount:
+            raise HTTPException(status_code=404, detail="نماینده پیدا نشد")
+        con.commit()
+    finally:
+        con.close()
+    return {"ok": True}
+
+
+@app.post("/api/portal/logout")
+def portal_logout(x_portal_token: str = Header(None)):
+    _PORTAL_SESSIONS.pop(str(x_portal_token or ""), None)
+    return {"ok": True}
+
+
+@app.get("/api/portal/me")
+def portal_me(t: dict = Depends(portal_tenant)):
+    """
+    نماینده‌ی وارد‌شده. عمداً کم: نه توکن ربات، نه رمز پنل x-ui.
+    """
+    return {
+        "id": t["id"],
+        "name": t["name"],
+        "slug": t.get("portal_slug"),
+        "credit": t.get("credit"),
+        "discount": t.get("credit_discount") or 0,
+        "hasBot": bool(t.get("bot_token")),
+        "botUsername": t.get("bot_username") or "",
+    }
 
 
 @app.get("/api/health")

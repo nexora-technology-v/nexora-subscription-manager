@@ -376,6 +376,104 @@ check("مقایسه‌ی رمز زمان‌ثابت است", "compare_digest" in
       "مقایسه‌ی معمولی روی اولین بایت متفاوت برمی‌گردد")
 
 
+# ═══════════════════════════════════════════════════════════
+head("ورود نماینده به پنل خودش")
+
+# پنل مدیر ۱۱۴ مسیر دارد و همه فرض می‌کنند «تو صاحب سیستمی». دادنشان
+# به نماینده یعنی هر کدام باید جداگانه محدود شود و کافی است یکی جا
+# بیفتد. پس سطح نماینده جداست و فهرست مجاز دارد، نه فهرست ممنوع.
+
+import sqlite3 as _sq3  # noqa: E402
+
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    # دیتابیس تست جدول مستاجرها را ندارد — کمینه‌اش را می‌سازیم
+    _bd.execute("""CREATE TABLE IF NOT EXISTS tenants (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+        bot_token TEXT, bot_username TEXT, parent_id INTEGER,
+        is_active INTEGER DEFAULT 1, credit INTEGER DEFAULT 0,
+        credit_discount INTEGER DEFAULT 0, panel_pass TEXT)""")
+    _cols = {r[1] for r in _bd.execute("PRAGMA table_info(tenants)")}
+    for _c in ("portal_slug", "portal_pass", "portal_enabled"):
+        if _c not in _cols:
+            _bd.execute("ALTER TABLE tenants ADD COLUMN " + _c +
+                        (" INTEGER DEFAULT 0" if _c == "portal_enabled" else " TEXT"))
+    _bd.execute("DELETE FROM tenants WHERE name IN ('نماینده‌ی تست','دومی')")
+    _bd.execute(
+        "INSERT INTO tenants (name, is_active, portal_slug, portal_pass,"
+        " portal_enabled, credit) VALUES (?,1,?,?,1,?)",
+        ("نماینده‌ی تست", "hossein", "secret-pass-1", 500000))
+    _rid = _bd.execute("SELECT id FROM tenants WHERE portal_slug='hossein'"
+                       ).fetchone()[0]
+    _bd.execute(
+        "INSERT INTO tenants (name, is_active, portal_slug, portal_pass,"
+        " portal_enabled, credit) VALUES (?,1,?,?,0,?)",
+        ("دومی", "bastan", "secret-pass-2", 0))
+    _bd.commit()
+finally:
+    _bd.close()
+
+
+def _login(slug, pw):
+    AP._auth_fails.clear()
+    try:
+        return 200, AP.portal_login(slug, {"password": pw}, None)
+    except Exception as e:
+        return getattr(e, "status_code", 0), str(getattr(e, "detail", e))
+
+
+_code, _res = _login("hossein", "secret-pass-1")
+check("ورود با رمز درست", _code == 200 and _res.get("token"), str(_code))
+_tok = _res.get("token") if _code == 200 else ""
+
+check("و نامش برمی‌گردد", _code == 200 and _res.get("name") == "نماینده‌ی تست")
+
+_code, _d = _login("hossein", "غلط")
+check("رمز غلط رد می‌شود", _code == 401, str(_code))
+
+_code, _d = _login("ناموجود", "secret-pass-1")
+check("نشانی ناموجود همان پیام را می‌دهد", _code == 401 and "نادرست" in _d,
+      "وگرنه می‌شود فهمید کدام نشانی‌ها واقعی‌اند")
+
+_code, _d = _login("bastan", "secret-pass-2")
+check("نماینده‌ی خاموش اصلاً وارد نمی‌شود", _code == 401, str(_code))
+
+# نشست
+_me = AP.portal_tenant(_tok)
+check("نشست به مستاجر خودش می‌رسد", _me["portal_slug"] == "hossein")
+check("و اعتبارش را دارد", _me["credit"] == 500000)
+
+_pub = AP.portal_me(_me)
+check("مشخصات، توکن ربات را لو نمی‌دهد",
+      "bot_token" not in _pub and "panel_pass" not in _pub,
+      "نماینده هرگز نباید رمز پنل x-ui را ببیند")
+check("ولی اعتبار و تخفیفش را می‌بیند",
+      _pub["credit"] == 500000 and "discount" in _pub)
+
+try:
+    AP.portal_tenant("nxp_جعلی")
+    _bad = False
+except Exception as e:
+    _bad = getattr(e, "status_code", 0) == 401
+check("توکن جعلی رد می‌شود", _bad)
+
+# بستن نماینده باید همان لحظه اثر کند
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("UPDATE tenants SET portal_enabled=0 WHERE id=?", (_rid,))
+    _bd.commit()
+finally:
+    _bd.close()
+try:
+    AP.portal_tenant(_tok)
+    _shut = False
+except Exception as e:
+    _shut = getattr(e, "status_code", 0) == 403
+check("بستن نماینده نشستِ باز را همان لحظه می‌بندد", _shut,
+      "نه اینکه تا انقضای نشست کار کند")
+check("و توکنش هم پاک می‌شود", _tok not in AP._PORTAL_SESSIONS)
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)
