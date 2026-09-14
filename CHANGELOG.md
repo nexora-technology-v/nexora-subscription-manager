@@ -4,6 +4,22 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.11.1]
+
+### Added — `nexora billing-why`
+
+Five situations end in "بدون نرخ" and no amount of reading the code tells you
+which one a given server is hitting. This puts the three deciding facts side by
+side: the rates recorded for each group, the group names as they actually appear
+in x-ui, and which quota matches which rate.
+
+It also catches the one case reading the code never could — a group name in x-ui
+that differs from the recorded key by a space or a capital letter, so the rates
+silently never apply. The panel just says "بدون نرخ".
+
+No password, token, customer name or phone number is printed, so the output can
+be sent as-is.
+
 ## [1.11.0]
 
 ### Fixed — "بدون نرخ" never said why, and a rate could vanish on save

@@ -139,8 +139,17 @@ def main():
             print(f"\n{R}جدول clients ستون group_name ندارد — این پنل "
                   f"نسخه‌ی قدیمی است{X}")
             sys.exit(1)
-        rows = [dict(r) for r in con.execute(
-            "SELECT group_name, total, enable FROM clients")]
+        # نام ستون حجم بین نسخه‌های x-ui فرق می‌کند. مثل بک‌اند، از
+        # روی اسکیما انتخابش می‌کنیم نه از روی حدس.
+        qcol = next((c for c in ("total_gb", "total", "totalGB") if c in cols),
+                    None)
+        if not qcol:
+            print(f"\n{R}ستون حجم در جدول clients پیدا نشد — ستون‌ها: "
+                  + "، ".join(sorted(cols)) + X)
+            sys.exit(1)
+        rows = [{"group_name": r[0], "total": r[1], "enable": r[2]}
+                for r in con.execute(
+                    "SELECT group_name, " + qcol + ", enable FROM clients")]
     finally:
         con.close()
 
