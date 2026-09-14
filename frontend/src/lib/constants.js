@@ -92,6 +92,7 @@ export const WORKSPACES = {
           { key: "bill-pay", label: "پرداخت‌ها", icon: Wallet },
           { key: "bill-period", label: "صورتحساب دوره", icon: Clock },
           { key: "bill-clients", label: "همه کاربران", icon: Users },
+          { key: "bill-portal", label: "پنل نمایندگی", icon: Link2 },
           { key: "bill-settings", label: "تنظیمات و بک‌آپ", icon: Sliders },
         ],
       },

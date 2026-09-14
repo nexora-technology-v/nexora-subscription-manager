@@ -171,10 +171,6 @@ KNOWN_ORPHANS = {
         "پنل پرداخت ثبت می‌کند ولی دکمه‌ی حذف ندارد",
     "/api/admin/health/local":
         "سلامت سرور خود پنل — پنل فقط سرورهای دیگر را نشان می‌دهد",
-    # پنل نماینده خودش صداکننده دارد (frontend/src/portal). این یکی
-    # فقط از سمت مدیر تنظیم می‌شود و هنوز دکمه‌اش ساخته نشده.
-    "/api/admin/tenant/:p/portal":
-        "تنظیم دسترسی پنل نماینده — فاز بعد به پنل مدیر وصل می‌شود",
 }
 
 orphan = {r for r in routes - called if not r.startswith(PUBLIC)}

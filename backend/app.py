@@ -6440,11 +6440,19 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
     c.roundRect(W - MR - hero_w, y - box_h, hero_w, box_h, 2 * mm, fill=1, stroke=0)
     c.setFont(F, 7.5)
     c.setFillColor(colors.HexColor("#B9C6DE"))
-    c.drawRightString(W - MR - 3 * mm, y - 6 * mm, _fa("مبلغ قابل پرداخت"))
+    # تیتر باید همان چیزی باشد که واسطه *باید بدهد*، نه کل فروش.
+    #
+    # قبلاً همیشه due چاپ می‌شد و پرداختی فقط در یک پانوشت ریز پایین
+    # صفحه می‌آمد. واسطه‌ای که نصف حسابش را داده بود، بالای فاکتور
+    # همان عدد اول را می‌دید و فکر می‌کرد پرداختش اصلاً ثبت نشده.
+    _paid = int(t.get("paid") or 0)
+    _bal = int(t.get("balance", t["due"]) or 0)
+    c.drawRightString(W - MR - 3 * mm, y - 6 * mm,
+                      _fa("مانده‌ی قابل پرداخت" if _paid else "مبلغ قابل پرداخت"))
     c.setFont(FB, 17)
     c.setFillColor(colors.white)
     c.drawRightString(W - MR - 3 * mm, y - 13 * mm,
-                      money(t["due"]) + " " + _fa("تومان"))
+                      money(_bal if _paid else t["due"]) + " " + _fa("تومان"))
     c.setFont(F, 6.5)
     c.setFillColor(colors.HexColor("#9FB0CD"))
     # این خط باید همان مبلغ بالا را توضیح بدهد.
@@ -6455,7 +6463,12 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
     # می‌شد. فاکتوری که خودش را نقض کند، هیچ عددش قابل اعتماد نیست.
     dev_total = sum(l.get("deviceAmount") or 0 for l in lines)
     base_total = t["due"] - dev_total
-    if dev_total:
+    if _paid:
+        # وقتی پرداختی هست، مهم‌ترین چیزی که باید زیر عدد بیاید همین
+        # است: کل چقدر بود و چقدرش داده شده.
+        note = (_fa("کل") + f" {money(t['due'])} − "
+                + _fa("پرداخت‌شده") + f" {money(_paid)}")
+    elif dev_total:
         note = (_fa("پایه") + f" {money(base_total)} + "
                 + _fa("کاربر اضافه") + f" {money(dev_total)}")
     else:
@@ -8452,6 +8465,56 @@ def portal_tenant(x_portal_token: str = Header(None)):
         _PORTAL_SESSIONS.pop(str(x_portal_token or ""), None)
         raise HTTPException(status_code=403, detail="دسترسی این نماینده بسته شده")
     return t
+
+
+@app.get("/api/admin/tenant/portal-list")
+def tenant_portal_list(x_admin_password: str = Header(...)):
+    """
+    نماینده‌ها و وضعیت پنلشان، به‌همراه گروه‌های واقعی x-ui.
+
+    گروه‌ها را هم می‌دهیم تا مدیر از فهرست انتخاب کند نه اینکه نام را
+    دستی بنویسد — یک فاصله یا حرف بزرگ و کوچکِ متفاوت یعنی نماینده
+    هیچ کانفیگی نمی‌بیند و دلیلش هم معلوم نیست.
+    """
+    check_auth(x_admin_password)
+    out = []
+    con = _bot_conn()
+    try:
+        if con:
+            cols = {r[1] for r in con.execute("PRAGMA table_info(tenants)")}
+            pick = ["id", "name"]
+            for c in ("portal_slug", "portal_group", "portal_enabled",
+                      "credit", "is_active"):
+                if c in cols:
+                    pick.append(c)
+            for r in con.execute(
+                    f"SELECT {','.join(pick)} FROM tenants ORDER BY id"):
+                d = dict(r)
+                out.append({
+                    "id": d["id"], "name": d.get("name") or "",
+                    "portalSlug": d.get("portal_slug") or "",
+                    "portalGroup": d.get("portal_group") or "",
+                    "portalEnabled": str(d.get("portal_enabled") or "0")
+                                     not in ("0", "", "None"),
+                    "credit": d.get("credit"),
+                    "active": bool(d.get("is_active", 1)),
+                })
+    except Exception as e:
+        return {"ready": False, "error": str(e)[:140], "tenants": [],
+                "groups": []}
+    finally:
+        if con:
+            con.close()
+
+    groups = []
+    try:
+        clients, known, _err = _read_xui_clients()
+        seen = {c.get("group") for c in (clients or []) if c.get("group")}
+        groups = sorted(seen | set(known or []))
+    except Exception:
+        groups = []
+
+    return {"ready": True, "tenants": out, "groups": groups}
 
 
 @app.post("/api/admin/tenant/{tid}/portal")

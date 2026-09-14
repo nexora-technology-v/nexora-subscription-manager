@@ -28,6 +28,7 @@ import { FirewallEnable } from "./sections/firewall-enable";
 import { FirewallIntrusion } from "./sections/intrusion";
 import { BillingExpenses, BillingLedger } from "./sections/expenses";
 import { NodesMonitor } from "./sections/nodes-monitor";
+import { PortalAdmin } from "./sections/portal-admin";
 import { MonitorSection } from "./sections/monitoring";
 import { AppsSection, BannersSection, FaqSection, LinksSection, OverviewSection, PopupSection, ReferralSection, ResellersSection, SettingsSection, VideosSection } from "./sections/subpage";
 import { LivePreview, SystemSection } from "./sections/system";
@@ -293,6 +294,7 @@ export default function App() {
           {active === "bot-affiliates" && <BotAffiliates password={password} />}
           {active === "bill-dash" && <BillingDash password={password} />}
           {active === "bill-groups" && <BillingGroups password={password} />}
+          {active === "bill-portal" && <PortalAdmin password={password} />}
           {active === "bill-invoice" && <BillingInvoice password={password} />}
           {active === "bill-pay" && <BillingPayments password={password} />}
           {active === "bill-period" && <BillingPeriod password={password} />}

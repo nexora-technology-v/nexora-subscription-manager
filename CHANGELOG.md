@@ -4,6 +4,31 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.18.0]
+
+### Added — "پنل نمایندگی" in the admin panel
+
+Everything the reseller portal needed existed except the screen to set it up, so
+the only way in was the command line. It is a section under حسابداری now: pick the
+reseller, choose their x-ui group from a list of the real ones, generate a
+password, and copy the link you hand them. Opening and closing their access is one
+button, and closing drops their open sessions rather than letting them run on.
+
+The group is a dropdown of groups that actually exist rather than a text field.
+A trailing space or a different capital letter would mean the reseller logs in and
+sees nothing, with no clue why.
+
+### Fixed — The invoice headline ignored what had been paid
+
+`مبلغ قابل پرداخت` printed the gross total. The amount paid and the remaining
+balance appeared only in small print at the bottom of the page. A reseller who had
+settled half their account saw the original figure at the top of the invoice and
+had every reason to think their payment had never been recorded.
+
+The headline is the balance when anything has been paid, labelled as such, with
+`کل X − پرداخت‌شده Y` underneath it. The arithmetic behind it never changed —
+only what the invoice chose to show.
+
 ## [1.17.0]
 
 ### Added — Resellers can create configs from their own panel
