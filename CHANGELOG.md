@@ -4,6 +4,34 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.24.0]
+
+### Added — Opening a customer, with everything needed to hand the config over
+
+Clicking a name in the reseller's list opens it: the subscription link with a copy
+button and a QR code, the usage bar with real numbers, created and expiry dates,
+days left, device limit, and renew or disable without leaving the panel.
+
+The QR is generated on the server and never leaves it. A subscription link is
+effectively the customer's password; sending it to an online QR generator would
+hand that site full access to the service.
+
+### Changed — Statistics that say what to do about them
+
+The old cards counted things: configs, renewals, gigabytes. None of that tells a
+reseller which customer is about to be lost, which is the only kind of number they
+can act on.
+
+The top of the page is now a "نیاز به پیگیری" line — expiring within a week,
+already expired, quota exhausted, above 80% — shown only when there is something
+in it. Below that: active users, expiring soon, usage against quota, and this
+month's new configs and renewals, counted from the renewal ledger rather than
+estimated.
+
+Active means enabled and not expired. A config whose quota ran out is still
+active and is counted separately, because they are different problems and the
+reseller needs to see both.
+
 ## [1.23.0]
 
 ### Added — Receipts and approvals in the reseller portal

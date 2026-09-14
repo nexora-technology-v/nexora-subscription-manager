@@ -1197,6 +1197,76 @@ check("پلن آزمایشی دست نماینده نیست", '"is_trial": 0,' i
 
 
 # ═══════════════════════════════════════════════════════════
+head("آمار نماینده باید کاربردی باشد، نه شمارش خشک")
+
+# «۹۴ کانفیگ» به نماینده نمی‌گوید کدام مشتری دارد از دست می‌رود.
+# چیزی که می‌شود رویش کاری کرد این است: چند تا دارند تمام می‌شوند،
+# چند تا حجمشان پر شده.
+
+import time as _tm  # noqa: E402
+_now = int(_tm.time() * 1000)
+_STAT = [
+    # فعال، جای زیادی مانده
+    {"email": "s1", "group": "goroh-a", "totalGB": 100 * 1024**3,
+     "used": 10 * 1024**3, "enable": True, "createdAt": "2026-01-01",
+     "expiry": _now + 40 * 86400000, "limitIp": 2, "subId": "s1"},
+    # تا سه روز دیگر تمام می‌شود
+    {"email": "s2", "group": "goroh-a", "totalGB": 50 * 1024**3,
+     "used": 5 * 1024**3, "enable": True, "createdAt": "2026-01-01",
+     "expiry": _now + 3 * 86400000, "limitIp": 1, "subId": "s2"},
+    # منقضی
+    {"email": "s3", "group": "goroh-a", "totalGB": 50 * 1024**3,
+     "used": 5 * 1024**3, "enable": False, "createdAt": "2026-01-01",
+     "expiry": _now - 5 * 86400000, "limitIp": 1, "subId": "s3"},
+    # حجمش تمام شده
+    {"email": "s4", "group": "goroh-a", "totalGB": 10 * 1024**3,
+     "used": 10 * 1024**3, "enable": True, "createdAt": "2026-01-01",
+     "expiry": _now + 20 * 86400000, "limitIp": 1, "subId": "s4"},
+    # نزدیک سقف
+    {"email": "s5", "group": "goroh-a", "totalGB": 10 * 1024**3,
+     "used": 9 * 1024**3, "enable": True, "createdAt": "2026-01-01",
+     "expiry": _now + 20 * 86400000, "limitIp": 1, "subId": "s5"},
+    # نامحدود و بدون انقضا
+    {"email": "s6", "group": "goroh-a", "totalGB": 0, "used": 1 * 1024**3,
+     "enable": True, "createdAt": "2026-01-01", "expiry": 0,
+     "limitIp": 0, "subId": "s6"},
+    # مالِ نماینده‌ی دیگر — نباید شمرده شود
+    {"email": "x1", "group": "goroh-b", "totalGB": 0, "used": 99 * 1024**3,
+     "enable": True, "createdAt": "2026-01-01", "expiry": 0,
+     "limitIp": 0, "subId": "x1"},
+]
+AP._read_xui_clients = lambda *a, **k: (_STAT, [], None)
+
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("UPDATE tenants SET portal_group='goroh-a', portal_enabled=1 "
+                "WHERE portal_slug='hossein'")
+    _bd.commit()
+finally:
+    _bd.close()
+
+_st = AP.portal_stats(t=AP._tenant_by_slug("hossein"))
+check("فقط کاربران خودش شمرده می‌شوند", _st["total"] == 6, str(_st["total"]))
+check("رو به اتمام درست است", _st["expiringSoon"] == 1, str(_st["expiringSoon"]))
+check("منقضی‌ها جدا شمرده می‌شوند", _st["expired"] == 1, str(_st["expired"]))
+check("حجم‌تمام‌شده جدا از نزدیک‌به‌سقف",
+      _st["overQuota"] == 1 and _st["nearQuota"] == 1,
+      f"تمام‌شده {_st['overQuota']} · نزدیک {_st['nearQuota']}")
+check("نامحدودها در سقف حساب نمی‌شوند", _st["unlimitedQuota"] == 1,
+      "درصدی از بی‌نهایت معنا ندارد")
+# «فعال» یعنی روشن و منقضی‌نشده. کانفیگی که حجمش تمام شده هنوز
+# فعال است و جداگانه در overQuota شمرده می‌شود — دو چیز متفاوت‌اند
+# و نماینده باید هر دو را ببیند.
+check("فعال یعنی روشن و منقضی‌نشده", _st["active"] == 5, str(_st["active"]))
+check("و غیرفعال‌ها بقیه‌اند", _st["inactive"] == 1, str(_st["inactive"]))
+check("و «نیاز به پیگیری» جمعشان است",
+      _st["needsAttention"] == 1 + 1 + 1,
+      f"{_st['needsAttention']} — رو به اتمام + منقضی + حجم تمام")
+check("مصرف نماینده‌ی دیگر داخلش نیست", _st["usedGB"] < 99,
+      f"{_st['usedGB']} GB")
+
+
+# ═══════════════════════════════════════════════════════════
 head("رسید و تایید سفارش در پنل نماینده")
 
 # مشتریِ نماینده از رباتِ او سفارش می‌دهد و رسید می‌فرستد. تا امروز

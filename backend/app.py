@@ -9842,6 +9842,133 @@ def portal_order_reject(oid: int, payload: dict = None,
     return {"ok": True, "id": oid}
 
 
+
+@app.get("/api/portal/config/{email}/qr")
+def portal_qr(email: str, t: dict = Depends(portal_tenant)):
+    """
+    کیوآر لینک اشتراک — برای تحویل به مشتری.
+
+    محلی ساخته می‌شود و هیچ‌جا نمی‌رود: لینک اشتراک عملاً رمز مشتری
+    است و فرستادنش به یک کیوآرسازِ آنلاین یعنی دادن دسترسی کامل
+    سرویس به آن سایت.
+    """
+    _portal_find(t, email)          # گروه سنجیده می‌شود
+    base = _sub_base(t)
+    if not base:
+        raise HTTPException(status_code=409,
+                            detail="آدرس پایه‌ی اشتراک تنظیم نشده")
+
+    import sys as _sys
+    bot_dir = str(Path(__file__).resolve().parent.parent / "bot")
+    if bot_dir not in _sys.path:
+        _sys.path.insert(0, bot_dir)
+    try:
+        import qr as _qr
+    except Exception:
+        raise HTTPException(status_code=503, detail="ساخت کیوآر در دسترس نیست")
+    if not _qr.available():
+        raise HTTPException(
+            status_code=503,
+            detail="کتابخانه‌ی segno نصب نیست — pip install segno")
+
+    clients, _k, _e = _read_xui_clients()
+    sub_id = email
+    for cl in (clients or []):
+        if cl.get("email") == email:
+            sub_id = cl.get("subId") or email
+            break
+
+    png = _qr.make(f"{base}/{sub_id}")
+    if not png:
+        raise HTTPException(status_code=503, detail="کیوآر ساخته نشد")
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "private, max-age=600"})
+
+
+@app.get("/api/portal/stats")
+def portal_stats(t: dict = Depends(portal_tenant)):
+    """
+    آمار واقعیِ کارِ نماینده.
+
+    تا امروز فقط شمارش خشک بود: چند کانفیگ، چند تمدید. آن‌ها نمی‌گویند
+    کدام مشتری دارد از دست می‌رود یا کدام حجمش تمام شده — که تنها
+    چیزهایی‌اند که نماینده می‌تواند رویشان کاری بکند.
+    """
+    group = _portal_group(t)
+    clients, _known, err = _read_xui_clients()
+    if clients is None:
+        raise HTTPException(status_code=400, detail=err)
+
+    mine = [c for c in clients if (c.get("group") or "") == group]
+    now_ms = _epoch_ms(datetime.now())
+
+    active = expired = soon = nearq = overq = never = 0
+    used_b = quota_b = 0
+    unlimited_q = 0
+    for c in mine:
+        used_b += c.get("used") or 0
+        q = c.get("totalGB") or 0
+        if q > 0:
+            quota_b += q
+            pct = (c.get("used") or 0) * 100.0 / q
+            if pct >= 100:
+                overq += 1
+            elif pct >= 80:
+                nearq += 1
+        else:
+            unlimited_q += 1
+
+        exp = _epoch_ms(c.get("expiry"))
+        if not exp or exp <= 0:
+            never += 1
+            if c.get("enable"):
+                active += 1
+            continue
+        days = (exp - now_ms) / 86400000.0
+        if days < 0:
+            expired += 1
+        else:
+            if c.get("enable"):
+                active += 1
+            if days <= 7:
+                soon += 1
+
+    # کارِ همین ماه — از دفترِ تمدیدها که حالا واقعی است
+    first = datetime.now().replace(day=1).strftime("%Y-%m-%d")
+    renewals_m = 0
+    bcon = _billing_conn()
+    try:
+        r = bcon.execute(
+            "SELECT COALESCE(SUM(months),0) m FROM renewals "
+            "WHERE group_key=? AND created_at >= ?", (group, first)).fetchone()
+        renewals_m = int((r["m"] if r else 0) or 0)
+    except Exception:
+        renewals_m = 0
+    finally:
+        bcon.close()
+
+    new_m = sum(1 for c in mine
+                if str(c.get("createdAt") or "")[:10] >= first)
+
+    return {
+        "total": len(mine),
+        "active": active,
+        "inactive": len(mine) - active,
+        "expired": expired,
+        "expiringSoon": soon,
+        "neverExpires": never,
+        "nearQuota": nearq,
+        "overQuota": overq,
+        "unlimitedQuota": unlimited_q,
+        "usedGB": round(used_b / (1024 ** 3), 1),
+        "quotaGB": round(quota_b / (1024 ** 3), 1),
+        "usagePct": (round(used_b * 100.0 / quota_b, 1) if quota_b else None),
+        "thisMonth": {"new": new_m, "renewals": renewals_m},
+        # چیزهایی که همین حالا کاری می‌خواهند
+        "needsAttention": soon + expired + overq,
+    }
+
+
 @app.post("/api/portal/logout")
 def portal_logout(x_portal_token: str = Header(None)):
     _PORTAL_SESSIONS.pop(str(x_portal_token or ""), None)

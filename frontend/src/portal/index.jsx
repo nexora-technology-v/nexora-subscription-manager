@@ -11,8 +11,9 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, Bot, Check, Copy, Database, FileText, Link2, LogOut, Loader2,
-  Package, Plus, Power, RefreshCw, Search, Trash2, Users, Wallet, X, XCircle,
+  AlertTriangle, Bot, Check, Clock, Copy, Database, FileText, Link2, LogOut,
+  Loader2, Package, Plus, Power, QrCode, RefreshCw, Search, Trash2, TrendingUp,
+  Users, Wallet, X, XCircle,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -882,6 +883,157 @@ function OrdersBox({ token, onClose, onNote }) {
 }
 
 
+function ConfigBox({ token, row, onClose, onRenew, onToggle, onNote }) {
+  const [qr, setQr] = useState(null);
+  const [qrErr, setQrErr] = useState("");
+  const [copied, setCopied] = useState("");
+
+  const copy = (text, what) => {
+    navigator.clipboard?.writeText(text);
+    setCopied(what);
+    setTimeout(() => setCopied(""), 1600);
+  };
+
+  // کیوآر از سمت سرور می‌آید و محلی ساخته می‌شود: لینک اشتراک
+  // عملاً رمز مشتری است و نباید به هیچ سرویس بیرونی برود.
+  const showQr = async () => {
+    setQrErr("");
+    try {
+      const res = await fetch(
+        `${API_URL}/api/portal/config/${encodeURIComponent(row.email)}/qr`,
+        { headers: { "X-Portal-Token": token } });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(errText(j.detail, "کیوآر ساخته نشد"));
+      }
+      setQr(URL.createObjectURL(await res.blob()));
+    } catch (e) { setQrErr(e.message); }
+  };
+
+  const pct = row.usagePct;
+  const bar = pct === null || pct === undefined ? null : Math.min(100, pct);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
+      alignItems: "flex-start", justifyContent: "center", padding: 16,
+      background: "rgba(0,0,0,.6)", overflowY: "auto",
+    }} onClick={onClose}>
+      <div className="fx-card p-5" style={{ width: 460, maxWidth: "100%", marginTop: 24 }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-[14px] font-semibold text-white">اطلاعات کاربر</div>
+          <button onClick={onClose} className="fx-ico-btn"
+            style={{ width: 28, height: 28 }} aria-label="بستن">
+            <X size={13} />
+          </button>
+        </div>
+
+        <div dir="ltr" className="text-[13px] mb-4 p-2.5 rounded-lg"
+          style={{ fontFamily: "var(--mono)", background: "var(--surface-3)",
+                   color: "var(--dim)", wordBreak: "break-all" }}>
+          {row.email}
+        </div>
+
+        {/* لینک — مهم‌ترین چیزی که به مشتری تحویل می‌دهد */}
+        {row.subUrl ? (
+          <div className="mb-4">
+            <div className="text-[12px] mb-1.5" style={{ color: "var(--muted)" }}>
+              لینک اشتراک مشتری
+            </div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <div dir="ltr" className="fx-input text-[12px] flex-1"
+                style={{ fontFamily: "var(--mono)", overflow: "hidden",
+                         textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {row.subUrl}
+              </div>
+              <button className="fx-ico-btn" style={{ width: 32, height: 32 }}
+                aria-label="کپی لینک" onClick={() => copy(row.subUrl, "l")}>
+                {copied === "l" ? <Check size={13} style={{ color: "var(--ok)" }} />
+                  : <Copy size={13} />}
+              </button>
+              <button className="fx-ico-btn" style={{ width: 32, height: 32 }}
+                aria-label="کیوآر" title="کیوآر" onClick={showQr}>
+                <QrCode size={13} />
+              </button>
+            </div>
+            {qr && (
+              <div className="flex justify-center p-3 rounded-xl"
+                style={{ background: "#fff" }}>
+                <img src={qr} alt="کیوآر لینک اشتراک"
+                  style={{ width: 200, height: 200 }} />
+              </div>
+            )}
+            {qrErr && (
+              <div className="text-[12px]" style={{ color: "var(--warn)" }}>{qrErr}</div>
+            )}
+          </div>
+        ) : (
+          <div className="text-[12px] mb-4" style={{ color: "var(--warn)" }}>
+            آدرس پایه‌ی اشتراک تنظیم نشده — با پشتیبانی تماس بگیرید.
+          </div>
+        )}
+
+        {/* مصرف */}
+        <div className="mb-4">
+          <div className="flex items-baseline justify-between mb-1.5">
+            <span className="text-[12px]" style={{ color: "var(--muted)" }}>مصرف</span>
+            <span className="text-[13px]" style={{ color: "var(--dim)" }}>
+              {faNum(row.usedGB)} از {row.gb === 0 ? "نامحدود" : `${faNum(row.gb)} GB`}
+              {pct !== null && pct !== undefined && (
+                <span style={{ color: pct >= 90 ? "var(--warn)" : "var(--muted)" }}>
+                  {" "}({faNum(pct)}٪)
+                </span>
+              )}
+            </span>
+          </div>
+          {bar !== null && (
+            <div style={{ height: 6, borderRadius: 99,
+                          background: "rgba(255,255,255,.06)", overflow: "hidden" }}>
+              <div style={{
+                width: `${bar}%`, height: "100%",
+                background: bar >= 90 ? "var(--danger)"
+                  : bar >= 80 ? "var(--warn)" : "var(--accent-2)",
+              }} />
+            </div>
+          )}
+        </div>
+
+        {/* مشخصات */}
+        <div className="rounded-xl p-3 mb-4"
+          style={{ background: "var(--surface-3)" }}>
+          {[["ساخته شده", row.createdJalali || "—"],
+            ["انقضا", row.expiryJalali || "بدون انقضا"],
+            ["روز باقی‌مانده",
+             row.daysLeft === null || row.daysLeft === undefined ? "—"
+               : row.daysLeft < 0 ? "منقضی شده" : `${faNum(row.daysLeft)} روز`],
+            ["کاربر هم‌زمان", row.devices ? faNum(row.devices) : "نامحدود"],
+            ["وضعیت", row.active ? "فعال" : "غیرفعال"]].map(([k, v]) => (
+            <div key={k} className="flex justify-between py-1 text-[13px]">
+              <span style={{ color: "var(--muted)" }}>{k}</span>
+              <span style={{ color: "var(--dim)" }}>{v}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => { onClose(); onRenew(row); }}
+            className="fx-btn flex-1 py-2.5 text-[13px] flex items-center
+                       justify-center gap-1.5">
+            <RefreshCw size={13} /> تمدید
+          </button>
+          <button onClick={() => { onToggle(row); onClose(); }}
+            className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
+            <Power size={13} style={{ color: row.active ? "var(--muted)" : "var(--ok)" }} />
+            {row.active ? "غیرفعال کن" : "فعال کن"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function Dashboard({ token, onOut }) {
   const [me, setMe] = useState(null);
   const [sum, setSum] = useState(null);
@@ -895,6 +1047,8 @@ function Dashboard({ token, onOut }) {
   const [botOpen, setBotOpen] = useState(false);
   const [plansOpen, setPlansOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [stats, setStats] = useState(null);
   const [copied, setCopied] = useState("");
   const [note, setNote] = useState("");
 
@@ -908,6 +1062,7 @@ function Dashboard({ token, onOut }) {
         api("/api/portal/configs", { token }).catch((e) => ({ _err: e.message })),
         api("/api/portal/plans", { token }).catch(() => null),
       ]);
+      api("/api/portal/stats", { token }).then(setStats).catch(() => setStats(null));
       setMe(m);
       setPlans(pl && !pl._err ? pl : null);
       setSum(s && s._err ? null : s);
@@ -1001,13 +1156,73 @@ function Dashboard({ token, onOut }) {
           </div>
         )}
 
+        {/* آنچه همین حالا کاری می‌خواهد — نه شمارش خشک.
+            «۹۴ کانفیگ» به نماینده نمی‌گوید کدام مشتری دارد از دست
+            می‌رود؛ «۶ تا تا یک هفته دیگر تمام می‌شوند» می‌گوید. */}
+        {stats && stats.needsAttention > 0 && (
+          <div className="fx-card p-4 mb-4"
+            style={{ borderColor: "rgba(251,191,36,.3)" }}>
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle size={14} style={{ color: "var(--warn)" }} />
+              <span className="text-[13px] font-semibold text-white">
+                نیاز به پیگیری
+              </span>
+            </div>
+            <div className="flex gap-4 flex-wrap text-[13px]">
+              {stats.expiringSoon > 0 && (
+                <span style={{ color: "var(--warn)" }}>
+                  {faNum(stats.expiringSoon)} تا یک هفته‌ی دیگر تمام می‌شود
+                </span>
+              )}
+              {stats.expired > 0 && (
+                <span style={{ color: "var(--danger)" }}>
+                  {faNum(stats.expired)} منقضی شده
+                </span>
+              )}
+              {stats.overQuota > 0 && (
+                <span style={{ color: "var(--danger)" }}>
+                  {faNum(stats.overQuota)} حجمش تمام شده
+                </span>
+              )}
+              {stats.nearQuota > 0 && (
+                <span style={{ color: "var(--warn)" }}>
+                  {faNum(stats.nearQuota)} بالای ۸۰٪ مصرف
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {stats && (
+          <div className="fx-g4 grid grid-cols-4 gap-3 mb-3">
+            <Stat icon={Users} label="کاربران فعال" value={faNum(stats.active)}
+              color="var(--ok)"
+              hint={stats.inactive ? `${faNum(stats.inactive)} غیرفعال` : ""} />
+            <Stat icon={Clock} label="رو به اتمام"
+              value={faNum(stats.expiringSoon)}
+              color={stats.expiringSoon ? "var(--warn)" : undefined}
+              hint="تا هفت روز دیگر" />
+            <Stat icon={Database} label="مصرف"
+              value={`${faNum(stats.usedGB)} GB`}
+              hint={stats.usagePct !== null
+                ? `${faNum(stats.usagePct)}٪ از ${faNum(stats.quotaGB)} GB` : ""} />
+            <Stat icon={TrendingUp} label="این ماه"
+              value={faNum(stats.thisMonth.new + stats.thisMonth.renewals)}
+              color="var(--accent-2)"
+              hint={`${faNum(stats.thisMonth.new)} تازه · `
+                + `${faNum(stats.thisMonth.renewals)} تمدید`} />
+          </div>
+        )}
+
         {sum && (
           <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
-            <Stat icon={Users} label="کانفیگ‌ها" value={faNum(sum.configs)}
-              hint={list ? `${faNum(list.active)} فعال` : ""} />
+            <Stat icon={Users} label="کل کانفیگ‌ها" value={faNum(sum.configs)}
+              hint={stats ? `${faNum(stats.neverExpires)} بدون انقضا` : ""} />
             <Stat icon={RefreshCw} label="تمدیدها" value={faNum(sum.renewals)}
               hint={`${faNum(sum.months)} ماه در مجموع`} />
-            <Stat icon={Database} label="مصرف" value={`${faNum(sum.usedGB)} GB`} />
+            <Stat icon={Package} label="نامحدود"
+              value={stats ? faNum(stats.unlimitedQuota) : "—"}
+              hint="بدون سقف حجم" />
             {sum.prepaid ? (
               <Stat icon={Wallet} label="اعتبار باقی‌مانده"
                 value={`${faNum(sum.credit)} تومان`}
@@ -1068,7 +1283,13 @@ function Dashboard({ token, onOut }) {
                 <tbody>
                   {rows.map((c) => (
                     <tr key={c.email}>
-                      <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>{c.email}</td>
+                      <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
+                        <button onClick={() => setDetail(c)}
+                          style={{ color: "var(--accent-2)", textAlign: "left" }}
+                          title="دیدن اطلاعات و لینک">
+                          {c.email}
+                        </button>
+                      </td>
                       <td>{c.gb === 0 ? "∞" : `${faNum(c.gb)} GB`}</td>
                       <td>
                         {faNum(c.usedGB)} GB
@@ -1163,6 +1384,12 @@ function Dashboard({ token, onOut }) {
 
       {ordersOpen && (
         <OrdersBox token={token} onClose={() => { setOrdersOpen(false); load(); }}
+          onNote={(m) => { setNote(m); setErr(""); }} />
+      )}
+
+      {detail && (
+        <ConfigBox token={token} row={detail} onClose={() => setDetail(null)}
+          onRenew={(r) => setRenew(r)} onToggle={toggle}
           onNote={(m) => { setNote(m); setErr(""); }} />
       )}
     </div>
