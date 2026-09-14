@@ -8484,7 +8484,7 @@ def tenant_portal_list(x_admin_password: str = Header(...)):
             cols = {r[1] for r in con.execute("PRAGMA table_info(tenants)")}
             pick = ["id", "name"]
             for c in ("portal_slug", "portal_group", "portal_enabled",
-                      "credit", "is_active"):
+                      "portal_pass", "credit", "is_active"):
                 if c in cols:
                     pick.append(c)
             for r in con.execute(
@@ -8496,6 +8496,9 @@ def tenant_portal_list(x_admin_password: str = Header(...)):
                     "portalGroup": d.get("portal_group") or "",
                     "portalEnabled": str(d.get("portal_enabled") or "0")
                                      not in ("0", "", "None"),
+                    # خودِ رمز هرگز برنمی‌گردد — فقط اینکه هست یا نه،
+                    # تا پنل بتواند بگوید چه چیزی مانده.
+                    "hasPass": bool(d.get("portal_pass")),
                     "credit": d.get("credit"),
                     "active": bool(d.get("is_active", 1)),
                 })
@@ -8550,6 +8553,12 @@ def tenant_portal_set(tid: int, payload: dict,
         sets.append("portal_slug=?")
         vals.append(clean)
 
+    if "group" in p:
+        # گروه بی‌صدا دور ریخته می‌شد: پنل می‌فرستادش و این مسیر
+        # نمی‌خواندش. نماینده وارد می‌شد و هیچ کانفیگی نمی‌دید.
+        sets.append("portal_group=?")
+        vals.append(str(p.get("group") or "").strip())
+
     if p.get("password"):
         pw = str(p["password"])
         if len(pw) < 8:
@@ -8571,6 +8580,14 @@ def tenant_portal_set(tid: int, payload: dict,
 
     con = _bot_rw()
     try:
+        # آیا از قبل رمز داشت؟ تصمیمِ «خودش باز شود» به همین بند است.
+        try:
+            _prev = con.execute("SELECT portal_pass FROM tenants WHERE id=?",
+                                (tid,)).fetchone()
+            had_pass = bool(_prev and _prev["portal_pass"])
+        except Exception:
+            had_pass = False
+
         cols = {r[1] for r in con.execute("PRAGMA table_info(tenants)")}
         # نوعِ هر ستون مهم است.
         #
@@ -8579,6 +8596,7 @@ def tenant_portal_set(tid: int, payload: dict,
         # نیست — یعنی هیچ نماینده‌ای نمی‌تواند وارد شود، بی‌آنکه
         # هیچ خطایی جایی ثبت شود.
         for col, typ in (("portal_slug", "TEXT"), ("portal_pass", "TEXT"),
+                         ("portal_group", "TEXT"),
                          ("portal_enabled", "INTEGER DEFAULT 0")):
             if col not in cols:
                 con.execute(f"ALTER TABLE tenants ADD COLUMN {col} {typ}")
@@ -8587,10 +8605,35 @@ def tenant_portal_set(tid: int, payload: dict,
             f"UPDATE tenants SET {', '.join(sets)} WHERE id=?", vals)
         if not cur.rowcount:
             raise HTTPException(status_code=404, detail="نماینده پیدا نشد")
+
+        # تنظیم‌کردن یعنی باز کردن.
+        #
+        # قبلاً نبود و هیچ‌کدام از دکمه‌های پنل enabled نمی‌فرستادند،
+        # پس portal_enabled صفر می‌ماند. ورودِ نماینده آن‌وقت «نشانی
+        # یا رمز نادرست است» می‌گرفت — که از رمز غلط قابل تشخیص
+        # نیست. مدیر رمز را درست زده بود و پنل می‌گفت غلط است.
+        #
+        # فقط وقتی که مدیر صریحاً enabled نفرستاده باشد، و ردیف
+        # حالا هر سه چیزِ لازم را داشته باشد. بستنِ صریح دست‌نخورده
+        # می‌ماند.
+        opened = False
+        if "enabled" not in p and p.get("password") and not had_pass:
+            # فقط همان *بار اولی* که رمز ساخته می‌شود.
+            #
+            # «هر بار که تنظیم شد باز کن» ساده‌تر بود ولی غلط: مدیری
+            # که نماینده‌ای را عمداً بسته، با ویرایش بعدیِ نشانی‌اش
+            # دوباره بازش می‌کرد — یعنی بستن هیچ معنایی نداشت.
+            row = con.execute(
+                "SELECT portal_slug, portal_group FROM tenants WHERE id=?",
+                (tid,)).fetchone()
+            if row and row["portal_slug"] and row["portal_group"]:
+                con.execute("UPDATE tenants SET portal_enabled=1 WHERE id=?",
+                            (tid,))
+                opened = True
         con.commit()
     finally:
         con.close()
-    return {"ok": True}
+    return {"ok": True, "opened": opened}
 
 
 def _days_left(expiry):

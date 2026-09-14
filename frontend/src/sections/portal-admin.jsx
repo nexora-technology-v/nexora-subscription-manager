@@ -58,7 +58,7 @@ function Row({ t, groups, password, onSaved, setMsg }) {
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(errText(j.detail, "ثبت نشد"));
-      setMsg({ t: "ok", m: what });
+      setMsg({ t: "ok", m: what + (j.opened ? " — پنلش هم باز شد" : "") });
       onSaved();
     } catch (e) {
       setMsg({ t: "err", m: e.message });
@@ -167,9 +167,21 @@ function Row({ t, groups, password, onSaved, setMsg }) {
         </div>
       )}
 
-      {on && !t.portalGroup && (
-        <div className="text-[12px] mt-3" style={{ color: "var(--warn)" }}>
-          گروه تعیین نشده — این نماینده وارد می‌شود ولی هیچ کانفیگی نمی‌بیند.
+      {/* چه چیزی مانده تا این نماینده بتواند وارد شود.
+          بدون این، تنها بازخوردی که مدیر می‌گرفت «رمز نادرست است»
+          روی صفحه‌ی ورود بود — که هیچ ربطی به رمز نداشت. */}
+      {(!t.portalGroup || !t.hasPass || !on) && (
+        <div className="rounded-xl p-3 mt-3 text-[12px] leading-relaxed"
+          style={{ background: "rgba(251,191,36,.07)",
+                   border: "1px solid rgba(251,191,36,.22)",
+                   color: "var(--warn)" }}>
+          <div className="font-semibold mb-1">برای اینکه بتواند وارد شود:</div>
+          {!t.portalSlug && <div>• نشانی لینک را بنویسید و ثبت کنید</div>}
+          {!t.portalGroup && <div>• گروه x-ui را انتخاب کنید</div>}
+          {!t.hasPass && <div>• یک رمز بسازید</div>}
+          {t.portalSlug && t.portalGroup && t.hasPass && !on && (
+            <div>• پنلش بسته است — دکمه‌ی «بازکردن پنل» را بزنید</div>
+          )}
         </div>
       )}
     </div>

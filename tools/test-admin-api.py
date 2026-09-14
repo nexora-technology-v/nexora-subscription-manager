@@ -922,6 +922,87 @@ _row.close()
 check("جداکردن توکن را پاک می‌کند", not _gone)
 
 
+# ═══════════════════════════════════════════════════════════
+head("راه‌اندازی نماینده از پنل مدیر")
+
+# چیزی که مدیر واقعاً دید: نماینده را ساخت، رمز گرفت، لینک را باز
+# کرد، و پنل گفت «نشانی یا رمز نادرست است». رمز درست بود.
+#
+# دو علت داشت، هر دو در همین مسیر:
+#   • group بی‌صدا دور ریخته می‌شد
+#   • هیچ دکمه‌ای portal_enabled را یک نمی‌کرد، و ورود برای پنلِ
+#     بسته همان پیام رمز غلط را می‌دهد
+
+AP.load_password = lambda: "testpw"
+AP._auth_fails.clear()
+
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("DELETE FROM tenants WHERE name='تازه‌وارد'")
+    _bd.execute("INSERT INTO tenants (name, is_active, credit) VALUES (?,1,?)",
+                ("تازه‌وارد", 0))
+    _nid = _bd.execute("SELECT id FROM tenants WHERE name='تازه‌وارد'"
+                       ).fetchone()[0]
+    _bd.commit()
+finally:
+    _bd.close()
+
+# همان چیزی که دکمه‌ی «ثبت» می‌فرستد
+_r1 = AP.tenant_portal_set(_nid, {"slug": "tazevared", "group": "goroh-a"},
+                           x_admin_password="testpw")
+check("نشانی و گروه ثبت شد", _r1["ok"])
+
+_row = _sq3.connect(str(AP.BOT_DB))
+_g = _row.execute("SELECT portal_group FROM tenants WHERE id=?",
+                  (_nid,)).fetchone()[0]
+_row.close()
+check("گروه واقعاً نشست", _g == "goroh-a",
+      "قبلاً بی‌صدا دور ریخته می‌شد و نماینده هیچ کانفیگی نمی‌دید")
+
+# هنوز رمز ندارد، پس نباید باز شده باشد
+check("بدون رمز پنل باز نمی‌شود", not _r1.get("opened"),
+      "باز کردنِ پنلی که رمز ندارد یعنی در باز بی‌قفل")
+
+_bad = None
+try:
+    AP.portal_login("tazevared", {"password": "hich"}, None)
+except Exception as e:
+    _bad = getattr(e, "status_code", 0)
+check("و ورود هم ممکن نیست", _bad == 401)
+
+# همان چیزی که دکمه‌ی «رمز تازه بساز» می‌فرستد
+_r2 = AP.tenant_portal_set(_nid, {"password": "rooz-e-khoob-1"},
+                           x_admin_password="testpw")
+check("رمز ثبت شد", _r2["ok"])
+check("و حالا پنل خودش باز شد", _r2.get("opened") is True,
+      "این همان چیزی بود که جا افتاده بود")
+
+# و حالا باید بتواند وارد شود — همان کاری که مدیر کرد
+AP._auth_fails.clear()
+_in = AP.portal_login("tazevared", {"password": "rooz-e-khoob-1"}, None)
+check("ورود با رمزی که پنل ساخت کار می‌کند", bool(_in.get("token")),
+      "دقیقاً همان چیزی که کار نمی‌کرد")
+
+# بستنِ صریح نباید با ویرایش بعدی خودبه‌خود باز شود
+AP.tenant_portal_set(_nid, {"enabled": False}, x_admin_password="testpw")
+_r3 = AP.tenant_portal_set(_nid, {"slug": "tazevared2"}, x_admin_password="testpw")
+check("بستنِ صریح با ویرایش بعدی باز نمی‌شود", not _r3.get("opened"),
+      "وگرنه بستنِ یک نماینده هیچ معنایی ندارد")
+
+_row = _sq3.connect(str(AP.BOT_DB))
+_e = _row.execute("SELECT COALESCE(portal_enabled,0) FROM tenants WHERE id=?",
+                  (_nid,)).fetchone()[0]
+_row.close()
+check("و بسته می‌ماند", str(_e) in ("0", "", "None"), str(_e))
+
+# فهرست باید بگوید رمز دارد یا نه، بدون اینکه رمز را بدهد
+_lst = AP.tenant_portal_list(x_admin_password="testpw")
+_me = [x for x in _lst["tenants"] if x["id"] == _nid]
+check("فهرست می‌گوید رمز دارد", _me and _me[0]["hasPass"] is True)
+check("ولی خودِ رمز را نمی‌دهد", "rooz-e-khoob-1" not in str(_lst),
+      "پنل فقط باید بداند هست یا نه")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

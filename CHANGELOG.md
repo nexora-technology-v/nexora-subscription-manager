@@ -4,6 +4,32 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.19.1]
+
+### Fixed — A reseller set up from the panel could not log in
+
+Two bugs in the same route, both mine, and together they made a correct password
+look wrong.
+
+The setup route never read `group`. The panel sent it with every save and it was
+dropped without a word, so `portal_group` stayed empty and the reseller would have
+seen nothing even after getting in.
+
+Worse, nothing opened the portal. None of the panel's buttons sent `enabled`, so
+`portal_enabled` stayed at zero — and login treats a closed portal exactly like a
+wrong password, deliberately, so that the page cannot be used to discover which
+links are real. The owner typed the password the panel had just generated for them
+and was told it was wrong. The command-line path set the flag; the panel did not.
+
+Generating the first password now opens the portal, provided the slug and group
+are already set. Only the first: an owner who deliberately closed a reseller would
+otherwise have reopened them by editing their link, which would make closing
+meaningless.
+
+And the card now lists what is still missing — no slug, no group, no password, or
+closed — instead of leaving the login screen's "wrong password" as the only
+feedback.
+
 ## [1.19.0]
 
 ### Added — A reseller can attach their own Telegram bot
