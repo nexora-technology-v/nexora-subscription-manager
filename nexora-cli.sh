@@ -833,6 +833,17 @@ PY
     fi
     ;;
 
+  reseller|nemayande)
+    # حساب پنل نماینده — تا لازم نباشد پنل x-ui خودت را به او بدهی.
+    if [ -f "$INSTALL_DIR/tools/reseller.py" ]; then
+      shift
+      BOT_DB_PATH="$INSTALL_DIR/data/bot.db"         python3 "$INSTALL_DIR/tools/reseller.py" "$@"
+    else
+      err "tools/reseller.py پیدا نشد — اول nexora update بزنید"
+      exit 1
+    fi
+    ;;
+
   billing-why|why-unpriced)
     # چرا یک کانفیگ «بدون نرخ» است — نرخ‌های ثبت‌شده، نام گروه‌ها در
     # x-ui، و اینکه کدام حجم با کدام نرخ جور در می‌آید. هیچ رمز، نام
@@ -1053,6 +1064,7 @@ PYEOF
     echo -e "  ${C_WHITE}nexora bot${C_RESET}                    ${C_DIM}manage the Telegram bot${C_RESET}"
     echo -e "  ${C_WHITE}nexora doctor${C_RESET}                 ${C_DIM}check and auto-fix common problems${C_RESET}"
     echo -e "  ${C_WHITE}nexora billing-why${C_RESET}            ${C_DIM}why a config shows as having no rate${C_RESET}"
+    echo -e "  ${C_WHITE}nexora reseller list${C_RESET}          ${C_DIM}reseller portal accounts${C_RESET}"
     echo -e "  ${C_WHITE}nexora password${C_RESET}               ${C_DIM}change admin password${C_RESET}"
     echo -e "  ${C_WHITE}nexora diagnose${C_RESET}               ${C_DIM}troubleshoot template issues${C_RESET}"
     echo ""

@@ -474,6 +474,78 @@ check("بستن نماینده نشستِ باز را همان لحظه می‌�
 check("و توکنش هم پاک می‌شود", _tok not in AP._PORTAL_SESSIONS)
 
 
+# ═══════════════════════════════════════════════════════════
+head("نماینده فقط کانفیگ‌های گروه خودش را می‌بیند")
+
+# همان چیزی که کل این کار برایش انجام شد: نماینده نباید کانفیگ
+# نماینده‌ی دیگر یا مشتری مستقیم مدیر را ببیند. تا امروز پنل x-ui
+# خودِ مدیر به او داده می‌شد، یعنی همه‌چیز را می‌دید.
+
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("UPDATE tenants SET portal_enabled=1, portal_group=? "
+                "WHERE portal_slug='hossein'", ("goroh-a",))
+    _bd.execute("UPDATE tenants SET portal_enabled=1, portal_group=? "
+                "WHERE portal_slug='bastan'", ("goroh-b",))
+    _bd.commit()
+except Exception:
+    # ستون در دیتابیس تست نیست — می‌سازیمش
+    _bd.execute("ALTER TABLE tenants ADD COLUMN portal_group TEXT")
+    _bd.execute("UPDATE tenants SET portal_enabled=1, portal_group=? "
+                "WHERE portal_slug='hossein'", ("goroh-a",))
+    _bd.execute("UPDATE tenants SET portal_enabled=1, portal_group=? "
+                "WHERE portal_slug='bastan'", ("goroh-b",))
+    _bd.commit()
+finally:
+    _bd.close()
+
+# دنیای x-ui ساختگی: سه گروه
+_ALL = [
+    {"email": "a1", "group": "goroh-a", "totalGB": 50 * 1024 ** 3, "used": 0,
+     "enable": True, "createdAt": "2026-07-01", "expiry": 1790000000000,
+     "limitIp": 2, "subId": "s1"},
+    {"email": "a2", "group": "goroh-a", "totalGB": 0, "used": 0,
+     "enable": False, "createdAt": "2026-07-02", "expiry": 1790000000000,
+     "limitIp": 0, "subId": "s2"},
+    {"email": "b1", "group": "goroh-b", "totalGB": 50 * 1024 ** 3, "used": 0,
+     "enable": True, "createdAt": "2026-07-03", "expiry": 1790000000000,
+     "limitIp": 1, "subId": "s3"},
+    {"email": "mine", "group": "مشتری مستقیم", "totalGB": 0, "used": 0,
+     "enable": True, "createdAt": "2026-07-04", "expiry": 1790000000000,
+     "limitIp": 0, "subId": "s4"},
+]
+AP._read_xui_clients = lambda *a, **k: (_ALL, [], None)
+
+_t1 = AP._tenant_by_slug("hossein")
+_out = AP.portal_configs(_t1)
+_emails = sorted(c["email"] for c in _out["configs"])
+check("فقط کانفیگ‌های گروه خودش", _emails == ["a1", "a2"], "، ".join(_emails))
+check("کانفیگ نماینده‌ی دیگر نیست", "b1" not in _emails)
+check("مشتری مستقیم مدیر هم نیست", "mine" not in _emails,
+      "این بدترین نشتی ممکن بود")
+check("شمارش فعال‌ها درست است", _out["active"] == 1, str(_out["active"]))
+
+_t2 = AP._tenant_by_slug("bastan")
+_out2 = AP.portal_configs(_t2)
+check("نماینده‌ی دوم هم فقط مال خودش را می‌بیند",
+      [c["email"] for c in _out2["configs"]] == ["b1"])
+
+# نماینده‌ای که گروهش تعیین نشده نباید چیزی ببیند
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("UPDATE tenants SET portal_group=NULL WHERE portal_slug='hossein'")
+    _bd.commit()
+finally:
+    _bd.close()
+try:
+    AP.portal_configs(AP._tenant_by_slug("hossein"))
+    _blank = False
+except Exception as e:
+    _blank = getattr(e, "status_code", 0) == 409
+check("نماینده‌ی بی‌گروه هیچ چیز نمی‌بیند", _blank,
+      "نه اینکه «همه» را ببیند — آن بدترین حالت پیش‌فرض است")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

@@ -8530,6 +8530,115 @@ def tenant_portal_set(tid: int, payload: dict,
     return {"ok": True}
 
 
+def _days_left(expiry):
+    """
+    چند روز تا انقضا. None یعنی بی‌پایان، منفی یعنی گذشته.
+
+    x-ui برای کلاینتی که هنوز وصل نشده عدد منفی نگه می‌دارد (یعنی
+    «از اولین اتصال شروع شود») — آن هم بی‌پایان حساب می‌شود، نه
+    منقضی‌شده‌ی خیلی قدیمی.
+    """
+    ms = _epoch_ms(expiry)
+    if not ms or ms <= 0:
+        return None
+    return int((ms - _epoch_ms(datetime.now())) / 86400000.0)
+
+
+def _portal_group(t):
+    """
+    گروه x-ui این نماینده. اگر تعریف نشده باشد، هیچ چیزی نشان نمی‌دهیم.
+
+    برگرداندن «همه» وقتی گروه تنظیم نشده، بدترین حالت ممکن است: یک
+    نماینده‌ی نیمه‌ساخته کل مشتری‌های سیستم را می‌دید.
+    """
+    g = (t.get("portal_group") or "").strip()
+    if not g:
+        raise HTTPException(
+            status_code=409,
+            detail="گروه این نماینده هنوز تعیین نشده — با پشتیبانی تماس بگیرید")
+    return g
+
+
+@app.get("/api/portal/configs")
+def portal_configs(t: dict = Depends(portal_tenant)):
+    """
+    کانفیگ‌های همین نماینده — و فقط همین نماینده.
+
+    فیلتر روی گروه، نه روی چیزی که کاربر فرستاده: هیچ پارامتری از
+    درخواست در انتخاب ردیف‌ها دخالت ندارد.
+    """
+    group = _portal_group(t)
+    clients, _known, err = _read_xui_clients()
+    if clients is None:
+        raise HTTPException(status_code=400, detail=err)
+
+    out = []
+    for cl in clients:
+        if (cl.get("group") or "") != group:
+            continue
+        cj, cg = _to_jalali(cl.get("createdAt"))
+        ej, eg = _to_jalali(cl.get("expiry"))
+        gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
+        out.append({
+            "email": cl["email"],
+            "gb": gb,
+            "gbLabel": "نامحدود" if gb == 0 else f"{gb} GB",
+            "usedGB": round(cl["used"] / (1024 ** 3), 1),
+            "usagePct": _usage_percent(cl["used"], cl["totalGB"]),
+            "devices": cl.get("limitIp") or 0,
+            "createdJalali": cj, "createdGregorian": cg,
+            "expiryJalali": ej, "expiryGregorian": eg,
+            "daysLeft": _days_left(cl.get("expiry")),
+            "active": bool(cl["enable"]),
+            "subId": cl.get("subId") or "",
+        })
+
+    out.sort(key=lambda x: (x.get("createdGregorian") or "9999", x["email"]))
+    return {
+        "group": group,
+        "configs": out,
+        "total": len(out),
+        "active": sum(1 for x in out if x["active"]),
+        "expiringSoon": sum(1 for x in out
+                            if x["daysLeft"] is not None and 0 <= x["daysLeft"] <= 7),
+    }
+
+
+@app.get("/api/portal/summary")
+def portal_summary(t: dict = Depends(portal_tenant)):
+    """
+    خلاصه‌ی وضعیت نماینده: چند کانفیگ، چقدر بدهکار، چقدر اعتبار.
+
+    همان محاسبه‌ای که صورتحساب مدیر می‌کند — تا دو طرف یک عدد ببینند
+    و سر آن بحث نشود.
+    """
+    group = _portal_group(t)
+    try:
+        inv = billing_invoice(group, x_admin_password=load_password())
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"محاسبه ناموفق: {str(e)[:120]}")
+
+    tot = inv.get("totals") or {}
+    credit = t.get("credit")
+    return {
+        "group": group,
+        "label": inv.get("label") or group,
+        "configs": tot.get("configs", 0),
+        "months": tot.get("months", 0),
+        "renewals": tot.get("renewals", 0),
+        "usedGB": tot.get("usedGB", 0),
+        "due": tot.get("due", 0),
+        "paid": tot.get("paid", 0),
+        "balance": tot.get("balance", 0),
+        # -1 یعنی نامحدود (مستاجر اصلی)
+        "credit": credit,
+        "prepaid": credit is not None and int(credit or 0) >= 0,
+        "unpriced": tot.get("unpriced", 0),
+    }
+
+
 @app.post("/api/portal/logout")
 def portal_logout(x_portal_token: str = Header(None)):
     _PORTAL_SESSIONS.pop(str(x_portal_token or ""), None)

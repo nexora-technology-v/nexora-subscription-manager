@@ -4,6 +4,38 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.15.0]
+
+### Added — Reseller portal
+
+A reseller had to be handed the owner's x-ui panel. That let them see every other
+reseller's configs and the owner's own direct customers, change anyone's quota,
+and delete configs. It is also why accounting has to guess at renewals: work done
+in x-ui is recorded nowhere.
+
+Each reseller now gets their own link — `/r/<slug>` — with their own password.
+They see their configs, quota and usage, expiry, device count, and what they owe:
+the same figure the owner's invoice shows, so there is nothing to argue about.
+Nothing else is reachable.
+
+The reseller API is a separate, small surface rather than the owner's routes. The
+admin API has 114 routes and every one assumes you own the system; scoping each
+individually means one missed route leaks everything — the same shape as the agent
+bug found earlier today, where a node was authenticated but not scoped. A seam test
+enforces that every portal route passes through `portal_tenant`, and the portal
+frontend is a separate app that cannot import admin code at all.
+
+Scoping is on the reseller's x-ui group, never on anything the request carries. A
+reseller with no group set sees nothing rather than everything — the safe default
+for a half-finished account.
+
+Set one up with `nexora reseller set <name> --slug hossein --group "<x-ui group>"
+--generate`, and close it with `nexora reseller off <name>`, which drops open
+sessions rather than letting them run to expiry.
+
+Still to come: creating and renewing from the portal, which is what finally
+replaces the renewal guesswork; prepaid credit; and attaching their own bot.
+
 ### Added — Reseller portal, first phase: accounts and scoped login
 
 A reseller currently has to be handed the owner's x-ui panel. That means they can

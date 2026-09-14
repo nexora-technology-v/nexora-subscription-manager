@@ -338,6 +338,12 @@ def _migrate(con):
         ("tenants", "portal_slug", "TEXT"),
         ("tenants", "portal_pass", "TEXT"),
         ("tenants", "portal_enabled", "INTEGER DEFAULT 0"),
+        # گروهی که این نماینده در x-ui دارد — کلید همه‌ی محدودسازی‌ها.
+        #
+        # بدون این، پنل نماینده نمی‌داند کدام کانفیگ‌ها مال اوست و
+        # ناچار است یا همه را نشان بدهد یا از روی نام حدس بزند. هیچ
+        # کدام قابل قبول نیست.
+        ("tenants", "portal_group", "TEXT"),
     ]
     for table, col, spec in adds:
         try:
