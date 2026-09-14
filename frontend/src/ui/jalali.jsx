@@ -124,6 +124,47 @@ export function JalaliDate({ value, onChange, placeholder = "انتخاب تار
   const [open, setOpen] = useState(false);
   const [view, setView] = useState({ y: tj.jy, m: tj.jm });
   const box = useRef(null);
+  const btn = useRef(null);
+  const [pos, setPos] = useState(null);
+
+  // تقویم با position:fixed می‌نشیند، نه absolute.
+  //
+  // قبلاً absolute بود و رو به پایین باز می‌شد. وقتی فیلد پایین یک
+  // کارت بود — مثل «شروع همکاری» و «تسویه‌شده تا» در ویرایش گروه —
+  // نصف تقویم زیر لبه‌ی کارت می‌رفت و دکمه‌های روزش دست‌نیافتنی
+  // می‌شدند. هیچ اسکرولی هم نجاتش نمی‌داد.
+  //
+  // fixed از هر کادر و هر overflow والد بیرون می‌زند، و اگر پایین
+  // جا نباشد تقویم رو به بالا برمی‌گردد.
+  const place = () => {
+    const el = btn.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const W = 280;
+    const H = 330;                      // تقریبِ ارتفاع تقویم
+    const gap = 6;
+    const below = window.innerHeight - r.bottom;
+    const up = below < H && r.top > below;
+    // راست‌چین: لبه‌ی راست تقویم روی لبه‌ی راست فیلد
+    let left = r.right - W;
+    left = Math.max(8, Math.min(left, window.innerWidth - W - 8));
+    const top = up ? Math.max(8, r.top - gap - H) : r.bottom + gap;
+    setPos({ left, top, maxHeight: up ? r.top - gap - 8 : below - gap - 8 });
+  };
+
+  useEffect(() => {
+    if (!open) return undefined;
+    place();
+    const again = () => place();
+    window.addEventListener("resize", again);
+    // scroll در حالت capture: هر والدِ اسکرول‌شونده هم شنیده می‌شود
+    window.addEventListener("scroll", again, true);
+    return () => {
+      window.removeEventListener("resize", again);
+      window.removeEventListener("scroll", again, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // وقتی مقدار بیرونی عوض شد، تقویم روی همان ماه باز شود
   useEffect(() => {
@@ -174,7 +215,7 @@ export function JalaliDate({ value, onChange, placeholder = "انتخاب تار
 
   return (
     <div ref={box} style={{ position: "relative" }}>
-      <button type="button" onClick={() => setOpen(!open)}
+      <button ref={btn} type="button" onClick={() => setOpen(!open)}
         className="fx-input flex items-center justify-between gap-2"
         style={{ width: "100%", textAlign: "right", cursor: "pointer" }}>
         <span style={{ color: value ? "var(--text)" : "var(--muted)" }}>
@@ -189,10 +230,12 @@ export function JalaliDate({ value, onChange, placeholder = "انتخاب تار
         </span>
       </button>
 
-      {open && (
+      {open && pos && (
         <div className="fx-card p-3" style={{
-          position: "absolute", top: "calc(100% + 6px)", right: 0,
-          zIndex: 60, width: 280,
+          position: "fixed", left: pos.left, top: pos.top,
+          zIndex: 3000, width: 280,
+          maxHeight: Math.max(220, pos.maxHeight),
+          overflowY: "auto",
           boxShadow: "0 18px 44px -14px rgba(0,0,0,.7)",
         }}>
           <div className="flex items-center justify-between mb-2">

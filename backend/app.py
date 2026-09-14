@@ -4724,6 +4724,78 @@ def _price_for(gb, rates):
     return price
 
 
+def _device_rate(gb, rates):
+    """
+    نرخ هر کاربرِ اضافه برای همین حجم — یا صفر اگر تعریف نشده.
+
+    از همان ردیفی خوانده می‌شود که قیمت پایه از آن آمده، پس هر پله
+    می‌تواند نرخ کاربر خودش را داشته باشد.
+    """
+    chosen = _match_rate(gb, rates)
+    if not chosen:
+        return 0
+    try:
+        return max(0, int(chosen.get("perDevice", 0) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _line_amount(gb, rates, months, limit_ip):
+    """
+    مبلغ یک ردیف فاکتور: (نرخ پایه + کاربرهای اضافه) × ماه.
+
+    کانفیگ چهارکاربره همان نرخ کانفیگ تک‌کاربره را می‌گرفت، در حالی
+    که سه کاربر بیشتر روی سرور می‌نشیند. حالا هر ردیف نرخ، نرخ کاربر
+    خودش را دارد.
+
+    «کاربرِ اضافه» یعنی از دومی به بعد — نرخ پایه شامل کاربر اول است،
+    پس کانفیگ تک‌کاربره و فاکتورهای قبلی دست‌نخورده می‌مانند.
+
+    محدودیت نامحدود (صفر) قابل شمردن نیست، پس فقط نرخ پایه می‌گیرد و
+    ردیف علامت می‌خورد تا در فهرست «نیاز به بررسی» دیده شود.
+
+    برمی‌گرداند: (مبلغ, نرخ پایه, نرخ هر کاربر, تعداد کاربر اضافه)
+    """
+    base, _why = _price_with_reason(gb, rates)
+    if base is None:
+        return 0, None, 0, 0
+    per = _device_rate(gb, rates)
+    try:
+        ips = int(limit_ip or 0)
+    except (TypeError, ValueError):
+        ips = 0
+    extra = max(0, ips - 1) if ips > 0 else 0
+    return (base + per * extra) * months, base, per, extra
+
+
+def _match_rate(gb, rates):
+    """همان ردیفی که _price_with_reason قیمتش را برمی‌دارد."""
+    valid = []
+    for r in rates or []:
+        try:
+            valid.append((int(r.get("gb", -1)), r))
+        except (TypeError, ValueError, AttributeError):
+            continue
+    if not valid:
+        return None
+    for g, r in valid:
+        if g == gb:
+            return r
+    if gb > 0:
+        higher = sorted((v for v in valid if v[0] > gb), key=lambda v: v[0])
+        if higher:
+            return higher[0][1]
+        vol = [v for v in valid if v[0] > 0]
+        if vol:
+            return max(vol, key=lambda v: v[0])[1]
+        flat = [v for v in valid if v[0] == 0]
+        if flat:
+            return flat[0][1]
+        return None
+    vol = [v for v in valid if v[0] > 0]
+    return max(vol, key=lambda v: v[0])[1] if vol else None
+
+
 def _price_with_reason(gb, rates):
     """
     قیمت، به‌همراه دلیلِ نبودنش. برمی‌گرداند: (قیمت یا None, دلیل یا None)
@@ -5083,8 +5155,11 @@ def _billing_overview_impl():
                 used_gb = cl["used"] / (1024 ** 3)
                 G["due"] += round(used_gb * G["perGb"])
             else:
-                price, why = _price_with_reason(gb, G["rates"])
+                amount, price, per_dev, extra = _line_amount(
+                    gb, G["rates"], months, cl.get("limitIp"))
+                why = None
                 if price is None:
+                    _, why = _price_with_reason(gb, G["rates"])
                     G["unpriced"] += 1
                     # چرایش را هم نگه می‌داریم. «۷ کانفیگ بدون نرخ»
                     # بدون دلیل، مدیر را به همان‌جایی می‌برد که نرخ
@@ -5092,7 +5167,8 @@ def _billing_overview_impl():
                     if why:
                         G["unpricedWhy"][why] = G["unpricedWhy"].get(why, 0) + 1
                 else:
-                    G["due"] += months * price
+                    G["due"] += amount
+                    G["deviceExtra"] = G.get("deviceExtra", 0) + per_dev * extra * months
 
     # گروه‌هایی که در پنل ساخته شده‌اند ولی هنوز کاربری ندارند هم
     # باید دیده شوند — وگرنه ادمین فکر می‌کند گروهش گم شده.
@@ -5195,7 +5271,9 @@ def billing_group_put(group_key: str, payload: dict, x_admin_password: str = Hea
     for i, r in enumerate(rates, 1):
         try:
             clean.append({"gb": max(0, int(r.get("gb", 0))),
-                          "price": max(0, int(r.get("price", 0)))})
+                          "price": max(0, int(r.get("price", 0))),
+                          # نرخ هر کاربرِ اضافه، مخصوص همین ردیف
+                          "perDevice": max(0, int(r.get("perDevice", 0) or 0))})
         except (TypeError, ValueError, AttributeError):
             raise HTTPException(
                 status_code=400,
@@ -5602,8 +5680,11 @@ def billing_invoice(group_key: str, x_admin_password: str = Header(...)):
             continue
         months, kind, drift = _months_for(cl, logged)
         gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
-        price, price_why = _price_with_reason(gb, rates)
-        amount = (months * price) if price is not None else 0
+        amount, price, per_dev, extra_dev = _line_amount(
+            gb, rates, months, cl.get("limitIp"))
+        price_why = None
+        if price is None:
+            _, price_why = _price_with_reason(gb, rates)
         due += amount
         created_j, created_g = _to_jalali(cl.get("createdAt"))
         expiry_j, expiry_g = _to_jalali(cl.get("expiry"))
@@ -5638,6 +5719,9 @@ def billing_invoice(group_key: str, x_admin_password: str = Header(...)):
             "drift": drift,
             "price": price,
             "priceWhy": price_why,
+            "perDevice": per_dev,
+            "extraDevices": extra_dev,
+            "deviceAmount": per_dev * extra_dev * months,
             "amount": amount,
             "active": cl["enable"],
             "status": status,
@@ -6473,7 +6557,10 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
             ln["gbLabel"],
             f"{ln['usedGB']}",
             DASH if ln.get("usagePct") is None else f"{ln['usagePct']}٪",
-            "∞" if not ln["limitIp"] else str(ln["limitIp"]),
+            ("∞" if not ln["limitIp"]
+             else (str(ln["limitIp"]) + "+" + money(ln["perDevice"])
+                   if ln.get("perDevice") and ln.get("extraDevices")
+                   else str(ln["limitIp"]))),
             money(ln["amount"]),
         ]
 
@@ -6724,7 +6811,12 @@ def billing_period(group_key: str, start: str = "", end: str = "",
             continue
 
         gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
-        price, price_why = _price_with_reason(gb, rates)
+        _amt1, price, _pd, _ex = _line_amount(gb, rates, 1, cl.get("limitIp"))
+        price_why = None
+        if price is None:
+            _, price_why = _price_with_reason(gb, rates)
+        # قیمتِ یک ماه، با کاربرهای اضافه
+        price = _amt1 if price is not None else None
         _cj, created_g = _to_jalali(cl.get("createdAt"))
         created_j, _ = _to_jalali(cl.get("createdAt"))
 

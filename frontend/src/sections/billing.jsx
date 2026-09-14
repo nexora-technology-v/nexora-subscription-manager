@@ -1188,6 +1188,37 @@ export function RateRow({ rate, onChange, onDelete }) {
           <button onClick={() => bump(RATE_STEP)} className="nx-step">+</button>
         </div>
 
+        {/* نرخ هر کاربرِ اضافه — مخصوص همین پله.
+            کانفیگ چهارکاربره همان نرخ تک‌کاربره را می‌گرفت، در حالی
+            که سه کاربر بیشتر روی سرور می‌نشیند. */}
+        <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+          <div className="flex justify-between items-center mb-2">
+            <label className="text-[12px]" style={{ color: "var(--muted)" }}>
+              نرخ هر کاربر اضافه
+            </label>
+            <span className="text-[12px]" style={{ color: "var(--muted)" }}>
+              {rate.perDevice ? `${faNum(rate.perDevice)} تومان` : "رایگان"}
+            </span>
+          </div>
+          <input type="number" min="0" dir="ltr" value={rate.perDevice || ""}
+            onChange={(e) => onChange({ perDevice: Math.max(0, Number(e.target.value)) })}
+            placeholder="0"
+            className="fx-input w-full text-center py-2 text-[15px] font-bold"
+            style={{ fontFamily: "var(--mono)" }} />
+          <p className="text-[12px] mt-2 leading-relaxed" style={{ color: "var(--muted)" }}>
+            نرخ پایه شامل کاربر اول است. کانفیگ{" "}
+            <b>{faNum(4)} کاربره</b> می‌شود{" "}
+            <b style={{ color: "var(--accent-2)" }}>
+              {faNum((rate.price || 0) + (rate.perDevice || 0) * 3)}
+            </b>{" "}
+            تومان در ماه
+            {rate.perDevice ? (
+              <> — {faNum(rate.price || 0)} + {faNum(3)}×{faNum(rate.perDevice)}</>
+            ) : null}
+            .
+          </p>
+        </div>
+
         <div className="flex gap-1.5 mt-2.5 flex-wrap">
           {RATE_QUICK.map((q) => {
             const on = rate.price === q;
@@ -1676,7 +1707,7 @@ export function BillingGroups({ password }) {
                     <>
                     <div className="flex justify-between items-center mb-3 mt-1 flex-wrap gap-2">
                       <span className="text-[13px]" style={{ color: "var(--dim)" }}>نرخ ماهانه بر اساس حجم</span>
-                      <button onClick={() => set(g, { rates: [...(d.rates || []), { gb: 0, price: 190000 }] })}
+                      <button onClick={() => set(g, { rates: [...(d.rates || []), { gb: 0, price: 190000, perDevice: 0 }] })}
                         className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
                         <PlusIcon size={12} /> افزودن نرخ
                       </button>

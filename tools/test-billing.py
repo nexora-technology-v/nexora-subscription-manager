@@ -33,6 +33,11 @@ _ns = {}
 exec(_m.group(0), _ns)
 price_for = _ns["_price_for"]
 price_with_reason = _ns["_price_with_reason"]
+_m2 = re.search(r"def _device_rate.*?\n(?=\ndef _price_with_reason)",
+                SRC, re.S)
+if _m2:
+    exec(_m2.group(0), _ns)
+line_amount = _ns.get("_line_amount")
 
 
 def check(name, cond, detail=""):
@@ -142,6 +147,75 @@ check("و صفحه‌ی دوره هم", '"unpricedWhy"' in APP)
 check("ثبت نرخِ ناخوانا دیگر بی‌صدا نمی‌افتد",
       "ردیف نرخ شماره" in APP,
       "قبلاً continue بود: پاسخ ok می‌آمد و نرخ ذخیره نمی‌شد")
+
+
+# ═══════════════════════════════════════════════════════════
+head("نرخ هر کاربر اضافه")
+
+# کانفیگ چهارکاربره همان نرخ کانفیگ تک‌کاربره را می‌گرفت، در حالی که
+# سه کاربر بیشتر روی سرور می‌نشیند. هر پله‌ی نرخ حالا نرخ کاربر خودش
+# را دارد.
+
+if not line_amount:
+    check("_line_amount از app.py برداشته شد", False, "regex نخورد")
+else:
+    R1 = [{"gb": 0, "price": 190_000, "perDevice": 50_000}]
+
+    amt, base, per, extra = line_amount(0, R1, 1, 4)
+    check("کانفیگ چهارکاربره سه کاربر اضافه دارد", extra == 3, str(extra))
+    check("و مبلغش پایه + سه برابر نرخ کاربر است", amt == 340_000, str(amt))
+    check("نرخ پایه جدا گزارش می‌شود", base == 190_000 and per == 50_000)
+
+    amt, _b, _p, extra = line_amount(0, R1, 1, 1)
+    check("کانفیگ تک‌کاربره فقط نرخ پایه می‌گیرد", amt == 190_000, str(amt))
+    check("و کاربر اضافه ندارد", extra == 0)
+
+    amt, _b, _p, _e = line_amount(0, R1, 3, 4)
+    check("سه ماه، سه برابر می‌شود", amt == 1_020_000, str(amt))
+
+    amt, _b, _p, extra = line_amount(0, R1, 1, 0)
+    check("دستگاه نامحدود فقط نرخ پایه می‌گیرد", amt == 190_000,
+          "شمردنی نیست، پس چیزی اضافه نمی‌شود")
+    check("و کاربر اضافه‌اش صفر است", extra == 0)
+
+    # بدون نرخ کاربر، هیچ چیز عوض نمی‌شود
+    R0 = [{"gb": 0, "price": 190_000}]
+    amt, _b, per, _e = line_amount(0, R0, 2, 4)
+    check("نرخ کاربر که تعریف نشده باشد، فاکتور عوض نمی‌شود",
+          amt == 380_000 and per == 0,
+          "فاکتورهای قبلی باید دقیقاً همان بمانند")
+
+    # هر پله نرخ کاربر خودش را دارد
+    R2 = [{"gb": 30, "price": 180_000, "perDevice": 20_000},
+          {"gb": 50, "price": 230_000, "perDevice": 60_000}]
+    amt30, _b, p30, _e = line_amount(30, R2, 1, 3)
+    amt50, _b, p50, _e = line_amount(50, R2, 1, 3)
+    check("پله‌ی ۳۰ گیگ نرخ کاربر خودش را دارد",
+          p30 == 20_000 and amt30 == 220_000, f"{amt30}")
+    check("و پله‌ی ۵۰ گیگ نرخ دیگری", p50 == 60_000 and amt50 == 350_000,
+          f"{amt50}")
+
+    # کانفیگ بی‌نرخ همچنان صفر
+    amt, base, _p, _e = line_amount(50, [], 1, 4)
+    check("کانفیگ بدون نرخ هنوز صفر است", amt == 0 and base is None)
+
+APP = io.open(os.path.join(ROOT, "backend", "app.py"), encoding="utf-8").read()
+check("ذخیره‌ی گروه فیلد تازه را نگه می‌دارد", '"perDevice"' in APP)
+check("صورتحساب ریز کاربرهای اضافه را می‌دهد",
+      '"extraDevices"' in APP and '"deviceAmount"' in APP,
+      "تا معلوم باشد چقدر از مبلغ بابت کاربر اضافه است")
+
+UI = io.open(os.path.join(ROOT, "frontend", "src", "sections", "billing.jsx"),
+             encoding="utf-8").read()
+check("پنل فیلدش را دارد", "perDevice: Math.max(0" in UI)
+check("و فرمول را جلوی چشم نشان می‌دهد", "نرخ پایه شامل کاربر اول است" in UI,
+      "وگرنه معلوم نیست عدد از کجا آمده")
+
+JD = io.open(os.path.join(ROOT, "frontend", "src", "ui", "jalali.jsx"),
+             encoding="utf-8").read()
+check("تقویم از کادر والد بیرون می‌زند", 'position: "fixed"' in JD,
+      "قبلاً نصفش زیر لبه‌ی کارت می‌رفت و دست‌نیافتنی بود")
+check("و اگر پایین جا نباشد رو به بالا باز می‌شود", "const up =" in JD)
 
 
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

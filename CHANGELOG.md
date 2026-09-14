@@ -4,6 +4,36 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.14.0]
+
+### Added — A per-user rate on every rate tier
+
+A four-user config was billed exactly like a one-user config, even though three
+more people sit on the server for it. The device count was printed in the invoice
+and counted for nothing.
+
+Each rate tier now carries its own per-user rate, so the 30 GB tier and the 50 GB
+tier can charge differently for extra users. The base rate covers the first user
+and each additional one is added on top — so single-user configs and every invoice
+issued before this are unchanged.
+
+The rate editor shows the arithmetic while you type: "a 4-user config becomes
+340,000 toman a month — 190,000 + 3×50,000". A rate with no per-user amount
+behaves exactly as it did.
+
+Configs with no device limit can't have their extra users counted, so they take
+the base rate alone.
+
+### Fixed — The date picker opened underneath the card and could not be reached
+
+"شروع همکاری" and "تسویه‌شده تا" sit near the bottom of the group editor. The
+calendar opened downward with absolute positioning, so half of it fell below the
+card's edge — the day buttons were there but unreachable, and no amount of
+scrolling helped.
+
+It is positioned against the viewport now, flips upward when there isn't room
+below, and scrolls inside itself if it still doesn't fit.
+
 ## [1.13.1]
 
 ### Fixed — The invoice PDF said "page 1 of 1" on a six-page document
