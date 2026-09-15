@@ -973,6 +973,23 @@ PY
     fi
     ;;
 
+  repair-referrals)
+    # پاداش معرف پیش از نسخه‌ی ۱.۳۸ فقط از مسیر تاییدِ کارت پرداخت
+    # می‌شد. دوستی که با کیف پول می‌خرید هیچ سکه‌ای به معرفش
+    # نمی‌رساند. بدون آرگومان فقط نشان می‌دهد چه کسی طلبکار است؛
+    # سکه تخفیف است، پس پرداختش با --apply و تصمیم خودتان.
+    if [ -f "$INSTALL_DIR/tools/repair-referrals.py" ]; then
+      # shift لازم است: case روی "$1" است و بدون آن، نام خودِ دستور
+      # هم به‌عنوان آرگومان به اسکریپت می‌رسد و argparse ردش می‌کند.
+      shift
+      BOT_DB_PATH="$INSTALL_DIR/data/bot.db" \
+        python3 "$INSTALL_DIR/tools/repair-referrals.py" "$@"
+    else
+      err "tools/repair-referrals.py پیدا نشد — اول nexora update بزنید"
+      exit 1
+    fi
+    ;;
+
   doctor)
     logo
     echo -e "  ${C_BOLD}System Check${C_RESET}"
@@ -1207,6 +1224,7 @@ PYEOF
     echo -e "  ${C_WHITE}nexora billing-why${C_RESET}            ${C_DIM}why a config shows as having no rate${C_RESET}"
     echo -e "  ${C_WHITE}nexora import-topups${C_RESET}          ${C_DIM}bring old prepaid top-ups into the books${C_RESET}"
     echo -e "  ${C_WHITE}nexora repair-orders${C_RESET}          ${C_DIM}fix wallet order statuses written before 1.34${C_RESET}"
+    echo -e "  ${C_WHITE}nexora repair-referrals${C_RESET}       ${C_DIM}pay referral coins wallet buys never paid${C_RESET}"
     echo -e "  ${C_WHITE}nexora reseller list${C_RESET}          ${C_DIM}reseller portal accounts${C_RESET}"
     echo -e "  ${C_WHITE}nexora fix-flow${C_RESET}               ${C_DIM}put every vless client on the same flow${C_RESET}"
     echo -e "  ${C_WHITE}nexora password${C_RESET}               ${C_DIM}change admin password${C_RESET}"

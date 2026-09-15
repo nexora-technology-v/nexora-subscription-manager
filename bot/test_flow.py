@@ -897,6 +897,77 @@ check("و کاربر می‌تواند دوباره امتحان کند",
       "وگرنه کسی که تقصیری نداشت، تستش را از دست می‌داد")
 
 
+# ═══════════════════════════════════════════════════════════
+section("پاداش معرف به روشِ پرداخت ربطی ندارد")
+
+# ربات به کاربر می‌گوید: «هر دوستی که با لینک شما بیاید و *خرید کند*،
+# N سکه به شما می‌رسد». هیچ حرفی از روشِ پرداخت نیست.
+#
+# ولی پاداش فقط از مسیر تاییدِ کارت پرداخت می‌شد. دوستی که با کیف پول
+# می‌خرید — یا تمدید خودکارش اجرا می‌شد — هیچ سکه‌ای به معرفش
+# نمی‌رساند. پورسانتِ همکار فروش هر سه مسیر را داشت؛ پاداشِ معرف فقط
+# یکی را.
+
+_inv_tg, _fr_tg = 990, 991
+H.dispatch(tenant, bot, up_msg(_inv_tg, "/start", "معرف"))
+_inv = D.get_user(_inv_tg)
+H.dispatch(tenant, bot, up_msg(_fr_tg, f"/start {_inv['ref_code']}", "دوست"))
+_fr = D.get_user(_fr_tg)
+check("رابطه‌ی معرفی برقرار شد", _fr["referred_by"] == _inv["id"])
+
+_coins_before = D.get_user(_inv_tg)["coins"]
+check("هنوز پاداشی نگرفته", _coins_before == 0, str(_coins_before))
+
+D.add_balance(_fr["id"], 1_000_000, "topup", "شارژ تست")
+SENT.clear()
+H.wallet_pay(H.Ctx(bot, tenant), D.get_user(_fr_tg), _fr_tg, None, plan["id"])
+
+_ord = D.q("SELECT * FROM orders WHERE tenant_id=? AND user_id=? "
+           "ORDER BY id DESC LIMIT 1", (tid, _fr["id"]), one=True)
+check("خرید با کیف پول انجام شد", _ord and _ord["status"] == "approved",
+      f"وضعیت: {_ord['status'] if _ord else '—'}")
+
+_per = int(core.coin_settings(
+    H.Ctx(bot, tenant).s.get("coins")).get("per_referral") or 0)
+check("نرخ پاداش تعریف شده", _per > 0, f"{_per} سکه")
+
+_coins_after = D.get_user(_inv_tg)["coins"]
+check("معرف پاداشش را از خریدِ کیف‌پولی هم می‌گیرد",
+      _coins_after == _coins_before + _per,
+      f"{_coins_before} → {_coins_after} (باید {_coins_before + _per})")
+
+# و دو بار نه — قاعده «یک پاداش برای هر دوست» است
+D.add_balance(_fr["id"], 1_000_000, "topup", "شارژ دوم")
+H.wallet_pay(H.Ctx(bot, tenant), D.get_user(_fr_tg), _fr_tg, None, plan["id"])
+check("و خرید دوم پاداش دوباره نمی‌دهد",
+      D.get_user(_inv_tg)["coins"] == _coins_before + _per,
+      f"{D.get_user(_inv_tg)['coins']} سکه")
+
+# هر سه مسیرِ خرید باید هر دو پرداخت را انجام دهند
+_hsrc0 = io.open(H.__file__, encoding="utf-8").read()
+
+
+def _calls_in(func_name):
+    import ast as _a
+    _t = _a.parse(_hsrc0)
+    for _n in _a.walk(_t):
+        if isinstance(_n, _a.FunctionDef) and _n.name == func_name:
+            out = set()
+            for _c in _a.walk(_n):
+                if isinstance(_c, _a.Call):
+                    _f = _c.func
+                    out.add(getattr(_f, "id", None) or getattr(_f, "attr", None))
+            return out
+    return set()
+
+
+for _path in ("wallet_pay", "approve_order", "auto_renew_subscription"):
+    _c = _calls_in(_path)
+    check(f"{_path} پورسانت همکار را می‌دهد", "_pay_commission" in _c)
+    check(f"{_path} پاداش معرف را هم می‌دهد", "_reward_referrer" in _c,
+          "یکی از این دو بدون دیگری یعنی یک وعده‌ی نگه‌داشته‌نشده")
+
+
 # و هیچ مسیر تازه‌ای نباید دوباره خام approved بنویسد.
 #
 # این الگو سه بار پیدا شد: کیف پول، تمدید خودکار، و تست رایگان. هر
