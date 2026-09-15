@@ -64,7 +64,16 @@ export function InboundRow({ inb, checked, onToggle }) {
   );
 }
 
-export function BotInboundsSection({ password }) {
+/**
+ * تنظیم اینباند — برای خودِ مالک، یا برای یک نماینده.
+ *
+ * `tenant` که داده شود یعنی «اینباندِ همین نماینده». بدون آن، همان
+ * رفتار قبلی: مستاجر ریشه.
+ *
+ * فهرستِ اینباندها در هر دو حالت از پنل x-ui مالک خوانده می‌شود —
+ * نماینده پنل جدا ندارد. چیزی که فرق می‌کند فقط *انتخاب* است.
+ */
+export function BotInboundsSection({ password, tenant = null }) {
   const [d, setD] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -75,7 +84,8 @@ export function BotInboundsSection({ password }) {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API_URL}/api/admin/bot/inbounds`, {
+      const q = tenant ? `?tenant=${encodeURIComponent(tenant)}` : "";
+      const r = await fetch(`${API_URL}/api/admin/bot/inbounds` + q, {
         headers: { "X-Admin-Password": password },
       }).then((x) => x.json());
       setD(r);
@@ -85,7 +95,7 @@ export function BotInboundsSection({ password }) {
       setD({ ready: false, error: "اتصال به سرور برقرار نشد", inbounds: [] });
     } finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, [password]);
+  useEffect(() => { load(); }, [password, tenant]);
   useEffect(() => { if (msg) { const x = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(x); } }, [msg]);
 
   const inbounds = d?.inbounds || [];
@@ -107,7 +117,8 @@ export function BotInboundsSection({ password }) {
       const res = await fetch(`${API_URL}/api/admin/bot/inbounds`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "X-Admin-Password": password },
-        body: JSON.stringify({ mode, ids: sel }),
+        body: JSON.stringify(tenant ? { mode, ids: sel, tenant }
+                                    : { mode, ids: sel }),
       });
       const j = await res.json().catch(() => ({}));
       if (res.ok) {

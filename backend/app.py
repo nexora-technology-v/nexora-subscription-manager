@@ -1090,7 +1090,7 @@ def _bot_conn():
 
 
 @app.get("/api/admin/bot/inbounds")
-def bot_inbounds(x_admin_password: str = Header(...)):
+def bot_inbounds(tenant: int = None, x_admin_password: str = Header(...)):
     """
     اینباندهای پنل با نام و مشخصات.
 
@@ -1107,14 +1107,28 @@ def bot_inbounds(x_admin_password: str = Header(...)):
         return {"ready": False, "error": "دیتابیس ربات در دسترس نیست",
                 "inbounds": []}
     try:
-        # مستاجر ریشه، نه هر ردیفی که اول بیاید. اعتبارنامه‌ی پنل
-        # مالِ مالک است؛ ردیف نماینده معمولاً خالی است و صفحه بدون
-        # هیچ توضیحی «اینباندی نیست» نشان می‌داد.
-        r = con.execute("SELECT panel_url, panel_user, panel_pass, panel_token, "
-                        "default_inbound, inbound_mode, inbound_ids "
-                        "FROM tenants WHERE parent_id IS NULL "
-                        "ORDER BY id LIMIT 1").fetchone()
-        t = dict(r) if r else {}
+        # اعتبارنامه‌ی پنل x-ui همیشه مالِ مالک است — ردیف نماینده
+        # معمولاً خالی است و صفحه بدون هیچ توضیحی «اینباندی نیست»
+        # نشان می‌داد.
+        root = con.execute(
+            "SELECT panel_url, panel_user, panel_pass, panel_token, "
+            "default_inbound, inbound_mode, inbound_ids "
+            "FROM tenants WHERE parent_id IS NULL "
+            "ORDER BY id LIMIT 1").fetchone()
+        t = dict(root) if root else {}
+
+        # ولی *انتخابِ* اینباند مالِ همان مستاجری است که پرسیده شده.
+        # قبلاً همیشه ریشه خوانده می‌شد، پس تنظیم هر نماینده نه دیده
+        # می‌شد و نه قابل تغییر بود.
+        if tenant:
+            own = con.execute(
+                "SELECT default_inbound, inbound_mode, inbound_ids "
+                "FROM tenants WHERE id=?", (int(tenant),)).fetchone()
+            if not own:
+                return {"ready": False, "error": "نماینده پیدا نشد",
+                        "inbounds": []}
+            t.update({k: own[k] for k in
+                      ("default_inbound", "inbound_mode", "inbound_ids")})
     except Exception as e:
         return {"ready": False, "error": str(e)[:150], "inbounds": []}
     finally:
@@ -1157,6 +1171,7 @@ def bot_inbounds(x_admin_password: str = Header(...)):
         "mode": t.get("inbound_mode") or "all",
         "selected": selected,
         "default": t.get("default_inbound"),
+        "tenant": int(tenant) if tenant else None,
     }
 
 
@@ -1169,6 +1184,13 @@ def bot_inbounds_set(payload: dict, x_admin_password: str = Header(...)):
       all     → همه‌ی اینباندهای فعال
       default → فقط اینباند پیش‌فرض
       custom  → همان‌هایی که انتخاب شده
+
+    `tenant` در بدنه یعنی «برای همین نماینده». بدون آن، مستاجر ریشه —
+    یعنی خودِ مالک.
+
+    قبلاً این دستور `WHERE` نداشت و روی *همه‌ی* مستاجرها می‌نوشت. یعنی
+    هر بار که مالک اینباندهای خودش را تنظیم می‌کرد، همان تنظیم بی‌صدا
+    روی تک‌تک نماینده‌ها هم می‌نشست و انتخابِ خودشان را پاک می‌کرد.
     """
     check_auth(x_admin_password)
     mode = (payload or {}).get("mode") or "all"
@@ -1187,13 +1209,30 @@ def bot_inbounds_set(payload: dict, x_admin_password: str = Header(...)):
         raise HTTPException(status_code=400,
                             detail="در حالت انتخابی، حداقل یک اینباند لازم است")
 
-    import sqlite3 as sq
-    con = sq.connect(str(BOT_DB), timeout=10)
+    con = _bot_rw()
     try:
-        con.execute("UPDATE tenants SET inbound_mode=?, inbound_ids=?",
-                    (mode, json.dumps(clean)))
+        tid = (payload or {}).get("tenant")
+        if tid:
+            row = con.execute("SELECT id FROM tenants WHERE id=?",
+                              (int(tid),)).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="نماینده پیدا نشد")
+            target = int(tid)
+        else:
+            row = con.execute("SELECT id FROM tenants WHERE parent_id IS NULL "
+                              "ORDER BY id LIMIT 1").fetchone()
+            if not row:
+                raise HTTPException(status_code=400,
+                                    detail="مستاجر ریشه پیدا نشد")
+            target = int(row["id"])
+
+        cur = con.execute(
+            "UPDATE tenants SET inbound_mode=?, inbound_ids=? WHERE id=?",
+            (mode, json.dumps(clean), target))
         con.commit()
-        return {"ok": True, "mode": mode, "ids": clean}
+        if not cur.rowcount:
+            raise HTTPException(status_code=404, detail="چیزی تغییر نکرد")
+        return {"ok": True, "mode": mode, "ids": clean, "tenant": target}
     finally:
         con.close()
 
@@ -9302,6 +9341,84 @@ def tenant_credit_log(tid: int, limit: int = 40,
         return {"ready": True, "rows": rows}
     except Exception as e:
         return {"ready": False, "error": str(e)[:120], "rows": []}
+    finally:
+        con.close()
+
+
+@app.post("/api/admin/tenant")
+def tenant_create(payload: dict, x_admin_password: str = Header(...)):
+    """
+    ساخت یک نماینده‌ی تازه.
+
+    تا امروز هیچ راهی برایش نبود. صفحه‌ی پنل نمایندگی می‌گفت «از بخش
+    ربات، مستاجر بسازید» ولی چنین جایی وجود نداشت — `create_tenant` در
+    کل مخزن فقط از تست‌ها صدا زده می‌شد. یعنی مالک عملاً به همان یک
+    مستاجرِ ریشه محدود بود.
+
+    نکته‌های عمدی:
+
+      • مستاجر تازه همیشه فرزندِ ریشه است. بدون `parent_id`، در
+        حسابداری «مالک» شمرده می‌شود و درآمد و بدهی‌اش با مالِ شما
+        قاطی می‌شود — همان قاعده‌ای که دفتر کل و صفحه‌ی همکاری اجرا
+        می‌کنند.
+
+      • پنلش **بسته** ساخته می‌شود. تا گروه و رمز ثبت نشده، بازکردنش
+        فقط یک صفحه‌ی ورود می‌دهد که هیچ‌وقت چیزی نشان نمی‌دهد.
+
+      • اتصال x-ui از ریشه به ارث می‌رسد و کپی نمی‌شود؛ نماینده رمز
+        پنل شما را نه می‌بیند و نه لازم دارد.
+    """
+    check_auth(x_admin_password)
+    p = payload or {}
+
+    name = str(p.get("name") or "").strip()[:60]
+    if not name:
+        raise HTTPException(status_code=400, detail="نام نماینده لازم است")
+
+    slug = "".join(ch for ch in str(p.get("slug") or "").strip().lower()
+                   if ch.isalnum() or ch in "-_")[:32]
+    if not slug:
+        raise HTTPException(status_code=400, detail="نشانی لینک لازم است")
+
+    pw = str(p.get("password") or "")
+    if len(pw) < 8:
+        raise HTTPException(status_code=400,
+                            detail="رمز باید دست‌کم ۸ نویسه باشد")
+
+    group = str(p.get("group") or "").strip()[:80]
+
+    # credit منفی یعنی بدون سقف — آخر ماه صورتحساب می‌گیرد.
+    try:
+        credit = int(p.get("credit"))
+    except (TypeError, ValueError):
+        credit = -1
+
+    con = _bot_rw()
+    try:
+        taken = con.execute("SELECT id FROM tenants WHERE portal_slug=?",
+                            (slug,)).fetchone()
+        if taken:
+            raise HTTPException(
+                status_code=400, detail="این نشانی برای نماینده‌ی دیگری ثبت شده")
+
+        root = con.execute("SELECT id FROM tenants WHERE parent_id IS NULL "
+                           "ORDER BY id LIMIT 1").fetchone()
+        if not root:
+            raise HTTPException(status_code=400,
+                                detail="مستاجر ریشه پیدا نشد — اول پنل را راه بیندازید")
+
+        cur = con.execute(
+            """INSERT INTO tenants (name, parent_id, credit, portal_slug,
+                                    portal_pass, portal_group, portal_enabled,
+                                    inbound_mode, is_active)
+               VALUES (?,?,?,?,?,?,0,'all',1)""",
+            (name, int(root["id"]), credit, slug, pw, group))
+        con.commit()
+        tid = cur.lastrowid
+        log.info("نماینده‌ی تازه ساخته شد: %s (#%s)", name, tid)
+        return {"ok": True, "id": tid, "name": name, "slug": slug,
+                "enabled": False,
+                "next": "گروه x-ui را انتخاب کنید و بعد پنلش را باز کنید"}
     finally:
         con.close()
 

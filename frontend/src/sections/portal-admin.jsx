@@ -6,13 +6,14 @@
  */
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle, Check, Copy, History, Key, Link2, Loader2, Plus, Power,
-  RefreshCw, Users, Wallet,
+  AlertTriangle, Check, Copy, History, Key, Link2, Loader2, Network, Plus,
+  Power, RefreshCw, Users, Wallet,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { EmptyState, Field, InfoBox, Msg, SectionHead } from "../ui/index";
+import { BotInboundsSection } from "./bot/inbounds";
 
 
 /** همان الگوی بقیه‌ی بخش‌ها: بخوان، نگه دار، دوباره بخوان. */
@@ -312,6 +313,185 @@ function Row({ t, groups, password, onSaved, setMsg }) {
   );
 }
 
+/**
+ * ساخت نماینده‌ی تازه.
+ *
+ * تا امروز این فرم نبود و صفحه می‌گفت «از بخش ربات، مستاجر بسازید» —
+ * جایی که اصلاً وجود نداشت. یعنی عملاً فقط یک نماینده ممکن بود.
+ */
+function NewReseller({ password, groups, onDone, setMsg }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [group, setGroup] = useState("");
+  const [pw, setPw] = useState(randomPass);
+  const [prepaid, setPrepaid] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  // نشانی از نام حدس زده می‌شود تا مدیر دوباره تایپ نکند؛ ولی هر وقت
+  // خودش چیزی نوشت، دیگر دست نمی‌خورد.
+  const [slugTouched, setSlugTouched] = useState(false);
+  const guess = (v) => v.trim().toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
+
+  const create = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/tenant`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json",
+                   "X-Admin-Password": password },
+        body: JSON.stringify({
+          name, slug: slugTouched ? slug : guess(name), group,
+          password: pw, credit: prepaid ? 0 : -1,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(errText(j.detail, "ساخته نشد"));
+      setMsg({ t: "ok", m: `نماینده «${name}» ساخته شد — ${j.next || ""}` });
+      setOpen(false);
+      setName(""); setSlug(""); setGroup(""); setPw(randomPass());
+      setSlugTouched(false);
+      onDone();
+    } catch (e) {
+      setMsg({ t: "err", m: e.message });
+    } finally { setBusy(false); }
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
+        <Plus size={14} /> نماینده‌ی جدید
+      </button>
+    );
+  }
+
+  const shownSlug = slugTouched ? slug : guess(name);
+  const ready = name.trim() && shownSlug && pw.length >= 8;
+
+  return (
+    <div className="fx-card p-5 mb-4">
+      <div className="text-[15px] font-bold text-white mb-4">نماینده‌ی جدید</div>
+
+      <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
+        <Field label="نام نماینده">
+          <input value={name} onChange={(e) => setName(e.target.value)}
+            className="fx-input w-full" placeholder="مثلاً علی" />
+        </Field>
+
+        <Field label="نشانی لینک">
+          <input value={shownSlug} dir="ltr"
+            onChange={(e) => { setSlugTouched(true); setSlug(e.target.value); }}
+            className="fx-input w-full" placeholder="ali" />
+        </Field>
+
+        <Field label="گروه x-ui">
+          <select value={group} onChange={(e) => setGroup(e.target.value)}
+            className="fx-input w-full">
+            <option value="">— بعداً انتخاب می‌کنم —</option>
+            {(groups || []).map((g) => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="رمز ورود">
+          <div className="flex gap-2">
+            <input value={pw} dir="ltr"
+              onChange={(e) => setPw(e.target.value)}
+              className="fx-input w-full" />
+            <button onClick={() => setPw(randomPass())}
+              className="fx-btn-g px-3 text-[13px]">تازه</button>
+          </div>
+        </Field>
+      </div>
+
+      <label className="flex items-center gap-2 mt-3 text-[13px]"
+        style={{ color: "var(--dim)" }}>
+        <input type="checkbox" checked={prepaid}
+          onChange={(e) => setPrepaid(e.target.checked)} />
+        پیش‌پرداخت — اعتبار می‌خرد و از آن کم می‌شود
+        <span style={{ color: "var(--muted)" }}>
+          (بدون این، آخر ماه صورتحساب می‌گیرد)
+        </span>
+      </label>
+
+      <InfoBox>
+        پنلش <b>بسته</b> ساخته می‌شود. تا گروه x-ui و رمزش ثبت نشده،
+        بازکردنش فقط یک صفحه‌ی ورود می‌دهد که چیزی نشان نمی‌دهد.
+      </InfoBox>
+
+      <div className="flex gap-2 mt-4">
+        <button onClick={create} disabled={busy || !ready}
+          className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
+          {busy ? <Loader2 size={13} className="animate-spin" />
+            : <Check size={14} />} بساز
+        </button>
+        <button onClick={() => setOpen(false)} disabled={busy}
+          className="fx-btn-g px-4 py-2.5 text-[14px]">انصراف</button>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * اینباندِ هر نماینده.
+ *
+ * قبلاً این تنظیم سراسری بود و — بدتر — نوشتنش `WHERE` نداشت: هر بار
+ * که مالک اینباندهای خودش را ذخیره می‌کرد، همان تنظیم روی تک‌تک
+ * نماینده‌ها می‌نشست.
+ */
+export function ResellerInbounds({ password }) {
+  const [sel, setSel] = useState("");
+  const { d: data, busy: loading, load: reload } =
+    useJson("/api/admin/tenant/portal-list", password);
+
+  const list = (data?.tenants || []);
+
+  return (
+    <>
+      <SectionHead icon={Network} title="اینباند نماینده‌ها"
+        desc="تعیین کنید کانفیگ‌های هر نماینده روی کدام اینباندها ساخته شود." />
+
+      <InfoBox>
+        فهرست اینباندها از پنل x-ui خودتان خوانده می‌شود — نماینده پنل
+        جدا ندارد. چیزی که این‌جا فرق می‌کند فقط <b>انتخاب</b> است.
+      </InfoBox>
+
+      <div className="fx-card p-4 mb-4 flex items-center gap-3 flex-wrap">
+        <span className="text-[13px]" style={{ color: "var(--dim)" }}>
+          نماینده:
+        </span>
+        <select value={sel} onChange={(e) => setSel(e.target.value)}
+          className="fx-input" style={{ minWidth: 200 }}>
+          <option value="">— انتخاب کنید —</option>
+          {list.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}{t.portalSlug ? ` (${t.portalSlug})` : ""}
+            </option>
+          ))}
+        </select>
+        <button onClick={reload} disabled={loading}
+          className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
+          {loading ? <Loader2 size={13} className="animate-spin" />
+            : <RefreshCw size={13} />} تازه‌سازی
+        </button>
+      </div>
+
+      {!sel ? (
+        <EmptyState icon={Users}
+          text={list.length ? "یک نماینده را انتخاب کنید"
+            : "هنوز نماینده‌ای ساخته نشده"} />
+      ) : (
+        <BotInboundsSection password={password} tenant={sel} />
+      )}
+    </>
+  );
+}
+
+
 export function PortalAdmin({ password }) {
   const [msg, setMsg] = useState(null);
   const { d: data, busy: loading, load: reload } =
@@ -330,7 +510,9 @@ export function PortalAdmin({ password }) {
         شما، نه رمز پنل x-ui.
       </InfoBox>
 
-      <div className="flex justify-end mb-3">
+      <div className="flex justify-between items-center gap-2 mb-3 flex-wrap">
+        <NewReseller password={password} groups={data?.groups}
+          onDone={reload} setMsg={setMsg} />
         <button onClick={reload} disabled={loading}
           className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
           {loading ? <Loader2 size={13} className="animate-spin" />
@@ -343,7 +525,7 @@ export function PortalAdmin({ password }) {
           : "فهرست نماینده‌ها خوانده نشد"} />
       ) : !(data.tenants || []).length ? (
         <EmptyState icon={Users}
-          text="هنوز نماینده‌ای تعریف نشده — از بخش ربات، مستاجر بسازید" />
+          text="هنوز نماینده‌ای ساخته نشده — دکمه‌ی «نماینده‌ی جدید» بالا" />
       ) : (
         (data.tenants || []).map((t) => (
           <Row key={t.id} t={t} groups={data.groups} password={password}

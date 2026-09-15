@@ -1679,6 +1679,137 @@ check("قاعده‌ی «خرید واقعی» یک بار نوشته شده",
       "یک تعریف و دو استفاده")
 
 
+# ═══════════════════════════════════════════════════════════
+head("اینباندِ هر نماینده مالِ خودش است")
+
+# این دستور `WHERE` نداشت:
+#
+#     UPDATE tenants SET inbound_mode=?, inbound_ids=?
+#
+# یعنی هر بار که مالک اینباندهای خودش را ذخیره می‌کرد، همان تنظیم
+# بی‌صدا روی تک‌تک نماینده‌ها هم می‌نشست و انتخابِ خودشان پاک می‌شد.
+# و خواندنش همیشه از مستاجر ریشه بود، پس تنظیمِ نماینده نه دیده
+# می‌شد و نه قابل تغییر.
+
+botdb.init_db()
+_rb = _sq3.connect(str(AP.BOT_DB))
+_rb.executescript("""
+INSERT OR REPLACE INTO tenants (id, name, parent_id, inbound_mode, inbound_ids)
+  VALUES (7000, 'مالک تستی', NULL, 'all', NULL);
+INSERT OR REPLACE INTO tenants (id, name, parent_id, inbound_mode, inbound_ids)
+  VALUES (7001, 'نماینده الف', 7000, 'all', NULL);
+INSERT OR REPLACE INTO tenants (id, name, parent_id, inbound_mode, inbound_ids)
+  VALUES (7002, 'نماینده ب', 7000, 'all', NULL);
+""")
+_rb.commit()
+_rb.close()
+
+
+def _inb(tid):
+    c = _sq3.connect(str(AP.BOT_DB))
+    try:
+        r = c.execute("SELECT inbound_mode, inbound_ids FROM tenants "
+                      "WHERE id=?", (tid,)).fetchone()
+        return (r[0], r[1]) if r else (None, None)
+    finally:
+        c.close()
+
+
+app.bot_inbounds_set({"mode": "custom", "ids": [41], "tenant": 7001},
+                     x_admin_password=PW)
+check("تنظیم نماینده‌ی الف نوشته شد", _inb(7001) == ("custom", "[41]"),
+      str(_inb(7001)))
+check("نماینده‌ی ب دست نخورد", _inb(7002)[0] == "all",
+      f"{_inb(7002)} — قبلا این هم عوض می‌شد")
+check("و مالک هم دست نخورد", _inb(7000)[0] == "all", str(_inb(7000)))
+
+# و حالا مالک تنظیم خودش را ذخیره می‌کند.
+#
+# «ریشه» همان چیزی است که خودِ کد برمی‌دارد — کوچک‌ترین شناسه‌ای که
+# parent_id ندارد. این دیتابیسِ تست چند ریشه دارد چون بخش‌های قبلی
+# ساخته‌اند؛ روی نصبِ واقعی فقط یکی هست.
+_rc = _sq3.connect(str(AP.BOT_DB))
+_root_id = _rc.execute("SELECT id FROM tenants WHERE parent_id IS NULL "
+                       "ORDER BY id LIMIT 1").fetchone()[0]
+_rc.close()
+_res = app.bot_inbounds_set({"mode": "custom", "ids": [28]},
+                            x_admin_password=PW)
+check("بدون tenant، تنظیم روی مستاجر ریشه می‌نشیند",
+      _res.get("tenant") == _root_id, f"{_res.get('tenant')} در برابر {_root_id}")
+_root_now = _inb(_root_id)
+check("و واقعا نوشته شد",
+      _root_now[0] == "custom" and "28" in (_root_now[1] or ""),
+      str(_root_now))
+check("و انتخابِ نماینده‌ی الف را پاک نمی‌کند",
+      _inb(7001) == ("custom", "[41]"), str(_inb(7001)))
+check("و نماینده‌ی ب را هم نه", _inb(7002)[0] == "all", str(_inb(7002)))
+
+_bad = None
+try:
+    app.bot_inbounds_set({"mode": "all", "tenant": 999999},
+                         x_admin_password=PW)
+except Exception as e:      # noqa: BLE001
+    _bad = getattr(e, "status_code", 0)
+check("نماینده‌ی ناموجود ۴۰۴ می‌گیرد", _bad == 404, str(_bad))
+
+_srcmod = io.open(os.path.join(str(ROOT), "backend", "app.py"),
+                  encoding="utf-8").read()
+_wblk = _srcmod[_srcmod.index("def bot_inbounds_set("):]
+_wblk = _wblk[:_wblk.index("\n@app.")]
+_wcode = "\n".join(l for l in _wblk.split("\n")
+                   if not l.strip().startswith("#"))
+check("دستور نوشتن بدون WHERE نمانده",
+      "UPDATE tenants SET inbound_mode=?, inbound_ids=? WHERE" in _wcode,
+      "بدون WHERE روی همه‌ی مستاجرها می‌نویسد")
+
+# ═══════════════════════════════════════════════════════════
+head("ساخت نماینده — که تا امروز اصلا ممکن نبود")
+
+_made = app.tenant_create(
+    {"name": "نماینده تازه", "slug": "TazeH-1", "password": "abcd1234efgh",
+     "group": "g-taze", "credit": 0}, x_admin_password=PW)
+check("ساخته شد", _made.get("ok") and _made.get("id"), str(_made)[:70])
+
+_row = _sq3.connect(str(AP.BOT_DB)).execute(
+    "SELECT name, parent_id, portal_slug, portal_pass, portal_group, "
+    "portal_enabled, credit FROM tenants WHERE id=?",
+    (_made["id"],)).fetchone()
+check("فرزندِ مستاجر ریشه است", _row[1] is not None,
+      "وگرنه در حسابداری «مالک» شمرده می‌شود و درآمدش با شما قاطی می‌شود")
+check("نشانی پاک‌سازی و کوچک شد", _row[2] == "tazeh-1", _row[2])
+check("رمزش ثبت شد", _row[3] == "abcd1234efgh")
+check("گروهش ثبت شد", _row[4] == "g-taze")
+check("و پنلش بسته ساخته می‌شود", _row[5] == 0,
+      "تا گروه و رمز ثبت نشده، بازکردنش فقط صفحه‌ی ورودِ بی‌فایده است")
+check("پیش‌پرداخت بودنش ثبت شد", _row[6] == 0, str(_row[6]))
+
+# نشانی تکراری یعنی دو نماینده به یک لینک می‌رسند
+_dup = None
+try:
+    app.tenant_create({"name": "دیگری", "slug": "tazeh-1",
+                       "password": "abcd1234efgh"}, x_admin_password=PW)
+except Exception as e:      # noqa: BLE001
+    _dup = getattr(e, "status_code", 0)
+check("نشانی تکراری رد می‌شود", _dup == 400, str(_dup))
+
+for _bad_payload, _why in (
+        ({"slug": "x1", "password": "abcd1234efgh"}, "بدون نام"),
+        ({"name": "ب", "password": "abcd1234efgh"}, "بدون نشانی"),
+        ({"name": "ب", "slug": "x2", "password": "123"}, "رمز کوتاه")):
+    _e = None
+    try:
+        app.tenant_create(_bad_payload, x_admin_password=PW)
+    except Exception as ex:      # noqa: BLE001
+        _e = getattr(ex, "status_code", 0)
+    check(f"{_why} رد می‌شود", _e == 400, str(_e))
+
+# و نماینده‌ی تازه واقعا در فهرست پنل نمایندگی می‌آید
+_lst = app.tenant_portal_list(x_admin_password=PW)
+check("در فهرست پنل نمایندگی دیده می‌شود",
+      any(t["id"] == _made["id"] for t in _lst.get("tenants", [])),
+      "وگرنه ساخته شده ولی هیچ‌جا نیست")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

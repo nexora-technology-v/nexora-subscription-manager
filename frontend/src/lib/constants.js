@@ -92,7 +92,6 @@ export const WORKSPACES = {
           { key: "bill-pay", label: "پرداخت‌ها", icon: Wallet },
           { key: "bill-period", label: "صورتحساب دوره", icon: Clock },
           { key: "bill-clients", label: "همه کاربران", icon: Users },
-          { key: "bill-portal", label: "پنل نمایندگی", icon: Link2 },
           { key: "bill-settings", label: "تنظیمات و بک‌آپ", icon: Sliders },
         ],
       },
@@ -114,6 +113,21 @@ export const WORKSPACES = {
           { key: "nodes-monitor", label: "مانیتورینگ سرورهای دیگر", icon: Server },
           { key: "tun-health", label: "سلامت سرورها", icon: ShieldCheck },
           { key: "tun-events", label: "رویدادها", icon: Clock },
+        ],
+      },
+    ],
+  },
+  reseller: {
+    key: "reseller",
+    label: "نمایندگی",
+    shortLabel: "نماینده",
+    icon: Link2,
+    groups: [
+      {
+        title: "نماینده‌ها",
+        items: [
+          { key: "bill-portal", label: "نماینده‌ها و دسترسی", icon: Users },
+          { key: "res-inbounds", label: "اینباند نماینده‌ها", icon: Network },
         ],
       },
     ],
@@ -179,4 +193,6 @@ export const WS_COLOR = {
   billing: "#D4AF37",
   tunnel: "#34D399",
   bot: "#A78BFA",
+  reseller: "#38BDF8",
+  firewall: "#F87171",
 };
