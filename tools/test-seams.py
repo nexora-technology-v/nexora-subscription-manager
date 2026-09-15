@@ -881,6 +881,81 @@ check("دستورهای ابزاری در راهنما فهرست شده‌ان�
 
 
 # ═══════════════════════════════════════════════════════════
+head("درز · «کدام مستاجر» باید صریح باشد")
+
+# همین یک اشتباه امروز پنج بار پیدا شد:
+#
+#     SELECT ... FROM tenants LIMIT 1
+#
+# بدون شرط و بدون ترتیب. به مالک می‌رسد فقط چون معمولاً کوچک‌ترین
+# شناسه مال اوست — و همین که ردیف مالک یک‌بار پاک و دوباره ساخته
+# شود (اجرای دوباره‌ی نصب)، شناسه‌اش از نماینده بزرگ‌تر می‌شود.
+#
+# آن‌وقت: درآمد ربات صفر می‌شود، هشدار سرور به گروه نماینده می‌رود،
+# همکار فروش زیر مستاجر اشتباه ساخته می‌شود و پورسانتش از دفتر کل
+# بیرون می‌ماند، و اعتبارنامه‌ی پنل از ردیف خالی خوانده می‌شود.
+#
+# هیچ‌کدام خطا نمی‌دهند. همه‌شان بی‌صدا جواب اشتباه می‌دهند.
+
+_PYSQL = []
+for _rel in ("backend/app.py", "bot/db.py", "backend/tunnels.py"):
+    _p = os.path.join(ROOT, _rel)
+    if os.path.exists(_p):
+        _PYSQL.append((_rel, io.open(_p, encoding="utf-8").read()))
+
+check("فایل‌های حاوی SQL پیدا شدند", len(_PYSQL) >= 2,
+      "، ".join(r for r, _ in _PYSQL))
+
+#: راه‌های درستِ مشخص‌کردن مستاجر
+_OK_MARKS = ("parent_id IS NULL", "WHERE id=?", "WHERE id = ?",
+             "bot_token=?", "bot_token = ?", "portal_slug=?",
+             "portal_slug = ?", "tenant_id=?", "tenant_id = ?")
+
+_loose = []
+for _rel, _src in _PYSQL:
+    # رشته‌های چسبیده به هم را یکی می‌کنیم، وگرنه شرط و LIMIT در دو
+    # رشته‌ی جدا می‌افتند و اسکنر هیچ‌کدام را کامل نمی‌بیند.
+    _flat = re.sub(r'"\s*\n\s*"', "", _src)
+    _flat = re.sub(r"'\s*\n\s*'", "", _flat)
+    for _m in re.finditer(r"FROM tenants[^\"']{0,240}", _flat):
+        _sql = _m.group(0)
+        if not re.search(r"LIMIT\s+1", _sql, re.I):
+            continue
+        if any(k in _sql for k in _OK_MARKS):
+            continue
+        _line = _flat[:_m.start()].count("\n") + 1
+        _loose.append(f"{_rel}:~{_line} — {_sql[:70].strip()}")
+
+check("هیچ «FROM tenants … LIMIT 1» بی‌شرطی نمانده", not _loose,
+      f"{len(_loose)} مورد" if _loose
+      else "هر کدام یا مستاجر ریشه را می‌خواهند یا شناسه‌ی مشخص")
+if _loose:
+    bullets(_loose)
+
+# و هر جا ریشه خواسته می‌شود، ترتیب هم باید باشد: دو ردیف ریشه
+# ممکن است وجود داشته باشد و بدون ORDER BY انتخاب دلخواه است.
+_noorder = []
+for _rel, _src in _PYSQL:
+    _flat = re.sub(r'"\s*\n\s*"', "", _src)
+    for _m in re.finditer(r"FROM tenants[^\"']{0,240}", _flat):
+        _sql = _m.group(0)
+        if "parent_id IS NULL" not in _sql:
+            continue
+        if not re.search(r"LIMIT\s+1", _sql, re.I):
+            continue
+        if "ORDER BY" in _sql.upper():
+            continue
+        _line = _flat[:_m.start()].count("\n") + 1
+        _noorder.append(f"{_rel}:~{_line} — {_sql[:70].strip()}")
+
+check("انتخاب مستاجر ریشه ترتیب مشخص دارد", not _noorder,
+      f"{len(_noorder)} مورد" if _noorder
+      else "بدون ORDER BY، «اولین ریشه» تعریف‌شده نیست")
+if _noorder:
+    bullets(_noorder)
+
+
+# ═══════════════════════════════════════════════════════════
 print(f"\n{D}{'─' * 54}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

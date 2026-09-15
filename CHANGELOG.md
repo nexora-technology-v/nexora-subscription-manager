@@ -4,6 +4,41 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.30.1]
+
+### Fixed — Three more places that picked whichever tenant came first
+
+`SELECT ... FROM tenants LIMIT 1` — no filter, no ordering — turned up twice
+today already, in bot income and in health alerts. A sweep of every `FROM
+tenants` query in the codebase found three more.
+
+It reaches the owner only because the owner usually holds the lowest row id.
+Delete and recreate that row, which is what re-running setup does, and the
+owner's id sits above a reseller's. Nothing errors; everything quietly answers
+for the wrong row.
+
+**A new affiliate was attached to whichever tenant came first.** If that was a
+reseller, the affiliate never appeared in the owner's list and its commission
+stayed out of the owner's ledger — which counts root tenants only, as of
+1.28.0. Money filed under the wrong name.
+
+**The inbound picker read panel credentials from an arbitrary row.** A
+reseller's row carries no panel URL, so the screen offered no inbounds and said
+nothing about why.
+
+**Bot diagnostics read the same credentials the same way**, so it could report
+the panel as unconfigured when it was configured. Note that `default_inbound` was
+already being read correctly with a root filter elsewhere — the same field, two
+different rules, which is how 1.28.2 started.
+
+### Added — A seam test for the whole class
+
+Five occurrences of one mistake in a day is a pattern, not an accident. Every
+`FROM tenants ... LIMIT 1` must now either ask for the root tenant or name a
+specific id, and any query that asks for the root must also order, because
+"first root" is undefined without it. Both halves were verified by putting each
+fault back and watching the suite go red.
+
 ## [1.30.0]
 
 ### Fixed — A server that was already broken never reported it

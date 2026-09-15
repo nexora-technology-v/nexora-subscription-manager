@@ -1107,9 +1107,13 @@ def bot_inbounds(x_admin_password: str = Header(...)):
         return {"ready": False, "error": "دیتابیس ربات در دسترس نیست",
                 "inbounds": []}
     try:
+        # مستاجر ریشه، نه هر ردیفی که اول بیاید. اعتبارنامه‌ی پنل
+        # مالِ مالک است؛ ردیف نماینده معمولاً خالی است و صفحه بدون
+        # هیچ توضیحی «اینباندی نیست» نشان می‌داد.
         r = con.execute("SELECT panel_url, panel_user, panel_pass, panel_token, "
                         "default_inbound, inbound_mode, inbound_ids "
-                        "FROM tenants LIMIT 1").fetchone()
+                        "FROM tenants WHERE parent_id IS NULL "
+                        "ORDER BY id LIMIT 1").fetchone()
         t = dict(r) if r else {}
     except Exception as e:
         return {"ready": False, "error": str(e)[:150], "inbounds": []}
@@ -1258,7 +1262,14 @@ def bot_affiliate_add(payload: dict, x_admin_password: str = Header(...)):
     import sqlite3 as sq
     con = sq.connect(str(BOT_DB), timeout=10)
     try:
-        tid = con.execute("SELECT id FROM tenants LIMIT 1").fetchone()
+        # همکارِ تازه باید زیر مستاجر ریشه ساخته شود.
+        #
+        # بدون این شرط به هر ردیفی که اول بیاید می‌چسبید. اگر آن ردیف
+        # نماینده می‌بود، همکار در فهرست مالک اصلاً دیده نمی‌شد و
+        # پورسانتش هم از دفتر کل مالک بیرون می‌ماند — چون آن‌جا فقط
+        # مستاجرهای ریشه شمرده می‌شوند.
+        tid = con.execute("SELECT id FROM tenants WHERE parent_id IS NULL "
+                          "ORDER BY id LIMIT 1").fetchone()
         tid = tid[0] if tid else 1
         cur = con.execute(
             """INSERT INTO affiliates (tenant_id, name, code, tg_id, percent, note)
@@ -1387,9 +1398,12 @@ def bot_xui_trace(x_admin_password: str = Header(...)):
         return {"ok": False, "steps": steps}
 
     try:
+        # همان قاعده‌ی بالا: صفحه‌ی عیب‌یابی هم باید تنظیمات مالک را
+        # بخواند، وگرنه «پنل تنظیم نشده» گزارش می‌کند در حالی که شده.
         r = con.execute(
             "SELECT panel_url, panel_user, panel_pass, panel_token, "
-            "default_inbound FROM tenants LIMIT 1").fetchone()
+            "default_inbound FROM tenants WHERE parent_id IS NULL "
+            "ORDER BY id LIMIT 1").fetchone()
         t = dict(r) if r else {}
     finally:
         con.close()
