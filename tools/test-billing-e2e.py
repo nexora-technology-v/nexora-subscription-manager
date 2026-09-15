@@ -1434,6 +1434,99 @@ check("نمای کلی هر دو عدد را می‌دهد",
       "یک پیمایش، دو جواب — نه دو بار خواندن x-ui")
 
 
+# ═══════════════════════════════════════════════════════════
+head("پول نماینده‌ی پیش‌پرداخت هم باید به حسابداری برسد")
+
+# دو سیستم پول موازی بود و با هم حرف نمی‌زدند.
+#
+# نماینده‌ی بدهکاری آخر ماه پرداخت می‌کند و در `payments` می‌نشیند.
+# نماینده‌ی پیش‌پرداخت *جلوتر* پول می‌دهد و آن پول فقط در `credit_tx`
+# ثبت می‌شد — که هیچ صفحه‌ی حسابداری‌ای نمی‌خواندش.
+#
+# یعنی پولی که واقعاً گرفته شده در «دریافت‌شده» و «سود واقعی تا امروز»
+# اصلاً نمی‌آمد، و نماینده‌ای که از قبل پولش را داده بود روی داشبورد
+# بدهکار نشان داده می‌شد.
+
+_c = sqlite3.connect(XUI)
+for _i in range(800, 804):
+    _cr = (_dtm.now() - _tdl(days=10)).isoformat(sep=" ", timespec="seconds")
+    _ex = NOW_MS + 25 * 86400000
+    _c.execute("INSERT INTO clients (id,email,group_name,total_gb,expiry_time,"
+               "enable,created_at,limit_ip) VALUES (?,?,'پیش',0,?,1,?,1)",
+               (_i, "pre_%d" % _i, _ex, _cr))
+    _c.execute("INSERT INTO client_traffics (id,email,up,down,expiry_time,enable)"
+               " VALUES (?,?,0,?,?,1)", (_i, "pre_%d" % _i, 3 * GB, _ex))
+_c.commit()
+_c.close()
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("INSERT OR REPLACE INTO group_config (group_key,label,billable,"
+           "rates,period_days) VALUES ('پیش','پیش',1,?,30)",
+           (_json.dumps([{"gb": 0, "price": 250000}]),))
+_b.commit()
+_b.close()
+
+_tcon = APP._bot_rw()
+try:
+    _tcon.execute("CREATE TABLE IF NOT EXISTS tenants (id INTEGER PRIMARY KEY,"
+                  " name TEXT, credit INTEGER DEFAULT 0, portal_group TEXT)")
+    _tcon.execute("INSERT OR REPLACE INTO tenants (id,name,credit,portal_group)"
+                  " VALUES (77,'رضا',0,'پیش')")
+    _tcon.commit()
+finally:
+    _tcon.close()
+
+
+def _paid_of(group):
+    _q = sqlite3.connect(str(APP.BILLING_DB))
+    try:
+        return _q.execute("SELECT COALESCE(SUM(amount),0) FROM payments "
+                          "WHERE group_key=?", (group,)).fetchone()[0]
+    finally:
+        _q.close()
+
+
+check("پیش از شارژ، پرداختی ثبت نشده", _paid_of("پیش") == 0)
+
+_res = APP.tenant_credit(77, {"amount": 2_000_000, "note": "کارت به کارت"},
+                         x_admin_password="x")
+check("شارژ اعتبار به‌عنوان پرداخت ثبت می‌شود",
+      _paid_of("پیش") == 2_000_000, f"{_paid_of('پیش'):,}")
+check("و پاسخ می‌گوید ثبت شده", _res.get("recorded") is True)
+
+_ovp = {x["key"]: x for x in APP._billing_overview_impl()["groups"]}["پیش"]
+check("داشبورد پول رسیده را می‌بیند", _ovp["paid"] == 2_000_000,
+      f"{_ovp['paid']:,}")
+check("و نماینده‌ای که جلوتر پول داده بدهکار نیست",
+      _ovp["balance"] < 0,
+      f"مانده {_ovp['balance']:,} — یعنی اعتبار، نه بدهی")
+
+_lg = APP.billing_ledger(x_admin_password="x")
+check("و سود، پولِ پیش‌پرداخت را هم می‌شمارد",
+      _lg["paid"] >= 2_000_000, f"{_lg['paid']:,}")
+
+head("مصرفِ اعتبار پولِ تازه نیست")
+
+# شارژ لحظه‌ی رسیدن پول است؛ کسر بعدی فقط جابه‌جایی همان پول است.
+_before = _paid_of("پیش")
+APP._portal_charge({"id": 77, "credit": 2_000_000}, 250_000, "ساخت آزمایشی")
+check("کسر از اعتبار پرداختِ تازه نمی‌سازد",
+      _paid_of("پیش") == _before, f"{_paid_of('پیش'):,}")
+
+head("نماینده‌ی بدون گروه، بی‌صدا رد نمی‌شود")
+
+_tcon = APP._bot_rw()
+try:
+    _tcon.execute("INSERT OR REPLACE INTO tenants (id,name,credit,portal_group)"
+                  " VALUES (78,'بی‌گروه',0,'')")
+    _tcon.commit()
+finally:
+    _tcon.close()
+_r2 = APP.tenant_credit(78, {"amount": 500_000}, x_admin_password="x")
+check("پاسخ می‌گوید در حسابداری ثبت نشد", _r2.get("recorded") is False,
+      "بدون گروه نمی‌شود فهمید پول بابت کدام واسطه است")
+
+
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()

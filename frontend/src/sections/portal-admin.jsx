@@ -93,6 +93,17 @@ function Row({ t, groups, password, onSaved, setMsg }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(errText(j.detail, "ثبت نشد"));
       setTopup("");
+      // شارژ در حسابداری هم به‌عنوان پرداخت ثبت می‌شود — مگر اینکه
+      // نماینده هنوز گروهی نداشته باشد. آن حالت باید دیده شود،
+      // وگرنه پولی که رسیده در «دریافت‌شده» و سود نمی‌آید و هیچ‌جا
+      // هم نمی‌گوید چرا.
+      if (j.recorded === false) {
+        setMsg({ t: "err",
+                 m: `${what} — ولی چون گروهی انتخاب نشده، در حسابداری `
+                    + "ثبت نشد. گروه را تعیین کنید و پرداخت را دستی وارد کنید." });
+        onSaved();
+        return;
+      }
       setMsg({ t: "ok", m: what });
       onSaved();
     } catch (e) {

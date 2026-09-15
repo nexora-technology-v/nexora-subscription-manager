@@ -8943,10 +8943,12 @@ def tenant_credit(tid: int, payload: dict, x_admin_password: str = Header(...)):
 
     con = _bot_rw()
     try:
-        row = con.execute("SELECT name, credit FROM tenants WHERE id=?",
-                          (tid,)).fetchone()
+        row = con.execute(
+            "SELECT name, credit, portal_group FROM tenants WHERE id=?",
+            (tid,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="نماینده پیدا نشد")
+        group_key = (row["portal_group"] or "").strip()
 
         if p.get("unlimited"):
             con.execute("UPDATE tenants SET credit=-1 WHERE id=?", (tid,))
@@ -8980,8 +8982,57 @@ def tenant_credit(tid: int, payload: dict, x_admin_password: str = Header(...)):
     finally:
         con.close()
 
+    # بعد از commit، و در دیتابیسِ دیگری: اگر این یکی بیفتد، اعتبار
+    # درست مانده و فقط ثبتِ حسابداری جا افتاده — که قابل جبران است.
+    # ترتیب برعکس یعنی پرداختی ثبت شود که اعتباری پشتش نیست.
+    _record_topup(group_key, amount,
+                  ("شارژ اعتبار — " + (note or "پنل نمایندگی"))[:200])
+    if not group_key:
+        log.warning("نماینده %s گروه ندارد — شارژ در حسابداری ثبت نشد", tid)
+
     log.info("اعتبار نماینده %s تغییر کرد: %s → %s", tid, base, new)
-    return {"ok": True, "credit": new, "mode": "پیش‌پرداخت"}
+    return {"ok": True, "credit": new, "mode": "پیش‌پرداخت",
+            "recorded": bool(group_key)}
+
+
+def _record_topup(group_key, amount, note):
+    """
+    شارژ اعتبار نماینده را به‌عنوان پرداخت ثبت می‌کند.
+
+    چرا لازم است:
+        دو سیستم پول موازی وجود داشت و با هم حرف نمی‌زدند. نماینده‌ی
+        بدهکاری آخر ماه پرداخت می‌کند و در جدول `payments` ثبت
+        می‌شود. نماینده‌ی پیش‌پرداخت *جلوتر* پول می‌دهد و آن پول فقط
+        در `credit_tx` می‌نشست — که هیچ صفحه‌ی حسابداری‌ای نمی‌خواندش.
+
+        نتیجه‌اش دو چیز بود:
+
+          • پولی که واقعاً گرفته شده در «دریافت‌شده» و «سود واقعی تا
+            امروز» اصلاً نمی‌آمد
+          • و نماینده‌ای که از قبل پولش را داده بود، روی داشبورد
+            بدهکار نشان داده می‌شد
+
+        شارژ، لحظه‌ی واقعیِ رسیدن پول است — پس همان‌جا ثبت می‌شود.
+        مصرفِ بعدیِ اعتبار پول تازه‌ای نیست و ثبت نمی‌شود.
+    """
+    if not group_key or not amount:
+        return
+    try:
+        con = _billing_conn()
+    except Exception:
+        log.warning("ثبت شارژ در پرداخت‌ها ناموفق — دیتابیس باز نشد")
+        return
+    try:
+        con.execute(
+            "INSERT INTO payments (group_key,amount,paid_at,note) "
+            "VALUES (?,?,?,?)",
+            (group_key, int(amount), datetime.now().strftime("%Y-%m-%d"),
+             note))
+        con.commit()
+    except Exception:
+        log.warning("ثبت شارژ در پرداخت‌ها ناموفق", exc_info=True)
+    finally:
+        con.close()
 
 
 @app.get("/api/admin/tenant/{tid}/credit-log")
