@@ -4,6 +4,50 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.31.0]
+
+### Fixed — Above five thousand chats, the per-chat lock stopped working
+
+The bot keeps one lock per chat so a single user's updates are never processed
+twice at once. The table is pruned above five thousand entries to stop it
+growing without limit.
+
+The lock was fetched inside the guard, the guard released, and the lock acquired
+*after* that. In between, the lock sat in the table without being held — and the
+prune condition was exactly `not v.locked()`.
+
+So an update from any other chat could prune a lock that had been handed out and
+not yet taken. The next update for that chat then created a fresh lock, and two
+handlers ran on the same conversation at the same time. Reproduced
+deterministically.
+
+It only happened above five thousand live chats — which is to say, when the bot
+is busiest and two updates for one chat are most likely. The protection
+disappeared exactly when it was needed.
+
+Each entry now carries a use count, raised inside the guard before the guard is
+released, and pruning skips anything in use. The count comes back down in a
+`finally`, so an exception cannot leave an entry permanently unprunable.
+
+The locks moved out of the tenant loop into a `ChatLocks` class so they can be
+tested at all; the chat-id extraction came with them and is now covered for
+messages, inline buttons, and callbacks with no message.
+
+### A note on the tests in this release
+
+Breaking each new test on purpose caught two weaknesses in my own work before
+they shipped.
+
+The behavioural test could not reach the fault: with the lock now taken inside
+the same call, the window no longer exists for a test to aim at. Restoring the
+old condition left every behavioural check green. The rule itself is asserted
+instead — pruning must read the use count, never `locked()`.
+
+And the first version of that assertion scanned the whole file, so it matched the
+class's own docstring, where the old condition is quoted in the explanation. It
+reads executable lines only now. That is the second time today a check has been
+satisfied by the comment describing the bug rather than the code.
+
 ## [1.30.1]
 
 ### Fixed — Three more places that picked whichever tenant came first

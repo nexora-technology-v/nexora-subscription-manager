@@ -12,6 +12,7 @@
     BOT_DB_PATH   مسیر دیتابیس (پیش‌فرض ../data/bot.db)
     BOT_LOG_LEVEL INFO | DEBUG
 """
+import contextlib
 import logging
 import os
 import signal
@@ -37,6 +38,75 @@ _lock = threading.Lock()
 #: اینکه منتظر هم بمانند؛ بالاتر از این، محدودیت نرخ تلگرام
 #: و پنل 3x-ui گلوگاه می‌شوند نه ما.
 POOL_SIZE = int(os.getenv("BOT_POOL_SIZE", "8"))
+
+
+#: بالای این تعداد چت، قدیمی‌ها هرس می‌شوند.
+CHAT_LOCK_LIMIT = int(os.getenv("BOT_CHAT_LOCKS", "5000"))
+
+
+class ChatLocks:
+    """
+    یک قفل برای هر چت — و تضمینِ اینکه هرس، قفلی را که دستِ کسی است
+    برندارد.
+
+    چرا این تضمین لازم است:
+        نسخه‌ی قبلی قفل را داخل نگهبان برمی‌داشت، نگهبان را رها
+        می‌کرد، و *بعد* قفل را می‌گرفت. بین این دو لحظه، قفل در
+        جدول بود ولی هنوز `locked()` نبود — و شرط هرس دقیقاً همان
+        `not v.locked()` بود.
+
+        پس آپدیتِ دیگری از چتی دیگر می‌توانست وسط همین فاصله جدول
+        را هرس کند و همان قفل را بردارد. آپدیت بعدیِ همان چت، قفلِ
+        *تازه‌ای* می‌ساخت و دو پردازش هم‌زمان روی یک چت اجرا می‌شدند.
+
+        قفلِ هر چت تنها چیزی است که جلوی دوباره‌پردازش‌شدن یک کاربر
+        را می‌گیرد. این یعنی دقیقاً بالای پنج هزار چت — یعنی وقتی
+        ربات شلوغ است و احتمال دو آپدیت هم‌زمان بیشترین است — آن
+        محافظت بی‌صدا از کار می‌افتاد.
+
+    حالا هر ردیف یک شمارنده دارد: تا کسی آن را در دست دارد یا در
+    صفِ گرفتنش است، هرس نمی‌شود.
+    """
+
+    def __init__(self, limit=None):
+        self._limit = int(limit or CHAT_LOCK_LIMIT)
+        self._locks = {}           # cid → [Lock, شمارنده]
+        self._guard = threading.Lock()
+
+    @contextlib.contextmanager
+    def hold(self, cid):
+        with self._guard:
+            ent = self._locks.get(cid)
+            if ent is None:
+                ent = self._locks[cid] = [threading.Lock(), 0]
+            ent[1] += 1
+            if len(self._locks) > self._limit:
+                # شمارنده‌ی خودِ این چت الان دست‌کم یک است، پس شرط
+                # پایین آن را هم کنار می‌گذارد — بدون نیاز به استثنا.
+                for k in [k for k, v in list(self._locks.items())
+                          if v[1] == 0][:self._limit // 2]:
+                    self._locks.pop(k, None)
+        try:
+            with ent[0]:
+                yield
+        finally:
+            with self._guard:
+                ent[1] -= 1
+
+    def size(self):
+        with self._guard:
+            return len(self._locks)
+
+
+def chat_id_of(update):
+    """شناسه‌ی چتِ یک آپدیت — پیام یا دکمه‌ی شیشه‌ای."""
+    msg = (update.get("message") or update.get("callback_query", {})
+           .get("message") or {})
+    cid = (msg.get("chat") or {}).get("id")
+    if cid is None:
+        cid = ((update.get("callback_query") or {}).get("from")
+               or {}).get("id", 0)
+    return cid
 
 
 # ═══════════════════════════════════════════════════════════
@@ -67,30 +137,11 @@ def tenant_loop(tenant_id: int):
     # می‌توانستند جابه‌جا اجرا شوند و وضعیت گفت‌وگو خراب شود.
     pool = ThreadPoolExecutor(max_workers=POOL_SIZE,
                               thread_name_prefix=f"{name}-w")
-    chat_locks = {}
-    locks_guard = threading.Lock()
-
-    def chat_lock(update):
-        msg = (update.get("message") or update.get("callback_query", {})
-               .get("message") or {})
-        cid = (msg.get("chat") or {}).get("id")
-        if cid is None:
-            cid = ((update.get("callback_query") or {}).get("from")
-                   or {}).get("id", 0)
-        with locks_guard:
-            lk = chat_locks.get(cid)
-            if lk is None:
-                lk = chat_locks[cid] = threading.Lock()
-            # جلوگیری از رشد بی‌پایان در ربات پرترافیک
-            if len(chat_locks) > 5000:
-                for k in [k for k, v in list(chat_locks.items())
-                          if k != cid and not v.locked()][:2500]:
-                    chat_locks.pop(k, None)
-        return lk
+    chat_locks = ChatLocks()
 
     def handle(tenant_snapshot, bot, update):
         try:
-            with chat_lock(update):
+            with chat_locks.hold(chat_id_of(update)):
                 handlers.dispatch(tenant_snapshot, bot, update)
         except Exception:
             log.exception("%s: خطا در پردازش آپدیت %s",

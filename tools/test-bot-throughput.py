@@ -16,6 +16,7 @@
 
 اجرا:  python3 tools/test-bot-throughput.py
 """
+import io
 import os
 import sys
 import threading
@@ -210,6 +211,141 @@ check("اندازه‌ی استخر قابل تنظیم است", "BOT_POOL_SIZE"
 check("dispatch مستقیم در حلقه صدا زده نمی‌شود",
       "pool.submit(handle" in src and
       "\n                    handlers.dispatch(tenant, tg, up)" not in src)
+
+# ═══════════════════════════════════════════════════════════
+head("هرسِ قفل‌ها نباید قفلِ دستِ کسی را بردارد")
+
+# قفلِ هر چت تنها چیزی است که جلوی دوباره‌پردازش‌شدن یک کاربر را
+# می‌گیرد.
+#
+# نسخه‌ی قبلی قفل را داخل نگهبان برمی‌داشت، نگهبان را رها می‌کرد، و
+# *بعد* قفل را می‌گرفت. در آن فاصله قفل در جدول بود ولی هنوز
+# locked() نبود — و شرط هرس دقیقاً همان not v.locked() بود. پس
+# آپدیتی از چتی دیگر می‌توانست همان قفل را بردارد، و آپدیت بعدیِ
+# همان چت قفلِ تازه‌ای می‌ساخت: دو پردازش هم‌زمان روی یک چت.
+#
+# و این فقط بالای پنج هزار چت رخ می‌داد — یعنی وقتی ربات شلوغ است و
+# احتمال دو آپدیت هم‌زمان بیشترین است.
+
+import importlib.util as _ilu   # noqa: E402
+
+_spec = _ilu.spec_from_file_location(
+    "botrun_locks", os.path.join(ROOT, "bot", "run.py"))
+_RUN = _ilu.module_from_spec(_spec)
+try:
+    _spec.loader.exec_module(_RUN)
+    _loaded = True
+except Exception as _e:
+    _loaded = False
+    print(f"  {R}bot/run.py بارگذاری نشد: {_e}{X}")
+
+check("bot/run.py بارگذاری شد", _loaded)
+
+if _loaded:
+    check("قفل‌ها بیرون از حلقه و قابل آزمودن‌اند",
+          hasattr(_RUN, "ChatLocks") and hasattr(_RUN, "chat_id_of"),
+          "وگرنه هیچ راهی برای سنجیدنشان نیست")
+
+    _CL = _RUN.ChatLocks(limit=50)
+    _inside = 0
+    _overlap = 0
+    _seen = threading.Lock()
+    _in_gate = threading.Event()
+
+    def _use(cid, hold_for, gate=None):
+        global _inside, _overlap
+        with _CL.hold(cid):
+            with _seen:
+                _inside += 1
+                if _inside > 1:
+                    _overlap += 1
+            if gate:
+                gate.set()
+            time.sleep(hold_for)
+            with _seen:
+                _inside -= 1
+
+    # یک آپدیت چت ۷ را نگه می‌دارد، و هم‌زمان ترافیک چت‌های دیگر
+    # جدول را از سقف رد می‌کند
+    _t1 = threading.Thread(target=_use, args=(7, 0.35), kwargs={"gate": _in_gate})
+    _t1.start()
+    _in_gate.wait(2)
+    for _o in range(1000, 1070):
+        with _CL.hold(_o):
+            pass
+    check("قفلی که دستِ کسی است هرس نمی‌شود", 7 in _CL._locks,
+          "شمارنده‌ی در حال استفاده، ردیف را نگه می‌دارد")
+
+    _t2 = threading.Thread(target=_use, args=(7, 0.05))
+    _t2.start()
+    _t1.join()
+    _t2.join()
+    check("یک چت دو بار هم‌زمان پردازش نمی‌شود", _overlap == 0,
+          f"{_overlap} هم‌پوشانی")
+
+    # و جدول هنوز کران دارد
+    for _o in range(2000, 2200):
+        with _CL.hold(_o):
+            pass
+    check("جدول قفل‌ها هنوز کران دارد", _CL.size() <= 60,
+          f"{_CL.size()} ردیف با سقف ۵۰")
+
+    # شمارنده بعد از رهاشدن به صفر برمی‌گردد، وگرنه هیچ ردیفی
+    # دیگر هرس‌شدنی نیست و جدول بی‌کران می‌شود
+    _CL2 = _RUN.ChatLocks(limit=10)
+    for _o in range(50):
+        with _CL2.hold(_o):
+            pass
+    check("ردیف رهاشده دوباره هرس‌شدنی می‌شود", _CL2.size() <= 12,
+          f"{_CL2.size()} ردیف — اگر شمارنده صفر نشود، هیچ‌چیز هرس نمی‌شود")
+
+    # ── و اینکه هرس بر چه پایه‌ای تصمیم می‌گیرد ──
+    #
+    # این یکی عمداً ساختاری است، نه رفتاری.
+    #
+    # باگِ اصلی در فاصله‌ی بین «تحویل قفل» و «گرفتن قفل» زندگی می‌کرد.
+    # با API فعلی آن فاصله از بیرون قابل رسیدن نیست — قفل همان‌جا و
+    # همان لحظه گرفته می‌شود — پس هیچ تست رفتاری‌ای نمی‌تواند به آن
+    # برسد. این را با برگرداندن عمدیِ شرط قدیمی امتحان کردم: همه‌ی
+    # بررسی‌های رفتاری سبز ماندند.
+    #
+    # پس خودِ قاعده سنجیده می‌شود: تصمیمِ هرس باید بر پایه‌ی شمارنده
+    # باشد، نه locked(). قفلی که تحویل داده شده ولی هنوز گرفته نشده،
+    # locked() نیست.
+    _RUNSRC = io.open(os.path.join(ROOT, "bot", "run.py"),
+                      encoding="utf-8").read()
+    _hold = _RUNSRC[_RUNSRC.index("def hold(self, cid):"):]
+    _hold = _hold[:_hold.index("def size(self)")]
+    # فقط خطوط اجرایی، بدون کامنت.
+    #
+    # اولین نسخه‌ی این بررسی کل فایل را می‌گشت و روی *داکstring
+    # خودِ کلاس* افتاد — همان‌جا که نوشته شده بود شرط قدیمی چه بود.
+    # تستی که توضیحِ کنار کد راضی‌اش کند، کد را نمی‌سنجد.
+    _code = "\n".join(
+        (ln.split("#")[0] if "#" in ln else ln)
+        for ln in _hold.split("\n"))
+
+    check("هرس بر پایه‌ی شمارنده است، نه locked()",
+          "if v[1] == 0]" in _code and "locked()" not in _code,
+          "قفلِ تحویل‌داده‌شده‌ی هنوز گرفته‌نشده، locked() نیست")
+
+    check("شمارنده پیش از هرس بالا می‌رود",
+          _hold.index("ent[1] += 1") < _hold.index("self._limit"),
+          "اگر بعدش باشد، همان ردیف در همان فراخوانی هرس می‌شود")
+    check("و شمارنده در finally پایین می‌آید",
+          "finally:" in _hold and "ent[1] -= 1" in _hold,
+          "وگرنه یک استثنا ردیف را برای همیشه غیرقابل‌هرس می‌کند")
+
+    # شناسه‌ی چت از هر دو شکل آپدیت
+    check("شناسه‌ی چت از پیام خوانده می‌شود",
+          _RUN.chat_id_of({"message": {"chat": {"id": 55}}}) == 55)
+    check("و از دکمه‌ی شیشه‌ای هم",
+          _RUN.chat_id_of(
+              {"callback_query": {"message": {"chat": {"id": 66}}}}) == 66)
+    check("و اگر پیامی نبود، از فرستنده",
+          _RUN.chat_id_of({"callback_query": {"from": {"id": 77}}}) == 77,
+          "بدون این، همه‌ی چنین آپدیت‌هایی روی یک قفل جمع می‌شدند")
+
 
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R
