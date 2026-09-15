@@ -995,6 +995,30 @@ BOTEOF
       info "Billing data:   will be created when you open the accounting section"
     fi
 
+    # تانل‌ها: جدول jobs تا نسخه‌ی ۱.۲۸ کران نداشت.
+    #
+    # نخ پس‌زمینه هر پنج دقیقه برای هر نود یک کار health صف می‌کند و
+    # هیچ چیزی پاکشان نمی‌کرد. از این نسخه به بعد هر چک‌اینِ ایجنت
+    # قدیمی‌ها را دور می‌ریزد — ولی فایلی که از قبل بزرگ شده خودش
+    # کوچک نمی‌شود: SQLite صفحه‌های آزادشده را دوباره استفاده می‌کند
+    # و پس نمی‌دهد. VACUUM آن را پس می‌گیرد.
+    if [ -f "$INSTALL_DIR/data/tunnels.db" ]; then
+      TDB="$INSTALL_DIR/data/tunnels.db"
+      TSZ=$(du -h "$TDB" | cut -f1)
+      TKB=$(du -k "$TDB" | cut -f1)
+      if [ "${TKB:-0}" -gt 51200 ]; then
+        warn "Tunnel data:    $TSZ — larger than it needs to be"
+        if command -v sqlite3 >/dev/null 2>&1; then
+          TJOBS=$(sqlite3 "$TDB" "SELECT COUNT(*) FROM jobs" 2>/dev/null || echo "?")
+          info "Finished agent jobs are pruned now ($TJOBS rows left)."
+        fi
+        info "Reclaim the space with:  systemctl stop nexora-panel &&"
+        info "  sqlite3 $TDB 'VACUUM;' && systemctl start nexora-panel"
+      else
+        ok "Tunnel data:    $TSZ"
+      fi
+    fi
+
     # دسترسی به دیتابیس x-ui — حسابداری بدون آن کار نمی‌کند
     XUI="${XUI_DB:-/etc/x-ui/x-ui.db}"
     if [ -f "$XUI" ]; then

@@ -539,6 +539,93 @@ check("و دستور را از پاسخِ ایجنت نمی‌خواند",
       "وگرنه فرستنده تعیین می‌کند نتیجه‌اش کجا نوشته شود")
 
 
+# ═══════════════════════════════════════════════════════════
+head("جدول کارها باید کران داشته باشد")
+
+# نخ پس‌زمینه هر پنج دقیقه برای هر نود یک کار health صف می‌کند و هیچ
+# چیزی پاکشان نمی‌کرد: DELETE FROM jobs فقط موقع حذفِ خودِ نود اجرا
+# می‌شد.
+#
+# اندازه‌گیری‌شده روی دو نود: ۱۷٬۲۸۰ ردیف و ۶۸ مگابایت در سی روز —
+# حدود ۸۰۰ مگابایت در سال، روی سروری که دیتابیس ربات و حسابداری هم
+# رویش است. رویدادها (۵۰۰ تا) و سنجش‌ها (۱۰۰ تا برای هر تانل) از روز
+# اول کران داشتند؛ پرکارترین جدول نداشت.
+
+_pn = T.create_node("prune-node", role="iran")["id"]
+_other = T.create_node("prune-other", role="foreign")["id"]
+
+
+def _jobs_of(nid, status=None):
+    _c = T.conn()
+    try:
+        if status:
+            return _c.execute("SELECT COUNT(*) FROM jobs WHERE node_id=? "
+                              "AND status=?", (nid, status)).fetchone()[0]
+        return _c.execute("SELECT COUNT(*) FROM jobs WHERE node_id=?",
+                          (nid,)).fetchone()[0]
+    finally:
+        _c.close()
+
+
+# سه برابرِ سقف، تا معلوم شود واقعاً می‌برد
+for _i in range(T.JOB_KEEP * 3):
+    _j = T.queue_job(_pn, "health", {})
+    T.finish_job(_j, True, "x" * 200, node_id=_pn)
+
+check("بدون هرس، همه‌شان می‌مانند", _jobs_of(_pn) == T.JOB_KEEP * 3,
+      f"{_jobs_of(_pn)} ردیف")
+
+T.prune_jobs(_pn)
+check("بعد از هرس، به سقف می‌رسد", _jobs_of(_pn) == T.JOB_KEEP,
+      f"{_jobs_of(_pn)} ردیف — سقف {T.JOB_KEEP}")
+
+# تازه‌ترین‌ها باید بمانند، نه قدیمی‌ترین‌ها
+_c = T.conn()
+try:
+    _oldest = _c.execute("SELECT MIN(id) FROM jobs WHERE node_id=?",
+                         (_pn,)).fetchone()[0]
+    _newest = _c.execute("SELECT MAX(id) FROM jobs WHERE node_id=?",
+                         (_pn,)).fetchone()[0]
+finally:
+    _c.close()
+check("تازه‌ترین‌ها می‌مانند", _newest - _oldest == T.JOB_KEEP - 1,
+      "صفحه‌ی عیب‌یابی آخرین ۱۵ تا را می‌خواند")
+
+head("ولی کاری که هنوز تمام نشده دست نمی‌خورد")
+
+_q = T.queue_job(_pn, "health", {})                 # در صف
+_t = T.queue_job(_pn, "sysmon", {})
+T.take_jobs(_pn)                                     # این یکی taken می‌شود
+_before_q = _jobs_of(_pn, "queued") + _jobs_of(_pn, "taken")
+T.prune_jobs(_pn)
+check("کارِ در صف و برداشته‌شده باقی می‌ماند",
+      _jobs_of(_pn, "queued") + _jobs_of(_pn, "taken") == _before_q,
+      "هرس فقط done و failed را می‌برد")
+
+head("هرس یک نود به نود دیگر کار ندارد")
+
+for _i in range(20):
+    _j = T.queue_job(_other, "health", {})
+    T.finish_job(_j, True, "y", node_id=_other)
+T.prune_jobs(_pn)
+check("کارهای نود دیگر دست‌نخورده می‌مانند", _jobs_of(_other) == 20,
+      f"{_jobs_of(_other)} ردیف")
+
+head("و هر چک‌اینِ ایجنت خودش هرس می‌کند")
+
+for _i in range(T.JOB_KEEP + 50):
+    _j = T.queue_job(_other, "health", {})
+    T.finish_job(_j, True, "z", node_id=_other)
+T.take_jobs(_other)
+check("take_jobs هرس را صدا می‌زند", _jobs_of(_other) <= T.JOB_KEEP + 5,
+      f"{_jobs_of(_other)} ردیف — بدون این، رشد هیچ‌وقت متوقف نمی‌شود")
+
+check("و دلیلش کنار کد نوشته شده",
+      "prune_jobs(node_id)" in io.open(
+          os.path.join(ROOT, "backend", "tunnels.py"),
+          encoding="utf-8").read())
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

@@ -4,6 +4,47 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.29.0]
+
+### Fixed — The agent job table grew without limit
+
+A background thread queues a `health` job for every enabled node every five
+minutes, and a `sysmon` job whenever the last one is stale. Nothing ever removed
+a finished job: `DELETE FROM jobs` ran only when a node itself was deleted.
+
+Measured against the real module with the real schema, two nodes and thirty
+days: **17,280 rows and 68 MB**, on course for roughly 800 MB a year. Each row
+carries up to 2,000 characters of result. That sits on the same disk as the bot
+and accounting databases, on a 4 GB server.
+
+Events were capped at 500 and metrics at 100 per tunnel from the beginning. The
+busiest table of the three had no cap at all.
+
+Finished jobs are now pruned to the last 300 per node on every agent check-in,
+alongside the stale-job requeue that already ran there. The same simulation ends
+at 680 rows and 3.2 MB and stops growing. Queued and taken jobs are never
+touched, and one node's prune cannot reach another's rows.
+
+The deepest reader of this history is the diagnostics page, which shows the last
+fifteen entries per node, so 300 is far more than anything needs.
+
+### Added — `nexora doctor` reports the tunnel database
+
+An already-grown file does not shrink on its own: SQLite reuses freed pages
+rather than returning them. Doctor now shows the tunnel database size alongside
+the bot and accounting ones, and when it is oversized it says how many job rows
+remain and gives the exact VACUUM command to reclaim the space.
+
+### Checked and sound
+
+The agent boundary was read closely, since it is the one place a remote machine
+talks to the panel. Node tokens are 32 random bytes; the lookup is parameterised
+and requires the node to be enabled; `queue_job` validates against an allowlist;
+`finish_job` refuses a job belonging to a different node and takes the action
+from the stored row rather than from what the agent claims; metrics are refused
+unless the tunnel is actually on the reporting node; health and sysmon are keyed
+by the token's node, not the payload's. Nothing needed changing there.
+
 ## [1.28.3]
 
 ### Fixed — Rollback overwrote the panel's databases while the panel was running
