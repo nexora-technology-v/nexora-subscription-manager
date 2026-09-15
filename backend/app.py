@@ -8939,10 +8939,17 @@ def _tenant_by_slug(slug):
         r = con.execute(
             # CAST چون روی نصبی که این ستون قبلاً TEXT ساخته شده،
             # مقدارش '1' است و '1' = 1 در SQLite غلط است.
-            "SELECT * FROM tenants WHERE portal_slug=? AND is_active=1 "
-            "AND CAST(COALESCE(portal_enabled,0) AS INTEGER)=1",
+            "SELECT * FROM tenants WHERE portal_slug=? AND is_active=1",
             (str(slug).strip().lower(),)).fetchone()
-        return dict(r) if r else None
+        # باز یا بسته بودن در پایتون تصمیم گرفته می‌شود، نه در SQL.
+        #
+        # قبلاً این‌جا CAST(... AS INTEGER)=1 بود و بررسی نشست یک
+        # قاعده‌ی دیگر داشت. دو پیاده‌سازی از یک قاعده، دیر یا زود
+        # از هم جدا می‌شوند — و شدند: روی '1.0' این یکی باز می‌گفت و
+        # آن یکی بسته. حالا یک تابع بیشتر وجود ندارد.
+        if not r or not _portal_open(dict(r).get("portal_enabled")):
+            return None
+        return dict(r)
     except Exception:
         return None
     finally:
@@ -8950,6 +8957,36 @@ def _tenant_by_slug(slug):
 
 
 #: نشست‌های باز نماینده — توکن به (شناسه‌ی مستاجر، زمان انقضا)
+def _portal_open(value):
+    """
+    آیا پورتالِ این نماینده باز است؟
+
+    فهرست مجاز، نه فهرست ممنوع. سه جا این پرچم را می‌خواندند و هر
+    کدام جور دیگری:
+
+      ورود         CAST(... AS INTEGER)=1   — فقط عددِ یک
+      بررسی نشست   not in ("0","","None")   — هرچه ناشناخته، باز
+      فهرست مدیر   همان فهرست ممنوع
+
+    روی ۰ و ۱ هر سه یک جواب می‌دهند، ولی روی هر مقدار دیگری — ۲،
+    "true"، "yes" — ورود می‌بست و نشست باز می‌ماند. یعنی دقیقاً
+    برعکسِ چیزی که بالای همان کد نوشته شده بود: «دسترسی همان لحظه
+    بسته می‌شود».
+
+    ستون یک‌بار به‌اشتباه TEXT ساخته شده بود و همان یک‌بار کافی بود
+    تا هیچ نماینده‌ای نتواند وارد شود. پرچمی که سه جور خوانده شود،
+    دیر یا زود همان اتفاق را دوباره می‌سازد.
+    """
+    if value is None or isinstance(value, bool):
+        return value is True
+    if isinstance(value, (int, float)):
+        return int(value) == 1
+    try:
+        return int(str(value).strip() or "0") == 1
+    except (TypeError, ValueError):
+        return False
+
+
 _PORTAL_SESSIONS = {}
 PORTAL_TTL = 12 * 3600
 PORTAL_MAX = 2000
@@ -9015,8 +9052,8 @@ def portal_tenant(x_portal_token: str = Header(None)):
         raise HTTPException(status_code=401, detail="نشست منقضی شده — دوباره وارد شوید")
 
     t = _tenant_row(rec[0])
-    if (not t or not t.get("is_active")
-            or str(t.get("portal_enabled") or "0") in ("0", "", "None")):
+    if not t or not t.get("is_active") or not _portal_open(
+            t.get("portal_enabled")):
         # دسترسی همان لحظه بسته می‌شود، نه سر انقضای نشست.
         _PORTAL_SESSIONS.pop(str(x_portal_token or ""), None)
         raise HTTPException(status_code=403, detail="دسترسی این نماینده بسته شده")
@@ -9179,8 +9216,7 @@ def tenant_portal_list(x_admin_password: str = Header(...)):
                     "id": d["id"], "name": d.get("name") or "",
                     "portalSlug": d.get("portal_slug") or "",
                     "portalGroup": d.get("portal_group") or "",
-                    "portalEnabled": str(d.get("portal_enabled") or "0")
-                                     not in ("0", "", "None"),
+                    "portalEnabled": _portal_open(d.get("portal_enabled")),
                     # خودِ رمز هرگز برنمی‌گردد — فقط اینکه هست یا نه،
                     # تا پنل بتواند بگوید چه چیزی مانده.
                     "hasPass": bool(d.get("portal_pass")),

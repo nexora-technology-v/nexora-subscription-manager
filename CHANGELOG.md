@@ -4,6 +4,35 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.28.2]
+
+### Fixed — Closing a reseller might not close the session they already had
+
+`portal_enabled` was read three ways. Login used a SQL cast that opens only on
+exactly 1. The session check used a denylist — anything that was not `0`, empty
+or `None` counted as open. The admin list used the same denylist, so its badge
+answered to a third rule.
+
+On 0 and 1 all three agree, which is why nothing had gone wrong yet. On any
+other value — `2`, `"true"`, `"yes"` — login refused while an open session kept
+working and the panel still showed the reseller as enabled. That is the exact
+opposite of what the comment above that check promised: access closing the
+moment it is revoked.
+
+This is not hypothetical for this column. It was once created as TEXT, which
+stored `1` as `'1'`, and `'1' = 1` is never true in SQLite — no reseller could
+log in at all. A flag read three ways will reproduce that kind of incident.
+
+There is one reading now, `_portal_open`, an allowlist, used by all three. The
+login query no longer re-implements it in SQL: it selects by slug and decides in
+Python, so there is nothing left to drift against.
+
+A test drives both paths over sixteen stored values and requires the same
+answer, and refuses the denylist or the SQL cast coming back. It compares what
+SQLite actually stored rather than what was handed to it — the column has
+integer affinity, so `'1.0'` is already `1` by the time anything reads it, and
+comparing against the raw value tests a state that never exists.
+
 ## [1.28.1]
 
 ### Fixed — `nexora import-topups` refused its own arguments

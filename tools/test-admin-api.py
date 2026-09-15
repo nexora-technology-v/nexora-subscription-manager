@@ -1429,6 +1429,75 @@ check("رسید با توکن ربات پاس داده می‌شود نه آدر
       "آن آدرس توکن ربات را در خودش دارد")
 
 
+# ═══════════════════════════════════════════════════════════
+head("پرچمِ باز/بسته یک جواب دارد، نه سه تا")
+
+# سه جا portal_enabled را می‌خواندند و هر کدام جور دیگری:
+#
+#   ورود        CAST(... AS INTEGER)=1   — فقط عددِ یک
+#   بررسی نشست  not in ("0","","None")   — هرچه ناشناخته، باز
+#   فهرست مدیر  همان فهرست ممنوع
+#
+# روی ۰ و ۱ هر سه یکی‌اند. روی هر مقدار دیگری ورود می‌بست و نشستِ
+# باز، باز می‌ماند — یعنی بستنِ یک نماینده، نشستِ فعلی‌اش را نمی‌بست،
+# درست برعکسِ چیزی که بالای همان کد نوشته شده بود.
+
+_VALUES = [1, 0, "1", "0", None, 2, "true", "yes", "", "01", 1.0,
+           True, False, " 1 ", "-1", "1.0"]
+
+# ورود و بررسی نشست باید روی *هر* مقداری یک جواب بدهند. این را با
+# خودِ دو مسیر می‌سنجیم، نه با بازنویسی شرطشان در تست — تستی که
+# قاعده را دوباره پیاده کند، فقط بازنویسی خودش را می‌آزماید.
+_drift = []
+_fb = _sq3.connect(str(AP.BOT_DB))
+try:
+    for _v in _VALUES:
+        _fb.execute("UPDATE tenants SET portal_enabled=? "
+                    "WHERE portal_slug='hossein'", (_v,))
+        _fb.commit()
+        # مقدارِ *ذخیره‌شده* را می‌خوانیم، نه آنچه فرستادیم: ستون
+        # affinity عددی دارد و SQLite رشته‌ی '1.0' را همان موقع به ۱
+        # تبدیل می‌کند. مقایسه با مقدار خام یعنی سنجیدن چیزی که
+        # هیچ‌وقت در دیتابیس ننشسته.
+        _stored = _fb.execute("SELECT portal_enabled FROM tenants "
+                              "WHERE portal_slug='hossein'").fetchone()[0]
+        _login_ok = AP._tenant_by_slug("hossein") is not None
+        _sess_ok = AP._portal_open(_stored)
+        if _login_ok != _sess_ok:
+            _drift.append(f"{_v!r}→{_stored!r}: ورود {_login_ok} · "
+                          f"نشست {_sess_ok}")
+    # برگرداندن به حالت باز، تا بقیه‌ی تست‌ها به هم نریزند
+    _fb.execute("UPDATE tenants SET portal_enabled=1 "
+                "WHERE portal_slug='hossein'")
+    _fb.commit()
+finally:
+    _fb.close()
+
+check("ورود و بررسی نشست یک جواب می‌دهند", not _drift,
+      "، ".join(_drift) if _drift
+      else f"{len(_VALUES)} مقدار سنجیده شد")
+
+check("فقط یک، باز است",
+      AP._portal_open(1) and AP._portal_open("1") and AP._portal_open(True))
+check("صفر و خالی و None بسته‌اند",
+      not any(AP._portal_open(v) for v in (0, "0", "", None, False)))
+check("مقدار ناشناخته باز نیست — فهرست مجاز، نه ممنوع",
+      not any(AP._portal_open(v) for v in (2, "true", "yes", "-1")),
+      "همین‌ها بودند که نشست را باز نگه می‌داشتند")
+
+_src_ap = io.open(str(ROOT / "backend" / "app.py"),
+                  encoding="utf-8").read()
+check("هیچ‌جا فهرست ممنوعِ قدیمی نمانده",
+      'in ("0", "", "None")' not in _src_ap,
+      "هر سه جا باید از _portal_open بگیرند")
+check("و شرط در SQL دوباره پیاده نشده",
+      "CAST(COALESCE(portal_enabled,0) AS INTEGER)" not in _src_ap,
+      "دو پیاده‌سازی از یک قاعده، دیر یا زود از هم جدا می‌شوند")
+check("بررسی نشست از همان تابع می‌گیرد",
+      "not _portal_open(\n            t.get(\"portal_enabled\"))" in _src_ap
+      or "_portal_open(t.get(\"portal_enabled\"))" in _src_ap)
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)
