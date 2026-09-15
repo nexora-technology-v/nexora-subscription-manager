@@ -144,8 +144,12 @@ def check_uptime():
     """مدت روشن بودن — ری‌استارت تازه ممکن است نشانه‌ی مشکل باشد."""
     try:
         up = float(Path("/proc/uptime").read_text().split()[0])
-    except Exception:
-        return None
+    except Exception as e:
+        # سکوت نه: بررسی‌ای که نتوانسته اندازه بگیرد باید همین را
+        # بگوید، وگرنه از فهرست غیب می‌شود و مدیر فکر می‌کند سنجیده
+        # شده و سالم بوده. همان کاری که check_disk و check_load
+        # می‌کنند.
+        return _check("uptime", "مدت روشن بودن", WARN, f"خوانده نشد: {e}")
 
     days = int(up // 86400)
     hours = int((up % 86400) // 3600)
@@ -217,14 +221,23 @@ def check_listening(ports=None):
     if not ports:
         return []
 
-    listening = set()
     ok, out = _run(["ss", "-lntu"])
-    if ok:
-        for m in re.finditer(r":(\d+)\s", out):
-            listening.add(int(m.group(1)))
+    if not ok:
+        # قبلاً این‌جا [] برمی‌گشت: بررسی به‌کلی از صفحه‌ی سلامت غیب
+        # می‌شد. و این همان بررسی‌ای است که «مشتری وصل نمی‌شود» را
+        # پیدا می‌کند — نبودنش از هشدارش بدتر است.
+        return [_check("ports", "پورت‌های سرویس", WARN,
+                       "خوانده نشد — دستور ss جواب نداد",
+                       "بسته‌ی iproute2 نصب است؟ با ss -lntup دستی ببینید")]
+
+    listening = set()
+    for m in re.finditer(r":(\d+)\s", out):
+        listening.add(int(m.group(1)))
 
     if not listening:
-        return []
+        return [_check("ports", "پورت‌های سرویس", WARN,
+                       "هیچ پورت شنونده‌ای دیده نشد",
+                       "خروجی ss خالی یا غیرمنتظره بود — دستی بررسی کنید")]
 
     missing = [p for p in ports if int(p) not in listening]
     if missing:
@@ -310,12 +323,16 @@ def check_ipv6():
     هر دامنه‌ای که رکورد AAAA دارد اول سراغ آن می‌رود و تا timeout
     معلق می‌ماند. کاربر این را به‌صورت «باز نمی‌شود» می‌بیند.
     """
-    has_v6 = False
     ok, out = _run(["ip", "-6", "addr", "show", "scope", "global"])
-    if ok and "inet6" in out:
-        has_v6 = True
+    if not ok:
+        # این بدترین حالتِ سکوت بود: وقتی دستور ip جواب نمی‌داد،
+        # has_v6 روی False می‌ماند و نتیجه می‌شد «تنظیم نشده — مشکلی
+        # نیست». یعنی دقیقاً همان وضعیتی که این بررسی برای پیدا کردنش
+        # ساخته شده — IPv6 شکسته — به مدیر «سالم» گزارش می‌شد.
+        return _check("ipv6", "IPv6", WARN, "خوانده نشد — دستور ip جواب نداد",
+                      "بسته‌ی iproute2 نصب است؟ با ip -6 addr دستی ببینید")
 
-    if not has_v6:
+    if "inet6" not in out:
         return _check("ipv6", "IPv6", OK, "تنظیم نشده — مشکلی نیست")
 
     works = False
@@ -554,22 +571,31 @@ def run_all(ports=None, domain=None, services=None):
             checks.append(_check(fn.__name__, fn.__name__, WARN,
                                  f"بررسی ناموفق: {type(e).__name__}"))
 
-    try:
-        checks += check_services(services)
-    except Exception:
-        pass
+    # این سه تا `except: pass` بودند — یعنی اگر گروهی می‌ترکید، کل
+    # آن گروه بی‌صدا از فهرست بیرون می‌رفت. حلقه‌ی بالا از همان اول
+    # درست عمل می‌کرد و یک WARN می‌گذاشت؛ این پایین نه.
+    def _group(key, title, fn, *a):
+        try:
+            return fn(*a) or []
+        except Exception as e:
+            # کلید از نام خودِ بررسی می‌آید، نه از تابعی که پاس شده —
+            # وگرنه هر بار که چیزی جایش را بگیرد، شناسه‌اش هم عوض
+            # می‌شود و صفحه نمی‌داند این کدام بررسی بوده.
+            return [_check(key, title, WARN,
+                           f"بررسی ناموفق: {type(e).__name__}")]
 
-    try:
-        checks += check_listening(ports)
-    except Exception:
-        pass
+    checks += _group("check_services", "سرویس‌های حیاتی",
+                     check_services, services)
+    checks += _group("check_listening", "پورت‌های سرویس",
+                     check_listening, ports)
 
     try:
         c = check_cert(domain)
         if c:
             checks.append(c)
-    except Exception:
-        pass
+    except Exception as e:
+        checks.append(_check("cert", "گواهی SSL", WARN,
+                             f"بررسی ناموفق: {type(e).__name__}"))
 
     crit = [c for c in checks if c["level"] == CRIT]
     warn = [c for c in checks if c["level"] == WARN]

@@ -359,6 +359,118 @@ check("نبودِ توکن ربات خطا نمی‌دهد", not _crashed and no
       _crashed or "بدون پیام، بدون خطا")
 
 
+# ═══════════════════════════════════════════════════════════
+head("بررسی‌ای که نتوانسته اندازه بگیرد باید همین را بگوید")
+
+# قاعده‌ی این مخزن: مسیر خرابِ بی‌صدا ممنوع. check_disk و check_load
+# از اول رعایتش می‌کردند («خوانده نشد: ...») و سه بررسی دیگر نه.
+#
+# بدترینشان IPv6 بود: وقتی دستور ip جواب نمی‌داد، نتیجه می‌شد
+# «تنظیم نشده — مشکلی نیست». یعنی دقیقاً همان وضعیتی که این بررسی
+# برای پیدا کردنش ساخته شده، به مدیر «سالم» گزارش می‌شد.
+
+_orig_run = H._run
+
+
+def _dead(*names):
+    """اجراکننده‌ای که این دستورها را شکست‌خورده نشان می‌دهد."""
+    def _r(cmd, **k):
+        if cmd and cmd[0] in names:
+            return False, ""
+        return _orig_run(cmd, **k)
+    return _r
+
+
+# ── IPv6 ──
+H._run = _dead("ip")
+_r6 = H.check_ipv6()
+H._run = _orig_run
+check("IPv6 وقتی ip جواب نمی‌دهد «سالم» نمی‌گوید",
+      _r6 and _r6["level"] != H.OK,
+      f"{_r6['level'] if _r6 else '—'} · {_r6['detail'] if _r6 else ''}")
+check("و می‌گوید چرا نتوانسته", _r6 and "خوانده نشد" in _r6["detail"],
+      _r6["detail"] if _r6 else "—")
+check("و راهنمایی هم می‌دهد", bool(_r6 and _r6["hint"]))
+
+# ── پورت‌های شنونده ──
+H._run = _dead("ss")
+_rp = H.check_listening([443, 2053])
+H._run = _orig_run
+check("بررسی پورت وقتی ss جواب نمی‌دهد ناپدید نمی‌شود", len(_rp) == 1,
+      f"{len(_rp)} مورد — قبلا [] برمی‌گشت و از صفحه غیب می‌شد")
+check("و هشدار می‌دهد", _rp and _rp[0]["level"] == H.WARN,
+      _rp[0]["level"] if _rp else "—")
+check("و دلیلش را می‌گوید", _rp and "خوانده نشد" in _rp[0]["detail"],
+      _rp[0]["detail"] if _rp else "—")
+
+# و حالتِ سومی که آسان است از قلم بیفتد: ss موفق برمی‌گردد ولی
+# خروجی‌اش چیزی ندارد که تجزیه شود. آن‌جا هم «نمی‌دانم» است، نه
+# «سالم» و نه سکوت.
+H._run = lambda cmd, **k: ((True, "") if cmd and cmd[0] == "ss"
+                           else _orig_run(cmd, **k))
+_rq = H.check_listening([443])
+H._run = _orig_run
+check("خروجیِ خالیِ ss هم ناپدید نمی‌شود", len(_rq) == 1,
+      f"{len(_rq)} مورد")
+check("و آن هم هشدار است", _rq and _rq[0]["level"] == H.WARN,
+      _rq[0]["detail"] if _rq else "—")
+
+# ولی وقتی ss کار می‌کند، رفتار عادی سرِ جایش است
+H._run = lambda cmd, **k: (
+    (True, "tcp LISTEN 0 4096 0.0.0.0:443 0.0.0.0:*\n"
+           "tcp LISTEN 0 4096 0.0.0.0:2053 0.0.0.0:*\n")
+    if cmd and cmd[0] == "ss" else _orig_run(cmd, **k))
+_rp2 = H.check_listening([443, 2053])
+check("پورت‌های باز «سالم» گزارش می‌شوند",
+      _rp2 and _rp2[0]["level"] == H.OK, _rp2[0]["detail"] if _rp2 else "—")
+_rp3 = H.check_listening([443, 9999])
+check("و پورتِ بسته هنوز بحرانی است",
+      _rp3 and _rp3[0]["level"] == H.CRIT, _rp3[0]["detail"] if _rp3 else "—")
+check("با نام همان پورت", _rp3 and "9999" in _rp3[0]["detail"])
+H._run = _orig_run
+
+# ── مدت روشن بودن ──
+_orig_path = H.Path
+
+
+class _NoProc:
+    def __init__(self, *a):
+        pass
+
+    def read_text(self, *a, **k):
+        raise OSError("/proc در دسترس نیست")
+
+
+H.Path = _NoProc
+_ru = H.check_uptime()
+H.Path = _orig_path
+check("مدت روشن بودن هم ناپدید نمی‌شود", _ru is not None,
+      "قبلا None برمی‌گشت و run_all حذفش می‌کرد")
+check("و هشدار می‌دهد", _ru and _ru["level"] == H.WARN,
+      _ru["level"] if _ru else "—")
+
+# ── گروه‌هایی که در run_all بی‌صدا حذف می‌شدند ──
+_orig_services = H.check_services
+
+
+def _boom(*a, **k):
+    raise RuntimeError("ترکید")
+
+
+H.check_services = _boom
+_all = H.run_all(ports=[443])
+H.check_services = _orig_services
+_keys = [c["key"] for c in _all["checks"]]
+check("گروهی که استثنا بدهد بی‌صدا حذف نمی‌شود",
+      "check_services" in _keys,
+      "قبلا except: pass بود و کل گروه غیب می‌شد")
+check("و به‌عنوان هشدار می‌آید",
+      any(c["key"] == "check_services" and c["level"] == H.WARN
+          for c in _all["checks"]))
+check("پس «همه‌چیز سالم است» هم نمی‌گوید",
+      _all["summary"] != "همه‌چیز سالم است", _all["summary"])
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
