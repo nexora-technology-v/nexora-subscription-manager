@@ -1676,6 +1676,74 @@ check("و چهار کارت بالای صفحه هنوز با هم جور درم
       "درآمد ربات عمداً خارج از آن چهار کارت است")
 
 
+head("پورسانت معرف‌ها هم پول است")
+
+# پورسانتِ پرداخت‌شده هزینه‌ی فروش است و از سود کم می‌شود. آنچه هنوز
+# پرداخت نشده تعهد است: از سودِ امروز کم نمی‌شود ولی باید دیده شود،
+# وگرنه سود امروز فردا آب می‌رود.
+
+_tcon = APP._bot_rw()
+try:
+    _tcon.execute("""CREATE TABLE IF NOT EXISTS affiliate_payouts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER,
+        affiliate_id INTEGER, amount INTEGER, note TEXT, paid_at TEXT)""")
+    _tcon.execute("""CREATE TABLE IF NOT EXISTS affiliate_commissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER,
+        affiliate_id INTEGER, order_amount INTEGER, commission INTEGER,
+        status TEXT)""")
+    _tcon.execute("DELETE FROM affiliate_payouts")
+    _tcon.execute("DELETE FROM affiliate_commissions")
+    for _t, _c, _st in ((77, 300_000, "paid"), (77, 200_000, "pending"),
+                        (77, 900_000, "cancelled"),   # لغوشده حساب نمی‌شود
+                        (90, 400_000, "paid")):       # مالِ نماینده
+        _tcon.execute("INSERT INTO affiliate_commissions (tenant_id,"
+                      "affiliate_id,order_amount,commission,status) "
+                      "VALUES (?,1,0,?,?)", (_t, _c, _st))
+    _tcon.execute("INSERT INTO affiliate_payouts (tenant_id,affiliate_id,"
+                  "amount,paid_at) VALUES (77,1,300000,date('now'))")
+    _tcon.execute("INSERT INTO affiliate_payouts (tenant_id,affiliate_id,"
+                  "amount,paid_at) VALUES (90,1,400000,date('now'))")
+    _tcon.commit()
+finally:
+    _tcon.close()
+
+_ap, _ao = APP._affiliate_money_out()
+check("پرداختیِ معرف‌ها شمرده می‌شود", _ap == 300_000, f"{_ap:,}")
+check("و باقی‌مانده جدا", _ao == 200_000,
+      f"{_ao:,} — ۵۰۰٬۰۰۰ تعهد منهای ۳۰۰٬۰۰۰ پرداخت‌شده")
+check("پورسانت لغوشده تعهد نیست", _ao != 1_100_000)
+check("و پورسانت معرف‌های نماینده مالِ مالک نیست",
+      _ap == 300_000 and _ao == 200_000, "۴۰۰٬۰۰۰ مالِ نماینده است")
+
+_lg3 = APP.billing_ledger(x_admin_password="x")
+check("سود، پورسانتِ پرداخت‌شده را کم می‌کند",
+      _lg3["profit"] == _lg3["paid"] + _lg3["botReceived"]
+      - _lg3["spent"] - 300_000,
+      f"{_lg3['profit']:,}")
+check("ولی تعهدِ پرداخت‌نشده را نه",
+      _lg3["affiliateOwed"] == 200_000,
+      "هنوز از جیب نرفته — ولی باید دیده شود")
+check("«اگر همه تسویه کنند» هر دو را کم می‌کند",
+      _lg3["profitIfAllPaid"] == (_lg3["paid"] + _lg3["botReceived"]
+                                  + _lg3["outstanding"] - _lg3["spent"]
+                                  - 300_000 - 200_000),
+      "آن سناریو یعنی همه‌ی تعهدها هم تسویه شده‌اند")
+
+head("«فروش» و «درآمد» روی صفحه‌ی ربات جدا شدند")
+
+_bs = APP.bot_status(x_admin_password="x")
+if _bs.get("dbReady"):
+    check("فروش و دریافتی هر دو گزارش می‌شوند",
+          "totalSales" in _bs and "totalReceived" in _bs,
+          f"فروش {_bs.get('totalSales'):,} · دریافتی {_bs.get('totalReceived'):,}")
+    check("فروش شامل خریدِ از کیف پول هست",
+          _bs["totalSales"] > _bs["totalReceived"],
+          "۳۰۰٬۰۰۰ از کیف پول خرج شده")
+    check("نام قدیمی هم خالی نمی‌ماند", _bs.get("totalRevenue") is not None)
+else:
+    check("bot_status در دسترس است", False, str(_bs.get("error"))[:60])
+
+
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()

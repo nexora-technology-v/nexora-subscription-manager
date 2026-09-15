@@ -71,9 +71,18 @@ export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {ready && status.totalRevenue > 0 && (
+          {/* عددِ بی‌برچسب را خواننده «درآمد» می‌خواند. فروش شامل
+              خریدِ از کیف پول هم هست، که پول تازه‌ای نیست. */}
+          {ready && status.totalSales > 0 && (
             <span className="fx-pill" style={{ background: "rgba(52,211,153,.1)", color: "var(--ok)" }}>
-              {Number(status.totalRevenue).toLocaleString("fa-IR")} تومان
+              فروش {Number(status.totalSales).toLocaleString("fa-IR")} تومان
+            </span>
+          )}
+          {ready && status.totalReceived > 0
+            && status.totalReceived !== status.totalSales && (
+            <span className="fx-pill" style={{ background: "rgba(43,127,214,.1)", color: "var(--accent-2)" }}
+              title="فقط پرداخت‌های کارتی — خرید از کیف پول پول تازه نیست">
+              دریافتی {Number(status.totalReceived).toLocaleString("fa-IR")} تومان
             </span>
           )}
           {running ? (

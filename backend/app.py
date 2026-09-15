@@ -1535,19 +1535,25 @@ def bot_status(x_admin_password: str = Header(...)):
             except Exception:
                 stats[key] = 0
 
+        # «فروش» و «درآمد» یکی نیستند: سفارشی که از کیف پول پرداخت
+        # شده فروش هست ولی پول تازه‌ای با آن نرسیده. این عدد بی‌برچسب
+        # بالای صفحه می‌نشست و خواننده آن را درآمد می‌خواند.
         try:
-            revenue = con.execute(
-                "SELECT COALESCE(SUM(amount),0) s FROM orders WHERE status='approved'"
-            ).fetchone()["s"]
+            sales = con.execute(
+                "SELECT COALESCE(SUM(amount),0) s FROM orders "
+                "WHERE status='approved'").fetchone()["s"]
         except Exception:
-            revenue = 0
+            sales = 0
 
         return {
             "installed": True,
             "dbReady": True,
             "running": _svc_active(),
             "stats": stats,
-            "totalRevenue": revenue,
+            "totalSales": sales,
+            "totalReceived": _bot_money_in(),
+            # نام قدیمی، تا اگر جایی هنوز می‌خواندش خالی نماند
+            "totalRevenue": sales,
         }
     finally:
         con.close()
@@ -5779,6 +5785,40 @@ def _bot_money_in():
         con.close()
 
 
+def _affiliate_money_out():
+    """
+    پورسانتی که به معرف‌ها پرداخت شده، و آنچه هنوز طلبشان است.
+
+    برمی‌گرداند: (پرداخت‌شده, باقی‌مانده)
+
+    هر دو پول واقعی‌اند و هیچ‌کدام در دفتر کل دیده نمی‌شدند: پرداختی
+    از سود کم نمی‌شد و بدهیِ باقی‌مانده هیچ‌جا به‌عنوان تعهد نمی‌آمد.
+    سودی که هزینه‌ی فروش را نبیند، همیشه بیشتر از واقعیت است.
+
+    مثل درآمد ربات، فقط مستاجرهای ریشه: پورسانتِ معرف‌های یک
+    نماینده، هزینه‌ی همان نماینده است.
+    """
+    con = _bot_conn()
+    if not con:
+        return 0, 0
+    try:
+        roots = "(SELECT id FROM tenants WHERE parent_id IS NULL)"
+        paid = con.execute(
+            f"SELECT COALESCE(SUM(amount),0) s FROM affiliate_payouts "
+            f"WHERE tenant_id IN {roots}").fetchone()
+        earned = con.execute(
+            f"SELECT COALESCE(SUM(commission),0) s FROM affiliate_commissions "
+            f"WHERE status != 'cancelled' AND tenant_id IN {roots}").fetchone()
+        p = int((paid["s"] if paid else 0) or 0)
+        e = int((earned["s"] if earned else 0) or 0)
+        return p, max(0, e - p)
+    except Exception:
+        log.debug("خواندن پورسانت معرف‌ها ناموفق", exc_info=True)
+        return 0, 0
+    finally:
+        con.close()
+
+
 @app.get("/api/admin/billing/ledger")
 def billing_ledger(x_admin_password: str = Header(...)):
     """
@@ -5819,6 +5859,7 @@ def billing_ledger(x_admin_password: str = Header(...)):
     # فروش مستقیم ربات هم درآمد است و همین سرورها را خرج می‌کند.
     # بدون آن، «سود واقعی» فقط نیمی از کسب‌وکار را می‌بیند.
     bot_in = _bot_money_in()
+    aff_paid, aff_owed = _affiliate_money_out()
 
     # «چه کسی بدهکار است» سوالِ امروز است، نه سوالِ تاریخ: بدهیِ
     # دوره‌ی تسویه‌شده دیگر طلب نیست.
@@ -5847,12 +5888,17 @@ def billing_ledger(x_admin_password: str = Header(...)):
         "spent": spent,
         "spentByKind": {k: by_kind.get(k, 0) for k in EXPENSE_KINDS},
         "botReceived": bot_in,
-        "profit": paid + bot_in - spent,
+        "affiliatePaid": aff_paid,
+        # هنوز پرداخت نشده، پس از سود کم نمی‌شود — ولی تعهدی است که
+        # باید دیده شود، وگرنه سودِ امروز فردا آب می‌رود.
+        "affiliateOwed": aff_owed,
+        "profit": paid + bot_in - spent - aff_paid,
         # «اگر همه تسویه کنند» یعنی آنچه گرفته‌ام + آنچه هنوز طلب دارم،
         # منهای هزینه. قبلاً billed - spent بود، یعنی کلِ تاریخِ
         # صورتحساب — که اگر دوره‌ای با تخفیف یا گِردکردن بسته شده
         # باشد، آن اختلاف را دوباره طلب حساب می‌کرد.
-        "profitIfAllPaid": paid + bot_in + outstanding - spent,
+        "profitIfAllPaid": (paid + bot_in + outstanding
+                            - spent - aff_paid - aff_owed),
         # اختلاف «صورت‌حساب‌شده منهای دریافت‌شده» با «طلب شما»: همان
         # دوره‌هایی که تسویه‌شده اعلام شده‌اند. بدون این عدد، چهار
         # کارتِ بالای صفحه با هم جور درنمی‌آیند و صفحه شبیه خرابی

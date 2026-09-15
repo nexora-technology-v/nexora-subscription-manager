@@ -493,6 +493,26 @@ export function BillingLedger({ password }) {
         </div>
       )}
 
+      {(d.affiliatePaid > 0 || d.affiliateOwed > 0) && (
+        <div className="fx-card p-4 mb-4 flex items-baseline justify-between
+                        gap-3 flex-wrap">
+          <div>
+            <div className="text-[13px]" style={{ color: "var(--dim)" }}>
+              پورسانت معرف‌ها
+            </div>
+            <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+              {d.affiliateOwed > 0
+                ? `${toman(d.affiliateOwed)} هنوز پرداخت نشده — از سود کم نشده`
+                : "همه پرداخت شده"}
+            </div>
+          </div>
+          <div className="text-[19px] font-bold"
+            style={{ color: "var(--danger)", fontFamily: "var(--mono)" }}>
+            −{toman(d.affiliatePaid)}
+          </div>
+        </div>
+      )}
+
       {d.settledGap > 0 && (
         <div className="text-[12px] mb-4 leading-relaxed"
           style={{ color: "var(--muted)" }}>
