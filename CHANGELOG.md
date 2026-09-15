@@ -31,6 +31,22 @@ the panel as unconfigured when it was configured. Note that `default_inbound` wa
 already being read correctly with a root filter elsewhere — the same field, two
 different rules, which is how 1.28.2 started.
 
+### Fixed — A test of mine that only failed on a slow machine
+
+The 1.30.0 tag build failed on Python 3.10 while the same commit passed on 3.12
+and passed locally. The code was fine; the test was mine and it was flaky.
+
+`_months_from_days` rounds at exact half-months, and I had built the device-rate
+fixtures 20 days old expiring in 25 — exactly 45 days, sitting on the boundary.
+`NOW_MS` is taken at import and `created_at` a few milliseconds later, and on a
+slow runner that drift drops the span below 45: one month instead of two, and
+every amount exactly half. A second fixture at 70 + 5 = 75 days sat on the next
+boundary up.
+
+Both moved clear of it, 50 and 85 days. Verified by stalling three seconds
+between the timestamp and the rows — far more drift than any runner adds — and
+the suite still passes.
+
 ### Added — A seam test for the whole class
 
 Five occurrences of one mistake in a day is a pattern, not an accident. Every

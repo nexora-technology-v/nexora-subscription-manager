@@ -1168,8 +1168,15 @@ _c = sqlite3.connect(XUI)
 for _id, _em, _ips, _en, _used in ((500, "dev_four", 4, 1, 5 * GB),
                                    (501, "dev_one", 1, 1, 5 * GB),
                                    (502, "dev_never", 1, 0, 0)):
+    # ۲۰ روز سن و ۳۰ روز انقضا = ۵۰ روز.
+    #
+    # عمداً ۵۰ و نه ۴۵: _months_from_days دقیقاً روی نیمِ ماه گرد
+    # می‌کند، پس ۴۵ روز روی خودِ مرز می‌نشیند. NOW_MS موقع import
+    # گرفته می‌شود و created_at چند میلی‌ثانیه دیرتر، و همان اختلاف
+    # روی یک ماشین کند عدد را به زیر ۴۵ می‌برد: یک ماه به‌جای دو، و
+    # هر مبلغ دقیقاً نصف. روی CI افتاد و محلی نه.
     _cr = (_dtm.now() - _tdl(days=20)).isoformat(sep=" ", timespec="seconds")
-    _ex = NOW_MS + 25 * 86400000
+    _ex = NOW_MS + 30 * 86400000
     _c.execute("INSERT INTO clients (id,email,group_name,total_gb,expiry_time,"
                "enable,created_at,limit_ip) VALUES (?,?,'دستگاه',0,?,?,?,?)",
                (_id, _em, _ex, _en, _cr, _ips))
@@ -1227,8 +1234,9 @@ head("«تمدید کرده؟» سوالِ نگه‌داشت است، نه سو�
 # ماه‌های آینده‌اش هم همین حالا فروخته شده‌اند و درست است که حساب
 # شوند — پس برای این آزمون به کار نمی‌آید.
 _c = sqlite3.connect(XUI)
+# ۷۰ + ۱۵ = ۸۵ روز، نه ۷۵: ۷۵ مرزِ بعدیِ همان گردکردن است.
 _cr = (_dtm.now() - _tdl(days=70)).isoformat(sep=" ", timespec="seconds")
-_ex = NOW_MS + 5 * 86400000
+_ex = NOW_MS + 15 * 86400000
 _c.execute("INSERT INTO clients (id,email,group_name,total_gb,expiry_time,"
            "enable,created_at,limit_ip) VALUES (503,'dev_old','دستگاه',0,?,1,?,1)",
            (_ex, _cr))
