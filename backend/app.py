@@ -9458,8 +9458,16 @@ def tenant_portal_list(x_admin_password: str = Header(...)):
                       "portal_pass", "credit", "is_active"):
                 if c in cols:
                     pick.append(c)
+            # فقط نماینده‌ها، نه خودِ مالک.
+            #
+            #  بدون این شرط، مستاجرِ ریشه هم در فهرست می‌آمد: با فرم
+            #  «نشانی لینک»، «گروه x-ui»، دکمه‌ی «بازکردن پنل» و
+            #  حتی هشدارِ «برای اینکه بتواند وارد شود…» — برای خودِ
+            #  صاحب پنل. و بدتر، می‌شد ناخواسته برایش پنل نمایندگی
+            #  باز کرد.
             for r in con.execute(
-                    f"SELECT {','.join(pick)} FROM tenants ORDER BY id"):
+                    f"SELECT {','.join(pick)} FROM tenants "
+                    "WHERE parent_id IS NOT NULL ORDER BY id"):
                 d = dict(r)
                 out.append({
                     "id": d["id"], "name": d.get("name") or "",
@@ -9479,15 +9487,21 @@ def tenant_portal_list(x_admin_password: str = Header(...)):
         if con:
             con.close()
 
-    groups = []
+    # خطای خواندنِ گروه‌ها دور ریخته می‌شد و فهرست بی‌صدا خالی
+    # می‌ماند. نتیجه‌اش این بود که وقتی x-ui در دسترس نبود، *همه‌ی*
+    # نماینده‌ها بدون گروه به نظر می‌رسیدند — بدون هیچ توضیحی.
+    groups, groups_error = [], ""
     try:
-        clients, known, _err = _read_xui_clients()
+        clients, known, err = _read_xui_clients()
+        if clients is None and err:
+            groups_error = str(err)[:140]
         seen = {c.get("group") for c in (clients or []) if c.get("group")}
         groups = sorted(seen | set(known or []))
-    except Exception:
-        groups = []
+    except Exception as e:
+        groups_error = f"{type(e).__name__}: {str(e)[:120]}"
 
-    return {"ready": True, "tenants": out, "groups": groups}
+    return {"ready": True, "tenants": out, "groups": groups,
+            "groupsError": groups_error}
 
 
 @app.post("/api/admin/tenant/{tid}/portal")

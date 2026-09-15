@@ -159,6 +159,15 @@ function Row({ t, groups, password, onSaved, setMsg }) {
           <select className="fx-input" value={group}
             onChange={(e) => setGroup(e.target.value)}>
             <option value="">— انتخاب کنید —</option>
+            {/* گروهِ ثبت‌شده باید دیده شود، حتی اگر در فهرستِ x-ui
+                نباشد. بدون این، select مقدارِ بی‌گزینه را نشان
+                نمی‌داد و روی «انتخاب کنید» می‌افتاد — یعنی نماینده‌ای
+                که گروه دارد «بدون گروه» به نظر می‌رسید. و چون فهرست
+                از x-ui می‌آید، کافی بود پنل یک لحظه در دسترس نباشد تا
+                *همه‌ی* نماینده‌ها همین‌طور دیده شوند. */}
+            {group && !(groups || []).includes(group) && (
+              <option value={group}>{group} — در x-ui پیدا نشد</option>
+            )}
             {(groups || []).map((g) => (
               <option key={g} value={g}>{g}</option>
             ))}
@@ -243,7 +252,9 @@ function Row({ t, groups, password, onSaved, setMsg }) {
         <div className="flex items-center gap-1.5 flex-wrap">
           <input type="number" dir="ltr" value={topup}
             onChange={(e) => setTopup(e.target.value)}
-            placeholder="مبلغ شارژ"
+            placeholder="100000"
+            title="مبلغ شارژ به تومان — منفی یعنی برداشت"
+            aria-label="مبلغ شارژ به تومان"
             className="fx-input text-[13px]"
             style={{ width: 150, fontFamily: "var(--mono)" }} />
           <button disabled={busy || !topup}
@@ -509,6 +520,19 @@ export function PortalAdmin({ password }) {
         بسازد و تمدید کند. نه کانفیگ نماینده‌های دیگر، نه مشتری‌های مستقیم
         شما، نه رمز پنل x-ui.
       </InfoBox>
+
+      {/* بدون این، نخواندنِ فهرست گروه‌ها بی‌صدا می‌ماند و مدیر فقط
+          یک منوی خالی می‌دید. */}
+      {data?.groupsError && (
+        <div className="fx-card p-4 mb-4 text-[13px]"
+          style={{ borderColor: "rgba(251,191,36,.3)", color: "var(--warn)" }}>
+          فهرست گروه‌های x-ui خوانده نشد: {data.groupsError}
+          <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+            گروهِ ثبت‌شده‌ی هر نماینده سر جایش است؛ فقط نمی‌توانید از
+            فهرست انتخاب کنید تا اتصال پنل درست شود.
+          </div>
+        </div>
+      )}
 
       <div className="flex justify-between items-center gap-2 mb-3 flex-wrap">
         <NewReseller password={password} groups={data?.groups}

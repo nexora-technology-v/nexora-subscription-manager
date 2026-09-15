@@ -996,8 +996,14 @@ AP._auth_fails.clear()
 _bd = _sq3.connect(str(AP.BOT_DB))
 try:
     _bd.execute("DELETE FROM tenants WHERE name='تازه‌وارد'")
-    _bd.execute("INSERT INTO tenants (name, is_active, credit) VALUES (?,1,?)",
-                ("تازه‌وارد", 0))
+    # نماینده همیشه فرزندِ ریشه است — همان کاری که tenant_create
+    # می‌کند. بدون والد، در حسابداری «مالک» شمرده می‌شود و فهرست
+    # نماینده‌ها هم درست نشانش نمی‌دهد.
+    _proot = _bd.execute("SELECT id FROM tenants WHERE parent_id IS NULL "
+                         "ORDER BY id LIMIT 1").fetchone()
+    _bd.execute("INSERT INTO tenants (name, parent_id, is_active, credit) "
+                "VALUES (?,?,1,?)",
+                ("تازه‌وارد", _proot[0] if _proot else None, 0))
     _nid = _bd.execute("SELECT id FROM tenants WHERE name='تازه‌وارد'"
                        ).fetchone()[0]
     _bd.commit()
@@ -2058,6 +2064,55 @@ check("و هر سه جا از همان می‌خوانند",
 check("و کپیِ دستیِ شرط نمانده",
       _rsrc.count("COALESCE(p.is_trial,0)=0") == 1,
       "هر کپی یک جای تازه برای جدا افتادن است")
+
+
+# ═══════════════════════════════════════════════════════════
+head("فهرست نماینده‌ها نباید خودِ مالک را نشان بدهد")
+
+# مستاجرِ ریشه هم در فهرست می‌آمد: با فرم «نشانی لینک»، «گروه
+# x-ui»، دکمه‌ی «بازکردن پنل» و حتی هشدارِ «برای اینکه بتواند وارد
+# شود…» — برای خودِ صاحب پنل. و می‌شد ناخواسته برایش پنل نمایندگی
+# باز کرد.
+
+_pl = app.tenant_portal_list(x_admin_password=PW)
+_ids = {t["id"] for t in _pl.get("tenants", [])}
+
+_pc = _sq3.connect(str(AP.BOT_DB))
+_roots = {r[0] for r in _pc.execute(
+    "SELECT id FROM tenants WHERE parent_id IS NULL")}
+_kids = {r[0] for r in _pc.execute(
+    "SELECT id FROM tenants WHERE parent_id IS NOT NULL")}
+_pc.close()
+
+check("مستاجر ریشه پیدا شد", bool(_roots), str(sorted(_roots)))
+check("هیچ مستاجرِ ریشه‌ای در فهرست نیست", not (_ids & _roots),
+      f"در فهرست: {sorted(_ids & _roots)}")
+check("ولی نماینده‌ها همه هستند", _kids <= _ids,
+      f"جاافتاده: {sorted(_kids - _ids)}")
+check("و این خالی‌بودنِ فهرست نیست", len(_ids) >= 1, f"{len(_ids)} نماینده")
+
+# ─── نخواندنِ گروه‌ها باید گفته شود ───
+#
+# خطای _read_xui_clients دور ریخته می‌شد و فهرست بی‌صدا خالی می‌ماند.
+# نتیجه: وقتی x-ui در دسترس نبود، *همه‌ی* نماینده‌ها بدون گروه به
+# نظر می‌رسیدند، بدون هیچ توضیحی.
+check("کلید groupsError در پاسخ هست", "groupsError" in _pl,
+      "بدون آن، رابط نمی‌تواند بگوید چرا فهرست خالی است")
+
+# روی همان ماژولی وصله می‌زنیم که صدایش می‌زنیم: AP و app دو شیء
+# جدا هستند و وصله‌ی یکی روی دیگری اثر ندارد.
+_orig_read = app._read_xui_clients
+app._read_xui_clients = lambda *a, **k: (None, [], "پنل در دسترس نیست")
+try:
+    _pl2 = app.tenant_portal_list(x_admin_password=PW)
+finally:
+    app._read_xui_clients = _orig_read
+
+check("وقتی x-ui جواب نمی‌دهد، دلیلش گزارش می‌شود",
+      bool(_pl2.get("groupsError")), repr(_pl2.get("groupsError")))
+check("و فهرست نماینده‌ها همچنان می‌آید",
+      _pl2.get("ready") is True and isinstance(_pl2.get("tenants"), list),
+      "نخواندنِ گروه‌ها نباید کلِ صفحه را از کار بیندازد")
 
 
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

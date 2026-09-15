@@ -477,7 +477,7 @@ export function BotSection({ password, dirty }) {
             <Field label="توکن API پنل" hint={t.panel_token_set ? "ذخیره شده — برای تغییر مقدار جدید وارد کنید" : "از پنل: Settings → Security → API Token"}>
               <input className="fx-input" dir="ltr" type="password" value={t.panel_token || ""}
                 onChange={(e) => up({ panel_token: e.target.value })}
-                placeholder="توکن را از پنل 3x-ui کپی کنید"
+                placeholder="xxxxxxxx-xxxx-xxxx"
                 style={{ fontFamily: "var(--mono)" }} />
             </Field>
             <InfoBox>

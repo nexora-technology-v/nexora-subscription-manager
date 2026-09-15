@@ -296,7 +296,6 @@ export default function App() {
           {active === "bill-groups" && <BillingGroups password={password} />}
           {active === "bill-portal" && <PortalAdmin password={password} />}
           {active === "res-inbounds" && <ResellerInbounds password={password} />}
-          {active === "res-inbounds" && <ResellerInbounds password={password} />}
           {active === "bill-invoice" && <BillingInvoice password={password} />}
           {active === "bill-pay" && <BillingPayments password={password} />}
           {active === "bill-period" && <BillingPeriod password={password} />}

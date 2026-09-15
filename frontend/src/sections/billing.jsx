@@ -1188,7 +1188,8 @@ export function RateRow({ rate, onChange, onDelete }) {
                 value={unlimited ? "" : rate.gb}
                 onFocus={() => unlimited && onChange({ gb: 30 })}
                 onChange={(e) => onChange({ gb: Math.max(0, Number(e.target.value)) })}
-                placeholder="مثلاً ۵۰"
+                placeholder="50"
+                aria-label="حجم به گیگابایت"
                 className="flex-1 bg-transparent border-0 outline-none py-2.5 text-[14px]"
                 style={{ color: "var(--text)", fontFamily: "var(--mono)" }} />
               <span className="text-[12px] shrink-0" style={{ color: "var(--muted)" }}>گیگابایت</span>
