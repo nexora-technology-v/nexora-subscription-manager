@@ -1197,6 +1197,57 @@ check("پلن آزمایشی دست نماینده نیست", '"is_trial": 0,' i
 
 
 # ═══════════════════════════════════════════════════════════
+head("لینک اشتراک باید پیدا شود، حتی وقتی کسی تنظیمش نکرده")
+
+# این همان چیزی بود که نماینده می‌دید: کانفیگ ساخته می‌شد ولی هیچ
+# لینکی برای تحویل نبود، و هیچ‌جا نمی‌گفت چرا. علتش این بود که همه‌چیز
+# به sub_base_url دستی وابسته بود.
+
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("UPDATE tenants SET settings='{}'")
+    _bd.commit()
+finally:
+    _bd.close()
+AP._SUB_BASE_CACHE.clear()
+
+
+class _SubXUI:
+    def panel_sub_base(self):
+        return "https://sub.panel.ir:2096/sub"
+
+
+AP._portal_xui = lambda t: (_SubXUI(), Exception)
+_tt = AP._tenant_by_slug("hossein")
+check("وقتی کسی تنظیم نکرده، از خود پنل خوانده می‌شود",
+      AP._sub_base(_tt) == "https://sub.panel.ir:2096/sub",
+      "پنل خودش این را می‌داند — ربات از روز اول همین کار را می‌کرد")
+
+AP._SUB_BASE_CACHE.clear()
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("UPDATE tenants SET settings=? WHERE parent_id IS NULL",
+                (json.dumps({"sub_base_url": "https://owner.ir/sub"}),))
+    _bd.commit()
+finally:
+    _bd.close()
+check("ولی تنظیم مالک بر آن مقدم است",
+      AP._sub_base(AP._tenant_by_slug("hossein")) == "https://owner.ir/sub")
+
+AP._SUB_BASE_CACHE.clear()
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bd.execute("UPDATE tenants SET settings=? WHERE portal_slug='hossein'",
+                (json.dumps({"sub_base_url": "https://mine.ir/sub/"}),))
+    _bd.commit()
+finally:
+    _bd.close()
+check("و تنظیم خودِ نماینده بر همه",
+      AP._sub_base(AP._tenant_by_slug("hossein")) == "https://mine.ir/sub",
+      "اسلش آخر هم برداشته می‌شود تا لینک دوتا اسلش نگیرد")
+
+
+# ═══════════════════════════════════════════════════════════
 head("آمار نماینده باید کاربردی باشد، نه شمارش خشک")
 
 # «۹۴ کانفیگ» به نماینده نمی‌گوید کدام مشتری دارد از دست می‌رود.

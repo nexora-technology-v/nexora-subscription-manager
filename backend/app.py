@@ -8777,11 +8777,26 @@ def _days_left(expiry):
     return int((ms - _epoch_ms(datetime.now())) / 86400000.0)
 
 
+#: پایه‌ی لینک اشتراک — گران است (یک تماس با پنل)، پس کوتاه کش می‌شود.
+_SUB_BASE_CACHE = {}
+_SUB_BASE_TTL = 300.0
+
+
 def _sub_base(t):
     """
-    پایه‌ی لینک اشتراک — از تنظیمات مستاجر، همان کلیدی که ربات می‌خواند.
+    پایه‌ی لینک اشتراک. سه منبع، به ترتیب اعتبار.
 
-    اگر نماینده تنظیم خودش را داشته باشد همان، وگرنه تنظیم مالک.
+      ۱. تنظیم خودِ نماینده
+      ۲. تنظیم مالک
+      ۳. خودِ پنل x-ui
+
+    سومی تازه اضافه شده و مهم است: تا پیش از آن، اگر هیچ‌کس
+    sub_base_url را دستی ننوشته بود، *همه‌ی* لینک‌ها خالی می‌ماندند.
+    نماینده کانفیگ می‌ساخت و هیچ چیزی برای تحویل به مشتری نداشت، و
+    هیچ‌جا هم نمی‌گفت چرا.
+
+    پنل خودش این را می‌داند — سرویس اشتراک روی پورت و مسیر جدا اجرا
+    می‌شود و تنظیماتش همان‌جاست. ربات از روز اول همین کار را می‌کرد.
     """
     def _read(row):
         try:
@@ -8793,16 +8808,34 @@ def _sub_base(t):
     own = _read(t)
     if own:
         return own.rstrip("/")
+
     con = _bot_conn()
     try:
         r = con.execute("SELECT settings FROM tenants WHERE parent_id IS NULL "
                         "ORDER BY id LIMIT 1").fetchone() if con else None
-        return _read(dict(r) if r else {}).rstrip("/")
+        owner = _read(dict(r) if r else {})
     except Exception:
-        return ""
+        owner = ""
     finally:
         if con:
             con.close()
+    if owner:
+        return owner.rstrip("/")
+
+    # ── از خود پنل ──
+    key = t.get("id")
+    hit = _SUB_BASE_CACHE.get(key)
+    if hit and _time.time() - hit[0] < _SUB_BASE_TTL:
+        return hit[1]
+    found = ""
+    try:
+        xui, _E = _portal_xui(t)
+        found = (xui.panel_sub_base() or "").rstrip("/")
+    except Exception:
+        log.debug("خواندن آدرس اشتراک از پنل ناموفق", exc_info=True)
+        found = ""
+    _SUB_BASE_CACHE[key] = (_time.time(), found)
+    return found
 
 
 def _portal_group(t):

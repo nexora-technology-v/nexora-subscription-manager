@@ -883,8 +883,17 @@ function OrdersBox({ token, onClose, onNote }) {
 }
 
 
-function ConfigBox({ token, row, onClose, onRenew, onToggle, onNote }) {
+/**
+ * مشخصات یک کاربر — و مهم‌تر از آن، چیزی که به مشتری تحویل می‌شود.
+ *
+ * سه تب، مثل خود پنل x-ui: اول چیزی که همین حالا لازم است (لینک و
+ * کیوآر)، بعد مصرف، بعد مشخصات. ترتیبشان عمدی است — نماینده این
+ * پنجره را برای تحویل باز می‌کند، نه برای تماشا.
+ */
+function ConfigBox({ token, row, onClose, onRenew, onToggle }) {
+  const [tab, setTab] = useState("deliver");
   const [qr, setQr] = useState(null);
+  const [qrBusy, setQrBusy] = useState(false);
   const [qrErr, setQrErr] = useState("");
   const [copied, setCopied] = useState("");
 
@@ -894,9 +903,11 @@ function ConfigBox({ token, row, onClose, onRenew, onToggle, onNote }) {
     setTimeout(() => setCopied(""), 1600);
   };
 
-  // کیوآر از سمت سرور می‌آید و محلی ساخته می‌شود: لینک اشتراک
-  // عملاً رمز مشتری است و نباید به هیچ سرویس بیرونی برود.
+  // کیوآر از سمت سرور و محلی ساخته می‌شود: لینک اشتراک عملاً رمز
+  // مشتری است و نباید به هیچ سرویس بیرونی برود.
   const showQr = async () => {
+    if (qr) { setQr(null); return; }
+    setQrBusy(true);
     setQrErr("");
     try {
       const res = await fetch(
@@ -907,116 +918,216 @@ function ConfigBox({ token, row, onClose, onRenew, onToggle, onNote }) {
         throw new Error(errText(j.detail, "کیوآر ساخته نشد"));
       }
       setQr(URL.createObjectURL(await res.blob()));
-    } catch (e) { setQrErr(e.message); }
+    } catch (e) { setQrErr(e.message); } finally { setQrBusy(false); }
   };
 
   const pct = row.usagePct;
   const bar = pct === null || pct === undefined ? null : Math.min(100, pct);
+  const barColor = bar === null ? "var(--accent-2)"
+    : bar >= 90 ? "var(--danger)" : bar >= 80 ? "var(--warn)" : "var(--accent-2)";
+
+  const expired = row.daysLeft !== null && row.daysLeft !== undefined
+    && row.daysLeft < 0;
+
+  const TABS = [["deliver", "تحویل به مشتری"], ["usage", "مصرف"],
+                ["info", "مشخصات"]];
+
+  const Rowline = ({ k, v, tone }) => (
+    <div className="flex items-center justify-between py-2"
+      style={{ borderBottom: "1px solid var(--border)" }}>
+      <span className="text-[13px]" style={{ color: "var(--muted)" }}>{k}</span>
+      <span className="text-[13px]" style={{ color: tone || "var(--dim)" }}>{v}</span>
+    </div>
+  );
 
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 3000, display: "flex",
       alignItems: "flex-start", justifyContent: "center", padding: 16,
-      background: "rgba(0,0,0,.6)", overflowY: "auto",
+      background: "rgba(0,0,0,.62)", overflowY: "auto",
     }} onClick={onClose}>
-      <div className="fx-card p-5" style={{ width: 460, maxWidth: "100%", marginTop: 24 }}
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="text-[14px] font-semibold text-white">اطلاعات کاربر</div>
-          <button onClick={onClose} className="fx-ico-btn"
-            style={{ width: 28, height: 28 }} aria-label="بستن">
-            <X size={13} />
-          </button>
-        </div>
+      <div className="fx-card" style={{
+        width: 470, maxWidth: "100%", marginTop: 24, padding: 0,
+        overflow: "hidden",
+      }} onClick={(e) => e.stopPropagation()}>
 
-        <div dir="ltr" className="text-[13px] mb-4 p-2.5 rounded-lg"
-          style={{ fontFamily: "var(--mono)", background: "var(--surface-3)",
-                   color: "var(--dim)", wordBreak: "break-all" }}>
-          {row.email}
-        </div>
-
-        {/* لینک — مهم‌ترین چیزی که به مشتری تحویل می‌دهد */}
-        {row.subUrl ? (
-          <div className="mb-4">
-            <div className="text-[12px] mb-1.5" style={{ color: "var(--muted)" }}>
-              لینک اشتراک مشتری
-            </div>
-            <div className="flex items-center gap-1.5 mb-2">
-              <div dir="ltr" className="fx-input text-[12px] flex-1"
-                style={{ fontFamily: "var(--mono)", overflow: "hidden",
-                         textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {row.subUrl}
+        {/* سربرگ */}
+        <div className="px-5 pt-4 pb-3">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="min-w-0">
+              <div dir="ltr" className="text-[15px] font-semibold text-white"
+                style={{ fontFamily: "var(--mono)", wordBreak: "break-all" }}>
+                {row.email}
               </div>
-              <button className="fx-ico-btn" style={{ width: 32, height: 32 }}
-                aria-label="کپی لینک" onClick={() => copy(row.subUrl, "l")}>
-                {copied === "l" ? <Check size={13} style={{ color: "var(--ok)" }} />
-                  : <Copy size={13} />}
-              </button>
-              <button className="fx-ico-btn" style={{ width: 32, height: 32 }}
-                aria-label="کیوآر" title="کیوآر" onClick={showQr}>
-                <QrCode size={13} />
-              </button>
-            </div>
-            {qr && (
-              <div className="flex justify-center p-3 rounded-xl"
-                style={{ background: "#fff" }}>
-                <img src={qr} alt="کیوآر لینک اشتراک"
-                  style={{ width: 200, height: 200 }} />
-              </div>
-            )}
-            {qrErr && (
-              <div className="text-[12px]" style={{ color: "var(--warn)" }}>{qrErr}</div>
-            )}
-          </div>
-        ) : (
-          <div className="text-[12px] mb-4" style={{ color: "var(--warn)" }}>
-            آدرس پایه‌ی اشتراک تنظیم نشده — با پشتیبانی تماس بگیرید.
-          </div>
-        )}
-
-        {/* مصرف */}
-        <div className="mb-4">
-          <div className="flex items-baseline justify-between mb-1.5">
-            <span className="text-[12px]" style={{ color: "var(--muted)" }}>مصرف</span>
-            <span className="text-[13px]" style={{ color: "var(--dim)" }}>
-              {faNum(row.usedGB)} از {row.gb === 0 ? "نامحدود" : `${faNum(row.gb)} GB`}
-              {pct !== null && pct !== undefined && (
-                <span style={{ color: pct >= 90 ? "var(--warn)" : "var(--muted)" }}>
-                  {" "}({faNum(pct)}٪)
+              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                <span className="fx-pill" style={{
+                  background: row.active ? "rgba(52,211,153,.14)" : "var(--surface-3)",
+                  color: row.active ? "var(--ok)" : "var(--muted)",
+                }}>
+                  {row.active ? "فعال" : "غیرفعال"}
                 </span>
-              )}
-            </span>
+                {expired && (
+                  <span className="fx-pill" style={{
+                    background: "rgba(248,113,113,.14)", color: "var(--danger)" }}>
+                    منقضی شده
+                  </span>
+                )}
+                {!expired && row.daysLeft !== null && row.daysLeft !== undefined
+                  && row.daysLeft <= 7 && (
+                  <span className="fx-pill" style={{
+                    background: "rgba(251,191,36,.14)", color: "var(--warn)" }}>
+                    {faNum(row.daysLeft)} روز مانده
+                  </span>
+                )}
+              </div>
+            </div>
+            <button onClick={onClose} className="fx-ico-btn shrink-0"
+              style={{ width: 28, height: 28 }} aria-label="بستن">
+              <X size={13} />
+            </button>
           </div>
-          {bar !== null && (
-            <div style={{ height: 6, borderRadius: 99,
-                          background: "rgba(255,255,255,.06)", overflow: "hidden" }}>
-              <div style={{
-                width: `${bar}%`, height: "100%",
-                background: bar >= 90 ? "var(--danger)"
-                  : bar >= 80 ? "var(--warn)" : "var(--accent-2)",
-              }} />
+        </div>
+
+        {/* تب‌ها */}
+        <div className="flex gap-0 px-5"
+          style={{ borderBottom: "1px solid var(--border)" }}>
+          {TABS.map(([k, lbl]) => (
+            <button key={k} onClick={() => setTab(k)}
+              className="px-3 py-2.5 text-[13px]"
+              style={{
+                color: tab === k ? "var(--accent-2)" : "var(--muted)",
+                borderBottom: `2px solid ${tab === k ? "var(--accent-2)" : "transparent"}`,
+                marginBottom: -1,
+              }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+
+        <div className="p-5">
+          {tab === "deliver" && (
+            <>
+              {row.subUrl ? (
+                <>
+                  <label className="text-[12px] block mb-1.5"
+                    style={{ color: "var(--muted)" }}>
+                    لینک اشتراک
+                  </label>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <div dir="ltr" className="fx-input text-[12px] flex-1"
+                      style={{ fontFamily: "var(--mono)", overflow: "hidden",
+                               textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {row.subUrl}
+                    </div>
+                    <button className="fx-ico-btn" style={{ width: 34, height: 34 }}
+                      aria-label="کپی لینک" title="کپی"
+                      onClick={() => copy(row.subUrl, "l")}>
+                      {copied === "l"
+                        ? <Check size={14} style={{ color: "var(--ok)" }} />
+                        : <Copy size={14} />}
+                    </button>
+                  </div>
+
+                  <button onClick={showQr} disabled={qrBusy}
+                    className="fx-btn-g w-full py-2.5 text-[13px] flex items-center
+                               justify-center gap-1.5 mb-3">
+                    {qrBusy ? <Loader2 size={13} className="animate-spin" />
+                      : <QrCode size={13} />}
+                    {qr ? "بستن کیوآر" : "نمایش کیوآر"}
+                  </button>
+
+                  {qr && (
+                    <div className="flex justify-center p-4 rounded-xl mb-3"
+                      style={{ background: "#fff" }}>
+                      <img src={qr} alt="کیوآر لینک اشتراک"
+                        style={{ width: 210, height: 210 }} />
+                    </div>
+                  )}
+                  {qrErr && (
+                    <div className="text-[12px] mb-3" style={{ color: "var(--warn)" }}>
+                      {qrErr}
+                    </div>
+                  )}
+
+                  <p className="text-[12px] leading-relaxed"
+                    style={{ color: "var(--muted)" }}>
+                    این لینک را به مشتری بدهید یا کیوآر را نشانش دهید. با همین
+                    یک لینک همه‌ی کانفیگ‌هایش را می‌گیرد.
+                  </p>
+                </>
+              ) : (
+                <div className="rounded-xl p-3.5 text-[13px] leading-relaxed"
+                  style={{ background: "rgba(251,191,36,.07)",
+                           border: "1px solid rgba(251,191,36,.22)",
+                           color: "var(--warn)" }}>
+                  آدرس پایه‌ی اشتراک پیدا نشد. از پشتیبانی بخواهید سرویس
+                  Subscription را در پنل روشن کند یا آدرس اشتراک را تنظیم کند.
+                </div>
+              )}
+            </>
+          )}
+
+          {tab === "usage" && (
+            <>
+              <div className="flex items-baseline justify-between mb-2">
+                <span className="text-[13px]" style={{ color: "var(--muted)" }}>
+                  مصرف‌شده
+                </span>
+                <span className="text-[15px] font-bold" style={{ color: barColor }}>
+                  {faNum(row.usedGB)} GB
+                </span>
+              </div>
+              {bar !== null ? (
+                <>
+                  <div style={{ height: 8, borderRadius: 99,
+                                background: "rgba(255,255,255,.06)",
+                                overflow: "hidden" }}>
+                    <div style={{ width: `${bar}%`, height: "100%",
+                                  background: barColor }} />
+                  </div>
+                  <div className="flex justify-between mt-1.5 text-[12px]"
+                    style={{ color: "var(--muted)" }}>
+                    <span>{faNum(pct)}٪ مصرف شده</span>
+                    <span>از {faNum(row.gb)} GB</span>
+                  </div>
+                </>
+              ) : (
+                <div className="text-[13px]" style={{ color: "var(--dim)" }}>
+                  حجم نامحدود — سقفی برای مصرف نیست
+                </div>
+              )}
+
+              <div className="mt-4">
+                <Rowline k="سقف حجم"
+                  v={row.gb === 0 ? "نامحدود" : `${faNum(row.gb)} GB`} />
+                <Rowline k="باقی‌مانده"
+                  v={row.gb === 0 ? "نامحدود"
+                    : `${faNum(Math.max(0, row.gb - row.usedGB).toFixed(1))} GB`}
+                  tone={bar !== null && bar >= 90 ? "var(--danger)" : undefined} />
+                <Rowline k="کاربر هم‌زمان"
+                  v={row.devices ? faNum(row.devices) : "نامحدود"} />
+              </div>
+            </>
+          )}
+
+          {tab === "info" && (
+            <div>
+              <Rowline k="تاریخ ساخت" v={row.createdJalali || "—"} />
+              <Rowline k="تاریخ انقضا" v={row.expiryJalali || "بدون انقضا"} />
+              <Rowline k="روز باقی‌مانده"
+                v={row.daysLeft === null || row.daysLeft === undefined ? "—"
+                  : expired ? "منقضی شده" : `${faNum(row.daysLeft)} روز`}
+                tone={expired ? "var(--danger)"
+                  : row.daysLeft <= 7 ? "var(--warn)" : undefined} />
+              <Rowline k="وضعیت" v={row.active ? "فعال" : "غیرفعال"}
+                tone={row.active ? "var(--ok)" : "var(--muted)"} />
+              <Rowline k="شناسه‌ی اشتراک" v={row.subId || "—"} />
             </div>
           )}
         </div>
 
-        {/* مشخصات */}
-        <div className="rounded-xl p-3 mb-4"
-          style={{ background: "var(--surface-3)" }}>
-          {[["ساخته شده", row.createdJalali || "—"],
-            ["انقضا", row.expiryJalali || "بدون انقضا"],
-            ["روز باقی‌مانده",
-             row.daysLeft === null || row.daysLeft === undefined ? "—"
-               : row.daysLeft < 0 ? "منقضی شده" : `${faNum(row.daysLeft)} روز`],
-            ["کاربر هم‌زمان", row.devices ? faNum(row.devices) : "نامحدود"],
-            ["وضعیت", row.active ? "فعال" : "غیرفعال"]].map(([k, v]) => (
-            <div key={k} className="flex justify-between py-1 text-[13px]">
-              <span style={{ color: "var(--muted)" }}>{k}</span>
-              <span style={{ color: "var(--dim)" }}>{v}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-1.5">
+        {/* کارها */}
+        <div className="px-5 pb-5 flex items-center gap-1.5">
           <button onClick={() => { onClose(); onRenew(row); }}
             className="fx-btn flex-1 py-2.5 text-[13px] flex items-center
                        justify-center gap-1.5">
@@ -1024,8 +1135,9 @@ function ConfigBox({ token, row, onClose, onRenew, onToggle, onNote }) {
           </button>
           <button onClick={() => { onToggle(row); onClose(); }}
             className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
-            <Power size={13} style={{ color: row.active ? "var(--muted)" : "var(--ok)" }} />
-            {row.active ? "غیرفعال کن" : "فعال کن"}
+            <Power size={13}
+              style={{ color: row.active ? "var(--muted)" : "var(--ok)" }} />
+            {row.active ? "غیرفعال" : "فعال"}
           </button>
         </div>
       </div>
@@ -1389,8 +1501,7 @@ function Dashboard({ token, onOut }) {
 
       {detail && (
         <ConfigBox token={token} row={detail} onClose={() => setDetail(null)}
-          onRenew={(r) => setRenew(r)} onToggle={toggle}
-          onNote={(m) => { setNote(m); setErr(""); }} />
+          onRenew={(r) => setRenew(r)} onToggle={toggle} />
       )}
     </div>
   );

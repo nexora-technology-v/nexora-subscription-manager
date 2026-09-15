@@ -4,6 +4,31 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.25.0]
+
+### Fixed — The reseller had no link to give the customer
+
+Every subscription link in the portal came from a `sub_base_url` that somebody had
+to have typed into settings by hand. On an install where nobody had, the reseller
+created a config and got nothing to hand over — an empty field, with no
+explanation anywhere.
+
+The panel already knows this. The subscription service runs on its own port and
+path and x-ui holds those settings; the bot has read them from there since the
+first version. The portal now does the same, as a third fallback: the reseller's
+own setting, then the owner's, then the panel itself. When even that fails, the
+screen says the subscription service may be off rather than showing a blank.
+
+### Changed — The customer view, rebuilt
+
+It was a list of fields in a box. Now it is three tabs, in the order the work
+happens: تحویل به مشتری first — the link, a copy button, the QR — since that is
+what the window gets opened for. Then مصرف, with a bar, a percentage, and what is
+left. Then مشخصات, the dates and the ids.
+
+The header carries the state at a glance: active or not, expired, or "۳ روز
+مانده" when it is close.
+
 ## [1.24.0]
 
 ### Added — Opening a customer, with everything needed to hand the config over
