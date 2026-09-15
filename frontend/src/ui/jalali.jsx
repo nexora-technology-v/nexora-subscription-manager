@@ -16,6 +16,7 @@
  * استاندارد است و در تست با تاریخ‌های واقعی سنجیده می‌شود.
  */
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
 
 const MONTHS = ["فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
@@ -125,17 +126,26 @@ export function JalaliDate({ value, onChange, placeholder = "انتخاب تار
   const [view, setView] = useState({ y: tj.jy, m: tj.jm });
   const box = useRef(null);
   const btn = useRef(null);
+  const panel = useRef(null);
   const [pos, setPos] = useState(null);
 
-  // تقویم با position:fixed می‌نشیند، نه absolute.
+  // تقویم با position:fixed و از راه portal روی body می‌نشیند.
   //
-  // قبلاً absolute بود و رو به پایین باز می‌شد. وقتی فیلد پایین یک
-  // کارت بود — مثل «شروع همکاری» و «تسویه‌شده تا» در ویرایش گروه —
-  // نصف تقویم زیر لبه‌ی کارت می‌رفت و دکمه‌های روزش دست‌نیافتنی
-  // می‌شدند. هیچ اسکرولی هم نجاتش نمی‌داد.
+  // اول absolute بود و رو به پایین باز می‌شد؛ وقتی فیلد پایین یک
+  // کارت بود نصفش زیر لبه می‌رفت. با fixed آن حل شد — ولی یک مشکل
+  // بدتر جایش آمد:
   //
-  // fixed از هر کادر و هر overflow والد بیرون می‌زند، و اگر پایین
-  // جا نباشد تقویم رو به بالا برمی‌گردد.
+  // .fx-anim که کل صفحه را در بر می‌گیرد انیمیشنی با transform دارد
+  // و fill-mode آن both است، یعنی transform بعد از تمام‌شدن هم روی
+  // عنصر می‌ماند. هر transformِ غیر none یک containing block برای
+  // فرزندانِ fixed می‌سازد. پس تقویم نسبت به *آن* جا می‌گرفت، در
+  // حالی که مختصاتش از getBoundingClientRect می‌آمد که نسبت به
+  // صفحه است. نتیجه: تقویم جایی بیرون از دید می‌افتاد و کاربر فکر
+  // می‌کرد اصلاً باز نمی‌شود.
+  //
+  // portal آن را مستقیم زیر body می‌گذارد، بیرون از هر والدِ
+  // transform‌دار. این تنها راهی است که در هر صفحه‌ای کار می‌کند،
+  // چون نمی‌شود تضمین کرد هیچ والدی transform ندارد.
   const place = () => {
     const el = btn.current;
     if (!el) return;
@@ -179,7 +189,12 @@ export function JalaliDate({ value, onChange, placeholder = "انتخاب تار
   useEffect(() => {
     if (!open) return undefined;
     const onDoc = (e) => {
-      if (box.current && !box.current.contains(e.target)) setOpen(false);
+      // پنل با portal بیرون از box رندر می‌شود، پس دیگر فرزندِ آن
+      // نیست و contains تنهایی کافی نیست — بدون این، هر کلیکی روی
+      // خود تقویم می‌بستش.
+      const inBox = box.current && box.current.contains(e.target);
+      const inPanel = panel.current && panel.current.contains(e.target);
+      if (!inBox && !inPanel) setOpen(false);
     };
     const onKey = (e) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDoc);
@@ -230,8 +245,8 @@ export function JalaliDate({ value, onChange, placeholder = "انتخاب تار
         </span>
       </button>
 
-      {open && pos && (
-        <div className="fx-card p-3" style={{
+      {open && pos && createPortal(
+        <div ref={panel} className="fx-card p-3" style={{
           position: "fixed", left: pos.left, top: pos.top,
           zIndex: 3000, width: 280,
           maxHeight: Math.max(220, pos.maxHeight),
@@ -285,8 +300,8 @@ export function JalaliDate({ value, onChange, placeholder = "انتخاب تار
             <button type="button" className="fx-btn-g flex-1 py-2 text-[12px]"
               onClick={() => setOpen(false)}>بستن</button>
           </div>
-        </div>
-      )}
+        </div>,
+        document.body)}
     </div>
   );
 }

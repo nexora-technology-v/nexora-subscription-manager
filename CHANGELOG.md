@@ -4,6 +4,32 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.25.1]
+
+### Fixed — The Jalali date picker would not open
+
+Clicking شروع همکاری or تسویه‌شده تا appeared to do nothing.
+
+It was opening. `.fx-anim`, which wraps whole pages, animates `transform` with
+`fill-mode: both`, so the transform stays on the element after the animation
+finishes — and any transform other than `none` makes that element the containing
+block for `position: fixed` descendants. The calendar was therefore placed
+relative to that wrapper while its coordinates came from
+`getBoundingClientRect()`, which is relative to the viewport. It landed off-screen.
+
+This is why the earlier fix for the clipping problem did not hold: switching from
+`absolute` to `fixed` solved the clipping and introduced this.
+
+The calendar is rendered through a portal onto `document.body` now, outside any
+transformed ancestor. That is the only version that works regardless of what a
+parent happens to do, since nothing can guarantee no ancestor has a transform.
+The outside-click check follows it — the panel is no longer a DOM child of the
+field, so clicking inside the calendar used to close it.
+
+Found with a jsdom test that mounts the picker inside a transformed parent, which
+is now part of the suite. The earlier test passed because it mounted with no
+parent at all.
+
 ## [1.25.0]
 
 ### Fixed — The reseller had no link to give the customer

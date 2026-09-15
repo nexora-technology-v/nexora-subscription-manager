@@ -230,6 +230,13 @@ check("ردیف روی فوتر نمی‌افتد", "BOTTOM = 11.5 * mm" in APP)
 
 JD = io.open(os.path.join(ROOT, "frontend", "src", "ui", "jalali.jsx"),
              encoding="utf-8").read()
+check("تقویم از راه portal روی body می‌نشیند",
+      "createPortal(" in JD and "document.body)" in JD,
+      "هر والدی که transform داشته باشد، position:fixed را در خودش "
+      "حبس می‌کند — و .fx-anim دقیقاً همین را دارد")
+check("و کلیک روی خودِ تقویم نمی‌بنددش",
+      "panel.current.contains(e.target)" in JD,
+      "با portal دیگر فرزندِ box نیست")
 check("تقویم از کادر والد بیرون می‌زند", 'position: "fixed"' in JD,
       "قبلاً نصفش زیر لبه‌ی کارت می‌رفت و دست‌نیافتنی بود")
 check("و اگر پایین جا نباشد رو به بالا باز می‌شود", "const up =" in JD)
