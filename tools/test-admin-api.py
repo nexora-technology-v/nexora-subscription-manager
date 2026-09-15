@@ -1965,6 +1965,101 @@ check("و موقع ساخت کانفیگ به پنل x-ui داده می‌شود
       "حساب‌کردنش بدون پاس‌دادنش بی‌فایده است")
 
 
+# ═══════════════════════════════════════════════════════════
+head("گزارش فروش و قیف باید یک نرخ تبدیل بدهند")
+
+# قیف در ۱.۳۷.۰ درست شد، ولی گزارش فروش تعریفِ خودش را داشت. روی
+# همان داده، یکی می‌گفت ۸۰٪ و دیگری ۲۰٪.
+#
+# و «میانگین سفارش» هم با سفارش‌های صفرتومانیِ تست پایین کشیده
+# می‌شد: ۶۲٬۵۰۰ به‌جای ۲۵۰٬۰۰۰.
+#
+# روی دیتابیس تازه سنجیده می‌شود تا عددها دقیق باشند.
+
+_rdb = _tf.mktemp(suffix=".db")
+_old_bp, _old_ap = botdb.DB_PATH, app.BOT_DB
+botdb.DB_PATH = Path(_rdb)
+try:
+    botdb.init_db()
+    _rtid = botdb.create_tenant("گزارش", bot_token="1:R", owner_tg_id=1)
+    _rc = _sq3.connect(_rdb)
+    _rc.executescript(f"""
+    INSERT INTO plans (id, tenant_id, name, price, gb, days, is_trial)
+      VALUES (6001, {_rtid}, 'تست', 0, 1, 1, 1);
+    INSERT INTO plans (id, tenant_id, name, price, gb, days, is_trial)
+      VALUES (6002, {_rtid}, '۳۰ گیگ', 200000, 30, 30, 0);
+    """)
+    # ده نفر آمدند؛ شش نفر فقط تست گرفتند، دو نفر واقعا خریدند
+    for _u in range(1, 11):
+        _rc.execute("INSERT INTO users (id,tenant_id,tg_id,created_at) "
+                    "VALUES (?,?,?,datetime('now'))",
+                    (_u, _rtid, 600 + _u))
+    for _u in range(1, 7):
+        _rc.execute("INSERT INTO orders (tenant_id,user_id,plan_id,amount,"
+                    "base_amount,status,created_at) "
+                    "VALUES (?,?,6001,0,0,'approved',datetime('now'))",
+                    (_rtid, _u))
+    for _u, _amt in ((7, 200000), (8, 300000)):
+        _rc.execute("INSERT INTO orders (tenant_id,user_id,plan_id,amount,"
+                    "base_amount,status,created_at) "
+                    "VALUES (?,?,6002,?,?,'approved',datetime('now'))",
+                    (_rtid, _u, _amt, _amt))
+    _rc.commit()
+    _rc.close()
+
+    app.BOT_DB = Path(_rdb)
+    _rep = app.bot_users_report(days=30, x_admin_password=PW)
+    _fun2 = app.bot_funnel(x_admin_password=PW)
+finally:
+    app.BOT_DB = _old_ap
+    botdb.DB_PATH = _old_bp
+
+check("گزارش خوانده شد", _rep.get("ready") is True)
+
+_o = _rep.get("orders") or {}
+check("تعداد سفارش، تست رایگان را نمی‌شمارد", _o.get("approved") == 2,
+      f"{_o.get('approved')} — شش تستِ رایگان نباید سفارش باشند")
+check("درآمد درست است", _o.get("revenue") == 500000, str(_o.get("revenue")))
+check("میانگین سفارش با سفارش‌های صفرتومانی پایین کشیده نمی‌شود",
+      _o.get("avg") == 250000,
+      f"{_o.get('avg')} — قبلا ۶۲٬۵۰۰ می‌شد")
+
+check("شمارش خریدارها هم", _rep.get("buyerCount") == 2,
+      f"{_rep.get('buyerCount')} — قبلا هشت نفر")
+check("نرخ تبدیل درست است", _rep.get("conversion") == 20.0,
+      f"{_rep.get('conversion')} — قبلا ۸۰٪")
+
+_seg2 = _fun2.get("segments") or {}
+check("و با قیف یکی است", _rep.get("buyerCount") == _seg2.get("paid"),
+      f"گزارش {_rep.get('buyerCount')} · قیف {_seg2.get('paid')}")
+check("و این برابری با «هر دو صفر» بی‌معنی نشده",
+      _seg2.get("paid") == 2, str(_seg2.get("paid")))
+
+_bl = _rep.get("buyers") or []
+check("فهرست خریدارها فقط خریدارهای واقعی است", len(_bl) == 2,
+      f"{len(_bl)} — کسی که فقط تست گرفته خریدار نیست")
+check("و هیچ‌کدام صفرتومانی نیستند",
+      all((b.get("spent") or 0) > 0 for b in _bl),
+      str([b.get("spent") for b in _bl]))
+
+_dl = _rep.get("daily") or []
+check("نمودار روزانه هم تست را نمی‌شمارد",
+      sum(int(d.get("n") or 0) for d in _dl) == 2,
+      str([(d.get("day"), d.get("n")) for d in _dl]))
+
+# و قاعده یک بار نوشته شده، نه سه بار
+_rsrc = io.open(os.path.join(str(ROOT), "backend", "app.py"),
+                encoding="utf-8").read()
+check("قاعده‌ی «خرید واقعی» یک تعریف دارد",
+      _rsrc.count("SQL_REAL_BUY = ") == 1, "یک تعریف")
+check("و هر سه جا از همان می‌خوانند",
+      _rsrc.count("SQL_REAL_BUY") >= 6,
+      f"{_rsrc.count('SQL_REAL_BUY')} اشاره — قیف، گزارش، پنل نماینده")
+check("و کپیِ دستیِ شرط نمانده",
+      _rsrc.count("COALESCE(p.is_trial,0)=0") == 1,
+      "هر کپی یک جای تازه برای جدا افتادن است")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

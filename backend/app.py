@@ -1089,6 +1089,19 @@ def _bot_conn():
         return None
 
 
+#: «خرید واقعی» — یک تعریف، برای هر جایی که می‌پرسد چند نفر خریدند.
+#
+#  گرفتن تست رایگان خودش یک سفارشِ `approved` با مبلغ صفر می‌سازد. هر
+#  شمارشی که این را کنار نگذارد، کسانی را که فقط دکمه‌ی تست را زده‌اند
+#  «خریدار» حساب می‌کند.
+#
+#  قیف تبدیل در ۱.۳۷.۰ درست شد ولی گزارش فروش تعریف خودش را داشت، پس
+#  پنل دو نرخ تبدیل نشان می‌داد: ۸۰٪ و ۲۰٪ روی همان داده. حالا هر سه
+#  جا — قیف، گزارش فروش، و آمار پنل نماینده — از همین می‌خوانند.
+SQL_PLAN_JOIN = "LEFT JOIN plans p ON p.id = o.plan_id"
+SQL_REAL_BUY = "o.status='approved' AND COALESCE(p.is_trial,0)=0"
+
+
 @app.get("/api/admin/bot/inbounds")
 def bot_inbounds(tenant: int = None, x_admin_password: str = Header(...)):
     """
@@ -1812,10 +1825,13 @@ def bot_users_report(days: int = 30, x_admin_password: str = Header(...)):
                 AND phone != '') AS withPhone
         """, (since,))
 
-        orders = one("""
-            SELECT COUNT(*) AS n, COALESCE(SUM(amount),0) AS sum
-            FROM orders
-            WHERE status='approved' AND created_at >= datetime('now', ?)
+        # تست رایگان سفارش هست ولی خرید نیست — بدون این، هم تعداد
+        # باد می‌کند و هم «میانگین سفارش» با سفارش‌های صفرتومانی
+        # پایین کشیده می‌شود.
+        orders = one(f"""
+            SELECT COUNT(*) AS n, COALESCE(SUM(o.amount),0) AS sum
+            FROM orders o {SQL_PLAN_JOIN}
+            WHERE {SQL_REAL_BUY} AND o.created_at >= datetime('now', ?)
         """, (since,))
 
         rejected = one("""
@@ -1838,33 +1854,33 @@ def bot_users_report(days: int = 30, x_admin_password: str = Header(...)):
         """)
 
         # خریدارها — همان چیزی که تصمیم فروش رویش گرفته می‌شود
-        buyers = many("""
+        buyers = many(f"""
             SELECT u.tg_id, u.first_name, u.username, u.phone,
                    COUNT(o.id) AS orders,
                    COALESCE(SUM(o.amount),0) AS spent,
                    MAX(o.created_at) AS lastBuy
-            FROM users u JOIN orders o ON o.user_id = u.id
-            WHERE o.status='approved' AND o.created_at >= datetime('now', ?)
+            FROM users u JOIN orders o ON o.user_id = u.id {SQL_PLAN_JOIN}
+            WHERE {SQL_REAL_BUY} AND o.created_at >= datetime('now', ?)
             GROUP BY u.id
             ORDER BY spent DESC
             LIMIT 20
         """, (since,))
 
         # فروش روزانه، برای دیدن روند
-        daily = many("""
-            SELECT date(created_at) AS day, COUNT(*) AS n,
-                   COALESCE(SUM(amount),0) AS sum
-            FROM orders
-            WHERE status='approved' AND created_at >= datetime('now', ?)
-            GROUP BY date(created_at)
+        daily = many(f"""
+            SELECT date(o.created_at) AS day, COUNT(*) AS n,
+                   COALESCE(SUM(o.amount),0) AS sum
+            FROM orders o {SQL_PLAN_JOIN}
+            WHERE {SQL_REAL_BUY} AND o.created_at >= datetime('now', ?)
+            GROUP BY date(o.created_at)
             ORDER BY day
         """, (since,))
 
         n_orders = int(orders.get("n") or 0)
         n_new = int(totals.get("newUsers") or 0)
-        n_buyers = len(many("""
-            SELECT DISTINCT user_id FROM orders
-            WHERE status='approved' AND created_at >= datetime('now', ?)
+        n_buyers = len(many(f"""
+            SELECT DISTINCT o.user_id FROM orders o {SQL_PLAN_JOIN}
+            WHERE {SQL_REAL_BUY} AND o.created_at >= datetime('now', ?)
         """, (since,)))
 
         return {
@@ -3462,9 +3478,8 @@ def bot_funnel(x_admin_password: str = Header(...)):
     #
     #  قیف دقیقاً برای جداکردنِ همین دو گروه ساخته شده. یک عبارت،
     #  نه دو تا: هر جا «خرید واقعی» لازم است از همین خوانده می‌شود.
-    REAL_BUY = ("SELECT 1 FROM orders o LEFT JOIN plans p ON p.id = o.plan_id "
-                " WHERE o.user_id = u.id AND o.status = 'approved'"
-                "   AND COALESCE(p.is_trial, 0) = 0")
+    REAL_BUY = (f"SELECT 1 FROM orders o {SQL_PLAN_JOIN} "
+                f" WHERE o.user_id = u.id AND {SQL_REAL_BUY}")
 
     try:
         started = one("SELECT COUNT(*) FROM users")
@@ -3473,7 +3488,7 @@ def bot_funnel(x_admin_password: str = Header(...)):
         # دکمه‌ی تست رایگان را زده باشند
         ordered = one(
             "SELECT COUNT(*) FROM users u WHERE EXISTS ("
-            "  SELECT 1 FROM orders o LEFT JOIN plans p ON p.id = o.plan_id"
+            f"  SELECT 1 FROM orders o {SQL_PLAN_JOIN}"
             "   WHERE o.user_id = u.id AND COALESCE(p.is_trial, 0) = 0)")
         paid = one("SELECT COUNT(*) FROM users u WHERE EXISTS (" + REAL_BUY + ")")
         trial = one("SELECT COUNT(*) FROM users WHERE trial_used=1")
@@ -10853,9 +10868,8 @@ def _portal_sales(tid, since):
     if not con:
         return empty
     try:
-        real = ("FROM orders o LEFT JOIN plans p ON p.id = o.plan_id "
-                "WHERE o.tenant_id=? AND o.status='approved' "
-                "  AND COALESCE(p.is_trial,0)=0")
+        real = (f"FROM orders o {SQL_PLAN_JOIN} "
+                f"WHERE o.tenant_id=? AND {SQL_REAL_BUY}")
 
         tot = con.execute(
             "SELECT COUNT(*) n, COALESCE(SUM(o.amount),0) s " + real,
