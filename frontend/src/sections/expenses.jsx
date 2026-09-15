@@ -451,9 +451,9 @@ export function BillingLedger({ password }) {
 
       <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
         {[
-          ["صورت‌حساب‌شده", d.billed, "var(--accent-2)", "کل مبلغی که باید بگیرید"],
+          ["صورت‌حساب‌شده", d.billed, "var(--accent-2)", "از روز اول تا امروز"],
           ["دریافت‌شده", d.paid, "#34d399", "آنچه واقعاً به دستتان رسیده"],
-          ["طلب شما", d.outstanding, "var(--warn)", "هنوز پرداخت نشده"],
+          ["طلب شما", d.outstanding, "var(--warn)", "بدهیِ امروز"],
           ["هزینه", d.spent, "var(--danger)", "سرور، حجم، دامنه"],
         ].map(([label, val, color, hint]) => (
           <div key={label} className="fx-card p-4">
@@ -470,6 +470,17 @@ export function BillingLedger({ password }) {
           </div>
         ))}
       </div>
+
+      {/* چهار کارت بالا با هم جمع نمی‌خورند وقتی دوره‌ای تسویه شده
+          باشد: «صورت‌حساب‌شده» کلِ تاریخ است و «طلب شما» فقط امروز.
+          بدون این یک خط، صفحه شبیه خرابی به نظر می‌رسد. */}
+      {d.settledGap > 0 && (
+        <div className="text-[12px] mb-4 leading-relaxed"
+          style={{ color: "var(--muted)" }}>
+          {toman(d.settledGap)} تومان از صورت‌حساب‌شده در دوره‌هایی است که
+          تسویه‌شده علامت خورده‌اند، پس در «طلب شما» نمی‌آید.
+        </div>
+      )}
 
       <div className="fx-card p-5 mb-4">
         <div className="flex items-baseline justify-between gap-3 flex-wrap">

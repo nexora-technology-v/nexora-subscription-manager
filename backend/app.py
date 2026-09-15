@@ -5774,6 +5774,8 @@ def billing_ledger(x_admin_password: str = Header(...)):
 
     # «چه کسی بدهکار است» سوالِ امروز است، نه سوالِ تاریخ: بدهیِ
     # دوره‌ی تسویه‌شده دیگر طلب نیست.
+    outstanding = sum(g.get("balance", 0) for g in groups if g.get("billable"))
+
     debtors = sorted(
         [{"key": g["key"], "label": g.get("label") or g["key"],
           "due": g.get("due", 0), "paid": g.get("paid", 0),
@@ -5793,12 +5795,20 @@ def billing_ledger(x_admin_password: str = Header(...)):
         "billed": billed,
         "paid": paid,
         # طلبِ امروز، نه اختلاف تاریخی
-        "outstanding": sum(g.get("balance", 0) for g in groups
-                           if g.get("billable")),
+        "outstanding": outstanding,
         "spent": spent,
         "spentByKind": {k: by_kind.get(k, 0) for k in EXPENSE_KINDS},
         "profit": paid - spent,
-        "profitIfAllPaid": billed - spent,
+        # «اگر همه تسویه کنند» یعنی آنچه گرفته‌ام + آنچه هنوز طلب دارم،
+        # منهای هزینه. قبلاً billed - spent بود، یعنی کلِ تاریخِ
+        # صورتحساب — که اگر دوره‌ای با تخفیف یا گِردکردن بسته شده
+        # باشد، آن اختلاف را دوباره طلب حساب می‌کرد.
+        "profitIfAllPaid": paid + outstanding - spent,
+        # اختلاف «صورت‌حساب‌شده منهای دریافت‌شده» با «طلب شما»: همان
+        # دوره‌هایی که تسویه‌شده اعلام شده‌اند. بدون این عدد، چهار
+        # کارتِ بالای صفحه با هم جور درنمی‌آیند و صفحه شبیه خرابی
+        # به نظر می‌رسد.
+        "settledGap": (billed - paid) - outstanding,
         "debtors": debtors,
         "owing": [d for d in debtors if d["balance"] > 0],
         "credit": [d for d in debtors if d["balance"] < 0],

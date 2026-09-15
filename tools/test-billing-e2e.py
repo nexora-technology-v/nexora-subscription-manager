@@ -1417,6 +1417,18 @@ check("و مانده‌ی صفحه‌ی بدهکاران با داشبورد ی�
           d["balance"] for d in _after["debtors"]),
       f"{_after['outstanding']:,}")
 
+check("چهار کارت بالای دفتر کل با هم جور درمی‌آیند",
+      (_after["billed"] - _after["paid"]) - _after["outstanding"]
+      == _after["settledGap"],
+      f"اختلاف {_after['settledGap']:,} — همان دوره‌های تسویه‌شده")
+check("و اختلاف صفر نیست، پس باید توضیح داده شود",
+      _after["settledGap"] > 0,
+      "بدون این خط، صفحه شبیه خرابی به نظر می‌رسد")
+check("«اگر همه تسویه کنند» از طلبِ امروز حساب می‌شود",
+      _after["profitIfAllPaid"]
+      == _after["paid"] + _after["outstanding"] - _after["spent"],
+      f"{_after['profitIfAllPaid']:,}")
+
 check("نمای کلی هر دو عدد را می‌دهد",
       '"dueAll"' in APP_SRC_NS and '"paidAll"' in APP_SRC_NS,
       "یک پیمایش، دو جواب — نه دو بار خواندن x-ui")
