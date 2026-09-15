@@ -626,6 +626,157 @@ check("و دلیلش کنار کد نوشته شده",
           encoding="utf-8").read())
 
 
+# ═══════════════════════════════════════════════════════════
+head("نتیجه‌ای که دقیقا سرِ بزنگاه می‌رسد")
+
+# requeue_stale اول کارهای بی‌پاسخ را SELECT می‌کند و بعد UPDATE.
+# بین این دو، نتیجه‌ی همان کار می‌تواند از ایجنت برسد و finish_job
+# ببنددش — دو اتصال جدا، دو مسیر جدا.
+#
+# بدون شرطِ status روی UPDATE، کارِ تمام‌شده دوباره «queued» می‌شد:
+# نتیجه‌اش پاک می‌شد، مدیر در پنل کاری را می‌دید که انگار هرگز جواب
+# نداده، و همان کار یک بار دیگر روی نود اجرا می‌شد.
+#
+# این‌جا آن لحظه ساختگی ولی دقیق بازسازی می‌شود: اتصالی که درست
+# بعد از SELECT، نتیجه را می‌نشاند.
+
+class _Rows:
+    """چیزی که فقط fetchall می‌خواهد — همان که requeue_stale می‌خواند."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchall(self):
+        return self._rows
+
+
+class _RaceConn:
+    def __init__(self, real, job_id):
+        self._real = real
+        self._job = job_id
+        self.fired = False
+
+    def execute(self, sql, params=()):
+        cur = self._real.execute(sql, params)
+        if (not self.fired and "FROM jobs" in sql
+                and sql.strip().upper().startswith("SELECT")):
+            rows = cur.fetchall()
+            self.fired = True
+            # نتیجه همین حالا از ایجنت رسید
+            self._real.execute(
+                "UPDATE jobs SET status='done', result=?, done_at=? "
+                "WHERE id=?", ("انجام شد", T.now(), self._job))
+            self._real.commit()
+            return _Rows(rows)
+        return cur
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
+_rid = T.queue_job(NID, "restart")
+T.take_jobs(NID)
+age_job(_rid, T.JOB_STALE_MINUTES + 5)
+
+_real_conn = T.conn
+_race = {}
+
+
+def _patched():
+    c = _RaceConn(_real_conn(), _rid)
+    _race["c"] = c
+    return c
+
+
+T.conn = _patched
+try:
+    _requeued, _failed = T.requeue_stale(NID)
+finally:
+    T.conn = _real_conn
+
+check("مسابقه واقعا بازسازی شد", _race.get("c") and _race["c"].fired,
+      "وگرنه این تست چیزی را نمی‌سنجد")
+
+_after = status_of(_rid)
+check("کارِ تمام‌شده دوباره به صف نمی‌رود", _after["status"] == "done",
+      f"وضعیت: {_after['status']}")
+check("و نتیجه‌اش پاک نمی‌شود", (_after["result"] or "") == "انجام شد",
+      _after["result"] or "خالی")
+check("و شمارش هم دروغ نمی‌گوید", (_requeued, _failed) == (0, 0),
+      f"دوباره‌صف {_requeued} · شکست‌خورده {_failed}")
+check("پس دوباره هم برداشته نمی‌شود",
+      not any(j["id"] == _rid for j in T.take_jobs(NID)),
+      "اجرای دوباره‌ی یک کارِ انجام‌شده روی نود")
+
+# ── همان مسابقه، ولی روی شاخه‌ی «دیگر تلاش نکن» ──
+#
+# کاری که چند بار تلاش شده و این بار *موفق* شده. اگر نتیجه سرِ
+# بزنگاه برسد و شرطِ status نباشد، requeue_stale رویش می‌نویسد
+# «ایجنت این کار را N بار برداشت و هیچ پاسخی نفرستاد» — یعنی
+# نتیجه‌ی موفق با یک خطای ساختگی جایگزین می‌شود.
+
+
+def _set_attempts(jid, n):
+    c = T.conn()
+    try:
+        c.execute("UPDATE jobs SET attempts=? WHERE id=?", (n, jid))
+        c.commit()
+    finally:
+        c.close()
+
+
+_fid = T.queue_job(NID, "apply")
+T.take_jobs(NID)
+age_job(_fid, T.JOB_STALE_MINUTES + 5)
+_set_attempts(_fid, T.JOB_MAX_ATTEMPTS - 1)
+
+_race2 = {}
+
+
+def _patched2():
+    c = _RaceConn(_real_conn(), _fid)
+    _race2["c"] = c
+    return c
+
+
+T.conn = _patched2
+try:
+    _rq2, _fl2 = T.requeue_stale(NID)
+finally:
+    T.conn = _real_conn
+
+check("مسابقه‌ی شاخه‌ی شکست هم بازسازی شد",
+      _race2.get("c") and _race2["c"].fired)
+_after2 = status_of(_fid)
+check("کارِ موفق «شکست‌خورده» علامت نمی‌خورد", _after2["status"] == "done",
+      f"وضعیت: {_after2['status']}")
+check("و پیام خطای ساختگی روی نتیجه‌اش نمی‌نشیند",
+      (_after2["result"] or "") == "انجام شد",
+      (_after2["result"] or "خالی")[:60])
+check("و شمارشِ شکست هم صفر می‌ماند", _fl2 == 0, f"شکست‌خورده {_fl2}")
+
+# ولی کاری که واقعا جواب نداده، بعد از چند تلاش شکست‌خورده می‌شود
+_gid = T.queue_job(NID, "apply")
+T.take_jobs(NID)
+age_job(_gid, T.JOB_STALE_MINUTES + 5)
+_set_attempts(_gid, T.JOB_MAX_ATTEMPTS - 1)
+_rq3, _fl3 = T.requeue_stale(NID)
+check("کارِ واقعا بی‌پاسخ هنوز شکست‌خورده می‌شود", _fl3 >= 1,
+      f"شکست‌خورده {_fl3}")
+check("و وضعیتش failed است", status_of(_gid)["status"] == "failed",
+      "وگرنه صف برای همیشه پر از یک کار خراب می‌ماند")
+
+
+# و بدون مسابقه، رفتار عادی سرِ جایش است
+_nid2 = T.queue_job(NID, "sysmon")
+T.take_jobs(NID)
+age_job(_nid2, T.JOB_STALE_MINUTES + 5)
+_rq, _fl = T.requeue_stale(NID)
+check("کارِ واقعا بی‌پاسخ هنوز دوباره صف می‌شود", _rq >= 1,
+      f"دوباره‌صف {_rq}")
+check("و وضعیتش queued می‌شود", status_of(_nid2)["status"] == "queued")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

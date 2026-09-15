@@ -23,12 +23,22 @@ from pathlib import Path
 #  توصیفشان است؛ ساخت کانفیگ در _build_config.
 # ═══════════════════════════════════════════════════════════
 
+#: کاتالوگ موتورها.
+#
+#  `binaries` عمداً فهرست است، نه یک نام: FRP دو باینری دارد و کدام
+#  اجرا شود به سمتِ تانل بستگی دارد (frps پورت باز می‌کند، frpc
+#  سرویس دارد). قبلاً این فیلد `binary: "frps"` بود — هم ناقص، چون
+#  سمت خارج frpc لازم دارد، و هم بی‌اثر، چون هیچ‌کس نمی‌خواندش.
+#
+#  حالا خوانده می‌شود: تست برابری، نسخه‌ی ایجنت را با همین فهرست
+#  می‌سنجد. ایجنت جدا روی نود دانلود می‌شود، پس دو کپیِ این کاتالوگ
+#  در دو ماشین زندگی می‌کنند و بدون نگهبان از هم جدا می‌افتند.
 ENGINES = {
     "backhaul": {
         "name": "Backhaul",
         "desc": "سریع و پایدار برای شرایط ایران — پیشنهاد اول",
         "repo": "Musixal/Backhaul",
-        "binary": "backhaul",
+        "binaries": ["backhaul"],
         "config": "toml",
         "transports": ["tcp", "tcpmux", "ws", "wss", "wsmux", "wssmux",
                        "utcpmux", "uwsmux"],
@@ -39,7 +49,7 @@ ENGINES = {
         "name": "Rathole",
         "desc": "سبک و کم‌مصرف، نوشته‌شده با Rust",
         "repo": "rapiz1/rathole",
-        "binary": "rathole",
+        "binaries": ["rathole"],
         "config": "toml",
         "transports": ["tcp", "tls", "noise", "websocket"],
         "default_transport": "tcp",
@@ -49,7 +59,7 @@ ENGINES = {
         "name": "GOST",
         "desc": "انعطاف‌پذیر با پروتکل‌های متنوع",
         "repo": "go-gost/gost",
-        "binary": "gost",
+        "binaries": ["gost"],
         "config": "yaml",
         "transports": ["tcp", "ws", "wss", "mws", "mwss", "grpc", "quic"],
         "default_transport": "mws",
@@ -59,7 +69,7 @@ ENGINES = {
         "name": "FRP",
         "desc": "پرکاربرد و باثبات، با پنل وضعیت داخلی",
         "repo": "fatedier/frp",
-        "binary": "frps",
+        "binaries": ["frps", "frpc"],
         "config": "toml",
         "transports": ["tcp", "kcp", "quic", "websocket"],
         "default_transport": "tcp",
@@ -69,7 +79,7 @@ ENGINES = {
         "name": "Chisel",
         "desc": "روی HTTP سوار می‌شود — وقتی بقیه بسته می‌شوند جواب می‌دهد",
         "repo": "jpillora/chisel",
-        "binary": "chisel",
+        "binaries": ["chisel"],
         # Chisel فایل پیکربندی ندارد و با آرگومان خط فرمان کار می‌کند
         "config": "args",
         "transports": ["http", "https"],
@@ -933,21 +943,30 @@ def requeue_stale(node_id, minutes=JOB_STALE_MINUTES,
         requeued = failed = 0
         for r in rows:
             nxt = int(r["attempts"]) + 1
+
+            # شرطِ status در هر دو دستور عمدی است، و شمارش از
+            # rowcount می‌آید نه از تعدادِ تلاش.
+            #
+            # بین SELECT بالا و این UPDATE، نتیجه‌ی همان کار ممکن
+            # است از ایجنت برسد و finish_job ببنددش. بدون این شرط،
+            # کارِ تمام‌شده دوباره «queued» می‌شد: نتیجه‌اش پاک
+            # می‌شد، مدیر کاری را می‌دید که انگار هرگز جواب نداده،
+            # و همان کار یک بار دیگر روی نود اجرا می‌شد.
             if nxt >= max_attempts:
-                c.execute(
+                cur = c.execute(
                     """UPDATE jobs SET status='failed', attempts=?, done_at=?,
                                        result=?
-                        WHERE id = ?""",
+                        WHERE id = ? AND status = 'taken'""",
                     (nxt, now(),
                      f"ایجنت این کار را {nxt} بار برداشت و هیچ پاسخی نفرستاد. "
                      "روی آن سرور: journalctl -u nexora-agent -n 50",
                      r["id"]))
-                failed += 1
+                failed += cur.rowcount
             else:
-                c.execute(
+                cur = c.execute(
                     "UPDATE jobs SET status='queued', attempts=?, taken_at=NULL"
-                    " WHERE id = ?", (nxt, r["id"]))
-                requeued += 1
+                    " WHERE id = ? AND status = 'taken'", (nxt, r["id"]))
+                requeued += cur.rowcount
         c.commit()
 
         if requeued or failed:

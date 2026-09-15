@@ -606,6 +606,133 @@ if _agok:
           "نسخه‌ی دوم همان منطق، همان اشکال را دوباره می‌سازد")
 
 
+# ═══════════════════════════════════════════════════════════
+head("کاتالوگ موتورها در پنل و ایجنت باید یکی بماند")
+
+# ایجنت جدا روی نود دانلود می‌شود و نسخه‌اش می‌تواند از پنل عقب
+# بماند. کاتالوگ موتورها در پنل یک جا نوشته شده و در ایجنت *چهار*
+# جای دیگر: مخزن‌ها، نام باینریِ تکی، فهرست باینری‌ها، و پسوند
+# فایل پیکربندی.
+#
+# همین شکل قبلاً واقعاً از هم جدا شده بود — فهرست موتورهای تانل در
+# نسخه‌ی جایگزینِ monitor سه نام کم داشت. این‌جا هم بدون نگهبان،
+# اضافه‌کردن یک موتور به پنل یعنی روی نود «موتور ناشناخته» — آن هم
+# لحظه‌ی نصب، بعد از اینکه مدیر تانل را ساخته است.
+
+import ast as _ast                                   # noqa: E402
+
+sys.path.insert(0, os.path.join(ROOT, "backend"))
+import tunnels as _TUN                                # noqa: E402
+
+_ASRC = io.open(os.path.join(ROOT, "agent", "nexora-agent.py"),
+                encoding="utf-8").read()
+_ATREE = _ast.parse(_ASRC)
+
+
+def _first_dict(node):
+    """اولین دیکشنریِ ثابت در زیردرختِ یک گره."""
+    for sub_ in _ast.walk(node):
+        if isinstance(sub_, _ast.Dict):
+            try:
+                return _ast.literal_eval(sub_)
+            except ValueError:
+                pass
+    return None
+
+
+def _dict_named(name):
+    """
+    دیکشنریِ ثابتی که به این نام نسبت داده شده.
+
+    داخلِ عبارت هم می‌گردد، نه فقط انتساب مستقیم: در ایجنت این دو
+    شکل هستند و اگر فقط دنبال Assign ساده بگردیم، هر دو None
+    برمی‌گردند و مقایسه‌ها با «مجموعه‌ی خالی» بی‌معنی سبز می‌شوند.
+
+        wanted = {...}[engine]
+        ext    = {...}.get(engine, "conf")
+    """
+    for n in _ast.walk(_ATREE):
+        if isinstance(n, _ast.Assign):
+            for tgt in n.targets:
+                if isinstance(tgt, _ast.Name) and tgt.id == name:
+                    got = _first_dict(n.value)
+                    if got:
+                        return got
+    return None
+
+
+def _returned_dict(func):
+    """دیکشنریِ داخل return یک تابع — حتی وقتی .get(...) رویش است."""
+    for n in _ast.walk(_ATREE):
+        if isinstance(n, _ast.FunctionDef) and n.name == func:
+            return _first_dict(n)
+    return None
+
+
+_panel = set(_TUN.ENGINES)
+check("کاتالوگ پنل خوانده شد", len(_panel) >= 5, f"{len(_panel)} موتور")
+
+_repos = _dict_named("repos")
+check("فهرست مخزن‌های ایجنت پیدا شد", isinstance(_repos, dict))
+check("همان موتورها را می‌شناسد", set(_repos or {}) == _panel,
+      f"فقط در پنل: {sorted(_panel - set(_repos or {}))} · "
+      f"فقط در ایجنت: {sorted(set(_repos or {}) - _panel)}")
+_bad_repo = {k: (v, _TUN.ENGINES[k]["repo"]) for k, v in (_repos or {}).items()
+             if k in _TUN.ENGINES and v != _TUN.ENGINES[k]["repo"]}
+check("و آدرس مخزن هرکدام هم یکی است", _repos and not _bad_repo,
+      str(_bad_repo) if _repos else "فهرست پیدا نشد")
+
+_wanted = _dict_named("wanted")
+check("فهرست باینری‌های ایجنت پیدا شد", isinstance(_wanted, dict))
+check("برای همان موتورها", set(_wanted or {}) == _panel,
+      f"فقط در پنل: {sorted(_panel - set(_wanted or {}))}")
+_bad_bin = {k: (v, _TUN.ENGINES[k]["binaries"])
+            for k, v in (_wanted or {}).items()
+            if k in _TUN.ENGINES and list(v) != list(_TUN.ENGINES[k]["binaries"])}
+check("و باینری‌ها دقیقاً همان‌هایی‌اند که پنل می‌گوید",
+      _wanted and not _bad_bin,
+      str(_bad_bin) if _wanted else "فهرست پیدا نشد")
+
+# FRP دو باینری دارد و کدامش اجرا شود به سمت تانل بستگی دارد.
+# اگر روزی فقط frps نصب شود، سمت خارج اصلا بالا نمی‌آید.
+check("برای FRP هر دو باینری نصب می‌شوند",
+      set(_TUN.ENGINES["frp"]["binaries"]) == {"frps", "frpc"},
+      str(_TUN.ENGINES["frp"]["binaries"]))
+check("و ایجنت سمت ایران را frps و سمت خارج را frpc اجرا می‌کند",
+      'BIN / ("frps" if side == "iran" else "frpc")' in _ASRC,
+      "جابه‌جا شدنشان یعنی تانل بالا می‌آید و ترافیکی رد نمی‌شود")
+
+_first = _returned_dict("wanted_first")
+check("نام باینریِ تکی هم برای همان موتورهاست", set(_first or {}) == _panel,
+      f"فقط در پنل: {sorted(_panel - set(_first or {}))}")
+_bad_first = {k: v for k, v in (_first or {}).items()
+              if k in _TUN.ENGINES and v not in _TUN.ENGINES[k]["binaries"]}
+check("و هرکدام یکی از باینری‌های همان موتور است",
+      _first and not _bad_first,
+      str(_bad_first) if _first else "نگاشت پیدا نشد")
+
+# پسوند فایل پیکربندی: پنل با «config» می‌گوید، ایجنت با «ext».
+# chisel فایل ندارد و در ایجنت زودتر جدا می‌شود.
+_ext = _dict_named("ext")
+check("نگاشت پسوند در ایجنت پیدا شد", isinstance(_ext, dict))
+_file_based = {k for k in _panel if _TUN.ENGINES[k]["config"] != "args"}
+check("همه‌ی موتورهای فایل‌دار پسوند دارند",
+      _file_based <= set(_ext or {}),
+      f"بی‌پسوند: {sorted(_file_based - set(_ext or {}))}")
+_bad_ext = {k: (v, _TUN.ENGINES[k]["config"]) for k, v in (_ext or {}).items()
+            if k in _TUN.ENGINES and v != _TUN.ENGINES[k]["config"]}
+check("و پسوندها با قالبی که پنل اعلام کرده می‌خوانند",
+      _ext and not _bad_ext,
+      str(_bad_ext) if _ext else "نگاشت پیدا نشد")
+
+# و هر موتوری که پنل می‌شناسد باید در ایجنت شاخه‌ی اجرا داشته باشد
+_ws = _ASRC[_ASRC.index("def write_service("):]
+_ws = _ws[:_ws.index("def _make_unit(")]
+_missing_branch = [k for k in _panel if f'"{k}"' not in _ws]
+check("هر موتور در write_service شاخه‌ی خودش را دارد",
+      not _missing_branch, str(_missing_branch))
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
