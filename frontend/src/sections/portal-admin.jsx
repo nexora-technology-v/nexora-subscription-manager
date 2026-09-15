@@ -330,8 +330,7 @@ function Row({ t, groups, password, onSaved, setMsg }) {
  * تا امروز این فرم نبود و صفحه می‌گفت «از بخش ربات، مستاجر بسازید» —
  * جایی که اصلاً وجود نداشت. یعنی عملاً فقط یک نماینده ممکن بود.
  */
-function NewReseller({ password, groups, onDone, setMsg }) {
-  const [open, setOpen] = useState(false);
+function NewReseller({ password, groups, onDone, onCancel, setMsg }) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [group, setGroup] = useState("");
@@ -360,7 +359,6 @@ function NewReseller({ password, groups, onDone, setMsg }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(errText(j.detail, "ساخته نشد"));
       setMsg({ t: "ok", m: `نماینده «${name}» ساخته شد — ${j.next || ""}` });
-      setOpen(false);
       setName(""); setSlug(""); setGroup(""); setPw(randomPass());
       setSlugTouched(false);
       onDone();
@@ -368,15 +366,6 @@ function NewReseller({ password, groups, onDone, setMsg }) {
       setMsg({ t: "err", m: e.message });
     } finally { setBusy(false); }
   };
-
-  if (!open) {
-    return (
-      <button onClick={() => setOpen(true)}
-        className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
-        <Plus size={14} /> نماینده‌ی جدید
-      </button>
-    );
-  }
 
   const shownSlug = slugTouched ? slug : guess(name);
   const ready = name.trim() && shownSlug && pw.length >= 8;
@@ -439,7 +428,7 @@ function NewReseller({ password, groups, onDone, setMsg }) {
           {busy ? <Loader2 size={13} className="animate-spin" />
             : <Check size={14} />} بساز
         </button>
-        <button onClick={() => setOpen(false)} disabled={busy}
+        <button onClick={onCancel} disabled={busy}
           className="fx-btn-g px-4 py-2.5 text-[14px]">انصراف</button>
       </div>
     </div>
@@ -505,6 +494,7 @@ export function ResellerInbounds({ password }) {
 
 export function PortalAdmin({ password }) {
   const [msg, setMsg] = useState(null);
+  const [adding, setAdding] = useState(false);
   const { d: data, busy: loading, load: reload } =
     useJson("/api/admin/tenant/portal-list", password);
 
@@ -535,14 +525,24 @@ export function PortalAdmin({ password }) {
       )}
 
       <div className="flex justify-between items-center gap-2 mb-3 flex-wrap">
-        <NewReseller password={password} groups={data?.groups}
-          onDone={reload} setMsg={setMsg} />
+        <button onClick={() => setAdding((v) => !v)}
+          className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
+          <Plus size={14} /> {adding ? "بستن فرم" : "نماینده‌ی جدید"}
+        </button>
         <button onClick={reload} disabled={loading}
           className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
           {loading ? <Loader2 size={13} className="animate-spin" />
             : <RefreshCw size={13} />} تازه‌سازی
         </button>
       </div>
+
+      {/* بیرون از ردیفِ دکمه‌ها، وگرنه فرم فقط یک ستون از عرض را
+          می‌گیرد و کنارش یک ستونِ خالیِ بزرگ می‌ماند. */}
+      {adding && (
+        <NewReseller password={password} groups={data?.groups}
+          onDone={() => { setAdding(false); reload(); }}
+          onCancel={() => setAdding(false)} setMsg={setMsg} />
+      )}
 
       {!data ? (
         <EmptyState icon={Users} text={loading ? "در حال بارگذاری…"
