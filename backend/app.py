@@ -5215,14 +5215,20 @@ def _billing_overview_impl():
         # می‌شدند — یعنی پولِ دوره‌ی تسویه‌شده هم داخل «دریافت‌شده»
         # می‌آمد، در حالی که بدهی‌اش دیگر شمرده نمی‌شود.
         since_of = {k: _bill_since(v)[0] for k, v in cfg.items()}
-        pays = {}
+        pays, pays_all = {}, {}
         for r in bcon.execute(
             "SELECT group_key, amount, COALESCE(paid_at,'') d FROM payments"
         ):
-            cut = since_of.get(r["group_key"]) or ""
+            amt = r["amount"] or 0
+            k = r["group_key"]
+            # هر دو نگه داشته می‌شوند: «چقدر الان طلبکارم» دوره‌ای
+            # است، «از روز اول چقدر گرفته‌ام» نیست. دفتر کل دومی را
+            # می‌خواهد و هزینه‌ها هم از روز اول جمع می‌شوند.
+            pays_all[k] = pays_all.get(k, 0) + amt
+            cut = since_of.get(k) or ""
             if cut and r["d"][:10] < cut:
                 continue
-            pays[r["group_key"]] = pays.get(r["group_key"], 0) + (r["amount"] or 0)
+            pays[k] = pays.get(k, 0) + amt
         logged = {}
         for r in bcon.execute(
             "SELECT email, COALESCE(SUM(months),0) m FROM renewals GROUP BY email"
@@ -5266,7 +5272,11 @@ def _billing_overview_impl():
                 "sources": {},
                 "configs": 0, "active": 0, "months": 0, "renewals": 0,
                 "used": 0, "quota": 0, "due": 0,
-                "paid": pays.get(g, 0), "unpriced": 0, "unpricedWhy": {},
+                # عمرِ کامل، برای دفتر کل — جایی که هزینه‌ها هم از روز
+                # اول جمع می‌شوند و درآمدِ دوره‌ای کنارشان بی‌معناست
+                "monthsAll": 0, "dueAll": 0,
+                "paid": pays.get(g, 0), "paidAll": pays_all.get(g, 0),
+                "unpriced": 0, "unpricedWhy": {},
                 "estimated": 0,
                 # کانفیگ‌هایی که ساخته شدند ولی هرگز به کار نیفتادند —
                 # اینها نرخ نمی‌گیرند و این‌جا شمرده می‌شوند تا مدیر
@@ -5291,12 +5301,18 @@ def _billing_overview_impl():
             G["skippedWhy"][why] = G["skippedWhy"].get(why, 0) + 1
             continue
 
-        months, _total, ren_in, _new, kind, _drift = _period_share(
+        months, all_months, ren_in, _new, kind, _drift = _period_share(
             cl, logged, rows_by.get(cl["email"], []), since_of.get(g),
             group_start=conf.get("period_start"),
             first_seen=seen.get(cl["email"]))
+        G["monthsAll"] += all_months
+        if G["billable"] and cl["email"] not in bot_emails and not G.get("perGb"):
+            gb_all = (cl["totalGB"] // (1024 ** 3)
+                      if cl["totalGB"] > 1024 else cl["totalGB"])
+            G["dueAll"] += _line_amount(gb_all, G["rates"], all_months,
+                                        cl.get("limitIp"))[0]
         if months <= 0:
-            # کاملاً پیش از مبدأ — تسویه‌شده و دیگر بدهی نیست
+            # کاملاً پیش از مبدأ — تسویه‌شده و دیگر بدهیِ *امروز* نیست
             G["settledSkipped"] = G.get("settledSkipped", 0) + 1
             continue
         G["months"] += months
@@ -5352,7 +5368,9 @@ def _billing_overview_impl():
                 "perGb": _price_per_gb(conf),
                 "configs": 0, "active": 0, "months": 0, "renewals": 0,
                 "used": 0, "quota": 0, "due": 0,
-                "paid": pays.get(gname, 0), "unpriced": 0, "unpricedWhy": {},
+                "monthsAll": 0, "dueAll": 0,
+                "paid": pays.get(gname, 0), "paidAll": pays_all.get(gname, 0),
+                "unpriced": 0, "unpricedWhy": {},
                 "estimated": 0,
                 "botOwned": 0,
             }
@@ -5363,6 +5381,7 @@ def _billing_overview_impl():
     total_clients = sum(g["configs"] for g in out)
     for g in out:
         g["balance"] = g["due"] - g["paid"]
+        g["balanceAll"] = g.get("dueAll", 0) - g.get("paidAll", 0)
         g["usedGB"] = round(g["used"] / (1024 ** 3), 1)
         g["quotaGB"] = round(g["quota"] / (1024 ** 3), 1) if g["quota"] > 1024 else g["quota"]
 
@@ -5729,8 +5748,15 @@ def billing_ledger(x_admin_password: str = Header(...)):
     overview = _billing_overview_impl()
     groups = overview.get("groups") or []
 
-    billed = sum(g.get("due", 0) for g in groups if g.get("billable"))
-    paid = sum(g.get("paid", 0) for g in groups if g.get("billable"))
+    # این صفحه «از روز اول» است و هزینه‌ها هم بدون هیچ برشی جمع
+    # می‌شوند. وقتی نمای کلی دوره‌ای شد، این‌جا هنوز همان کلیدها را
+    # می‌خواند — یعنی درآمدِ سه ماه در برابر هزینه‌ی دو سال، و
+    # «سود واقعی تا امروز» از مثبت به منفی می‌پرید به‌محض اینکه
+    # مدیر یک تاریخ تسویه ثبت می‌کرد.
+    billed = sum(g.get("dueAll", g.get("due", 0)) for g in groups
+                 if g.get("billable"))
+    paid = sum(g.get("paidAll", g.get("paid", 0)) for g in groups
+               if g.get("billable"))
 
     con = _billing_conn()
     try:
@@ -5746,9 +5772,12 @@ def billing_ledger(x_admin_password: str = Header(...)):
     finally:
         con.close()
 
+    # «چه کسی بدهکار است» سوالِ امروز است، نه سوالِ تاریخ: بدهیِ
+    # دوره‌ی تسویه‌شده دیگر طلب نیست.
     debtors = sorted(
         [{"key": g["key"], "label": g.get("label") or g["key"],
           "due": g.get("due", 0), "paid": g.get("paid", 0),
+          "dueAll": g.get("dueAll", 0), "paidAll": g.get("paidAll", 0),
           "balance": g.get("balance", 0),
           "configs": g.get("configs", 0),
           "unpriced": g.get("unpriced", 0)}
@@ -5763,7 +5792,9 @@ def billing_ledger(x_admin_password: str = Header(...)):
         "since": min([d for d in (first_pay, first_exp) if d], default=None),
         "billed": billed,
         "paid": paid,
-        "outstanding": billed - paid,
+        # طلبِ امروز، نه اختلاف تاریخی
+        "outstanding": sum(g.get("balance", 0) for g in groups
+                           if g.get("billable")),
         "spent": spent,
         "spentByKind": {k: by_kind.get(k, 0) for k in EXPENSE_KINDS},
         "profit": paid - spent,

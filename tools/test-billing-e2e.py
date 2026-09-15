@@ -1350,6 +1350,78 @@ check("انقضای تازه به ثبت پاس داده می‌شود",
       "بدون این عدد، مبنای ناظر جلو نمی‌رود")
 
 
+# ═══════════════════════════════════════════════════════════
+head("سود از روز اول حساب می‌شود، نه از تاریخ تسویه")
+
+# دفتر کل صریح می‌گوید «از روز اول»، و هزینه‌ها هم بدون هیچ برشی
+# جمع می‌شوند. وقتی نمای کلی دوره‌ای شد، این صفحه هنوز همان کلیدها را
+# می‌خواند: درآمدِ سه ماه در برابر هزینه‌ی دو سال.
+#
+# روی داده‌ی آزمایشی، «سود واقعی تا امروز» از +۵٬۰۰۰٬۰۰۰ به
+# −۵٬۰۰۰٬۰۰۰ می‌پرید — فقط با ثبت یک تاریخ تسویه.
+
+_c = sqlite3.connect(XUI)
+for _i in range(700, 710):
+    _cr = (_dtm.now() - _tdl(days=400)).isoformat(sep=" ", timespec="seconds")
+    _ex = NOW_MS + 25 * 86400000
+    _c.execute("INSERT INTO clients (id,email,group_name,total_gb,expiry_time,"
+               "enable,created_at,limit_ip) VALUES (?,?,'سود',0,?,1,?,1)",
+               (_i, "prof_%d" % _i, _ex, _cr))
+    _c.execute("INSERT INTO client_traffics (id,email,up,down,expiry_time,enable)"
+               " VALUES (?,?,0,?,?,1)", (_i, "prof_%d" % _i, 4 * GB, _ex))
+_c.commit()
+_c.close()
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("INSERT OR REPLACE INTO group_config (group_key,label,billable,"
+           "rates,period_days) VALUES ('سود','سود',1,?,30)",
+           (_json.dumps([{"gb": 0, "price": 100000}]),))
+_b.execute("DELETE FROM payments WHERE group_key='سود'")
+for _m in range(1, 14):
+    _b.execute("INSERT INTO payments (group_key,amount,paid_at) VALUES ('سود',?,?)",
+               (1_000_000,
+                (_dtm.now() - _tdl(days=_m * 30)).date().isoformat()))
+_b.commit()
+_b.close()
+
+_before = APP.billing_ledger(x_admin_password="x")
+check("پولی که واقعاً گرفته شده، کامل شمرده می‌شود",
+      _before["paid"] >= 13_000_000, f"{_before['paid']:,}")
+_p0 = _before["profit"]
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("UPDATE group_config SET settled_until=? WHERE group_key='سود'",
+           ((_dtm.now() - _tdl(days=90)).date().isoformat(),))
+_b.commit()
+_b.close()
+
+_after = APP.billing_ledger(x_admin_password="x")
+check("ثبت تاریخ تسویه سود را عوض نمی‌کند",
+      _after["profit"] == _p0, f"{_p0:,} → {_after['profit']:,}")
+check("و درآمدِ گرفته‌شده هم همان می‌ماند",
+      _after["paid"] == _before["paid"],
+      f"{_before['paid']:,} → {_after['paid']:,}")
+check("و کل مبلغ صورتحساب‌شده هم",
+      _after["billed"] == _before["billed"],
+      f"{_before['billed']:,} → {_after['billed']:,}")
+check("سود منفیِ ساختگی نمی‌شود", _after["profit"] > 0,
+      f"{_after['profit']:,}")
+
+# ولی «چه کسی الان بدهکار است» باید دوره‌ای باشد
+_dbt = {d["key"]: d for d in _after["debtors"]}["سود"]
+check("طلبِ امروز از دوره حساب می‌شود، نه از تاریخ",
+      _dbt["due"] < _dbt["dueAll"],
+      f"دوره {_dbt['due']:,} · کل {_dbt['dueAll']:,}")
+check("و مانده‌ی صفحه‌ی بدهکاران با داشبورد یکی است",
+      _after["outstanding"] == sum(
+          d["balance"] for d in _after["debtors"]),
+      f"{_after['outstanding']:,}")
+
+check("نمای کلی هر دو عدد را می‌دهد",
+      '"dueAll"' in APP_SRC_NS and '"paidAll"' in APP_SRC_NS,
+      "یک پیمایش، دو جواب — نه دو بار خواندن x-ui")
+
+
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
