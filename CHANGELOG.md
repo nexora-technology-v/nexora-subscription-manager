@@ -4,6 +4,40 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.29.2]
+
+### Added — Guards for the three ways the subscription page breaks for everyone
+
+No bug this round. The customer subscription page was audited and is sound. What
+it did not have was any guard on the three fragilities CONTRIBUTING names, all of
+which fail the same way: the page breaks for *every* customer at once, and
+nothing on the development machine notices, because Go renders the template on
+the server and the local test never sees it.
+
+**Brace balance.** One missing `}}` and Go rejects the whole template; the
+customer gets a raw error instead of a page. Counted and compared now.
+
+**Template variables.** Every `{{ .x }}` is checked against the official 3x-ui
+list, taken from `docs/custom-subscription-templates.md` in MHSanaei's
+repository. A name that is not there renders empty or breaks the template, and
+never fails locally. All fifteen currently in use are valid.
+
+**Dangling element ids.** `Cannot set properties of null` stops the rest of the
+script, so one typo can disable half the page. Every `getElementById` is now
+matched against the ids the markup actually defines. All ninety-five resolve.
+
+The three run *before* the jsdom render rather than after. A template fault is
+exactly what makes the render crash, so checking afterwards meant the crash hid
+the reason — proved by introducing each fault in turn: before the move the third
+one killed the run with a stack trace, after it the test names `stat-limitt`.
+
+### Added — The customer states that are not edge cases
+
+Unlimited quota and no expiry are ordinary, and a customer shown `NaN days` or
+`-1` assumes the service is broken. The page handles all three states correctly —
+expired, unlimited, and over quota — and four checks now hold it there, including
+that an unlimited config is never counted as out of quota.
+
 ## [1.29.1]
 
 ### Fixed — On New Year's Day the intrusion page dropped that day's attacks

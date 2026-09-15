@@ -92,6 +92,94 @@ function renderTemplate(src) {
 }
 
 async function run() {
+  // شمارنده و چک قبل از رندر ساخته می‌شوند: بررسی‌های ایستا
+  // پایین‌تر به آن‌ها نیاز دارند و باید *پیش از* jsdom اجرا شوند.
+  const results = [];
+  const check = (name, cond, detail='') => {
+    results.push(cond);
+    console.log(`${cond ? '✅' : '❌'} ${name}${detail ? ' — ' + detail : ''}`);
+  };
+
+  // ═══ پیش از رندر: سلامتِ خودِ قالب ═══
+  //
+  // این‌ها فقط متن فایل را می‌خواهند. اجرای‌شان پیش از رندر یعنی
+  // صفحه‌ای که می‌ترکد هم دلیل دقیق می‌گیرد، نه یک stack trace —
+  // و دقیقاً همان حالتی که این بررسی‌ها برایش نوشته شده‌اند،
+  // همان حالتی است که رندر را می‌شکند.
+  //
+  // سه چیزی که CONTRIBUTING صریح هشدار می‌دهد و هیچ‌کدام نگهبان
+  // نداشتند. هر سه یک شکل شکست دارند: صفحه برای *همه‌ی* مشتری‌ها
+  // خراب می‌شود، و این‌جا هیچ خطایی دیده نمی‌شود چون قالب را Go
+  // روی سرور رندر می‌کند نه این تست.
+  const RAW = fs.readFileSync(HTML_PATH, 'utf8');
+
+  // ── الف) آکولادها باید جفت باشند ──
+  //
+  // یک «}}» جاافتاده یعنی Go کل قالب را رد می‌کند و مشتری صفحه‌ی
+  // خطای خام می‌بیند.
+  const opens = (RAW.match(/\{\{/g) || []).length;
+  const closes = (RAW.match(/\}\}/g) || []).length;
+  check('آکولادهای قالب جفت‌اند', opens === closes,
+        `${opens} باز · ${closes} بسته`);
+
+  // ── ب) هر متغیر باید در فهرست رسمی ۳x-ui باشد ──
+  //
+  // فهرست از docs/custom-subscription-templates.md مخزن MHSanaei
+  // گرفته شده. متغیری که آن‌جا نباشد خالی رندر می‌شود یا قالب را
+  // می‌شکند — و روی این ماشین هیچ‌وقت معلوم نمی‌شود.
+  const XUI_VARS = new Set([
+    'sId', 'enabled', 'isOnline', 'download', 'upload', 'total', 'used',
+    'remained', 'expire', 'lastOnline', 'downloadByte', 'uploadByte',
+    'totalByte', 'subUrl', 'subJsonUrl', 'subClashUrl', 'subTitle',
+    'subSupportUrl', 'links', 'emails', 'announce', 'datepicker',
+  ]);
+  const unknown = [];
+  for (const m of RAW.matchAll(/\{\{\s*([^}]{0,60}?)\s*\}\}/g)) {
+    const expr = m[1];
+    // ساختارهای خودِ Go و متغیرهای حلقه، نه فیلدهای داده
+    if (/^(end|else|if |range |\$)/.test(expr)) continue;
+    for (const f of expr.matchAll(/\.([A-Za-z_]\w*)/g)) {
+      if (!XUI_VARS.has(f[1]) && !unknown.includes(f[1])) unknown.push(f[1]);
+    }
+  }
+  check('همه‌ی متغیرهای قالب در فهرست رسمی ۳x-ui هستند',
+        unknown.length === 0,
+        unknown.length ? unknown.join('، ') : 'هیچ نام ناشناخته‌ای نیست');
+
+  // ── ج) هیچ getElementById به شناسه‌ی ناموجود ──
+  //
+  // «Cannot set properties of null» اجرای بقیه‌ی اسکریپت را متوقف
+  // می‌کند، پس یک غلط تایپی می‌تواند نیمی از صفحه را از کار بیندازد.
+  const defined = new Set();
+  for (const m of RAW.matchAll(/\bid\s*=\s*["']([^"']+)["']/g)) defined.add(m[1]);
+  for (const m of RAW.matchAll(/id\s*=\s*\\?["']([A-Za-z0-9_-]+)\\?["']/g)) {
+    defined.add(m[1]);
+  }
+  const dangling = [];
+  for (const m of RAW.matchAll(/getElementById\(\s*["']([^"']+)["']\s*\)/g)) {
+    if (!defined.has(m[1]) && !dangling.includes(m[1])) dangling.push(m[1]);
+  }
+  check('هر getElementById به عنصری می‌رسد که وجود دارد',
+        dangling.length === 0,
+        dangling.length ? dangling.join('، ') : `${defined.size} شناسه`);
+
+  // ═══ ۱۳. حالت‌های واقعی مشتری ═══
+  //
+  // نامحدود و بدون انقضا حالت‌های عادی‌اند، نه لبه: مشتری‌ای که
+  // «NaN روز» یا «-۱» ببیند فکر می‌کند سرویسش خراب شده.
+  check('حالت نامحدودِ روز جدا مدیریت می‌شود',
+        RAW.includes('sanaeiClientData.daysLeft === null'),
+        'daysLeft برابر null یعنی بدون انقضا');
+  check('حالت منقضی‌شده هم جدا',
+        RAW.includes('sanaeiClientData.daysLeft === -1'));
+  check('حجم نامحدود عدد خام نشان نمی‌دهد',
+        RAW.includes('sanaeiClientData.totalByte > 0 ?'),
+        'صفر یعنی نامحدود، نه صفر بایت');
+  check('پرشدن حجم فقط وقتی سقفی هست سنجیده می‌شود',
+        RAW.includes('sanaeiClientData.totalByte > 0 && totalUsage'),
+        'بدون این، کانفیگ نامحدود همیشه «تمام‌شده» بود');
+
+
   let html = renderTemplate(fs.readFileSync(HTML_PATH, 'utf8'));
 
   const dom = new JSDOM(html, {
@@ -147,11 +235,6 @@ async function run() {
   console.log('║   تست واقعی با DOM (مثل مرورگر)          ║');
   console.log('╚══════════════════════════════════════════╝\n');
 
-  const results = [];
-  const check = (name, cond, detail='') => {
-    results.push(cond);
-    console.log(`${cond ? '✅' : '❌'} ${name}${detail ? ' — ' + detail : ''}`);
-  };
 
   // ═══ خطاهای جاوااسکریپت ═══
   const jsErrors = [...errors, ...(window.__errors||[])].filter(e =>
