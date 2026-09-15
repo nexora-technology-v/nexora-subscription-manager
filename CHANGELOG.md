@@ -4,6 +4,46 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.31.1]
+
+### Fixed — A node's health report could stop updating and never recover
+
+The agent caches the panel's own modules so a remote node reports the same
+numbers, with the same thresholds and names, as the main server.
+
+`remote_module` re-downloads when the panel's version changes. That was added
+because a cached module would otherwise be kept forever, and the comment
+explaining it names the symptom exactly: a new function appears in the panel, the
+node still runs the old file, and monitoring silently never arrives.
+
+The `health` action carried a second copy of that logic which had never been
+fixed. It downloaded only when the file was missing, so a node that fetched
+`health.py` once kept it for good.
+
+Not hypothetical. `run_all` later gained a `services` parameter, and the agent
+always passes it. Any node whose cached copy predates that raises
+`TypeError: run_all() got an unexpected keyword argument 'services'` on every
+check from then on — and nothing refreshes the file, so that node's health never
+updates again.
+
+`health` goes through `remote_module` now, which also gives it the corrupt-cache
+retry and dependency fetch the inline copy never had. The test drives a real
+stale cache: an old module, a panel version bump, a re-download, and a
+deliberately broken file that has to be replaced rather than fail forever.
+
+**This one lives on the node.** After updating the panel, send the agent update
+from the tunnel page so the node picks it up.
+
+### Checked and sound
+
+Read the rest of the agent boundary and changed nothing. Requests are signed with
+HMAC-SHA256 over timestamp and body; the panel verifies with a constant-time
+compare and refuses a clock drift over five minutes, so a captured request cannot
+be replayed later. `remote_module` is only ever called with fixed module names,
+never anything from a payload. The `ping` action refuses a host that is not a
+plain name or address, and every command is built as an argument list rather than
+a shell string.
+
 ## [1.31.0]
 
 ### Fixed — Above five thousand chats, the per-chat lock stopped working

@@ -596,7 +596,7 @@ MODULE_DEPS = {
 }
 
 
-def remote_module(name, func, payload):
+def remote_module(name, func, payload, **kwargs):
     """
     یک ماژول پنل را روی این سرور اجرا می‌کند.
 
@@ -676,7 +676,7 @@ def remote_module(name, func, payload):
         fn = getattr(m, func, None)
         if not fn:
             return False, f"تابع {func} در {name} نیست"
-        return True, json.dumps(fn(), ensure_ascii=False)
+        return True, json.dumps(fn(**kwargs), ensure_ascii=False)
     except Exception as e:
         return False, f"{type(e).__name__}: {str(e)[:150]}"
 
@@ -752,21 +752,21 @@ def handle(job, panel_version=""):
         return monitor(p)
 
     if action == "health":
-        # ماژول سلامت از خود پنل دانلود می‌شود تا نسخه‌ها یکی بمانند
-        try:
-            import importlib.util
-            mod_path = BASE / "health.py"
-            if not mod_path.exists() or p.get("refresh"):
-                download(f"{PANEL_URL}/api/agent/health.py", mod_path)
-            spec = importlib.util.spec_from_file_location("nx_health", mod_path)
-            m = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(m)
-            res = m.run_all(ports=p.get("ports"), domain=p.get("domain"),
-                            services=p.get("services") or
-                                     ["nexora-agent", "nginx"])
-            return True, json.dumps(res, ensure_ascii=False)
-        except Exception as e:
-            return False, f"{type(e).__name__}: {str(e)[:150]}"
+        # از همان مسیری که monitor و firewall می‌روند.
+        #
+        # قبلاً نسخه‌ی دومِ همان منطق این‌جا نوشته شده بود، و همان
+        # اشکالی را داشت که remote_module برای رفعش ساخته شد: فقط
+        # «اگر فایل نبود» دانلود می‌کرد. ایجنتی که یک‌بار health.py
+        # را گرفته بود تا ابد همان را نگه می‌داشت.
+        #
+        # و این نظری نیست: run_all بعداً پارامتر services گرفت. هر
+        # ایجنتی با نسخه‌ی قدیمیِ کش‌شده، از آن به بعد TypeError
+        # می‌گیرد و سلامت آن نود دیگر هرگز به‌روز نمی‌شود — بدون
+        # اینکه چیزی فایل را تازه کند.
+        return remote_module(
+            "health", "run_all", p,
+            ports=p.get("ports"), domain=p.get("domain"),
+            services=p.get("services") or ["nexora-agent", "nginx"])
 
     if action == "sysmon":
         return remote_module("monitor", "snapshot", p)

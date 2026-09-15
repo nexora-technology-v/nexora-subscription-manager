@@ -506,6 +506,106 @@ check("ولی با عوض‌شدن نسخه‌ی پنل دوباره می‌گی
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("ماژولِ کش‌شده باید با به‌روزرسانی پنل تازه شود")
+
+# ایجنت ماژول‌های پنل را کنار خودش کش می‌کند تا همان اعداد را گزارش
+# کند که سرور اصلی می‌دهد.
+#
+# remote_module وقتی نسخه‌ی پنل عوض شود دوباره دانلود می‌کند — ولی
+# دستور health نسخه‌ی دومِ همان منطق را داشت که فقط «اگر فایل نبود»
+# دانلود می‌کرد. یعنی ایجنتی که یک‌بار health.py را گرفته بود تا ابد
+# همان را نگه می‌داشت.
+#
+# و این نظری نیست: run_all بعداً پارامتر services گرفت. هر ایجنتی با
+# نسخه‌ی قدیمیِ کش‌شده از آن به بعد TypeError می‌گیرد و سلامت آن نود
+# دیگر هرگز به‌روز نمی‌شود.
+
+import tempfile as _tf          # noqa: E402
+import pathlib as _pl           # noqa: E402
+
+_AGSPEC = importlib.util.spec_from_file_location(
+    "nxagent_cache", os.path.join(ROOT, "agent", "nexora-agent.py"))
+_AG = importlib.util.module_from_spec(_AGSPEC)
+try:
+    _AGSPEC.loader.exec_module(_AG)
+    _agok = True
+except SystemExit:
+    _agok = True
+except Exception as _e:
+    _agok = False
+    print(f"  {R}agent بارگذاری نشد: {_e}{X}")
+
+check("ایجنت بارگذاری شد", _agok)
+
+if _agok:
+    _AG.BASE = _pl.Path(_tf.mkdtemp())
+    _fetched = []
+
+    #: نسخه‌های پیاپیِ همان ماژول، همان‌طور که پنل به‌روز می‌شود
+    _BODY = {"v1": "def run_all(ports=None, domain=None):\n    return {'v': 1}\n",
+             "v2": ("def run_all(ports=None, domain=None, services=None):\n"
+                    "    return {'v': 2, 'services': services}\n")}
+    _serving = ["v1"]
+
+    def _fake_download(url, dest):
+        _fetched.append(url)
+        _pl.Path(dest).write_text(_BODY[_serving[0]], encoding="utf-8")
+
+    _AG.download = _fake_download
+
+    # اولین اجرا: پنلِ قدیمی، و run_all هنوز پارامتر services ندارد.
+    #
+    # ایجنت همیشه services را پاس می‌دهد، پس این نسخه اصلاً قابل
+    # صدازدن نیست. این دقیقاً همان چیزی است که روی نودِ واقعی اتفاق
+    # می‌افتد وقتی ماژولِ کش‌شده از پنل عقب افتاده باشد.
+    _ok1, _out1 = _AG.handle({"action": "health", "payload": {}},
+                             panel_version="1.0.0")
+    check("اولین بار ماژول دانلود می‌شود", len(_fetched) == 1,
+          f"{len(_fetched)} دانلود")
+    check("ماژولِ عقب‌افتاده صدا زده نمی‌شود و خطایش گفته می‌شود",
+          not _ok1 and "services" in _out1,
+          _out1[:70])
+    _n_after_first = len(_fetched)
+
+    # اجرای دوم با همان نسخه: نباید دوباره بگیرد
+    _AG.handle({"action": "health", "payload": {}}, panel_version="1.0.0")
+    check("با همان نسخه دوباره دانلود نمی‌شود",
+          len(_fetched) == _n_after_first,
+          f"{len(_fetched) - _n_after_first} دانلود اضافه")
+
+    # پنل به‌روز می‌شود و run_all پارامتر تازه می‌گیرد
+    _serving[0] = "v2"
+    _ok3, _out3 = _AG.handle(
+        {"action": "health", "payload": {"services": ["nginx"]}},
+        panel_version="1.1.0")
+    check("با عوض‌شدن نسخه‌ی پنل دوباره دانلود می‌شود",
+          len(_fetched) > _n_after_first,
+          "بدون این، ماژولِ کهنه تا ابد می‌ماند")
+    check("و پارامتر تازه به آن می‌رسد",
+          _ok3 and "nginx" in _out3, _out3[:70])
+
+    # فایل خراب باید یک‌بار دوباره گرفته شود، نه اینکه برای همیشه بیفتد
+    (_AG.BASE / "health.py").write_text("def run_all(  # نحو خراب\n",
+                                        encoding="utf-8")
+    _n_before = len(_fetched)
+    _ok4, _out4 = _AG.handle({"action": "health", "payload": {}},
+                             panel_version="1.1.0")
+    check("فایل خرابِ کش‌شده دور انداخته و دوباره گرفته می‌شود",
+          _ok4 and len(_fetched) > _n_before, _out4[:60])
+
+    # و همه‌ی این‌ها باید از یک مسیر بیایند، نه دو نسخه‌ی موازی
+    _AGSRC = io.open(os.path.join(ROOT, "agent", "nexora-agent.py"),
+                     encoding="utf-8").read()
+    _code = "\n".join((ln.split("#")[0] if "#" in ln else ln)
+                      for ln in _AGSRC.split("\n"))
+    _hblock = _code[_code.index('if action == "health":'):
+                    _code.index('if action == "sysmon":')]
+    check("دستور health منطق جدا ندارد",
+          "remote_module(" in _hblock and "importlib" not in _hblock,
+          "نسخه‌ی دوم همان منطق، همان اشکال را دوباره می‌سازد")
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
