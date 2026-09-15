@@ -838,6 +838,81 @@ check("دلیل در admin_note می‌نشیند — همان ستونی که �
       "کافی نبود" in (_o4["admin_note"] or ""), _o4["admin_note"] or "—")
 
 
+# ═══════════════════════════════════════════════════════════
+section("تست رایگان هم تا ساخته نشود «فروش» نیست")
+
+# همان قاعده‌ی مسیر کارت و کیف پول، در سومین جایی که جا افتاده بود:
+# سفارشِ تست *قبل* از ساخت approved می‌شد. اگر ساخت شکست می‌خورد،
+# حقِ تست پس داده می‌شد ولی سفارش approved می‌ماند — و قیف تبدیل،
+# کاربری را که هیچ‌وقت چیزی نگرفت «خرید موفق» می‌شمرد.
+
+_tplan = D.q("SELECT * FROM plans WHERE tenant_id=? AND is_trial=1",
+             (tid,), one=True)
+check("پلن تست هست", bool(_tplan))
+
+# ── تستِ موفق ──
+SENT.clear()
+H.dispatch(tenant, bot, up_msg(888, "/start", "سارا"))
+H.dispatch(tenant, bot, up_cb(888, "trial"))
+_tu = D.get_user(888)
+_to = D.q("SELECT * FROM orders WHERE tenant_id=? AND user_id=? "
+          "ORDER BY id DESC LIMIT 1", (tid, _tu["id"]), one=True)
+check("حق تست مصرف شد", _tu["trial_used"] == 1)
+check("سفارشِ تستِ موفق approved می‌شود", _to and _to["status"] == "approved",
+      f"وضعیت: {_to['status'] if _to else '—'}")
+check("و کانفیگ واقعا ساخته شد",
+      bool(D.q("SELECT 1 FROM subscriptions WHERE tenant_id=? AND user_id=?",
+               (tid, _tu["id"]), one=True)))
+
+# ── تستی که ساختش شکست می‌خورد ──
+_orig_create = FakeXUI.create_subscription
+
+
+def _no_panel(self, *a, **k):
+    raise RuntimeError("پنل در دسترس نیست")
+
+
+H.dispatch(tenant, bot, up_msg(889, "/start", "نگار"))
+FakeXUI.create_subscription = _no_panel
+try:
+    H.dispatch(tenant, bot, up_cb(889, "trial"))
+finally:
+    FakeXUI.create_subscription = _orig_create
+
+_fu = D.get_user(889)
+_fo = D.q("SELECT * FROM orders WHERE tenant_id=? AND user_id=? "
+          "ORDER BY id DESC LIMIT 1", (tid, _fu["id"]), one=True)
+check("حق تست پس داده می‌شود", _fu["trial_used"] == 0,
+      "پیام به کاربر می‌گوید «تست رایگانتان هنوز محفوظ است»")
+check("و سفارشِ ناموفق approved نمی‌ماند",
+      _fo and _fo["status"] != "approved",
+      f"وضعیت: {_fo['status'] if _fo else '—'}")
+check("بلکه رد می‌شود", _fo and _fo["status"] == "rejected",
+      f"وضعیت: {_fo['status'] if _fo else '—'}")
+
+# و چون حق تست برگشته، دوباره می‌تواند امتحان کند
+H.dispatch(tenant, bot, up_cb(889, "trial"))
+check("و کاربر می‌تواند دوباره امتحان کند",
+      D.get_user(889)["trial_used"] == 1,
+      "وگرنه کسی که تقصیری نداشت، تستش را از دست می‌داد")
+
+
+# و هیچ مسیر تازه‌ای نباید دوباره خام approved بنویسد.
+#
+# این الگو سه بار پیدا شد: کیف پول، تمدید خودکار، و تست رایگان. هر
+# سه یک شکل داشتند — approved پیش از ساخت کانفیگ. حالا همه از
+# close_order می‌گذرند و این اسکن جلوی چهارمی را می‌گیرد.
+#
+# کامنت‌ها اول برداشته می‌شوند: سه بار تستی سبز مانده چون رشته‌ای که
+# دنبالش بودم در توضیحِ خودم پیدا می‌شد، نه در کد.
+_hsrc = io.open(H.__file__, encoding="utf-8").read()
+_hcode = "\n".join(l for l in _hsrc.split("\n")
+                   if not l.strip().startswith("#"))
+check("هیچ‌جای handlers خام approved نمی‌نویسد",
+      "SET status='approved'" not in _hcode,
+      "برای تاییدِ سفارش از ctx.db.close_order استفاده کنید")
+
+
 os.unlink(tmp)
 
 print(f"\n{'═' * 52}")

@@ -1583,6 +1583,102 @@ check("شرط ریشه‌بودن همان عبارت دفتر کل است",
       "دو پیاده‌سازی از یک قاعده، دیر یا زود از هم جدا می‌شوند")
 
 
+# ═══════════════════════════════════════════════════════════
+head("قیف تبدیل باید خریدار را از کسی که فقط تست گرفته جدا کند")
+
+# گرفتنِ تست رایگان خودش یک سفارشِ approved می‌سازد (مبلغ صفر). پس
+# با شرطِ ساده‌ی status='approved':
+#
+#   • هر کسی که دکمه‌ی تست را زده «خرید موفق» شمرده می‌شد
+#   • و بخشِ «فقط تست گرفتند» هیچ‌وقت نمی‌توانست چیزی جز صفر باشد،
+#     چون همان تست برایش یک سفارشِ approved ثبت کرده بود
+#
+# قیف دقیقاً برای جداکردنِ همین دو گروه ساخته شده.
+#
+# روی یک دیتابیس تازه سنجیده می‌شود تا عددها دقیق باشند، نه وابسته
+# به آنچه تست‌های قبلی در این فایل جا گذاشته‌اند.
+
+_fdb = _tf.mktemp(suffix=".db")
+_old_botdb_path = botdb.DB_PATH
+_old_app_db = app.BOT_DB
+botdb.DB_PATH = Path(_fdb)
+try:
+    botdb.init_db()
+    _ftid = botdb.create_tenant("قیف", bot_token="1:F", owner_tg_id=1)
+    _fc = _sq3.connect(_fdb)
+    _fc.executescript(f"""
+    INSERT INTO plans (id, tenant_id, name, price, gb, days, is_trial)
+      VALUES (8001, {_ftid}, 'تست رایگان', 0, 1, 1, 1);
+    INSERT INTO plans (id, tenant_id, name, price, gb, days, is_trial)
+      VALUES (8002, {_ftid}, '۳۰ گیگ', 200000, 30, 30, 0);
+
+    -- الف: تستش گرفت، هیچ‌وقت نخرید
+    INSERT INTO users (id, tenant_id, tg_id, trial_used) VALUES (1, {_ftid}, 101, 1);
+    INSERT INTO orders (tenant_id, user_id, plan_id, amount, base_amount, status)
+      VALUES ({_ftid}, 1, 8001, 0, 0, 'approved');
+
+    -- ب: تست گرفت و بعد خرید
+    INSERT INTO users (id, tenant_id, tg_id, trial_used) VALUES (2, {_ftid}, 102, 1);
+    INSERT INTO orders (tenant_id, user_id, plan_id, amount, base_amount, status)
+      VALUES ({_ftid}, 2, 8001, 0, 0, 'approved');
+    INSERT INTO orders (tenant_id, user_id, plan_id, amount, base_amount, status)
+      VALUES ({_ftid}, 2, 8002, 200000, 200000, 'approved');
+
+    -- ج: بدون تست، مستقیم خرید
+    INSERT INTO users (id, tenant_id, tg_id, trial_used) VALUES (3, {_ftid}, 103, 0);
+    INSERT INTO orders (tenant_id, user_id, plan_id, amount, base_amount, status)
+      VALUES ({_ftid}, 3, 8002, 200000, 200000, 'approved');
+
+    -- د: تستش شکست خورد ولی سفارشش approved مانده بود (باگ قدیمی)
+    INSERT INTO users (id, tenant_id, tg_id, trial_used) VALUES (4, {_ftid}, 104, 0);
+    INSERT INTO orders (tenant_id, user_id, plan_id, amount, base_amount, status)
+      VALUES ({_ftid}, 4, 8001, 0, 0, 'approved');
+
+    -- ه: هیچ کاری نکرد
+    INSERT INTO users (id, tenant_id, tg_id, trial_used) VALUES (5, {_ftid}, 105, 0);
+    """)
+    _fc.commit()
+    _fc.close()
+
+    app.BOT_DB = Path(_fdb)
+    _fun = app.bot_funnel(x_admin_password=PW)
+finally:
+    app.BOT_DB = _old_app_db
+    botdb.DB_PATH = _old_botdb_path
+
+check("قیف خوانده شد", _fun.get("ready") is True)
+
+_seg = _fun.get("segments") or {}
+_steps = {st["label"]: st["n"] for st in (_fun.get("steps") or [])}
+
+check("پنج کاربر دیده می‌شوند", _fun.get("started") == 5,
+      str(_fun.get("started")))
+check("«خرید موفق» فقط دو نفرند", _seg.get("paid") == 2,
+      f"{_seg.get('paid')} — فقط ب و ج واقعا خریدند")
+check("و کسی که تستش شکست خورد جزوشان نیست", _seg.get("paid") != 4,
+      "قبلا هر چهار نفر «خرید موفق» بودند")
+check("«فقط تست گرفتند» یک نفر است", _seg.get("trialOnly") == 1,
+      f"{_seg.get('trialOnly')} — الف")
+check("و این عدد دیگر همیشه صفر نیست", _seg.get("trialOnly") > 0,
+      "قبلا ساختارا نمی‌توانست چیزی جز صفر باشد")
+check("«تست گرفتند» هر دو نفرند", _seg.get("trial") == 2,
+      str(_seg.get("trial")))
+check("«سفارش ثبت کردند» یعنی از مسیر خرید رد شدند",
+      _steps.get("سفارش ثبت کردند") == 2, str(_steps))
+check("و گام «خرید موفق» با بخشش می‌خواند",
+      _steps.get("خرید موفق") == _seg.get("paid"),
+      f"{_steps.get('خرید موفق')} در برابر {_seg.get('paid')}")
+
+# یک عبارت، نه دو تا — وگرنه دو شمارش از یک قاعده از هم جدا می‌شوند
+_fsrc = io.open(os.path.join(str(ROOT), "backend", "app.py"),
+                encoding="utf-8").read()
+_fblk = _fsrc[_fsrc.index("def bot_funnel("):]
+_fblk = _fblk[:_fblk.index("SNAP_DIR")]
+check("قاعده‌ی «خرید واقعی» یک بار نوشته شده",
+      _fblk.count("REAL_BUY") >= 3 and _fblk.count("is_trial") <= 2,
+      "یک تعریف و دو استفاده")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

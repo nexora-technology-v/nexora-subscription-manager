@@ -3413,15 +3413,33 @@ def bot_funnel(x_admin_password: str = Header(...)):
         except Exception:
             return 0
 
+    # «خرید» یعنی سفارشی که پلنش تست رایگان نبوده.
+    #
+    #  گرفتنِ تست رایگان خودش یک سفارشِ approved می‌سازد (با مبلغ صفر).
+    #  پس با شرطِ ساده‌ی status='approved'، هر کسی که دکمه‌ی تست را زده
+    #  «خرید موفق» شمرده می‌شد — و بخشِ «فقط تست گرفتند» هیچ‌وقت
+    #  نمی‌توانست چیزی جز صفر باشد، چون همان تست یک سفارشِ approved
+    #  برایش ثبت کرده بود.
+    #
+    #  قیف دقیقاً برای جداکردنِ همین دو گروه ساخته شده. یک عبارت،
+    #  نه دو تا: هر جا «خرید واقعی» لازم است از همین خوانده می‌شود.
+    REAL_BUY = ("SELECT 1 FROM orders o LEFT JOIN plans p ON p.id = o.plan_id "
+                " WHERE o.user_id = u.id AND o.status = 'approved'"
+                "   AND COALESCE(p.is_trial, 0) = 0")
+
     try:
         started = one("SELECT COUNT(*) FROM users")
         with_phone = one("SELECT COUNT(*) FROM users WHERE phone IS NOT NULL AND phone<>''")
-        ordered = one("SELECT COUNT(DISTINCT user_id) FROM orders")
-        paid = one("SELECT COUNT(DISTINCT user_id) FROM orders WHERE status='approved'")
+        # «سفارش ثبت کردند» هم یعنی از مسیر خرید رد شده‌اند، نه اینکه
+        # دکمه‌ی تست رایگان را زده باشند
+        ordered = one(
+            "SELECT COUNT(*) FROM users u WHERE EXISTS ("
+            "  SELECT 1 FROM orders o LEFT JOIN plans p ON p.id = o.plan_id"
+            "   WHERE o.user_id = u.id AND COALESCE(p.is_trial, 0) = 0)")
+        paid = one("SELECT COUNT(*) FROM users u WHERE EXISTS (" + REAL_BUY + ")")
         trial = one("SELECT COUNT(*) FROM users WHERE trial_used=1")
-        trial_only = one(
-            "SELECT COUNT(*) FROM users u WHERE u.trial_used=1 AND NOT EXISTS "
-            "(SELECT 1 FROM orders o WHERE o.user_id=u.id AND o.status='approved')")
+        trial_only = one("SELECT COUNT(*) FROM users u WHERE u.trial_used=1 "
+                         "AND NOT EXISTS (" + REAL_BUY + ")")
         idle = one(
             "SELECT COUNT(*) FROM users u WHERE NOT EXISTS "
             "(SELECT 1 FROM orders o WHERE o.user_id=u.id) AND u.trial_used=0")

@@ -2075,18 +2075,23 @@ def give_trial(ctx, user, chat_id, message_id):
                       kb([[("🛒 دیدن پلن‌ها", "buy")], [("‹ بازگشت", "menu")]]))
 
     order = ctx.db.create_order(u["id"], plan["id"], 0, 0, kind="new")
-    ctx.db.exec("UPDATE orders SET status='approved', reviewed_at=CURRENT_TIMESTAMP "
-                "WHERE tenant_id=? AND id=?", (ctx.tid, order["id"]))
 
+    # سفارش این‌جا approved *نمی‌شود* — همان قاعده‌ی مسیر کارت و کیف
+    # پول: تا کانفیگ ساخته نشود، فروشی اتفاق نیفتاده. قبلاً اول
+    # approved می‌شد و اگر ساخت شکست می‌خورد، سفارشِ approved می‌ماند:
+    # کاربری که هیچ‌وقت چیزی نگرفت، در قیف «خرید موفق» شمرده می‌شد.
     ok, result = provision(ctx, order["id"])
     if not ok:
         # پیام پایین می‌گوید تست محفوظ است — پس واقعاً پسش می‌دهیم
         ctx.db.release_trial(u["id"])
+        ctx.db.close_order(order["id"], "rejected", "ساخت اشتراک تست ناموفق")
         return _reply(ctx, chat_id, message_id,
                       "ساخت اشتراک تست به مشکل خورد.\n\n"
                       f"<i>{esc(result)}</i>\n\n"
                       "چند دقیقه دیگر دوباره امتحان کنید — "
                       "تست رایگانتان هنوز محفوظ است.", back_kb())
+
+    ctx.db.close_order(order["id"], "approved")
 
     _reply(ctx, chat_id, message_id,
            "🎉 <b>اشتراک تست رایگان شما فعال شد</b>\n\n"
