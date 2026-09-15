@@ -252,6 +252,27 @@ check("جدول تلاش‌های نفوذ صفحه‌بندی دارد", "usePa
 check("فهرست‌های بلندِ دیگر هم مستقیم map نمی‌شوند", not _unbounded,
       "، ".join(_unbounded) if _unbounded else "همه از LongList رد می‌شوند")
 
+# پنل نماینده اپلیکیشن جداست و از این اسکن بیرون می‌ماند — و دقیقاً
+# به همین دلیل، جدول کانفیگ‌هایش تا امروز همه‌ی ردیف‌ها را یک‌جا
+# می‌ریخت. نماینده‌ای با صدها کانفیگ صفحه‌ای می‌دید که ته نداشت.
+PORTAL = ALL.get("portal/index.jsx", "")
+check("پنل نماینده هم خوانده شد", len(PORTAL) > 1000, f"{len(PORTAL)} نویسه")
+# ادعا روی همان جدول، نه روی هر map در فایل: فهرست پلن‌های ربات
+# کوتاه و کران‌دار است و صفحه‌بندی‌اش بی‌معنی.
+_dash = PORTAL[PORTAL.index("function Dashboard("):] if "function Dashboard(" in PORTAL else ""
+check("جدول کانفیگ‌های نماینده صفحه‌بندی دارد",
+      "usePager(rows, 15)" in _dash and "{pageRows.map(" in _dash
+      and "{rows.map(" not in _dash,
+      "باید برشِ صفحه را map کند، نه کل فهرست را")
+check("و کنترل صفحه‌بندی هم رندر می‌شود", "{pager}" in PORTAL)
+check("فهرست سفارش‌های نماینده هم صفحه‌بندی دارد",
+      "usePager(rows || [], 12)" in PORTAL and "{ordersPager}" in PORTAL,
+      "سفارش‌ها با گذر زمان بی‌سقف می‌شوند")
+check("و بریده‌شدنِ فهرست بی‌صدا نمی‌ماند", "truncated" in PORTAL,
+      "نماینده نباید فکر کند همین‌ها همه‌ی سفارش‌هایش است")
+check("فیلتر وضعیت هم دارد", "const FILTERS" in PORTAL and "passes(c)" in PORTAL,
+      "جست‌وجوی نام به‌تنهایی «کدام‌ها رو به اتمام‌اند» را جواب نمی‌دهد")
+
 
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()

@@ -10597,13 +10597,16 @@ def _portal_order(t, oid):
 
 
 @app.get("/api/portal/orders")
-def portal_orders(status: str = "open", limit: int = 50,
+def portal_orders(status: str = "open", limit: int = 200,
                   t: dict = Depends(portal_tenant)):
     """
     سفارش‌های مشتری‌های این نماینده.
 
     پیش‌فرض فقط آن‌هایی که کاری می‌خواهند: رسید آمده و منتظر تایید
     است، یا هنوز رسیدی نیامده.
+
+    `truncated` می‌گوید که سقف خورده — قبلاً فهرست بی‌صدا سر ۵۰ تا
+    بریده می‌شد و نماینده فکر می‌کرد همین‌ها همه‌ی سفارش‌هایش است.
     """
     con = _bot_conn()
     if not con:
@@ -10612,6 +10615,7 @@ def portal_orders(status: str = "open", limit: int = 50,
             "approved": ("approved",), "rejected": ("rejected", "expired")}
     picked = want.get(status, want["open"])
     ph = ",".join("?" * len(picked))
+    cap = max(1, min(int(limit or 200), 500))
     try:
         rows = [dict(r) for r in con.execute(
             f"""SELECT o.*, u.tg_id, u.first_name, u.username,
@@ -10621,7 +10625,7 @@ def portal_orders(status: str = "open", limit: int = 50,
              LEFT JOIN plans p ON p.id = o.plan_id
                  WHERE o.tenant_id=? AND o.status IN ({ph})
               ORDER BY o.id DESC LIMIT ?""",
-            [t["id"]] + list(picked) + [max(1, min(int(limit or 50), 200))])]
+            [t["id"]] + list(picked) + [cap])]
     except Exception as e:
         return {"ready": False, "error": str(e)[:120], "orders": []}
     finally:
@@ -10644,7 +10648,7 @@ def portal_orders(status: str = "open", limit: int = 50,
             "createdAt": r.get("created_at"),
             "note": r.get("admin_note") or "",
         })
-    return {"ready": True, "orders": out,
+    return {"ready": True, "truncated": len(out) >= cap, "orders": out,
             "openCount": sum(1 for x in out if x["status"] == "awaiting")}
 
 
@@ -10785,6 +10789,62 @@ def portal_qr(email: str, t: dict = Depends(portal_tenant)):
                     headers={"Cache-Control": "private, max-age=600"})
 
 
+def _portal_sales(tid, since):
+    """
+    فروشِ ربات همین نماینده. همیشه دیکشنری برمی‌گرداند، حتی اگر
+    رباتی نداشته باشد.
+
+    دو قاعده‌ای که جای دیگر هم اجرا می‌شوند و این‌جا هم باید:
+
+      • تست رایگان خرید نیست. گرفتن تست خودش یک سفارشِ approved با
+        مبلغ صفر می‌سازد؛ اگر کنار گذاشته نشود، «تعداد فروش» هر کسی
+        را که دکمه‌ی تست را زده می‌شمارد.
+
+      • «فروش» با «درآمد» یکی نیست. خریدی که از کیف پول پرداخت شده
+        فروش هست ولی پول تازه‌ای با آن نرسیده — آن پول موقع شارژ
+        رسیده. پس «دریافتی» فقط کارت را می‌شمارد.
+    """
+    empty = {"hasBot": False, "orders": 0, "sold": 0, "received": 0,
+             "monthOrders": 0, "monthSold": 0, "pending": 0}
+    con = _bot_conn()
+    if not con:
+        return empty
+    try:
+        real = ("FROM orders o LEFT JOIN plans p ON p.id = o.plan_id "
+                "WHERE o.tenant_id=? AND o.status='approved' "
+                "  AND COALESCE(p.is_trial,0)=0")
+
+        tot = con.execute(
+            "SELECT COUNT(*) n, COALESCE(SUM(o.amount),0) s " + real,
+            (tid,)).fetchone()
+        mon = con.execute(
+            "SELECT COUNT(*) n, COALESCE(SUM(o.amount),0) s " + real
+            + " AND o.created_at >= ?", (tid, since)).fetchone()
+        rec = con.execute(
+            "SELECT COALESCE(SUM(o.amount),0) s " + real
+            + " AND o.paid_from='card'", (tid,)).fetchone()
+        pend = con.execute(
+            "SELECT COUNT(*) n FROM orders WHERE tenant_id=? "
+            "AND status IN ('awaiting','review')", (tid,)).fetchone()
+        any_row = con.execute(
+            "SELECT 1 FROM orders WHERE tenant_id=? LIMIT 1", (tid,)).fetchone()
+
+        return {
+            "hasBot": bool(any_row),
+            "orders": int(tot["n"] or 0),
+            "sold": int(tot["s"] or 0),
+            "received": int(rec["s"] or 0),
+            "monthOrders": int(mon["n"] or 0),
+            "monthSold": int(mon["s"] or 0),
+            "pending": int(pend["n"] or 0),
+        }
+    except Exception:
+        log.debug("خواندن فروش نماینده ناموفق", exc_info=True)
+        return empty
+    finally:
+        con.close()
+
+
 @app.get("/api/portal/stats")
 def portal_stats(t: dict = Depends(portal_tenant)):
     """
@@ -10866,6 +10926,9 @@ def portal_stats(t: dict = Depends(portal_tenant)):
         "thisMonth": {"new": new_m, "renewals": renewals_m},
         # چیزهایی که همین حالا کاری می‌خواهند
         "needsAttention": soon + expired + overq,
+        # فروشِ ربات خودش — تا امروز نماینده هیچ عددی از فروشش
+        # نمی‌دید، با اینکه ربات و سفارش و رسید داشت.
+        "sales": _portal_sales(t["id"], first),
     }
 
 

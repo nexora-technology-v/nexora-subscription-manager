@@ -10,6 +10,7 @@
 اجرا:  python3 tools/test-admin-api.py
 """
 import io
+from datetime import datetime as _dt
 import json
 import os
 import sys
@@ -1808,6 +1809,76 @@ _lst = app.tenant_portal_list(x_admin_password=PW)
 check("در فهرست پنل نمایندگی دیده می‌شود",
       any(t["id"] == _made["id"] for t in _lst.get("tenants", [])),
       "وگرنه ساخته شده ولی هیچ‌جا نیست")
+
+
+# ═══════════════════════════════════════════════════════════
+head("آمار فروشِ پنل نماینده")
+
+# نماینده ربات خودش را دارد ولی هیچ عددی از فروشش نمی‌دید. دو
+# قاعده‌ای که این‌جا هم باید اجرا شوند:
+#
+#   • تست رایگان خرید نیست — خودش یک سفارشِ approved با مبلغ صفر
+#     می‌سازد و اگر کنار گذاشته نشود، «تعداد فروش» را باد می‌کند.
+#   • «فروش» با «درآمد» یکی نیست — خرید از کیف پول فروش هست ولی پول
+#     تازه‌ای نیامده؛ آن پول موقع شارژ رسیده.
+
+botdb.init_db()
+_sb = _sq3.connect(str(AP.BOT_DB))
+_sb.executescript("""
+INSERT OR REPLACE INTO tenants (id, name, parent_id) VALUES (7100, 'نماینده فروش', 1);
+INSERT OR REPLACE INTO tenants (id, name, parent_id) VALUES (7101, 'نماینده دیگر', 1);
+
+INSERT OR REPLACE INTO plans (id, tenant_id, name, price, gb, days, is_trial)
+  VALUES (7110, 7100, 'پلن', 200000, 30, 30, 0);
+INSERT OR REPLACE INTO plans (id, tenant_id, name, price, gb, days, is_trial)
+  VALUES (7111, 7100, 'تست', 0, 1, 1, 1);
+
+INSERT OR REPLACE INTO users (id, tenant_id, tg_id) VALUES (7120, 7100, 71);
+INSERT OR REPLACE INTO users (id, tenant_id, tg_id) VALUES (7121, 7101, 72);
+""")
+# دو فروش کارتی، یک فروش کیف‌پولی، یک تست، یک ردشده، یک در انتظار
+for _amt, _plan, _st, _pf in (
+        (200000, 7110, 'approved', 'card'),
+        (300000, 7110, 'approved', 'card'),
+        (150000, 7110, 'approved', 'wallet'),
+        (0,      7111, 'approved', 'card'),
+        (500000, 7110, 'rejected', 'card'),
+        (400000, 7110, 'awaiting', 'card')):
+    _sb.execute("INSERT INTO orders (tenant_id,user_id,plan_id,amount,"
+                "base_amount,status,paid_from,created_at) "
+                "VALUES (7100,7120,?,?,?,?,?,datetime('now'))",
+                (_plan, _amt, _amt, _st, _pf))
+# و یک فروش برای نماینده‌ی دیگر که نباید قاطی شود
+_sb.execute("INSERT INTO orders (tenant_id,user_id,plan_id,amount,base_amount,"
+            "status,paid_from,created_at) "
+            "VALUES (7101,7121,NULL,900000,900000,'approved','card',datetime('now'))")
+_sb.commit()
+_sb.close()
+
+_first = _dt.now().replace(day=1).strftime("%Y-%m-%d")
+_sales = AP._portal_sales(7100, _first)
+
+check("ربات دارد", _sales["hasBot"] is True)
+check("تعداد فروش، تست را نمی‌شمارد", _sales["orders"] == 3,
+      f"{_sales['orders']} — دو کارتی و یک کیف‌پولی، نه تستِ رایگان")
+check("مبلغ فروش هم همین‌طور", _sales["sold"] == 650000,
+      f"{_sales['sold']} — ۲۰۰ + ۳۰۰ + ۱۵۰ هزار")
+check("«دریافتی» فقط کارت را می‌شمارد", _sales["received"] == 500000,
+      f"{_sales['received']} — خرید کیف‌پولی پول تازه نیست")
+check("سفارشِ ردشده در فروش نیست", _sales["sold"] != 1150000)
+check("در انتظار بررسی جدا شمرده می‌شود", _sales["pending"] == 1,
+      str(_sales["pending"]))
+check("فروش این ماه هم درست است", _sales["monthSold"] == 650000,
+      str(_sales["monthSold"]))
+
+_other = AP._portal_sales(7101, _first)
+check("فروش نماینده‌ها با هم قاطی نمی‌شود", _other["sold"] == 900000,
+      f"{_other['sold']} — فقط مالِ خودش")
+check("و برعکسش هم", _sales["sold"] == 650000)
+
+_none = AP._portal_sales(999999, _first)
+check("نماینده‌ی بدون ربات صفر می‌گیرد، نه خطا",
+      _none["hasBot"] is False and _none["orders"] == 0, str(_none)[:60])
 
 
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

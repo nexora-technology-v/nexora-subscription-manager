@@ -12,13 +12,18 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   AlertTriangle, Bot, Check, Clock, Copy, Database, FileText, Link2, LogOut,
-  Loader2, Package, Plus, Power, QrCode, RefreshCw, Search, Trash2, TrendingUp,
-  Users, Wallet, X, XCircle,
+  Loader2, Package, Plus, Power, QrCode, RefreshCw, Search, ShoppingCart,
+  Trash2, TrendingUp, Users, Wallet, X, XCircle,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { isoToJalaliLabel } from "../ui/jalali";
+// usePager از کتابخانه‌ی مشترک می‌آید، نه کپیِ محلی: صفحه‌بندی یک
+// قاعده است و دو پیاده‌سازی از یک قاعده دیر یا زود از هم جدا
+// می‌شوند. این‌جا فقط همان چیزی گرفته می‌شود که ui/jalali هم هست —
+// ابزار عمومی، نه کدِ پنل مدیر.
+import { usePager } from "../ui/index";
 
 const TOKEN_KEY = "nexora_portal_token";
 
@@ -684,6 +689,7 @@ function PlansBox({ token, onClose, onNote }) {
 
 function OrdersBox({ token, onClose, onNote }) {
   const [rows, setRows] = useState(null);
+  const [cut, setCut] = useState(false);
   const [tab, setTab] = useState("open");
   const [busy, setBusy] = useState(0);
   const [err, setErr] = useState("");
@@ -694,6 +700,7 @@ function OrdersBox({ token, onClose, onNote }) {
   const load = useCallback(async () => {
     try {
       const j = await api(`/api/portal/orders?status=${tab}`, { token });
+      setCut(!!j.truncated);
       setRows(j.orders || []);
     } catch (e) { setErr(e.message); }
   }, [token, tab]);
@@ -736,6 +743,10 @@ function OrdersBox({ token, onClose, onNote }) {
       setShot(URL.createObjectURL(await res.blob()));
     } catch (e) { setErr(e.message); }
   };
+
+  // صفحه‌بندی شماره‌دار — فهرست سفارش‌ها با گذر زمان بی‌سقف
+  // می‌شود و تا امروز همه‌اش یک‌جا ریخته می‌شد.
+  const { shown: pageOrders, pager: ordersPager } = usePager(rows || [], 12);
 
   const TABS = [["open", "در انتظار"], ["approved", "تاییدشده"],
                 ["rejected", "ردشده"]];
@@ -787,7 +798,7 @@ function OrdersBox({ token, onClose, onNote }) {
           <p className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
             {tab === "open" ? "سفارشی در انتظار نیست" : "چیزی این‌جا نیست"}
           </p>
-        ) : rows.map((o) => (
+        ) : pageOrders.map((o) => (
           <div key={o.id} className="rounded-xl p-3.5 mb-2.5"
             style={{ background: "var(--surface-3)",
                      border: "1px solid var(--border)" }}>
@@ -866,6 +877,18 @@ function OrdersBox({ token, onClose, onNote }) {
             )}
           </div>
         ))}
+
+        {ordersPager}
+
+        {/* سقف خوردنِ بی‌صدا بدتر از نبودِ فهرست است: نماینده فکر
+            می‌کند همین‌ها همه‌ی سفارش‌هایش است. */}
+        {cut && (
+          <p className="text-[12px] text-center pt-2"
+            style={{ color: "var(--warn)" }}>
+            فقط تازه‌ترین سفارش‌ها نشان داده می‌شود — قدیمی‌ترها در
+            «گزارش فروش» پنل مدیر هست.
+          </p>
+        )}
       </div>
 
       {shot && (
@@ -1152,6 +1175,7 @@ function Dashboard({ token, onOut }) {
   const [list, setList] = useState(null);
   const [err, setErr] = useState("");
   const [q, setQ] = useState("");
+  const [filter, setFilter] = useState("all");
   const [busy, setBusy] = useState(false);
   const [plans, setPlans] = useState(null);
   const [renew, setRenew] = useState(null);
@@ -1206,8 +1230,40 @@ function Dashboard({ token, onOut }) {
     }
   };
 
+  // فیلترِ وضعیت — همان دسته‌هایی که آمار بالا می‌شمارد. جست‌وجوی
+  // نام به‌تنهایی کافی نبود: نماینده‌ای با صدها کانفیگ نمی‌تواند
+  // «کدام‌ها رو به اتمام‌اند» را با تایپ‌کردن پیدا کند.
+  const FILTERS = [
+    ["all", "همه"],
+    ["active", "فعال"],
+    ["inactive", "غیرفعال"],
+    ["soon", "رو به اتمام"],
+    ["expired", "منقضی"],
+    ["overq", "حجم تمام"],
+    ["nearq", "بالای ۸۰٪"],
+  ];
+
+  const passes = (c) => {
+    switch (filter) {
+      case "active":   return !!c.active;
+      case "inactive": return !c.active;
+      case "soon":     return c.daysLeft !== null && c.daysLeft >= 0
+                              && c.daysLeft <= 7;
+      case "expired":  return c.daysLeft !== null && c.daysLeft < 0;
+      case "overq":    return c.usagePct !== null && c.usagePct >= 100;
+      case "nearq":    return c.usagePct !== null && c.usagePct >= 80
+                              && c.usagePct < 100;
+      default:         return true;
+    }
+  };
+
   const rows = (list?.configs || []).filter(
-    (c) => !q || String(c.email).toLowerCase().includes(q.toLowerCase()));
+    (c) => (!q || String(c.email).toLowerCase().includes(q.toLowerCase()))
+           && passes(c));
+
+  // صفحه‌بندی شماره‌دار، نه «نمایش بیشتر» — همان قاعده‌ای که بقیه‌ی
+  // پنل دارد. تا امروز این جدول همه‌ی ردیف‌ها را یک‌جا می‌ریخت.
+  const { shown: pageRows, pager } = usePager(rows, 15);
 
   return (
     <div className="min-h-screen" dir="rtl" style={{ background: "var(--bg)" }}>
@@ -1349,6 +1405,27 @@ function Dashboard({ token, onOut }) {
           </div>
         )}
 
+        {/* فروشِ ربات خودش. تا امروز نماینده هیچ عددی از فروشش
+            نمی‌دید، با اینکه ربات و سفارش و رسید داشت. */}
+        {stats?.sales?.hasBot && (
+          <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
+            <Stat icon={ShoppingCart} label="فروش این ماه"
+              value={`${faNum(stats.sales.monthSold)} تومان`}
+              color="var(--accent-2)"
+              hint={`${faNum(stats.sales.monthOrders)} سفارش`} />
+            <Stat icon={TrendingUp} label="فروش کل"
+              value={`${faNum(stats.sales.sold)} تومان`}
+              hint={`${faNum(stats.sales.orders)} سفارش`} />
+            <Stat icon={Wallet} label="دریافتی کارت‌به‌کارت"
+              value={`${faNum(stats.sales.received)} تومان`}
+              hint="خرید با کیف پول پول تازه نیست" />
+            <Stat icon={FileText} label="در انتظار بررسی"
+              value={faNum(stats.sales.pending)}
+              color={stats.sales.pending ? "var(--warn)" : undefined}
+              hint={stats.sales.pending ? "رسید منتظر شماست" : "چیزی نمانده"} />
+          </div>
+        )}
+
         {sum?.unpriced > 0 && (
           <div className="fx-card p-4 mb-4 text-[13px]" style={{ color: "var(--warn)" }}>
             {faNum(sum.unpriced)} کانفیگ هنوز نرخ ندارد و در مبلغ بالا حساب نشده.
@@ -1375,13 +1452,37 @@ function Dashboard({ token, onOut }) {
             </div>
           </div>
 
+          <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+            {FILTERS.map(([k, lbl]) => {
+              const on = filter === k;
+              return (
+                <button key={k} onClick={() => setFilter(k)}
+                  className="px-3 py-1.5 rounded-lg text-[12.5px]"
+                  style={{
+                    background: on ? "rgba(43,127,214,.18)" : "transparent",
+                    border: `1px solid ${on ? "rgba(43,127,214,.45)"
+                                            : "var(--border)"}`,
+                    color: on ? "var(--accent-2)" : "var(--muted)",
+                  }}>
+                  {lbl}
+                </button>
+              );
+            })}
+            {(filter !== "all" || q) && (
+              <span className="text-[12px] mr-1" style={{ color: "var(--muted)" }}>
+                {faNum(rows.length)} از {faNum((list?.configs || []).length)}
+              </span>
+            )}
+          </div>
+
           {!list ? (
             <p className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
               {busy ? "در حال بارگذاری…" : "چیزی برای نمایش نیست"}
             </p>
           ) : !rows.length ? (
             <p className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
-              {q ? "با این جست‌وجو چیزی پیدا نشد" : "هنوز کانفیگی ندارید"}
+              {q || filter !== "all"
+                ? "با این فیلتر چیزی پیدا نشد" : "هنوز کانفیگی ندارید"}
             </p>
           ) : (
             <div style={{ overflowX: "auto" }}>
@@ -1393,7 +1494,7 @@ function Dashboard({ token, onOut }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((c) => (
+                  {pageRows.map((c) => (
                     <tr key={c.email}>
                       <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
                         <button onClick={() => setDetail(c)}
@@ -1467,6 +1568,7 @@ function Dashboard({ token, onOut }) {
                   ))}
                 </tbody>
               </table>
+              {pager}
             </div>
           )}
         </div>
