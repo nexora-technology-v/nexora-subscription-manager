@@ -4,6 +4,99 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.28.0]
+
+Every place in the codebase that counts money was checked against every other
+place. They disagreed in six ways.
+
+### Fixed — Profit turned negative the moment a settle date was recorded
+
+Regression from 1.26.1. `billing_ledger` says "from day one" in its own
+docstring and sums every expense ever, with no cut. It read `due` and `paid`
+off the overview, and once the overview became period-scoped those keys meant
+"since the settle date" — three months of revenue against two years of costs.
+On test data the headline, labelled سود واقعی تا امروز, flipped from
++5,000,000 to -5,000,000.
+
+The overview carries both pairs now — `dueAll`/`paidAll` for the whole history
+and `due`/`paid` for the current period — from one pass rather than two reads
+of the x-ui database. Revenue and profit take the lifetime pair; who owes money
+takes the period pair, because that is a present-tense question and a settled
+period is not a debt.
+
+Its four summary cards stopped reconciling as a result: billed minus paid no
+longer equalled what was owed. The difference is exactly the periods marked
+settled, so the page names it rather than leaving the reader to guess which
+number is broken. `profitIfAllPaid` was billed minus spent, which re-claims any
+gap left by a period closed at a discount; it is received plus still-owed now.
+
+### Fixed — Money from prepaid resellers was invisible
+
+Two parallel money systems that never spoke. A postpaid reseller pays at month
+end and it lands in `payments`. A prepaid reseller pays up front and it landed
+only in `credit_tx`, which no accounting screen reads.
+
+Money that genuinely arrived was missing from دریافت‌شده and from profit
+entirely, and a reseller who had paid in advance showed as owing the full
+amount. A top-up is the moment the money arrives, so it is recorded there;
+spending the credit afterwards moves no new money and records nothing.
+
+`nexora import-topups` brings in the ones made before this. It shows what it
+would do and writes nothing without `--apply`, skips refunds, skips resellers
+with no group, and tags each row with the `credit_tx` id it came from so a
+second run cannot double the revenue.
+
+### Fixed — A reseller's renewal was billed twice
+
+Two mechanisms record renewals and neither knew about the other. The portal logs
+one the moment it happens; `_detect_renewals` watches each client's expiry and
+treats a forward jump as a renewal, which is how renewals made directly in x-ui
+get caught at all.
+
+A renewal made through the portal does both. One renewal, two rows, three months
+billed instead of two — fifty percent over, on every portal renewal.
+`_portal_log_renewal` carries the new expiry into `client_seen` now so the
+watcher has nothing to see, and skips its own insert when the baseline is
+already ahead.
+
+### Fixed — The client list ignored the per-user rate entirely
+
+`/api/admin/billing/clients` calls itself the reference view for what a user
+owes. It computed `months × price` — the base rate alone. The per-user rate
+never reached it, so a four-user config read 200,000 where the invoice said
+440,000. It also took lifetime months from a `_months_for` called without the
+group start or first-seen fallback, and never saw the settle date.
+
+Rate and amount are kept apart there: a config can have a sound rate and still
+be charged nothing, and the "no rate" filter has to keep meaning "needs a rate".
+Zero amounts carry their reason into the table, the detail panel and the CSV.
+
+### Fixed — Direct bot sales counted for nothing, or counted twice
+
+The ledger's profit ignored the bot entirely, though it sells to the same
+customers and burns the same servers. Counting it needed two guards, both of
+which inflate if missed: an order paid from wallet balance is not new money —
+it arrived when the wallet was topped up — and orders belonging to a reseller's
+own bot are the reseller's income. So: approved, card-paid, root tenants only.
+
+Sales and income are now separate labelled numbers on the bot screen, where an
+unlabeled toman figure had been sitting.
+
+### Fixed — Affiliate commission never reached the books
+
+Commission paid out is a cost of selling and was never subtracted, so profit was
+reported before paying for the sales that produced it. Commission earned but not
+yet paid is a commitment: it does not come off today's profit, but leaving it
+invisible means today's profit quietly evaporates later. Both are reported, only
+the paid part is subtracted, and both are filtered to root tenants.
+
+### Fixed — The test suite shared one database across every run
+
+`../data/bot.db` resolves against the working directory, so it sat outside the
+repo and every run wrote to the same file. A tenant left over from an earlier
+run made a new test read zero. The e2e suite points `BOT_DB` at its own temp
+directory and passes from a clean slate.
+
 ## [1.27.0]
 
 ### Fixed — A reseller's renewal was billed twice
