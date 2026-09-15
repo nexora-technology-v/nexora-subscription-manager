@@ -1527,6 +1527,89 @@ check("پاسخ می‌گوید در حسابداری ثبت نشد", _r2.get("r
       "بدون گروه نمی‌شود فهمید پول بابت کدام واسطه است")
 
 
+# ═══════════════════════════════════════════════════════════
+head("وارد کردن شارژهای قدیمی")
+
+# شارژهایی که پیش از این نسخه انجام شده‌اند فقط در credit_tx هستند.
+# ابزار آن‌ها را به payments می‌آورد — و باید دو بار اجرا شدنش بی‌خطر
+# باشد، وگرنه درآمد دو برابر ثبت می‌شود.
+
+import subprocess as _sp  # noqa: E402
+
+_TT = os.path.join(TMP, "tool")
+os.makedirs(_TT, exist_ok=True)
+_tb = os.path.join(_TT, "bot.db")
+_tl = os.path.join(_TT, "billing.db")
+
+_q = sqlite3.connect(_tb)
+_q.executescript("""
+CREATE TABLE tenants (id INTEGER PRIMARY KEY, name TEXT, credit INTEGER,
+  portal_group TEXT);
+CREATE TABLE credit_tx (id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tenant_id INTEGER, amount INTEGER, balance INTEGER, note TEXT,
+  created_at TEXT);
+INSERT INTO tenants VALUES (1,'reza',0,'unlimited'), (2,'sara',0,'');
+INSERT INTO credit_tx (tenant_id,amount,balance,note,created_at) VALUES
+  (1, 2000000, 2000000, 'شارژ از پنل', '2026-07-01 10:00:00'),
+  (1, -250000, 1750000, 'ساخت nx_ab12', '2026-07-02 10:00:00'),
+  (1,  250000, 2000000, 'بازگشت — کار روی پنل انجام نشد','2026-07-02 11:00:00'),
+  (2,  700000,  700000, 'شارژ از پنل', '2026-08-05 10:00:00');
+""")
+_q.commit()
+_q.close()
+_q = sqlite3.connect(_tl)
+_q.executescript("""CREATE TABLE payments (id INTEGER PRIMARY KEY AUTOINCREMENT,
+ group_key TEXT NOT NULL, amount INTEGER NOT NULL, paid_at TEXT NOT NULL,
+ note TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);""")
+_q.commit()
+_q.close()
+
+_env = dict(os.environ, BOT_DB_PATH=_tb, BILLING_DB_PATH=_tl,
+            PYTHONIOENCODING="utf-8")
+_TOOL = os.path.join(ROOT, "tools", "import-topups.py")
+
+
+def _run_tool(*a):
+    return _sp.run([sys.executable, _TOOL, *a], env=_env, capture_output=True,
+                   text=True, encoding="utf-8", errors="replace")
+
+
+def _books():
+    _z = sqlite3.connect(_tl)
+    try:
+        return _z.execute(
+            "SELECT COUNT(*), COALESCE(SUM(amount),0) FROM payments").fetchone()
+    finally:
+        _z.close()
+
+
+_r = _run_tool()
+check("اجرای بدون آرگومان چیزی نمی‌نویسد", _books() == (0, 0),
+      "پیش‌فرض باید فقط نشان بدهد")
+check("و می‌گوید چه چیزی وارد می‌شود",
+      "2,000,000" in _r.stdout and "Re-run with --apply" in _r.stdout,
+      _r.stdout.strip().splitlines()[-1][:60] if _r.stdout else _r.stderr[:60])
+check("خروجی ابزار انگلیسی است",
+      not any("\u0600" <= ch <= "\u06FF" for ch in _r.stdout),
+      "راست‌به‌چپ ستون‌های ترمینال را به هم می‌ریزد")
+
+_run_tool("--apply")
+check("با --apply شارژ وارد می‌شود", _books() == (1, 2_000_000),
+      str(_books()))
+check("بازگشتِ اعتبار پرداخت حساب نمی‌شود",
+      _books()[1] == 2_000_000,
+      "پول تازه‌ای نرسیده — فقط برگشته")
+check("نماینده‌ی بدون گروه وارد نمی‌شود و دلیلش گفته می‌شود",
+      "no group set" in _r.stdout, "نمی‌شود فهمید پول بابت کدام واسطه است")
+
+_r2 = _run_tool("--apply")
+check("اجرای دوباره چیزی اضافه نمی‌کند", _books() == (1, 2_000_000),
+      f"{_books()} — وگرنه درآمد دو برابر ثبت می‌شود")
+check("و می‌گوید چرا رد شد",
+      "already imported" in _r2.stdout,
+      "سکوت یعنی کاربر نمی‌داند اجرا شده یا نه")
+
+
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()

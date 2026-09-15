@@ -868,6 +868,18 @@ PY
     fi
     ;;
 
+  import-topups)
+    # شارژهای اعتبارِ نماینده‌ها که پیش از نسخه‌ی ۱.۲۷ فقط در دفتر
+    # اعتبار می‌نشستند و به حسابداری نمی‌رسیدند. بدون آرگومان فقط
+    # نشان می‌دهد چه چیزی وارد می‌شود؛ با --apply می‌نویسد.
+    if [ -f "$INSTALL_DIR/tools/import-topups.py" ]; then
+      python3 "$INSTALL_DIR/tools/import-topups.py" "$@"
+    else
+      err "tools/import-topups.py پیدا نشد — اول nexora update بزنید"
+      exit 1
+    fi
+    ;;
+
   doctor)
     logo
     echo -e "  ${C_BOLD}System Check${C_RESET}"
@@ -1076,6 +1088,7 @@ PYEOF
     echo -e "  ${C_WHITE}nexora bot${C_RESET}                    ${C_DIM}manage the Telegram bot${C_RESET}"
     echo -e "  ${C_WHITE}nexora doctor${C_RESET}                 ${C_DIM}check and auto-fix common problems${C_RESET}"
     echo -e "  ${C_WHITE}nexora billing-why${C_RESET}            ${C_DIM}why a config shows as having no rate${C_RESET}"
+    echo -e "  ${C_WHITE}nexora import-topups${C_RESET}          ${C_DIM}bring old prepaid top-ups into the books${C_RESET}"
     echo -e "  ${C_WHITE}nexora reseller list${C_RESET}          ${C_DIM}reseller portal accounts${C_RESET}"
     echo -e "  ${C_WHITE}nexora fix-flow${C_RESET}               ${C_DIM}put every vless client on the same flow${C_RESET}"
     echo -e "  ${C_WHITE}nexora password${C_RESET}               ${C_DIM}change admin password${C_RESET}"
