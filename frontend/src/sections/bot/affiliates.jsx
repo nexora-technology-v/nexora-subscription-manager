@@ -98,6 +98,24 @@ export function BotAffiliates({ password }) {
               {faNum(data.totalOwed)} <span className="text-[13px]">تومان</span>
             </span>
           </div>
+
+          {/* بدهیِ همکارهای نماینده‌ها جداست و در این عدد نمی‌آید —
+              هزینه‌ی همان نماینده است، نه شما. قبلاً با هم جمع
+              می‌شدند و «مجموع بدهی» بزرگ‌تر از واقعیت بود. */}
+          {data.resellerOwed > 0 && (
+            <div className="flex justify-between items-baseline flex-wrap gap-2
+                            mt-3 pt-3"
+              style={{ borderTop: "1px solid var(--border)" }}>
+              <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>
+                بدهی همکاران نماینده‌ها <span style={{ opacity: .75 }}>
+                  (هزینه‌ی خودشان، نه شما)</span>
+              </span>
+              <span className="text-[14px] font-bold"
+                style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
+                {faNum(data.resellerOwed)} <span className="text-[12px]">تومان</span>
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -140,6 +158,16 @@ export function BotAffiliates({ password }) {
               {a.note && (
                 <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
                   {a.note}
+                </div>
+              )}
+              {/* بدون این، همکارِ نماینده از همکارِ خودتان قابل
+                  تشخیص نبود و «مانده»اش مثل بدهیِ خودتان خوانده
+                  می‌شد. */}
+              {a.isOwn === false && (
+                <div className="text-[11.5px] mt-1.5 inline-block px-2 py-0.5
+                                rounded-md"
+                  style={{ color: "var(--dim)", background: "var(--surface-3)" }}>
+                  همکارِ نماینده{a.tenantName ? ` · ${a.tenantName}` : ""}
                 </div>
               )}
             </div>

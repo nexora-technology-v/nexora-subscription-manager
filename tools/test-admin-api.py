@@ -1498,6 +1498,91 @@ check("بررسی نشست از همان تابع می‌گیرد",
       or "_portal_open(t.get(\"portal_enabled\"))" in _src_ap)
 
 
+# ═══════════════════════════════════════════════════════════
+head("بدهی به همکاران نباید بدهی نماینده‌ها را هم بشمارد")
+
+# صفحه‌ی همکاری «مجموع بدهی به همکاران» را نشان می‌دهد و دفتر کل
+# همان عدد را از `_affiliate_money_out` می‌گیرد. دفتر کل فقط
+# مستاجرهای ریشه را می‌شمارد — چون پورسانتِ همکارِ یک نماینده،
+# هزینه‌ی همان نماینده است. صفحه هیچ شرطی نداشت و هر دو را با هم
+# جمع می‌کرد، پس دو صفحه به یک سؤال دو جواب می‌دادند.
+
+# تست بازگردانی، بالاتر در همین فایل، دیتابیس را با یک نسخه‌ی
+# پشتیبانِ کوچک جایگزین می‌کند و جدول‌های همکاری در آن نیستند.
+# init_db همان اسکیمای واقعی را دوباره می‌سازد (IF NOT EXISTS)، پس
+# تست به جای کپی‌کردن تعریفِ جدول‌ها، خودِ منبع را صدا می‌زند.
+botdb.init_db()
+
+# مستاجرهای خودمان را می‌سازیم و به آنچه تست‌های قبلی گذاشته‌اند
+# تکیه نمی‌کنیم: در این دیتابیس مستاجر ۱ خودش فرزندِ ۳ است.
+_ab = _sq3.connect(str(AP.BOT_DB))
+_ab.executescript("""
+INSERT OR REPLACE INTO tenants (id, name, parent_id)
+  VALUES (9000, 'مالک تستی', NULL);
+INSERT OR REPLACE INTO tenants (id, name, parent_id)
+  VALUES (9001, 'نماینده‌ی تستی', 9000);
+
+INSERT INTO affiliates (id, tenant_id, name, code, percent, active)
+  VALUES (9101, 9000, 'همکار خودم', 'MINE', 10, 1);
+INSERT INTO affiliate_commissions
+  (tenant_id, affiliate_id, order_id, order_amount, percent, commission, status)
+  VALUES (9000, 9101, 91011, 3000000, 10, 300000, 'pending');
+INSERT INTO affiliate_payouts (tenant_id, affiliate_id, amount)
+  VALUES (9000, 9101, 100000);
+
+INSERT INTO affiliates (id, tenant_id, name, code, percent, active)
+  VALUES (9102, 9001, 'همکار نماینده', 'THEIRS', 10, 1);
+INSERT INTO affiliate_commissions
+  (tenant_id, affiliate_id, order_id, order_amount, percent, commission, status)
+  VALUES (9001, 9102, 91021, 5000000, 10, 500000, 'pending');
+""")
+_ab.commit()
+_ab.close()
+
+_aff = app.bot_affiliates(x_admin_password=PW)
+_rows = {r["id"]: r for r in _aff.get("affiliates", [])}
+
+check("هر دو همکار در فهرست می‌آیند", 9101 in _rows and 9102 in _rows,
+      "همکارِ نماینده نباید ناپدید شود — پنل نماینده اصلا این بخش را ندارد")
+check("همکار خودم «مالِ خودم» علامت می‌خورد",
+      _rows.get(9101, {}).get("isOwn") is True)
+check("همکار نماینده نه", _rows.get(9102, {}).get("isOwn") is False,
+      "وگرنه از همکارِ خودتان قابل تشخیص نیست")
+check("و نامِ نماینده‌اش می‌آید",
+      _rows.get(9102, {}).get("tenantName") == "نماینده‌ی تستی",
+      _rows.get(9102, {}).get("tenantName") or "—")
+
+check("مانده‌ی همکار خودم درست است",
+      _rows.get(9101, {}).get("balance") == 200_000,
+      str(_rows.get(9101, {}).get("balance")))
+
+# همان چیزی که دفتر کل می‌گوید
+_lpaid, _lowed = AP._affiliate_money_out()
+check("«مجموع بدهی» با دفتر کل یکی است",
+      _aff.get("totalOwed") == _lowed,
+      f"صفحه {_aff.get('totalOwed')} · دفتر کل {_lowed}")
+check("و این برابری با «هر دو صفر» بی‌معنی نشده",
+      _lowed >= 200_000, f"دفتر کل: {_lowed}")
+check("و بدهیِ نماینده‌ها جدا شمرده می‌شود",
+      _aff.get("resellerOwed") == 500_000,
+      str(_aff.get("resellerOwed")))
+_all_bal = sum(r["balance"] for r in _aff.get("affiliates", []))
+check("تفکیک کامل است و چیزی گم نمی‌شود",
+      _aff.get("totalOwed", 0) + _aff.get("resellerOwed", 0) == _all_bal
+      and _aff.get("totalOwed") != _all_bal,
+      f"کل {_all_bal} = خودم {_aff.get('totalOwed')} + "
+      f"نماینده {_aff.get('resellerOwed')}")
+
+# و همان شرط، نه یک بازنویسیِ موازی
+_apsrc = io.open(os.path.join(str(ROOT), "backend", "app.py"),
+                 encoding="utf-8").read()
+_blk = _apsrc[_apsrc.index("def bot_affiliates("):]
+_blk = _blk[:_blk.index("@app.post")]
+check("شرط ریشه‌بودن همان عبارت دفتر کل است",
+      "parent_id IS NULL" in _blk,
+      "دو پیاده‌سازی از یک قاعده، دیر یا زود از هم جدا می‌شوند")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

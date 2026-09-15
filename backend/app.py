@@ -1211,8 +1211,16 @@ def bot_affiliates(x_admin_password: str = Header(...)):
         return {"ready": False, "error": "دیتابیس ربات در دسترس نیست",
                 "affiliates": []}
     try:
+        # «مالِ خودم» دقیقاً با همان شرطی سنجیده می‌شود که دفتر کل
+        # به کار می‌برد (`_affiliate_money_out`). این عمدی است: تا
+        # وقتی هر دو یک عبارت را می‌خوانند، نمی‌توانند دو عدد متفاوت
+        # بدهند. قبلاً این‌جا هیچ شرطی نبود و «مجموع بدهی به همکاران»
+        # بدهیِ نماینده‌ها را هم به حساب مالک می‌گذاشت.
         rows = [dict(r) for r in con.execute("""
             SELECT a.*,
+              t.name AS tenantName,
+              (a.tenant_id IN (SELECT id FROM tenants
+                                WHERE parent_id IS NULL)) AS isOwn,
               (SELECT COUNT(*) FROM users u WHERE u.affiliate_id = a.id) AS users,
               (SELECT COUNT(*) FROM affiliate_commissions c
                 WHERE c.affiliate_id = a.id AND c.status != 'cancelled') AS orders,
@@ -1222,11 +1230,21 @@ def bot_affiliates(x_admin_password: str = Header(...)):
                 WHERE c.affiliate_id = a.id AND c.status != 'cancelled') AS earned,
               (SELECT COALESCE(SUM(amount),0) FROM affiliate_payouts p
                 WHERE p.affiliate_id = a.id) AS payouts
-            FROM affiliates a ORDER BY a.id DESC""")]
+            FROM affiliates a
+            LEFT JOIN tenants t ON t.id = a.tenant_id
+            ORDER BY a.id DESC""")]
         for r in rows:
             r["balance"] = r["earned"] - r["payouts"]
+            r["isOwn"] = bool(r["isOwn"])
+
+        # همکارهای نماینده‌ها پاک نمی‌شوند — هیچ صفحه‌ی دیگری آنها را
+        # نشان نمی‌دهد و پنل نماینده اصلاً بخش همکاری ندارد. فقط جدا
+        # شمرده می‌شوند: پورسانتِ همکارِ یک نماینده، هزینه‌ی همان
+        # نماینده است، نه بدهیِ مالک.
         return {"ready": True, "affiliates": rows,
-                "totalOwed": sum(r["balance"] for r in rows)}
+                "totalOwed": sum(r["balance"] for r in rows if r["isOwn"]),
+                "resellerOwed": sum(r["balance"] for r in rows
+                                    if not r["isOwn"])}
     except Exception as e:
         return {"ready": False, "error": str(e)[:160], "affiliates": []}
     finally:
