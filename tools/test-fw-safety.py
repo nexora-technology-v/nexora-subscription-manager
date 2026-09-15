@@ -489,6 +489,117 @@ check("مسیر دسته‌ای بلک‌هول هم",
       "blackhole_bulk(raw, protect=" in APP)
 
 
+# ═══════════════════════════════════════════════════════════
+head("وقتی نمی‌دانیم کدام مشتری است، کورکورانه نمی‌بندیم")
+
+# _connected_ips تنها چیزی است که «مهاجم» را از «مشتریِ من که رمز را
+# اشتباه می‌زند» جدا می‌کند.
+#
+# هر سه منبعش داخل try بودند و شکستشان فقط در لاگ debug می‌نشست. اگر
+# همه می‌افتادند، تابع یک مجموعه‌ی *خالی* برمی‌گرداند — و خالی از
+# «هیچ‌کدام مشتری نیستند» قابل تشخیص نبود.
+#
+# بستنِ دسته‌ای آن را «پس همه را ببند» می‌خواند و در پاسخ می‌نوشت
+# «۰ آی‌پی چون به سرویس وصل بودند رد شد»: اطمینان می‌داد که بررسی
+# شده، در حالی که اصلاً نشده بود. روی خطرناک‌ترین دکمه‌ی پنل.
+
+_APP = importlib.util.module_from_spec(
+    importlib.util.spec_from_file_location(
+        "nxapp_conn", os.path.join(ROOT, "backend", "app.py")))
+try:
+    importlib.util.spec_from_file_location(
+        "nxapp_conn", os.path.join(ROOT, "backend", "app.py")
+    ).loader.exec_module(_APP)
+    _apok = True
+except Exception as _e:
+    _apok = False
+    print(f"  {R}app بارگذاری نشد: {_e}{X}")
+
+check("app بارگذاری شد", _apok)
+
+if _apok:
+    _APP.check_auth = lambda pw: True
+
+    class _Boom:
+        def client_ips(self):
+            raise OSError("ss در دسترس نیست")
+
+        def tunnel_peers(self):
+            raise OSError("ss در دسترس نیست")
+
+        def connections(self, top=None):
+            raise OSError("ss در دسترس نیست")
+
+    class _Fine:
+        def client_ips(self):
+            return {"5.6.7.8": ["ali"]}
+
+        def tunnel_peers(self):
+            return {}
+
+        def connections(self, top=None):
+            return {"byIp": [{"ip": "9.9.9.9"}]}
+
+    _realN, _realM = _APP.NETID, _APP.MONITOR
+
+    # ── همه چیز سالم ──
+    _APP.NETID = _APP.MONITOR = _Fine()
+    _st = {}
+    _ips = _APP._connected_ips(status=_st)
+    check("منابع سالم، آدرس‌ها برمی‌گردند",
+          "5.6.7.8" in _ips and "9.9.9.9" in _ips, str(sorted(_ips)))
+    check("و گزارش می‌شود که جواب دادند", _st["answered"] == 3 and not _st["failed"],
+          f"{_st['answered']} منبع")
+
+    # ── همه چیز افتاده ──
+    _APP.NETID = _APP.MONITOR = _Boom()
+    _st2 = {}
+    _ips2 = _APP._connected_ips(status=_st2)
+    check("منابع افتاده، مجموعه خالی است", _ips2 == set())
+    check("ولی صریح گفته می‌شود که هیچ‌کدام جواب ندادند",
+          _st2["answered"] == 0 and len(_st2["failed"]) == 3,
+          "، ".join(_st2["failed"]))
+
+    # ── و بستنِ دسته‌ای رد می‌شود ──
+    _APP._fw_or_die = lambda: None
+    try:
+        _APP.firewall_block_attackers(
+            {"confirm": True, "ips": ["1.2.3.4"]}, x_admin_password="x")
+        _refused = False
+        _msg = ""
+    except Exception as _e:
+        _refused = getattr(_e, "status_code", 0) == 503
+        _msg = str(getattr(_e, "detail", _e))
+    check("بستنِ دسته‌ای بدون تشخیص، رد می‌شود", _refused, _msg[:70])
+    # پیام نامِ منبعِ افتاده و نوعِ خطا را می‌دهد، نه متنِ خامِ استثنا:
+    # متنِ خام می‌تواند مسیر و جزئیات داخلی را به کاربر نشان بدهد.
+    check("و پیام می‌گوید کدام منبع در دسترس نبود",
+          "مشتری" in _msg and "آی‌پی کلاینت‌ها" in _msg
+          and "اتصال‌های جاری" in _msg, _msg[:90])
+    check("و راه ادامه‌دادن را هم می‌گوید",
+          "شامل آدرس‌های وصل" in _msg,
+          "بن‌بستِ بی‌راه‌حل، کاربر را به حدس‌زدن وامی‌دارد")
+
+    # ── مگر اینکه مدیر صریح اصرار کند ──
+    _blocked = []
+
+    class _FW:
+        def block_ip(self, ip, comment=None, protect=None):
+            _blocked.append(ip)
+            return True, "بسته شد"
+
+    _APP._fw_or_die = lambda: _FW()
+    _res = _APP.firewall_block_attackers(
+        {"confirm": True, "ips": ["1.2.3.4"], "includeConnected": True},
+        x_admin_password="x")
+    check("با اصرار صریح انجام می‌شود", _blocked == ["1.2.3.4"], str(_blocked))
+    check("و پاسخ می‌گوید تشخیص ناقص بوده",
+          "در دسترس نبود" in (_res.get("note") or ""),
+          (_res.get("note") or "")[:80])
+
+    _APP.NETID, _APP.MONITOR = _realN, _realM
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 if not _fail:
     print(f"  {D}فایروال سرویس خودش را قطع نمی‌کند{X}")

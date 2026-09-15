@@ -2570,7 +2570,7 @@ except Exception:
         NETID = None
 
 
-def _connected_ips():
+def _connected_ips(status=None):
     """
     آی‌پی‌هایی که «آشنا»یند — تانل خودمان یا مشتری.
 
@@ -2582,18 +2582,37 @@ def _connected_ips():
     یک VPN از بیرون قابل کشف نیست — ولی لازم هم نیست. اگر همان آدرس
     را کلاینت‌های خودمان استفاده می‌کنند، پشتش مشتری نشسته و بستنش
     یعنی قطع‌کردن او.
+
+    `status` اگر دیکشنری بگیرد، پر می‌شود با اینکه چند منبع واقعاً
+    جواب دادند و کدام‌ها نه.
+
+    چرا لازم است:
+        هر سه منبع داخل try بودند و شکستشان فقط در لاگ debug می‌نشست.
+        اگر همه‌شان می‌افتادند — یا ماژول‌ها اصلاً بارگذاری نشده
+        بودند — این تابع یک مجموعه‌ی *خالی* برمی‌گرداند.
+
+        و مجموعه‌ی خالی از «هیچ‌کدام مشتری نیستند» قابل تشخیص نبود.
+        بستنِ دسته‌ای آن را «پس همه را ببند» می‌خواند و در پاسخ
+        می‌نوشت «۰ آی‌پی چون به سرویس وصل بودند رد شد» — یعنی
+        اطمینان می‌داد که بررسی شده، در حالی که اصلاً نشده بود.
+
+        روی خطرناک‌ترین دکمه‌ی این پنل.
     """
     ips = set()
+    answered = 0
+    failed = []
 
     if NETID:
-        try:
-            ips |= set(NETID.client_ips().keys())
-        except Exception:
-            log.debug("خواندن آی‌پی کلاینت‌ها ناموفق", exc_info=True)
-        try:
-            ips |= set(NETID.tunnel_peers().keys())
-        except Exception:
-            log.debug("خواندن آی‌پی تانل‌ها ناموفق", exc_info=True)
+        for _fn, _label in ((NETID.client_ips, "آی‌پی کلاینت‌ها"),
+                            (NETID.tunnel_peers, "آی‌پی تانل‌ها")):
+            try:
+                ips |= set(_fn().keys())
+                answered += 1
+            except Exception as e:
+                failed.append(f"{_label}: {type(e).__name__}")
+                log.debug("خواندن %s ناموفق", _label, exc_info=True)
+    else:
+        failed.append("ماژول شناسایی آی‌پی بارگذاری نشده")
 
     if MONITOR:
         try:
@@ -2603,8 +2622,16 @@ def _connected_ips():
                     ip = (row or {}).get("ip")
                     if ip:
                         ips.add(ip)
-        except Exception:
+            answered += 1
+        except Exception as e:
+            failed.append(f"اتصال‌های جاری: {type(e).__name__}")
             log.debug("خواندن اتصال‌ها ناموفق", exc_info=True)
+    else:
+        failed.append("ماژول مانیتورینگ بارگذاری نشده")
+
+    if status is not None:
+        status["answered"] = answered
+        status["failed"] = failed
 
     return ips
 
@@ -2694,8 +2721,20 @@ def firewall_block_attackers(payload: dict, x_admin_password: str = Header(...))
     if len(wanted) > 100:
         raise HTTPException(status_code=400, detail="حداکثر ۱۰۰ آی‌پی در هر بار")
 
-    connected = _connected_ips()
+    _st = {}
+    connected = _connected_ips(status=_st)
     force = bool(p.get("includeConnected"))
+
+    # هیچ منبعی جواب نداد یعنی *نمی‌دانیم* کدام مشتری است — نه اینکه
+    # هیچ‌کدام نیست. ادامه‌دادن یعنی بستنِ کورکورانه، و پیامِ
+    # «۰ آی‌پی رد شد» هم دروغِ اطمینان‌بخشی می‌شود.
+    if not _st.get("answered") and not force:
+        raise HTTPException(
+            status_code=503,
+            detail=("نمی‌توان تشخیص داد کدام آدرس مشتری شماست ("
+                    + "، ".join(_st.get("failed") or ["منبعی در دسترس نیست"])
+                    + "). اگر با این حال مطمئنید، دوباره با گزینه‌ی "
+                      "«شامل آدرس‌های وصل» بفرستید."))
     done, skipped, failed = [], [], []
     for ip in wanted:
         if ip in connected and not force:
@@ -2711,6 +2750,10 @@ def firewall_block_attackers(payload: dict, x_admin_password: str = Header(...))
     note = f"{len(done)} آی‌پی بسته شد"
     if skipped:
         note += f" · {len(skipped)} آی‌پی چون به سرویس وصل بودند رد شد"
+    # اگر بعضی منابع افتاده‌اند، «۰ رد شد» معنای کامل ندارد
+    if _st.get("failed"):
+        note += (" · بخشی از تشخیص در دسترس نبود: "
+                 + "، ".join(_st["failed"]))
     if failed:
         note += f" · {len(failed)} ناموفق"
     return {"ok": True, "note": note, "blocked": done,

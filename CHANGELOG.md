@@ -4,6 +4,39 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.32.0]
+
+### Fixed — "None of these are customers" and "I could not tell" looked the same
+
+`_connected_ips` is the only thing separating an attacker from a customer of
+yours who mistyped an SSH password. It gathers addresses from three sources, and
+each one sat inside a `try` whose failure went to a debug log and nowhere else.
+
+If all three failed — or the modules had not loaded at all — it returned an empty
+set. And an empty set was indistinguishable from "none of these addresses belong
+to a customer".
+
+The bulk attacker block read that as permission to block everything, and then
+reported `0 آی‌پی چون به سرویس وصل بودند رد شد` — telling the operator the check
+had run when it had not. On the most destructive button in the panel, protecting
+the thing whose loss is hardest to undo: a paying customer's connection.
+
+It now reports how many sources answered. When none did, the bulk block refuses
+with a 503 naming the sources that failed and how to proceed anyway. When only
+some failed, the block still runs but the response says which part of the
+detection was missing, so a short skip list is not read as a clean bill of
+health.
+
+### Checked and sound
+
+Read `netid` closely, since everything above depends on it. Address
+normalisation collapses `::ffff:` mapped addresses before any comparison, and
+both the storing and the looking-up side go through it, so membership cannot fail
+on formatting. `is_local` covers loopback, private, link-local, multicast and
+unspecified. `identify` orders its checks local, tunnel, customer, unknown, and
+the two modules that parse `ss` output index the peer column identically — which
+is where I expected to find a mismatch and found none.
+
 ## [1.31.1]
 
 ### Fixed — A node's health report could stop updating and never recover
