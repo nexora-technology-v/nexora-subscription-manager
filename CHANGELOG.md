@@ -4,6 +4,41 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.26.1]
+
+### Fixed — The dashboard and the invoice disagreed about what was owed
+
+Following through on 1.26.0: the invoice learned to bill from a date, and the
+dashboard did not. The card labelled کل بدهی دوره — "total owed this period" —
+was still summing every month of every config's life and subtracting every
+payment ever made.
+
+On a group with ten configs, 400 days old, settled 90 days ago, the two screens
+read 14,000,000 and 3,000,000. The balance happened to match only because the
+test settled the earlier period to the rial; any discount, rounding, or payment
+made in cash and never recorded pulls them apart.
+
+Both now compute through one function, `_period_share`, which decides how much
+of a config's life belongs to the current period. Payments are cut at each
+group's own date in the overview too, so a settled period's money no longer
+counts as credit against the new one. A config whose every month predates the
+settle date is dropped from both and reported as dropped.
+
+### Fixed — The invoice billed configs the dashboard refused to bill
+
+`_billable_config` — the rule that a config created and never switched on is not
+billable — existed in exactly one place: the dashboard. The invoice never called
+it.
+
+So a config that was created and never used showed on the dashboard as excluded,
+with the reason spelled out, and on the invoice as a charge. Two configs where
+one had never been touched billed 400,000 instead of 200,000, and the invoice is
+the document the reseller receives.
+
+The invoice applies the same rule now and says how many it left out and why —
+on screen and in the PDF. A test asserts the dashboard and the invoice return
+the same due, months, renewals, paid, and balance, so they cannot drift again.
+
 ## [1.26.0]
 
 ### Fixed — The invoice billed renewals that had already been paid for

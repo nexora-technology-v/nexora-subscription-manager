@@ -1044,6 +1044,110 @@ check("و واقعاً حجم‌های بی‌نرخ را می‌شمارد",
       str(_np["unpricedVolumes"]))
 
 
+# ═══════════════════════════════════════════════════════════
+head("داشبورد و فاکتور باید یک عدد بدهند")
+
+# دو صفحه، دو حساب جدا — و آن‌که برچسب «کل بدهی دوره» داشت، عدد کلِ
+# عمر را نشان می‌داد.
+#
+# دو اختلاف واقعی بود:
+#   ۱. نمای کلی «تسویه‌شده تا» را اصلاً نمی‌دید
+#   ۲. صورتحساب قاعده‌ی «قابل صورتحساب» را به کار نمی‌برد، پس بابت
+#      کانفیگی که هرگز روشن نشده پول می‌گرفت — روی همان کاغذی که
+#      دست واسطه می‌رسد
+
+_ALIGN = (_dtm.now() - _tdl(days=90)).date().isoformat()
+
+_c = sqlite3.connect(XUI)
+#            ایمیل        روز از ساخت  انقضا   فعال  مصرف
+for _id, _em, _age, _exp_in, _en, _used in (
+        (400, "algn_old", 400, +25, 1, 6 * GB),    # ۱۴ ماه عمر، ۳ ماه در بازه
+        (401, "algn_new", 10, +20, 1, 2 * GB),     # تازه — کامل در بازه
+        (402, "algn_dead", 400, -300, 0, 9 * GB),  # ۳ ماه، همه پیش از بازه
+        (403, "algn_never", 5, +25, 0, 0)):        # ساخته شد، هرگز روشن نشد
+    _cr = (_dtm.now() - _tdl(days=_age)).isoformat(sep=" ", timespec="seconds")
+    _ex = NOW_MS + _exp_in * 86400000
+    _c.execute("INSERT INTO clients (id,email,group_name,total_gb,expiry_time,"
+               "enable,created_at,limit_ip) VALUES (?,?,'همسو',0,?,?,?,1)",
+               (_id, _em, _ex, _en, _cr))
+    _c.execute("INSERT INTO client_traffics (id,email,up,down,expiry_time,enable)"
+               " VALUES (?,?,0,?,?,?)", (_id, _em, _used, _ex, _en))
+_c.commit()
+_c.close()
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("INSERT OR REPLACE INTO group_config (group_key,label,billable,"
+           "rates,period_days,settled_until) VALUES ('همسو','همسو',1,?,30,?)",
+           (_json.dumps([{"gb": 0, "price": 100000}]), _ALIGN))
+_b.execute("DELETE FROM payments WHERE group_key='همسو'")
+for _amt, _ago in ((500_000, 200), (200_000, 30)):
+    _b.execute("INSERT INTO payments (group_key,amount,paid_at) VALUES (?,?,?)",
+               ("همسو", _amt, (_dtm.now() - _tdl(days=_ago)).date().isoformat()))
+_b.commit()
+_b.close()
+
+_ov = {x["key"]: x for x in APP._billing_overview_impl()["groups"]}["همسو"]
+_iv = APP.billing_invoice("همسو", x_admin_password="x")
+_it = _iv["totals"]
+
+check("مبلغ دو صفحه یکی است", _ov["due"] == _it["due"],
+      f"داشبورد {_ov['due']:,} · فاکتور {_it['due']:,}")
+check("تعداد ماه هم", _ov["months"] == _it["months"],
+      f"{_ov['months']} · {_it['months']}")
+check("تعداد تمدید هم", _ov["renewals"] == _it["renewals"],
+      f"{_ov['renewals']} · {_it['renewals']}")
+check("پرداختی هم", _ov["paid"] == _it["paid"],
+      f"{_ov['paid']:,} · {_it['paid']:,}")
+check("و مانده هم", _ov["balance"] == _it["balance"],
+      f"{_ov['balance']:,} · {_it['balance']:,}")
+
+check("مبلغ همان چیزی است که دستی هم درمی‌آید",
+      _it["due"] == 4 * 100_000,
+      "۳ تمدیدِ کانفیگ قدیمی + ۱ ماه کانفیگ تازه")
+check("پرداختیِ پیش از تسویه در داشبورد هم شمرده نمی‌شود",
+      _ov["paid"] == 200_000, f"{_ov['paid']:,} — نه ۷۰۰٬۰۰۰")
+
+head("کانفیگی که هرگز روشن نشد، روی هیچ‌کدام پول نمی‌گیرد")
+
+_rows = {l["email"] for l in _iv["lines"]}
+check("روی فاکتور ردیفی ندارد", "algn_never" not in _rows,
+      "، ".join(sorted(_rows)))
+check("و فاکتور می‌گوید چند تا و چرا",
+      _it["unused"] == 1 and "هرگز به کار نیفتاده" in "".join(_it["unusedWhy"]),
+      f"{_it['unused']} — {list(_it['unusedWhy'])}")
+check("داشبورد از قبل همین را می‌گفت",
+      _ov["skipped"] >= 1, f"{_ov['skipped']} کنار گذاشته شد")
+check("کانفیگ تسویه‌شده جدا شمرده می‌شود، نه قاطیِ بی‌استفاده‌ها",
+      _it["before"] == 1 and _it["beforeMonths"] == 3,
+      f"{_it['before']} کانفیگ · {_it['beforeMonths']} ماه")
+check("و داشبورد هم کنارش می‌گذارد",
+      _ov.get("settledSkipped") == 1, str(_ov.get("settledSkipped")))
+
+head("بدون تاریخِ تسویه، هر دو به کل عمر برمی‌گردند")
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("UPDATE group_config SET settled_until=NULL, period_start=NULL "
+           "WHERE group_key='همسو'")
+_b.commit()
+_b.close()
+_ov2 = {x["key"]: x for x in APP._billing_overview_impl()["groups"]}["همسو"]
+_iv2 = APP.billing_invoice("همسو", x_admin_password="x")
+check("و باز هم با هم می‌خوانند",
+      _ov2["due"] == _iv2["totals"]["due"]
+      and _ov2["paid"] == _iv2["totals"]["paid"],
+      f"{_ov2['due']:,} · {_iv2['totals']['due']:,}")
+check("عدد بزرگ‌تر شد، چون دیگر چیزی بریده نمی‌شود",
+      _iv2["totals"]["due"] > _it["due"],
+      f"{_iv2['totals']['due']:,} در برابر {_it['due']:,}")
+check("پرداختیِ قدیمی هم برگشت",
+      _ov2["paid"] == 700_000, f"{_ov2['paid']:,}")
+
+check("هر دو صفحه از یک تابع حساب می‌کنند",
+      "def _period_share(" in APP_SRC_NS
+      and APP_SRC_NS.count("_period_share(") >= 3,
+      "وگرنه دوباره از هم جدا می‌افتند")
+
+
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()

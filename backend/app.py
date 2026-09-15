@@ -4624,6 +4624,50 @@ def _renewal_dates(cl, logged_rows, months=None, since=None, first_seen=None):
     return out + real
 
 
+def _rows_by_email(logged_rows):
+    """
+    ردیف‌های تمدید، گروه‌شده بر اساس ایمیل.
+
+    بدون این، هر کلاینت کل جدول تمدیدها را می‌پیمود — روی ۲۵۷ کانفیگ
+    یعنی ۲۵۷ پیمایش کامل، در تابعی که هر بار باز کردن صفحه صدا زده
+    می‌شود.
+    """
+    out = {}
+    for r in (logged_rows or []):
+        out.setdefault(r.get("email"), []).append(r)
+    return out
+
+
+def _period_share(cl, logged, rows, since, group_start=None, first_seen=None):
+    """
+    از عمر این کانفیگ، چند ماهش روی صورتحسابِ *این دوره* می‌آید.
+
+    برمی‌گرداند:
+        (ماهِ این دوره, ماهِ کل, تمدیدِ این دوره, در دوره ساخته شده؟,
+         منبع, انحراف)
+
+    چرا یک تابع مشترک:
+        صورتحساب و نمای کلی هر کدام جدا حساب می‌کردند. وقتی صورتحساب
+        «تسویه‌شده تا» را رعایت کرد و نمای کلی نکرد، داشبورد زیر تیتر
+        «کل بدهی دوره» عدد کلِ عمر را نشان می‌داد و فاکتور عدد دوره را
+        — دو رقم برای یک واقعیت، و آن‌که برچسبِ «دوره» داشت غلط بود.
+
+        هر جای تازه‌ای هم که بدهی حساب می‌کند باید از همین‌جا بگیرد.
+    """
+    months, kind, drift = _months_for(cl, logged, since=group_start,
+                                      first_seen=first_seen)
+    if not since:
+        return months, months, months - 1, True, kind, drift
+
+    _cj, created_g = _to_jalali(cl.get("createdAt"))
+    base_g = created_g or (first_seen or "")[:10]
+    is_new = bool(base_g) and base_g >= since
+    ren_in = sum(1 for d, _k in _renewal_dates(
+        cl, rows, months, since=group_start, first_seen=first_seen)
+        if d >= since)
+    return (1 if is_new else 0) + ren_in, months, ren_in, is_new, kind, drift
+
+
 def _period_bounds(conf, ref=None):
     """
     ابتدا و انتهای دوره‌ی جاری یک واسطه.
@@ -5165,16 +5209,27 @@ def _billing_overview_impl():
     bcon = _billing_conn()
     try:
         cfg = {r["group_key"]: dict(r) for r in bcon.execute("SELECT * FROM group_config")}
+
+        # مبدأ هر گروه یک‌بار حساب می‌شود و هم ماه‌ها و هم پرداختی‌ها
+        # را می‌برد. پیش از این پرداختی‌ها با یک GROUP BY ساده جمع
+        # می‌شدند — یعنی پولِ دوره‌ی تسویه‌شده هم داخل «دریافت‌شده»
+        # می‌آمد، در حالی که بدهی‌اش دیگر شمرده نمی‌شود.
+        since_of = {k: _bill_since(v)[0] for k, v in cfg.items()}
         pays = {}
         for r in bcon.execute(
-            "SELECT group_key, COALESCE(SUM(amount),0) s FROM payments GROUP BY group_key"
+            "SELECT group_key, amount, COALESCE(paid_at,'') d FROM payments"
         ):
-            pays[r["group_key"]] = r["s"]
+            cut = since_of.get(r["group_key"]) or ""
+            if cut and r["d"][:10] < cut:
+                continue
+            pays[r["group_key"]] = pays.get(r["group_key"], 0) + (r["amount"] or 0)
         logged = {}
         for r in bcon.execute(
             "SELECT email, COALESCE(SUM(months),0) m FROM renewals GROUP BY email"
         ):
             logged[r["email"]] = r["m"]
+        rows_by = _rows_by_email([dict(r) for r in bcon.execute(
+            "SELECT email, months, created_at FROM renewals")])
 
         # هر بار که نمای کلی خوانده می‌شود، دیدن کلاینت‌ها ثبت می‌شود.
         # این‌طور از امروز به بعد یک کف واقعی برای «از کی می‌شناسیمش»
@@ -5202,6 +5257,10 @@ def _billing_overview_impl():
                 "periodDays": conf.get("period_days") or 30,
                 "periodStart": conf.get("period_start"),
                 "settledUntil": conf.get("settled_until"),
+                # از چه تاریخی حساب شده — همان که صورتحساب به کار
+                # می‌برد، تا دو صفحه یک عدد بدهند
+                "since": since_of.get(g) or None,
+                "settledSkipped": 0,
                 # از کجا معلوم شد چند ماه — تا مدیر بفهمد چرا عدد
                 # این است و چه چیزی لازم است تا دقیق‌تر شود
                 "sources": {},
@@ -5232,11 +5291,16 @@ def _billing_overview_impl():
             G["skippedWhy"][why] = G["skippedWhy"].get(why, 0) + 1
             continue
 
-        months, kind, _ = _months_for(
-            cl, logged, since=conf.get("period_start"),
+        months, _total, ren_in, _new, kind, _drift = _period_share(
+            cl, logged, rows_by.get(cl["email"], []), since_of.get(g),
+            group_start=conf.get("period_start"),
             first_seen=seen.get(cl["email"]))
+        if months <= 0:
+            # کاملاً پیش از مبدأ — تسویه‌شده و دیگر بدهی نیست
+            G["settledSkipped"] = G.get("settledSkipped", 0) + 1
+            continue
         G["months"] += months
-        G["renewals"] += months - 1
+        G["renewals"] += ren_in
         G["sources"][kind] = G["sources"].get(kind, 0) + 1
         # «تخمینی» یعنی هر چیزی جز دو منبع قطعی. بدون این، گروهی که
         # همه‌ی کانفیگ‌هایش روی پیش‌فرض یک ماه افتاده‌اند، با اطمینان
@@ -5815,8 +5879,8 @@ def billing_invoice(group_key: str, start: str = "",
             rates = []
         logged = {r["email"]: r["m"] for r in bcon.execute(
             "SELECT email, COALESCE(SUM(months),0) m FROM renewals GROUP BY email")}
-        logged_rows = [dict(r) for r in bcon.execute(
-            "SELECT email, months, created_at FROM renewals")]
+        rows_by = _rows_by_email([dict(r) for r in bcon.execute(
+            "SELECT email, months, created_at FROM renewals")])
         # «از کی می‌شناسیمش» — برای کانفیگ‌هایی که x-ui تاریخ ساختشان
         # را ندارد. بدون این، به‌محض فعال‌شدن بازه هیچ‌کدامشان
         # دوره‌بندی نمی‌شدند و بی‌صدا از فاکتور می‌افتادند.
@@ -5843,30 +5907,32 @@ def billing_invoice(group_key: str, start: str = "",
 
     lines, due = [], 0
     before_configs = before_months = 0
+    unused_configs, unused_why = 0, {}
     for cl in clients:
         if cl["group"] != group_key:
             continue
+
+        # همان قاعده‌ای که نمای کلی به کار می‌برد.
+        #
+        # تا پیش از این فقط نمای کلی این را می‌دید: کانفیگی که ساخته
+        # شده و هرگز به کار نیفتاده، روی داشبورد کنار گذاشته می‌شد و
+        # دلیلش هم نوشته می‌شد — ولی روی *فاکتور* پول می‌گرفت. یعنی
+        # واسطه بابت چیزی صورتحساب می‌گرفت که قاعده‌ی خودِ مالک
+        # می‌گفت نباید حساب شود، و آن فاکتور همان چیزی است که دستش
+        # می‌رسد.
+        bill_it, why = _billable_config(cl)
+        if not bill_it:
+            unused_configs += 1
+            unused_why[why] = unused_why.get(why, 0) + 1
+            continue
+
         fseen = seen.get(cl["email"])
-        months, kind, drift = _months_for(
-            cl, logged, since=conf.get("period_start"), first_seen=fseen)
         created_j, created_g = _to_jalali(cl.get("createdAt"))
 
         # ── چه تکه‌ای از عمر این کانفیگ روی *این* فاکتور می‌آید ──
-        #
-        # هر ماه یک رویداد تاریخ‌دار است: ماه اول تاریخ ساخت، بقیه
-        # تاریخ تمدید. فقط آن‌هایی شمرده می‌شوند که بعد از مبدأ
-        # افتاده‌اند.
-        if since:
-            base_g = created_g or (fseen or "")[:10]
-            is_new = bool(base_g) and base_g >= since
-            ren_in = sum(1 for d, _k in _renewal_dates(
-                cl, logged_rows, months, since=conf.get("period_start"),
-                first_seen=fseen) if d >= since)
-            billed = (1 if is_new else 0) + ren_in
-        else:
-            is_new = True
-            ren_in = months - 1
-            billed = months
+        billed, months, ren_in, is_new, kind, drift = _period_share(
+            cl, logged, rows_by.get(cl["email"], []), since,
+            group_start=conf.get("period_start"), first_seen=fseen)
 
         if billed <= 0:
             # کاملاً پیش از مبدأ — تسویه‌شده. از جدول بیرون می‌ماند
@@ -5958,6 +6024,9 @@ def billing_invoice(group_key: str, start: str = "",
         # کانفیگ‌هایی که کاملاً پیش از مبدأ بوده‌اند
         "before": before_configs,
         "beforeMonths": before_months,
+        # ساخته شده ولی هرگز به کار نیفتاده — با دلیل، نه فقط عدد
+        "unused": unused_configs,
+        "unusedWhy": unused_why,
     }
 
     # ردیف‌هایی که حسابدار باید خودش نگاهشان کند
@@ -6947,6 +7016,12 @@ def billing_invoice_pdf(group_key: str, start: str = "",
                 f"{t['before']} کانفیگ که تمام ماه‌هایشان پیش از این تاریخ بوده"
                 f" ({t.get('beforeMonths', 0)} ماه) روی این فاکتور نیامده‌اند.",
             ]
+    # این یکی به بازه ربطی ندارد و همیشه باید گفته شود.
+    if t.get("unused"):
+        _how += [
+            f"{t['unused']} کانفیگ ساخته شده ولی هرگز به کار نیفتاده و"
+            " حساب نشده است.",
+        ]
     for m in _how:
         c.setFillColor(GREY)
         c.drawRightString(W - MR - 4 * mm, y, _fa(m))

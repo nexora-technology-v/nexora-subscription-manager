@@ -2000,6 +2000,15 @@ export function BillingInvoice({ password }) {
                 </InfoBox>
               )}
 
+              {inv.totals?.unused > 0 && (
+                <InfoBox tone="info">
+                  {faNum(inv.totals.unused)} کانفیگ حساب نشد —{" "}
+                  {Object.keys(inv.totals.unusedWhy || {}).join("، ")}. همین
+                  قاعده در داشبورد هم اعمال می‌شود، پس دو صفحه یک عدد
+                  می‌دهند.
+                </InfoBox>
+              )}
+
               {inv.unpricedVolumes?.length > 0 && (
                 <InfoBox tone="warn">
                   حجم‌های بدون نرخ کنار گذاشته شدند:{" "}
