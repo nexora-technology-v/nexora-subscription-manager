@@ -4,6 +4,30 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.28.3]
+
+### Fixed — Rollback overwrote the panel's databases while the panel was running
+
+`nexora rollback` stopped the bot before replacing `bot.db`. It did not stop the
+panel before replacing `billing.db` and `tunnels.db`, which the panel holds open.
+
+Copying a file over a database a live process has open — with its own write-ahead
+log and cached pages — is the case SQLite tells you not to create. The window was
+not brief either: the frontend rebuild sits between the restore and the restart
+and takes minutes, and for all of it the panel runs against a file that was
+swapped underneath it and can write over the very data being restored.
+
+Both services stop before any database is replaced now. An `EXIT` trap brings
+them back, because two failure paths sit between the restore and the restart — a
+failed rebuild and a stylesheet that came out too small — and without it a failed
+rollback would leave the panel switched off.
+
+This only ever ran when the operator answered yes to "also restore settings",
+which is exactly the moment they are trying to recover data.
+
+A test checks the ordering in the rollback branch: stop, restore, restart, with a
+path back up on every exit.
+
 ## [1.28.2]
 
 ### Fixed — Closing a reseller might not close the session they already had

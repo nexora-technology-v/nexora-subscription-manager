@@ -661,10 +661,34 @@ BOTEOF
         [ -f "$TARGET/$RDB-shm" ] && cp "$TARGET/$RDB-shm" "$INSTALL_DIR/data/"
         return 0
       }
-      if [ -f "$TARGET/bot.db" ]; then
-        systemctl stop nexora-bot 2>/dev/null
-        restore_db bot.db && ok "Bot database restored"
-      fi
+
+      # هر سرویسی که این فایل‌ها را باز نگه داشته باید *پیش از*
+      # جابه‌جایی‌شان بایستد.
+      #
+      # ربات درست متوقف می‌شد، پنل نه — در حالی که billing.db و
+      # tunnels.db را همان پنل باز نگه داشته. کپی‌کردن روی دیتابیسی
+      # که یک پروسه‌ی زنده بازش دارد، با WALش و صفحه‌های کش‌شده‌اش،
+      # همان کاری است که SQLite صریح می‌گوید نکنید. و پنجره‌اش کوتاه
+      # نیست: بازسازی فرانت‌اند بین این‌جا و ری‌استارت چند دقیقه طول
+      # می‌کشد، و در تمام آن مدت پنل روی فایلِ عوض‌شده کار می‌کند و
+      # می‌تواند همان بازگردانی را بازنویسی کند.
+      #
+      # trap لازم است چون بین این‌جا و ری‌استارت دو مسیرِ exit هست
+      # (شکست بازسازی، و CSS کوچک). بدون آن، یک بازسازیِ ناموفق پنل
+      # را خاموش جا می‌گذاشت.
+      ROLL_DOWN="1"
+      roll_bring_up() {
+        [ -n "$ROLL_DOWN" ] || return 0
+        ROLL_DOWN=""
+        systemctl start $SERVICE 2>/dev/null
+        systemctl is-enabled --quiet nexora-bot 2>/dev/null &&
+          systemctl start nexora-bot 2>/dev/null
+      }
+      trap roll_bring_up EXIT
+      systemctl stop nexora-bot 2>/dev/null
+      systemctl stop $SERVICE 2>/dev/null
+
+      [ -f "$TARGET/bot.db" ] && restore_db bot.db && ok "Bot database restored"
       restore_db billing.db && ok "Billing data restored"
       restore_db tunnels.db && ok "Tunnel data restored"
     else
@@ -705,6 +729,7 @@ BOTEOF
     ./venv/bin/pip install -r requirements.txt -q > /dev/null 2>&1
     systemctl restart $SERVICE
     systemctl is-enabled --quiet nexora-bot 2>/dev/null && systemctl restart nexora-bot 2>/dev/null
+    ROLL_DOWN=""        # از این‌جا به بعد سرویس‌ها بالا هستند
     sleep 4
 
     if curl -s --max-time 5 http://127.0.0.1:8100/api/health 2>/dev/null | grep -q '"ok":true'; then

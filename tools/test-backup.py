@@ -307,6 +307,64 @@ check("و tunnels.db هم برمی‌گردد", "restore_db tunnels.db" in CLI,
       "در اسنپ‌شات بود ولی در بازگردانی نبود")
 
 
+# ═══════════════════════════════════════════════════════════
+head("سرویس باید پیش از جابه‌جایی فایلش بایستد")
+
+# ربات درست متوقف می‌شد، پنل نه — در حالی که billing.db و tunnels.db
+# را همان پنل باز نگه داشته است.
+#
+# کپی‌کردن روی دیتابیسی که یک پروسه‌ی زنده بازش دارد، با WALش و
+# صفحه‌های کش‌شده‌اش، همان کاری است که SQLite صریح می‌گوید نکنید. و
+# پنجره‌اش کوتاه نبود: بازسازی فرانت‌اند بین بازگردانی و ری‌استارت
+# چند دقیقه طول می‌کشد.
+
+_roll = CLI[CLI.index("\n  rollback)"):]
+_roll = _roll[:_roll.index("\n  snapshots)")]
+
+_first_restore = _roll.find("restore_db bot.db")
+if _first_restore < 0:
+    _first_restore = _roll.find("restore_db billing.db")
+_before = _roll[:_first_restore] if _first_restore > 0 else ""
+
+check("بخش rollback پیدا شد", _first_restore > 0, f"{len(_roll)} کاراکتر")
+check("ربات پیش از بازگردانی متوقف می‌شود",
+      "systemctl stop nexora-bot" in _before)
+check("پنل هم پیش از بازگردانی متوقف می‌شود",
+      "systemctl stop $SERVICE" in _before,
+      "billing.db و tunnels.db را پنل باز نگه داشته")
+
+# و باید در هر مسیر خروجی دوباره بالا بیاید
+check("مسیر بازگرداندن سرویس‌ها تعریف شده",
+      "roll_bring_up()" in _roll and "trap roll_bring_up EXIT" in _roll,
+      "بین بازگردانی و ری‌استارت دو مسیر exit هست")
+check("و بعد از ری‌استارت موفق غیرفعال می‌شود",
+      'ROLL_DOWN=""' in _roll,
+      "وگرنه trap دوباره سرویسی را استارت می‌کند که تازه ری‌استارت شده")
+
+# ترتیب: توقف، بعد بازگردانی، بعد ری‌استارت
+_stop = _roll.find("systemctl stop $SERVICE")
+_restart = _roll.find("systemctl restart $SERVICE")
+check("ترتیب درست است — توقف، بازگردانی، ری‌استارت",
+      0 < _stop < _first_restore < _restart,
+      f"stop@{_stop} restore@{_first_restore} restart@{_restart}")
+
+head("بازگردانی داخل پنل قفل می‌گیرد، فایل را جابه‌جا نمی‌کند")
+
+# فرق دارد با rollback: این یکی داخلِ همان پروسه اجرا می‌شود و ربات
+# ممکن است هم‌زمان بنویسد. BEGIN IMMEDIATE قفل نوشتن می‌گیرد، پس
+# بدترین حالت SQLITE_BUSY است نه خرابیِ فایل.
+check("بازگردانی ربات تراکنش صریح دارد",
+      'con.execute("BEGIN IMMEDIATE")' in SRC,
+      "بدون آن، نیمی از داده رفته و نیمی برنگشته")
+check("و پیش از آن نسخه‌ی امن می‌گیرد",
+      "bot-before-restore-" in SRC)
+check("بازگردانی حسابداری هم نسخه‌ی امن می‌گیرد",
+      "billing-before-restore-" in SRC)
+check("ردیفی که درج نشد گزارش می‌شود",
+      '"skipped"' in SRC and '"warning"' in SRC,
+      "«ok: true» با نیمی از ردیف‌ها، بدترین جواب ممکن است")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)
