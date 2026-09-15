@@ -1148,6 +1148,208 @@ check("هر دو صفحه از یک تابع حساب می‌کنند",
       "وگرنه دوباره از هم جدا می‌افتند")
 
 
+# ═══════════════════════════════════════════════════════════
+head("فهرست مرجع کاربران هم باید همان عدد را بدهد")
+
+# داکstring این endpoint می‌گوید «نمای مرجع است … چقدر بدهکار است».
+# سه جا با صورتحساب فرق داشت، و بدترینش این بود که مبلغ را
+# months × price حساب می‌کرد — یعنی نرخ کاربر اضافه را کامل نادیده
+# می‌گرفت. کانفیگ چهارکاربره روی این فهرست ۲۰۰٬۰۰۰ بود و روی فاکتور
+# ۴۴۰٬۰۰۰.
+
+_c = sqlite3.connect(XUI)
+#            ایمیل       دستگاه فعال مصرف
+for _id, _em, _ips, _en, _used in ((500, "dev_four", 4, 1, 5 * GB),
+                                   (501, "dev_one", 1, 1, 5 * GB),
+                                   (502, "dev_never", 1, 0, 0)):
+    _cr = (_dtm.now() - _tdl(days=20)).isoformat(sep=" ", timespec="seconds")
+    _ex = NOW_MS + 25 * 86400000
+    _c.execute("INSERT INTO clients (id,email,group_name,total_gb,expiry_time,"
+               "enable,created_at,limit_ip) VALUES (?,?,'دستگاه',0,?,?,?,?)",
+               (_id, _em, _ex, _en, _cr, _ips))
+    _c.execute("INSERT INTO client_traffics (id,email,up,down,expiry_time,enable)"
+               " VALUES (?,?,0,?,?,?)", (_id, _em, _used, _ex, _en))
+_c.commit()
+_c.close()
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("INSERT OR REPLACE INTO group_config (group_key,label,billable,"
+           "rates,period_days) VALUES ('دستگاه','دستگاه',1,?,30)",
+           (_json.dumps([{"gb": 0, "price": 100000, "perDevice": 40000}]),))
+_b.commit()
+_b.close()
+APP._billing_overview_impl()
+
+_lst = {c["email"]: c for c in APP.billing_clients(x_admin_password="x")["clients"]}
+_inv = APP.billing_invoice("دستگاه", x_admin_password="x")
+_ovd = {x["key"]: x for x in APP._billing_overview_impl()["groups"]}["دستگاه"]
+
+check("کانفیگ چهارکاربره نرخ کاربر اضافه را می‌گیرد",
+      _lst["dev_four"]["amount"] == (100_000 + 40_000 * 3) * 2,
+      f"{_lst['dev_four']['amount']:,} — قبلاً ۲۰۰٬۰۰۰ بود")
+check("و ریزش هم گزارش می‌شود",
+      _lst["dev_four"]["extraDevices"] == 3
+      and _lst["dev_four"]["deviceAmount"] == 40_000 * 3 * 2,
+      f"{_lst['dev_four']['extraDevices']} کاربر · "
+      f"{_lst['dev_four']['deviceAmount']:,}")
+check("تک‌کاربره دست‌نخورده می‌ماند",
+      _lst["dev_one"]["amount"] == 200_000, f"{_lst['dev_one']['amount']:,}")
+check("کانفیگی که هرگز روشن نشد صفر است",
+      _lst["dev_never"]["amount"] == 0)
+check("و می‌گوید چرا صفر است",
+      "هرگز به کار نیفتاده" in (_lst["dev_never"]["amountWhy"] or ""),
+      _lst["dev_never"]["amountWhy"])
+check("ولی نرخش هنوز گزارش می‌شود",
+      _lst["dev_never"]["price"] == 100_000,
+      "فیلتر «بدون نرخ» نباید پر شود از ردیف‌هایی که نرخشان سالم است")
+
+_sum = sum(c["amount"] for c in _lst.values() if c["group"] == "دستگاه")
+check("جمع فهرست با فاکتور یکی است",
+      _sum == _inv["totals"]["due"],
+      f"فهرست {_sum:,} · فاکتور {_inv['totals']['due']:,}")
+check("و با داشبورد هم", _ovd["due"] == _inv["totals"]["due"],
+      f"داشبورد {_ovd['due']:,}")
+
+head("«تمدید کرده؟» سوالِ نگه‌داشت است، نه سوالِ دوره")
+
+# وقتی مبلغ دوره‌ای شد، اگر این فیلتر هم دوره‌ای می‌شد، مشتریِ دوساله
+# روی گروهی با تاریخ تسویه‌ی نزدیک «هرگز تمدید نکرده» می‌شد.
+# کانفیگی که همه‌ی تمدیدهایش در گذشته افتاده‌اند.
+#
+# ۷۵ روز عمر یعنی ۳ ماه: تمدیدها روی «ساخت + ۳۰» و «ساخت + ۶۰»
+# می‌نشینند که هر دو پیش از امروزند. کانفیگی که عمرش به آینده کشیده،
+# ماه‌های آینده‌اش هم همین حالا فروخته شده‌اند و درست است که حساب
+# شوند — پس برای این آزمون به کار نمی‌آید.
+_c = sqlite3.connect(XUI)
+_cr = (_dtm.now() - _tdl(days=70)).isoformat(sep=" ", timespec="seconds")
+_ex = NOW_MS + 5 * 86400000
+_c.execute("INSERT INTO clients (id,email,group_name,total_gb,expiry_time,"
+           "enable,created_at,limit_ip) VALUES (503,'dev_old','دستگاه',0,?,1,?,1)",
+           (_ex, _cr))
+_c.execute("INSERT INTO client_traffics (id,email,up,down,expiry_time,enable)"
+           " VALUES (503,'dev_old',0,?,?,1)", (5 * GB, _ex))
+_c.commit()
+_c.close()
+APP._billing_overview_impl()
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("UPDATE group_config SET settled_until=? WHERE group_key='دستگاه'",
+           (_dtm.now().date().isoformat(),))
+_b.commit()
+_b.close()
+
+_yes = APP.billing_clients(group="دستگاه", renewed="yes", x_admin_password="x")
+_names = {c["email"] for c in _yes["clients"]}
+check("مشتری با سابقه‌ی تمدید هنوز «تمدید کرده» است",
+      "dev_old" in _names, "، ".join(sorted(_names)) or "هیچ‌کدام")
+
+_all = {c["email"]: c
+        for c in APP.billing_clients(group="دستگاه", x_admin_password="x")["clients"]}
+check("ولی سهم دوره‌اش صفر است", _all["dev_old"]["renewals"] == 0,
+      f"{_all['dev_old']['renewals']} در دوره · "
+      f"{_all['dev_old']['totalRenewals']} در کل")
+check("و مبلغش هم صفر، با دلیل",
+      _all["dev_old"]["amount"] == 0
+      and "تسویه" in (_all["dev_old"]["amountWhy"] or ""),
+      _all["dev_old"]["amountWhy"])
+check("ماه‌های آینده‌ی یک کانفیگ همین حالا فروخته شده‌اند",
+      _all["dev_four"]["renewals"] == 1,
+      "ساخته‌شده ۲۰ روز پیش با ۴۵ روز عمر — ماه دومش حساب می‌شود")
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("UPDATE group_config SET settled_until=NULL WHERE group_key='دستگاه'")
+_b.commit()
+_b.close()
+
+check("هر سه صفحه از یک تابع حساب می‌کنند",
+      APP_SRC_NS.count("_period_share(") >= 4
+      and "months * price" not in APP_SRC_NS,
+      "months × price نرخ کاربر اضافه را نادیده می‌گرفت")
+
+
+# ═══════════════════════════════════════════════════════════
+head("تمدید نماینده نباید دو بار شمرده شود")
+
+# دو سازوکار موازی تمدید ثبت می‌کنند: پنل نمایندگی همان لحظه، و
+# _detect_renewals که انقضا را به خاطر می‌سپارد و جلورفتنش را تمدید
+# حساب می‌کند. ناظر برای تمدیدهایی است که مستقیم در x-ui زده می‌شوند
+# — ولی تمدیدِ پنل هم انقضا را جلو می‌برد، پس هر دو همان یکی را ثبت
+# می‌کردند: یک تمدید، دو ردیف، صورتحساب ۵۰٪ بیشتر.
+
+_c = sqlite3.connect(XUI)
+_cr = (_dtm.now() - _tdl(days=30)).isoformat(sep=" ", timespec="seconds")
+_ex = NOW_MS + 5 * 86400000
+_c.execute("INSERT INTO clients (id,email,group_name,total_gb,expiry_time,"
+           "enable,created_at,limit_ip) VALUES (600,'dbl_1','دوبار',0,?,1,?,1)",
+           (_ex, _cr))
+_c.execute("INSERT INTO client_traffics (id,email,up,down,expiry_time,enable)"
+           " VALUES (600,'dbl_1',0,?,?,1)", (3 * GB, _ex))
+_c.commit()
+_c.close()
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("INSERT OR REPLACE INTO group_config (group_key,label,billable,"
+           "rates,period_days) VALUES ('دوبار','دوبار',1,?,30)",
+           (_json.dumps([{"gb": 0, "price": 100000}]),))
+_b.commit()
+_b.close()
+
+
+def _ren_rows(email):
+    _q = sqlite3.connect(str(APP.BILLING_DB))
+    try:
+        return _q.execute("SELECT COUNT(*) FROM renewals WHERE email=?",
+                          (email,)).fetchone()[0]
+    finally:
+        _q.close()
+
+
+APP._billing_overview_impl()          # اولین دیدن: انقضا به خاطر سپرده می‌شود
+check("در اولین دیدن تمدیدی ثبت نمی‌شود", _ren_rows("dbl_1") == 0)
+
+# نماینده از پنل تمدید می‌کند: ثبت می‌شود و انقضای پنل جلو می‌رود
+_NEW_EX = _ex + 30 * 86400000
+APP._portal_log_renewal({"portal_group": "دوبار"}, "dbl_1", 1,
+                        new_expiry_ms=_NEW_EX)
+_c = sqlite3.connect(XUI)
+_c.execute("UPDATE clients SET expiry_time=? WHERE email='dbl_1'", (_NEW_EX,))
+_c.execute("UPDATE client_traffics SET expiry_time=? WHERE email='dbl_1'",
+           (_NEW_EX,))
+_c.commit()
+_c.close()
+check("پنل نمایندگی تمدید را ثبت می‌کند", _ren_rows("dbl_1") == 1)
+
+APP._billing_overview_impl()          # ناظر حالا انقضای جلورفته را می‌بیند
+check("و ناظرِ انقضا دوباره ثبتش نمی‌کند", _ren_rows("dbl_1") == 1,
+      f"{_ren_rows('dbl_1')} ردیف برای یک تمدید")
+
+_inv = APP.billing_invoice("دوبار", x_admin_password="x")
+check("پس صورتحساب دو ماه است، نه سه",
+      _inv["totals"]["months"] == 2 and _inv["totals"]["due"] == 200_000,
+      f"{_inv['totals']['months']} ماه · {_inv['totals']['due']:,}")
+
+head("و اگر ناظر زودتر رسیده باشد، پنل دوباره ثبت نمی‌کند")
+
+# مسابقه‌ی باریک: نمای کلی درست بین تمدیدِ پنل و ثبتِ آن خوانده شود.
+_c = sqlite3.connect(XUI)
+_EX2 = _NEW_EX + 30 * 86400000
+_c.execute("UPDATE clients SET expiry_time=? WHERE email='dbl_1'", (_EX2,))
+_c.execute("UPDATE client_traffics SET expiry_time=? WHERE email='dbl_1'", (_EX2,))
+_c.commit()
+_c.close()
+APP._billing_overview_impl()          # ناظر اول رسید
+check("ناظر تمدید مستقیمِ x-ui را می‌گیرد", _ren_rows("dbl_1") == 2)
+
+APP._portal_log_renewal({"portal_group": "دوبار"}, "dbl_1", 1,
+                        new_expiry_ms=_EX2)
+check("و ثبتِ دیرهنگامِ پنل ردیف تکراری نمی‌سازد",
+      _ren_rows("dbl_1") == 2, f"{_ren_rows('dbl_1')} ردیف")
+
+check("انقضای تازه به ثبت پاس داده می‌شود",
+      "new_expiry_ms=new_exp" in APP_SRC_NS,
+      "بدون این عدد، مبنای ناظر جلو نمی‌رود")
+
+
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()

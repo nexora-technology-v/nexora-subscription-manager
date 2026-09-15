@@ -279,6 +279,34 @@ check("و تاریخ را به هر دو دکمه می‌فرستد",
 check("وقتی تاریخی زده نشده، می‌گوید پیش‌فرض چیست",
       "const autoFrom =" in UI,
       "فاکتورِ کوتاه نباید غافلگیرکننده باشد")
+head("یک حساب، چند صفحه")
+
+check("هر صفحه‌ای که بدهی می‌شمارد از _period_share می‌گیرد",
+      APP.count("_period_share(") >= 4,
+      "نمای کلی، صورتحساب، فهرست مرجع — و خودِ تابع")
+check("فهرست مرجع دیگر months × price نمی‌کند",
+      "months * price" not in APP,
+      "نرخ کاربر اضافه را کامل نادیده می‌گرفت")
+check("قاعده‌ی «قابل صورتحساب» در هر سه جا هست",
+      APP.count("_billable_config(cl)") >= 3,
+      "کانفیگی که هرگز روشن نشده نباید فقط روی یک صفحه کنار گذاشته شود")
+check("مبلغ صفر دلیل دارد", '"amountWhy": amount_why' in APP,
+      "صفرِ بی‌دلیل شبیه خرابی به نظر می‌رسد")
+check("نرخ و مبلغ جدا مانده‌اند",
+      "elif price is None:" in APP
+      and "amount_why = price_why" in APP,
+      "وگرنه فیلتر «بدون نرخ» پر می‌شود از ردیف‌هایی که نرخشان سالم است")
+check("«تمدید کرده؟» از کل سابقه حساب می‌شود",
+      'x["totalRenewals"] > 0' in APP,
+      "سوالِ نگه‌داشت است، نه سوالِ دوره")
+
+check("تمدیدِ پنل نمایندگی مبنای ناظر را جلو می‌برد",
+      "def _portal_log_renewal(t, email, months, new_expiry_ms=None)" in APP
+      and "UPDATE client_seen SET last_expiry=? WHERE email=?" in APP,
+      "وگرنه ناظرِ انقضا همان تمدید را دوباره ثبت می‌کند")
+check("و اگر ناظر زودتر رسیده باشد، دوباره ثبت نمی‌شود",
+      "if prev and prev >= int(new_expiry_ms):" in APP)
+
 check("حجم‌های بی‌نرخ دیگر یک عدد نیستند",
       '"unpricedVolumes": sorted({l["gb"]' in APP,
       "رابط روی .length و .map صدا می‌زد، پس هشدار هرگز دیده نمی‌شد")

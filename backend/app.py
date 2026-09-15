@@ -7163,9 +7163,21 @@ def billing_period(group_key: str, start: str = "", end: str = "",
         return d and p_start.isoformat() <= d < p_end.isoformat()
 
     new_configs, renewals, skipped = [], [], 0
+    unused, unused_why = 0, {}
 
     for cl in clients:
         if cl["group"] != group_key:
+            continue
+
+        # چهارمین صفحه‌ای که این قاعده را نداشت.
+        #
+        # کانفیگی که ساخته شده و هرگز روشن نشده، روی این صفحه یک
+        # «فروش تازه» در همان هفته حساب می‌شد — با مبلغ. داشبورد و
+        # صورتحساب کنارش می‌گذارند، این نه.
+        bill_it, why = _billable_config(cl)
+        if not bill_it:
+            unused += 1
+            unused_why[why] = unused_why.get(why, 0) + 1
             continue
 
         gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
@@ -7254,6 +7266,8 @@ def billing_period(group_key: str, start: str = "", end: str = "",
             "due": due,
             "paid": paid_in_period,
             "balance": due - paid_in_period,
+            "unused": unused,
+            "unusedWhy": unused_why,
             "estimated": sum(1 for r in renewals if r["kind"] == "تخمینی"),
             "unpriced": sum(1 for x in new_configs + renewals if x["price"] is None),
             # همان دلیل‌ها، جمع‌شده — تا صفحه بتواند یک جمله‌ی روشن
@@ -7299,6 +7313,14 @@ def billing_clients(
         cfg = {r["group_key"]: dict(r) for r in bcon.execute("SELECT * FROM group_config")}
         logged = {r["email"]: r["m"] for r in bcon.execute(
             "SELECT email, COALESCE(SUM(months),0) m FROM renewals GROUP BY email")}
+        rows_by = _rows_by_email([dict(r) for r in bcon.execute(
+            "SELECT email, months, created_at FROM renewals")])
+        try:
+            seen = {r["email"]: r["first_seen"] for r in bcon.execute(
+                "SELECT email, first_seen FROM client_seen")}
+        except Exception:
+            seen = {}
+        since_of = {k: _bill_since(v)[0] for k, v in cfg.items()}
     finally:
         bcon.close()
 
@@ -7315,9 +7337,53 @@ def billing_clients(
         if not isinstance(rates, list):
             rates = []
 
-        months, kind, drift = _months_for(cl, logged)
+        # این فهرست «نمای مرجع» است و مبلغش باید همان چیزی باشد که
+        # روی فاکتور می‌آید. سه جا با صورتحساب فرق داشت:
+        #
+        #   ۱. _months_for بدون since و first_seen صدا زده می‌شد، پس
+        #      کانفیگِ بدون تاریخ ساخت این‌جا «یک ماه» بود و آن‌جا
+        #      چیز دیگری
+        #   ۲. بازه‌ی «تسویه‌شده تا» اصلاً دیده نمی‌شد
+        #   ۳. مبلغ months × price بود، یعنی نرخ کاربر اضافه را کامل
+        #      نادیده می‌گرفت — کانفیگ چهارکاربره روی این فهرست
+        #      ۲۰۰٬۰۰۰ بود و روی فاکتور ۴۴۰٬۰۰۰
+        billed, months, ren_in, _new, kind, drift = _period_share(
+            cl, logged, rows_by.get(cl["email"], []), since_of.get(g),
+            group_start=conf.get("period_start"),
+            first_seen=seen.get(cl["email"]))
         gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
-        price = _price_for(gb, rates) if conf.get("billable") else None
+
+        # نرخ و مبلغ دو چیز جدا هستند و باید جدا بمانند.
+        #
+        # `price` یعنی «نرخی که به این حجم می‌خورد» و فیلترِ «بدون
+        # نرخ» روی همین کار می‌کند — مدیر با آن دنبال گروه‌هایی
+        # می‌گردد که باید برایشان نرخ تعریف کند. اگر price را برای
+        # کانفیگِ تسویه‌شده یا بی‌استفاده هم None کنیم، آن فیلتر پر
+        # می‌شود از ردیف‌هایی که نرخشان هیچ مشکلی ندارد.
+        #
+        # `amount` یعنی «چقدر بابتش گرفته می‌شود» — که می‌تواند صفر
+        # باشد در حالی که نرخ کاملاً تعریف شده است.
+        bill_it, bill_why = _billable_config(cl)
+        price_why = None
+        if conf.get("billable"):
+            full, price, per_dev, extra_dev = _line_amount(
+                gb, rates, max(0, billed), cl.get("limitIp"))
+            if price is None:
+                _p, price_why = _price_with_reason(gb, rates)
+        else:
+            full, price, per_dev, extra_dev = 0, None, 0, 0
+
+        amount, amount_why = 0, None
+        if not conf.get("billable"):
+            amount_why = "محاسبه برای این گروه خاموش است"
+        elif not bill_it:
+            amount_why = bill_why
+        elif billed <= 0:
+            amount_why = "پیش از تاریخ تسویه"
+        elif price is None:
+            amount_why = price_why
+        else:
+            amount = full
 
         created_j, created_g = _to_jalali(cl.get("createdAt"))
         expiry_j, expiry_g = _to_jalali(cl.get("expiry"))
@@ -7346,7 +7412,7 @@ def billing_clients(
         else:
             st = "فعال"
 
-        renewals = months - 1
+        renewals = ren_in
 
         out.append({
             "email": cl["email"],
@@ -7370,13 +7436,20 @@ def billing_clients(
             "updatedJalali": updated_j,
             "days": days,
             "remainingDays": remaining,
-            "months": months,
+            "months": billed,
+            "totalMonths": months,
             "renewals": renewals,
+            "totalRenewals": months - 1,
             "renewalKind": kind,
             "drift": drift,
             "loggedRenewals": logged.get(cl["email"], 0),
             "price": price,
-            "amount": (months * price) if price is not None else 0,
+            "perDevice": per_dev,
+            "extraDevices": extra_dev,
+            "deviceAmount": per_dev * extra_dev * billed,
+            "amount": amount,
+            # چرا صفر است — وگرنه ردیفِ صفر شبیه خرابی به نظر می‌رسد
+            "amountWhy": amount_why,
             "enable": cl["enable"],
             "status": st,
         })
@@ -7396,9 +7469,13 @@ def billing_clients(
         out = [x for x in out if x["status"] == status]
 
     if renewed == "yes":
-        out = [x for x in out if x["renewals"] > 0]
+        # سوالِ این فیلتر «این مشتری تا حالا تمدید کرده؟» است، نه
+        # «در این دوره تمدید کرده؟». وقتی مبلغ دوره‌ای شد، اگر این هم
+        # دوره‌ای می‌شد، مشتریِ دوساله روی گروهی با تاریخ تسویه‌ی
+        # نزدیک «هرگز تمدید نکرده» نشان داده می‌شد.
+        out = [x for x in out if x["totalRenewals"] > 0]
     elif renewed == "no":
-        out = [x for x in out if x["renewals"] == 0]
+        out = [x for x in out if x["totalRenewals"] == 0]
 
     # بازه‌ی تاریخ ایجاد — برای اینکه بدانید در یک بازه چه کسانی
     # اضافه شده‌اند و بابتشان چقدر باید گرفت
@@ -7447,9 +7524,12 @@ def billing_clients(
     # ── آمار کلی، قبل از صفحه‌بندی ──
     stats = {
         "total": total,
-        "renewed": sum(1 for x in out if x["renewals"] > 0),
-        "notRenewed": sum(1 for x in out if x["renewals"] == 0),
-        "totalRenewals": sum(x["renewals"] for x in out),
+        # نرخ نگه‌داشت هم از کل سابقه حساب می‌شود، نه از دوره
+        "renewed": sum(1 for x in out if x["totalRenewals"] > 0),
+        "notRenewed": sum(1 for x in out if x["totalRenewals"] == 0),
+        "totalRenewals": sum(x["totalRenewals"] for x in out),
+        # و این یکی سهم همین دوره است — همان که روی فاکتور می‌آید
+        "periodRenewals": sum(x["renewals"] for x in out),
         "active": sum(1 for x in out if x["status"] == "فعال"),
         "expiringSoon": sum(1 for x in out if x["status"] == "رو به انقضا"),
         "expired": sum(1 for x in out if x["status"] == "منقضی"),
@@ -7522,7 +7602,8 @@ def billing_clients_export(
     w = csv.writer(buf)
     w.writerow(["ایمیل", "گروه", "وضعیت", "حجم", "مصرف (GB)", "درصد مصرف",
                 "تاریخ ایجاد", "تاریخ انقضا", "روز مانده", "مدت (روز)",
-                "ماه", "تمدید", "نوع تشخیص", "دستگاه", "نرخ", "مبلغ", "توضیح"])
+                "ماه", "تمدید", "نوع تشخیص", "دستگاه", "نرخ",
+                "کاربر اضافه", "مبلغ", "چرا صفر", "توضیح"])
     for x in data["clients"]:
         w.writerow([
             x["email"], x["group"], x["status"], x["gbLabel"],
@@ -7531,7 +7612,11 @@ def billing_clients_export(
             "" if x["remainingDays"] is None else x["remainingDays"],
             x["days"] or "", x["months"], x["renewals"], x["renewalKind"],
             x["limitIp"] or "نامحدود",
-            x["price"] or "", x["amount"] or "", x["comment"],
+            x["price"] or "", x.get("extraDevices") or "",
+            x["amount"] or "",
+            # مبلغ صفر بدون دلیل، در یک فایل که آفلاین خوانده می‌شود،
+            # هیچ راهی برای فهمیدن باقی نمی‌گذارد
+            x.get("amountWhy") or "", x["comment"],
         ])
 
     return Response(
@@ -9426,21 +9511,49 @@ def _portal_refund(t, amount):
         con.close()
 
 
-def _portal_log_renewal(t, email, months):
+def _portal_log_renewal(t, email, months, new_expiry_ms=None):
     """
-    تمدید را همان لحظه و دقیق ثبت می‌کند.
+    تمدید را همان لحظه و دقیق ثبت می‌کند، و مبنای ناظرِ انقضا را جلو
+    می‌برد.
 
     این تمام دلیلِ وجود این پنل است. وقتی نماینده در x-ui کار می‌کرد
     هیچ ردی نمی‌ماند و صورتحساب مجبور بود از فاصله‌ی ساخت تا انقضا
     حدس بزند. این‌جا تاریخ و تعداد ماه *واقعی* است، نه تخمینی.
+
+    چرا new_expiry_ms لازم است:
+        دو سازوکار موازی تمدید را ثبت می‌کنند. این یکی، و
+        _detect_renewals که انقضای هر کلاینت را به خاطر می‌سپارد و
+        دفعه‌ی بعد اگر جلو رفته باشد «تمدید» ثبت می‌کند.
+
+        ناظرِ انقضا برای تمدیدهایی است که نماینده *مستقیم در x-ui*
+        می‌زند و هیچ ردی نمی‌گذارند. ولی تمدیدی که از همین پنل آمده
+        هم انقضا را جلو می‌برد — پس ناظر هم همان را دوباره ثبت
+        می‌کرد. یک تمدید، دو ردیف، و صورتحساب ۵۰٪ بیشتر: سه ماه
+        به‌جای دو.
+
+        با جلوبردن مبنا، ناظر چیزی برای دیدن ندارد.
     """
     con = _billing_conn()
     try:
+        if new_expiry_ms:
+            row = con.execute(
+                "SELECT last_expiry FROM client_seen WHERE email=?",
+                (email,)).fetchone()
+            prev = int((row["last_expiry"] if row else 0) or 0)
+            # اگر ناظر زودتر رسیده باشد — نمای کلی درست بین تمدید و
+            # این ثبت خوانده شده باشد — مبنا از قبل جلو رفته و همین
+            # تمدید ثبت شده. دوباره ثبتش نمی‌کنیم.
+            if prev and prev >= int(new_expiry_ms):
+                log.info("تمدید %s را ناظرِ انقضا زودتر ثبت کرده بود", email)
+                return
         con.execute(
             "INSERT INTO renewals (email, group_key, months, created_at) "
             "VALUES (?,?,?,?)",
             (email, t.get("portal_group") or "", int(months),
              datetime.now().strftime("%Y-%m-%d")))
+        if new_expiry_ms:
+            con.execute("UPDATE client_seen SET last_expiry=? WHERE email=?",
+                        (int(new_expiry_ms), email))
         con.commit()
     except Exception:
         log.warning("ثبت تمدید نماینده ناموفق", exc_info=True)
@@ -9518,10 +9631,18 @@ def portal_renew(payload: dict, t: dict = Depends(portal_tenant)):
         raise HTTPException(status_code=502,
                             detail=f"پنل تمدید را انجام نداد: {str(e)[:140]}")
 
-    _portal_log_renewal(t, email, months)
+    # اگر پنل انقضای تازه را برنگرداند، از روی انقضای قبلی حسابش
+    # می‌کنیم. بدون عدد، مبنای ناظر جلو نمی‌رود و تمدید دو بار ثبت
+    # می‌شود — که دقیقاً همان چیزی است که این عدد برای جلوگیری از آن
+    # پاس داده می‌شود.
+    new_exp = (res or {}).get("expiry_ms")
+    if not new_exp:
+        old = _epoch_ms(cl.get("expiry")) or 0
+        new_exp = int(old + months * 30 * 86400000) if old else None
+    _portal_log_renewal(t, email, months, new_expiry_ms=new_exp)
     return {"ok": True, "email": email, "months": months,
             "charged": amount,
-            "expiryMs": (res or {}).get("expiry_ms")}
+            "expiryMs": new_exp}
 
 
 
@@ -9650,6 +9771,9 @@ def portal_create(payload: dict, t: dict = Depends(portal_tenant)):
                             detail=f"پنل کانفیگ را نساخت: {str(e)[:140]}")
 
     # ساخت هم مثل تمدید ثبت می‌شود: دوره‌ی اول هم فروش است.
+    #
+    # کلاینت تازه هنوز در client_seen نیست، پس ناظر اولین بار با
+    # همین انقضا ثبتش می‌کند و چیزی دو بار شمرده نمی‌شود.
     if months > 1:
         _portal_log_renewal(t, email, months - 1)
 

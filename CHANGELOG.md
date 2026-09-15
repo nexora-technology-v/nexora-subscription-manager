@@ -4,6 +4,57 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.27.0]
+
+### Fixed — A reseller's renewal was billed twice
+
+Two mechanisms record renewals and neither knew about the other.
+
+The portal logs a renewal the moment it happens, with the real date and month
+count. `_detect_renewals` remembers each client's expiry and treats a forward
+jump as a renewal — it exists for renewals a reseller makes directly in x-ui,
+where nothing is recorded at all.
+
+A renewal made through the portal does both: it writes its own row, and it moves
+the expiry. So the watcher recorded it a second time. One renewal, two rows,
+three months billed instead of two — fifty percent over, on every portal renewal.
+
+`_portal_log_renewal` now carries the new expiry forward into `client_seen`, so
+the watcher has nothing left to see, and it skips its own insert when the
+baseline is already ahead — the case where an overview happened to run between
+the panel call and the log.
+
+### Fixed — The client list ignored the per-user rate entirely
+
+`/api/admin/billing/clients` calls itself the reference view — "any question
+about a user, the answer is here, including what they owe". It computed
+`months × price`.
+
+That is the base rate alone. The per-user rate added in 1.22 never reached it, so
+a four-user config read 200,000 where the invoice said 440,000. It also read
+lifetime months from a `_months_for` called without the group's start date or
+first-seen fallback, and it never saw the settle date.
+
+It goes through `_period_share` and `_line_amount` now, like the other two
+screens. Rate and amount are kept separate: a config can have a perfectly good
+rate and still be charged nothing, and the "no rate" filter has to keep meaning
+"needs a rate defined". Zero amounts carry their reason — on screen, in the
+detail panel, and as a column in the CSV export.
+
+### Fixed — The period screen billed configs nothing else billed
+
+`_billable_config` reached the overview in 1.26.1 and the invoice in the same
+release. صورتحساب دوره was the fourth surface and still counted a config that was
+created and never switched on as a sale in the week it was created.
+
+### Changed — "Has renewed" stayed a retention question
+
+With amounts now scoped to a period, the renewed/not-renewed filter and the
+retention rate would have started answering "renewed in this period", which would
+show a two-year customer as never having renewed whenever the settle date was
+recent. Those read lifetime renewals; the period share is reported alongside as
+`periodRenewals`.
+
 ## [1.26.1]
 
 ### Fixed — The dashboard and the invoice disagreed about what was owed

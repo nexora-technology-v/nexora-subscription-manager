@@ -790,12 +790,24 @@ export function BillingClients({ password }) {
                                fontFamily: "var(--mono)" }}>
                             {faNum(c.amount)}
                           </div>
+                          {/* این خط باید همان مبلغ بالا را توضیح بدهد.
+                              بدون سهم کاربر اضافه، ضربی نشان می‌داد که
+                              با عدد بالا نمی‌خواند. */}
                           {c.months > 1 && c.price && (
                             <div className="text-[11.5px] mt-0.5" style={{ color: "var(--muted)" }}>
                               {faNum(c.months)}×{faNum(Math.round(c.price / 1000))}k
+                              {c.deviceAmount > 0
+                                && ` +${faNum(Math.round(c.deviceAmount / 1000))}k`}
                             </div>
                           )}
                         </div>
+                      ) : c.amountWhy ? (
+                        /* صفرِ بی‌دلیل شبیه خرابی به نظر می‌رسد. */
+                        <span className="text-[11.5px]" title={c.amountWhy}
+                          style={{ color: "var(--muted)" }}>
+                          {c.amountWhy.length > 22
+                            ? c.amountWhy.slice(0, 22) + "…" : c.amountWhy}
+                        </span>
                       ) : (
                         <span className="text-[13px]" style={{ color: "var(--muted)" }}>—</span>
                       )}
@@ -904,6 +916,23 @@ export function ClientDetailModal({ client: c, onClose }) {
               {c.price ? faNum(c.price) : "تعریف نشده"}
             </span>
           </div>
+          {c.extraDevices > 0 && (
+            <div className="flex justify-between text-[13px] mt-1.5">
+              <span style={{ color: "var(--muted)" }}>
+                {faNum(c.extraDevices)} کاربر اضافه × {faNum(c.perDevice)}
+              </span>
+              <span style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
+                {faNum(c.deviceAmount)}
+              </span>
+            </div>
+          )}
+          <div className="flex justify-between text-[13px] mt-1.5">
+            <span style={{ color: "var(--muted)" }}>ماه محاسبه‌شده</span>
+            <span style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
+              {faNum(c.months)}
+              {c.totalMonths > c.months && ` از ${faNum(c.totalMonths)}`}
+            </span>
+          </div>
           <div className="flex justify-between text-[14px] font-bold mt-2 pt-2"
             style={{ borderTop: "1px solid var(--border)" }}>
             <span className="text-white">مبلغ کل</span>
@@ -911,6 +940,12 @@ export function ClientDetailModal({ client: c, onClose }) {
               {faNum(c.amount)} تومان
             </span>
           </div>
+          {c.amountWhy && (
+            <div className="text-[12px] mt-2 leading-relaxed"
+              style={{ color: "var(--warn)" }}>
+              {c.amountWhy}
+            </div>
+          )}
         </div>
       )}
     </Modal>
