@@ -53,9 +53,24 @@ def _load_netid():
         pass
 
     class _Fallback:
+        #: باید *دقیقاً* با netid.TUNNEL_PROCS یکی باشد.
+        #
+        #  این فهرست تعیین می‌کند کدام اتصال «تانل خودمان» است. تانل‌ها
+        #  از ترافیک مشتری جدا می‌شوند (وگرنه صدها اتصالِ سرور ایران
+        #  همیشه «غیرعادی» به نظر می‌رسد) و از بستنِ دسته‌ای هم مصون
+        #  می‌مانند.
+        #
+        #  یعنی نامی که این‌جا جا بیفتد، اتصالِ تانلِ خودتان را به
+        #  «مشتریِ پرمصرف» تبدیل می‌کند — و آن یکی از فهرست محافظت‌شده
+        #  بیرون می‌ماند.
+        #
+        #  سه نام (openvpn، iodine، udp2raw) واقعاً جا افتاده بودند:
+        #  به netid اضافه شدند و به این کپی نه. تست اکنون برابری این دو
+        #  را اجرا می‌کند.
         TUNNEL_PROCS = ("backhaul", "backpack", "chisel", "rathole", "gost",
                         "frpc", "frps", "wireguard", "wg-quick", "wstunnel",
-                        "hysteria", "tuic", "socat", "haproxy", "stunnel")
+                        "hysteria", "tuic", "udp2raw", "iodine", "socat",
+                        "haproxy", "stunnel", "openvpn")
 
         @staticmethod
         def normalize(ip):

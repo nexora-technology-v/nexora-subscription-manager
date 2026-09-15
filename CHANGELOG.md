@@ -4,6 +4,41 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.33.1]
+
+### Fixed — Three tunnel engines missing from the fallback list
+
+Found by going after the shape rather than the symptom. Seven bugs fixed today
+were one thing: a rule written in two places and corrected in one. So this round
+compared every function in the codebase against every other by token shape and
+looked at the near-misses — pairs that are almost, but not quite, the same.
+
+`monitor` carries a fallback copy of `netid` for when that module cannot be
+imported. That is deliberate and needed: the agent downloads `netid.py` to a node
+separately and that download is wrapped in a `try`, so running without it is a
+real state, not a hypothetical.
+
+The copy had drifted. `openvpn`, `iodine` and `udp2raw` had been added to
+`netid`'s list of tunnel engines and not to the fallback.
+
+That list decides which established connections count as your own tunnel.
+Tunnels are held apart from customer traffic — an Iran node opens hundreds of
+connections and would otherwise sit at the top of the "unusual" list and bury
+real alerts — and they are protected from the bulk IP block. A missing name means
+your own tunnel endpoint is counted as a heavy customer *and* left out of the
+protected set.
+
+The list is synced, and a test now asserts the fallback and the real module agree
+on all three things they share: the engine list, address normalisation, and the
+local-address test, across twenty-one inputs.
+
+### Added — The rule that would have prevented seven bugs
+
+`CLAUDE.md` now says it plainly: a rule written in two places needs a test
+asserting the two agree. Where duplication is unavoidable — like this fallback —
+the parity test goes in beside it. Otherwise the copies drift apart at exactly the
+moment someone fixes one of them.
+
 ## [1.33.0]
 
 ### Fixed — `nexora update` could leave the panel with no styling at all

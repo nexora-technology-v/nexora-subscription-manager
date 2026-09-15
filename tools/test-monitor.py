@@ -13,6 +13,7 @@
 
 اجرا:  python3 tools/test-monitor.py
 """
+import io
 import os
 import sys
 from pathlib import Path
@@ -376,6 +377,72 @@ check("بخش بدون کش هر بار تازه اجرا می‌شود", CALLS[
 
 MF._CACHE.clear()
 
+
+
+# ═══════════════════════════════════════════════════════════
+head("نسخه‌ی جایگزین باید با اصل یکی بماند")
+
+# monitor وقتی netid را نتواند import کند، یک کلاس جایگزین داخلی
+# دارد. این عمدی است و لازم — ایجنت روی نود، netid را جدا دانلود
+# می‌کند و آن دانلود داخل try/except است، پس نبودنش حالتِ واقعی است.
+#
+# ولی کپیِ دستی بدون نگهبان، همان چیزی است که هفت باگ امروز از آن
+# آمدند. و همین‌جا هم اتفاق افتاده بود: سه موتور تانل (openvpn،
+# iodine، udp2raw) به netid اضافه شده بودند و به این کپی نه.
+#
+# اثرش: آن فهرست تعیین می‌کند کدام اتصال «تانل خودمان» است. تانل‌ها
+# از ترافیک مشتری جدا می‌شوند و از بستنِ دسته‌ای هم مصون می‌مانند.
+# نامِ جاافتاده یعنی اتصالِ تانلِ خودتان «مشتریِ پرمصرف» شمرده شود و
+# از فهرست محافظت‌شده بیرون بماند.
+
+import importlib.util as _ilu2      # noqa: E402
+
+_nsp = _ilu2.spec_from_file_location("netid_cmp",
+                                     str(ROOT / "backend" / "netid.py"))
+_NETID = _ilu2.module_from_spec(_nsp)
+sys.modules["netid_cmp"] = _NETID
+_nsp.loader.exec_module(_NETID)
+
+# کلاس جایگزین را از خودِ متنِ monitor برمی‌داریم: بدون حذف‌کردن
+# netid از سیستم، _load_netid هیچ‌وقت آن را برنمی‌گرداند.
+_MSRC = io.open(str(ROOT / "backend" / "monitor.py"), encoding="utf-8").read()
+_ns = {"ipaddress": __import__("ipaddress")}
+_blk = _MSRC[_MSRC.index("    class _Fallback:"):
+             _MSRC.index("    return _Fallback")]
+_blk = "\n".join(l[4:] if l.startswith("    ") else l
+                 for l in _blk.split("\n"))
+exec(_blk, _ns)
+_FB = _ns["_Fallback"]
+
+check("کلاس جایگزین پیدا شد", hasattr(_FB, "normalize"))
+
+_only_real = set(_NETID.TUNNEL_PROCS) - set(_FB.TUNNEL_PROCS)
+_only_fb = set(_FB.TUNNEL_PROCS) - set(_NETID.TUNNEL_PROCS)
+check("فهرست موتورهای تانل در هر دو یکی است",
+      not _only_real and not _only_fb,
+      (f"فقط در netid: {sorted(_only_real)} · فقط در جایگزین: "
+       f"{sorted(_only_fb)}") if (_only_real or _only_fb)
+      else f"{len(_NETID.TUNNEL_PROCS)} موتور")
+
+_CASES = ["1.2.3.4", "::ffff:1.2.3.4", "::ffff:127.0.0.1", "[2001:db8::1]",
+          "2001:db8::1", "127.0.0.1", "10.0.0.5", "172.16.0.1", "172.32.0.1",
+          "192.168.1.1", "169.254.1.1", "224.0.0.1", "0.0.0.0", "::", "*",
+          "", None, "not-an-ip", "  8.8.8.8  ", "fe80::1", "fd00::1"]
+
+_diff = []
+for _c in _CASES:
+    if _NETID.normalize(_c) != _FB.normalize(_c):
+        _diff.append(f"normalize({_c!r})")
+    if _NETID.is_local(_c) != _FB.is_local(_c):
+        _diff.append(f"is_local({_c!r})")
+
+check("نرمال‌سازی و تشخیص داخلی‌بودن هم یکی‌اند", not _diff,
+      "، ".join(_diff) if _diff else f"{len(_CASES)} ورودی سنجیده شد")
+
+check("و ::ffff: در هر دو جمع می‌شود",
+      _NETID.normalize("::ffff:127.0.0.1") == "127.0.0.1"
+      == _FB.normalize("::ffff:127.0.0.1"),
+      "همین یکی یک‌بار ۲۶٪ اتصال‌ها را «پرمصرف‌ترین آی‌پی» نشان داد")
 
 
 print(f"\n{D}{'─' * 46}{X}")
