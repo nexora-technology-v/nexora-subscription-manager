@@ -794,7 +794,7 @@ else:
                   "balance": 20900000, "unpriced": 0, "estimated": 16,
                   "active": 73, "inactive": 17, "notStarted": 0, "noExpiry": 1}
         real = APP.billing_invoice
-        APP.billing_invoice = lambda g, x_admin_password=None: {
+        APP.billing_invoice = lambda g, start="", x_admin_password=None: {
             "label": "g", "lines": lines, "totals": totals,
             "unpricedVolumes": [], "unpricedWhy": [], "payments": [],
             "paid": 0, "balance": 20900000, "totalAmount": 20900000,
@@ -862,6 +862,189 @@ check("پنل هم نشانش می‌دهد", "نیاز به تنظیم" in BJ)
 check("با دکمه‌ای که همان گروه را باز می‌کند", "setOpen(n.key)" in BJ)
 
 
+# ═══════════════════════════════════════════════════════════
+head("صورتحساب از یک تاریخ به بعد — نه از اول دنیا")
+
+# شکایت مالک: «تمدیدی‌ها هم باید از اون تاریخی که می‌خوام فاکتور
+# بگیرم یا همون شروع همکاری حساب کنه … تمدیدی‌های قبل رو حساب نکنه».
+#
+# درست بود. billing_invoice — که PDF هم از آن ساخته می‌شود — هیچ
+# تاریخی نمی‌دید و کل عمر هر کانفیگ را می‌شمرد. «تسویه‌شده تا» در
+# پایگاه داده بود و فقط صفحه‌ی دوره‌ای رعایتش می‌کرد.
+
+_DAY = 86400000
+_SINCE = (_dtm.now() - _tdl(days=90)).date().isoformat()
+
+_c = sqlite3.connect(XUI)
+#            ایمیل      روز از ساخت   انقضا (روز از حالا)  فعال
+for _id, _em, _age, _exp_in, _en in (
+        (300, "per_old", 400, +25, 1),     # عمرش ۱۴ ماه، ۳ ماهش در بازه
+        (301, "per_new", 10, +20, 1),      # تازه — همه‌اش در بازه
+        (302, "per_done", 400, -300, 0)):  # عمرش ۳ ماه، همه‌اش پیش از بازه
+    _cr = (_dtm.now() - _tdl(days=_age)).isoformat(sep=" ", timespec="seconds")
+    _ex = NOW_MS + _exp_in * _DAY
+    _c.execute("INSERT INTO clients (id,email,group_name,total_gb,expiry_time,"
+               "enable,created_at) VALUES (?,?,?,0,?,?,?)",
+               (_id, _em, "بازه", _ex, _en, _cr))
+    _c.execute("INSERT INTO client_traffics (id,email,up,down,expiry_time,enable)"
+               " VALUES (?,?,?,?,?,?)", (_id, _em, 1 * GB, 4 * GB, _ex, _en))
+_c.commit()
+_c.close()
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("INSERT OR REPLACE INTO group_config (group_key,label,billable,"
+           "rates,period_days,settled_until) VALUES ('بازه','بازه',1,?,30,?)",
+           (_json.dumps([{"gb": 0, "price": 200000}]), _SINCE))
+# یکی پیش از تسویه، یکی بعدش
+_b.execute("DELETE FROM payments WHERE group_key='بازه'")
+for _amt, _ago in ((1_000_000, 200), (300_000, 30)):
+    _b.execute("INSERT INTO payments (group_key,amount,paid_at) VALUES (?,?,?)",
+               ("بازه", _amt,
+                (_dtm.now() - _tdl(days=_ago)).date().isoformat()))
+_b.commit()
+_b.close()
+
+_inv = APP.billing_invoice("بازه", x_admin_password="x")
+_t = _inv["totals"]
+_by = {l["email"]: l for l in _inv["lines"]}
+
+check("مبدأ از «تسویه‌شده تا» برداشته می‌شود",
+      _inv["since"] == _SINCE and _inv["sinceWhy"] == "تسویه‌شده تا",
+      f"{_inv['since']} · {_inv['sinceWhy']}")
+check("و شمسی‌اش هم برای فاکتور آماده است",
+      bool(_inv.get("sinceJalali")), str(_inv.get("sinceJalali")))
+
+check("کانفیگی که همه‌ی ماه‌هایش پیش از مبدأ بوده، اصلاً نمی‌آید",
+      "per_done" not in _by, ", ".join(sorted(_by)))
+check("ولی بی‌صدا گم نمی‌شود — شمرده می‌شود",
+      _t["before"] == 1 and _t["beforeMonths"] == 3,
+      f"{_t['before']} کانفیگ · {_t['beforeMonths']} ماه")
+
+check("از کانفیگ قدیمی فقط تمدیدهای داخل بازه حساب می‌شود",
+      _by["per_old"]["months"] == 3, str(_by["per_old"]["months"]))
+check("و عمر کاملش جدا گزارش می‌شود",
+      _by["per_old"]["totalMonths"] == 14,
+      f"{_by['per_old']['totalMonths']} ماه در کل — قبلاً همین روی فاکتور بود")
+check("ماه اولش دوباره فروخته نمی‌شود",
+      _by["per_old"]["newInPeriod"] is False,
+      "ساختش ۴۰۰ روز پیش بوده، نه در این بازه")
+check("و هر سه ماهش تمدید است، نه دو تا",
+      _by["per_old"]["renewals"] == 3,
+      "وقتی ساخت بیرون بازه است، renewals = months نه months-1")
+
+check("کانفیگ تازه کامل حساب می‌شود",
+      _by["per_new"]["months"] == 1 and _by["per_new"]["newInPeriod"] is True)
+
+check("مبلغ فقط بابت همین بازه است",
+      _t["due"] == 4 * 200_000, f"{_t['due']:,}")
+check("پرداختیِ پیش از تسویه دوباره اعتبار نمی‌شود",
+      _t["paid"] == 300_000, f"{_t['paid']:,}")
+check("پس مانده همان چیزی است که واقعاً طلب است",
+      _t["balance"] == 500_000, f"{_t['balance']:,}")
+
+
+head("و همان فاکتور بدون مبدأ، کل عمر را می‌شمارد")
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("UPDATE group_config SET settled_until=NULL, period_start=NULL "
+           "WHERE group_key='بازه'")
+_b.commit()
+_b.close()
+
+_all = APP.billing_invoice("بازه", x_admin_password="x")
+check("بدون هیچ تاریخی، رفتار قبلی دست‌نخورده است",
+      _all["since"] is None and _all["totals"]["months"] == 14 + 1 + 3,
+      f"{_all['totals']['months']} ماه")
+check("و مبلغش خیلی بیشتر است",
+      _all["totals"]["due"] == 18 * 200_000,
+      f"{_all['totals']['due']:,} در برابر {_t['due']:,}")
+check("پرداختیِ کل هم برمی‌گردد",
+      _all["totals"]["paid"] == 1_300_000, f"{_all['totals']['paid']:,}")
+check("این تفاوت دقیقاً همان دوباره‌حساب‌کردنی است که گزارش شد",
+      _all["totals"]["due"] > _t["due"] * 4,
+      "۱۴ ماه به‌جای ۳ ماه، بابت کانفیگی که ماه پیش تسویه شده بود")
+
+
+head("تاریخ انتخابیِ مدیر بر همه چیز مقدم است")
+
+_pick = (_dtm.now() - _tdl(days=45)).date().isoformat()
+_sel = APP.billing_invoice("بازه", start=_pick, x_admin_password="x")
+check("همان تاریخ به کار می‌رود", _sel["since"] == _pick,
+      f"{_sel['since']} · {_sel['sinceWhy']}")
+check("و بازه‌ی کوتاه‌تر، ماه کمتری می‌دهد",
+      _sel["totals"]["months"] < _t["months"],
+      f"{_sel['totals']['months']} در برابر {_t['months']}")
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("UPDATE group_config SET period_start=? WHERE group_key='بازه'",
+           (_SINCE,))
+_b.commit()
+_b.close()
+_ps = APP.billing_invoice("بازه", x_admin_password="x")
+check("نبودِ «تسویه‌شده تا»، «شروع همکاری» را جانشین می‌کند",
+      _ps["since"] == _SINCE and _ps["sinceWhy"] == "شروع همکاری",
+      f"{_ps['since']} · {_ps['sinceWhy']}")
+check("تاریخ خراب نادیده گرفته می‌شود، نه اینکه فاکتور بترکد",
+      APP.billing_invoice("بازه", start="۱۴۰۴/۰۱/۰۱",
+                          x_admin_password="x")["sinceWhy"] == "شروع همکاری",
+      "برمی‌گردد به پیش‌فرض گروه")
+
+
+head("شمارش تمدید یک منبع دارد، نه دو تا")
+
+# _renewal_dates اگر حتی یک تمدیدِ ثبت‌شده می‌دید، بقیه را دور
+# می‌ریخت. کانفیگی با دو سال سابقه و یک تمدید ثبت‌شده، در صورتحساب
+# ۲۵ ماه بود و در صفحه‌ی دوره‌ای یک تمدید.
+_cl = {"email": "mix_1",
+       "createdAt": (_dtm.now() - _tdl(days=740)).isoformat(sep=" ",
+                                                            timespec="seconds"),
+       "expiry": NOW_MS + 20 * _DAY}
+_rows = [{"email": "mix_1", "months": 1,
+          "created_at": (_dtm.now() - _tdl(days=20)).date().isoformat()}]
+_m, _k, _d = APP._months_for(_cl, {"mix_1": 1})
+_rd = APP._renewal_dates(_cl, _rows, _m)
+check("تعداد تاریخ‌ها با تعداد ماه‌ها می‌خواند", len(_rd) == _m - 1,
+      f"{len(_rd)} تاریخ برای {_m} ماه")
+check("تمدیدِ ثبت‌شده هنوز قطعی علامت می‌خورد",
+      sum(1 for _, k in _rd if k == "قطعی") == 1)
+check("و بقیه تخمینی", sum(1 for _, k in _rd if k == "تخمینی") == _m - 2)
+check("تاریخ‌ها مرتب و معتبرند",
+      _rd == sorted(_rd) and all(len(d) == 10 for d, _ in _rd),
+      _rd[0][0] if _rd else "")
+
+# تمدید سه‌ماهه سه ماه صورتحساب است، نه یکی
+_cl2 = {"email": "three_1",
+        "createdAt": (_dtm.now() - _tdl(days=120)).isoformat(sep=" ",
+                                                             timespec="seconds"),
+        "expiry": NOW_MS + 10 * _DAY}
+_rows2 = [{"email": "three_1", "months": 3,
+           "created_at": (_dtm.now() - _tdl(days=15)).date().isoformat()}]
+_m2, _, _ = APP._months_for(_cl2, {"three_1": 3})
+_rd2 = APP._renewal_dates(_cl2, _rows2, _m2)
+check("ردیفِ تمدید سه‌ماهه سه تاریخ می‌دهد",
+      sum(1 for _, k in _rd2 if k == "قطعی") == 3,
+      "قبلاً یک تمدید حساب می‌شد و دو ماهش از فاکتور می‌افتاد")
+
+
+# ═══════════════════════════════════════════════════════════
+head("هشدار «حجم بدون نرخ» واقعاً چیزی برای نشان‌دادن دارد")
+
+# unpricedVolumes یک *عدد* برمی‌گشت، و رابط کاربری روی همان .length و
+# .map صدا می‌زد — یعنی هشدار هرگز رندر نمی‌شد.
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("UPDATE group_config SET rates='[]', settled_until=NULL, "
+           "period_start=NULL WHERE group_key='بازه'")
+_b.commit()
+_b.close()
+_np = APP.billing_invoice("بازه", x_admin_password="x")
+check("فهرست است، نه عدد", isinstance(_np["unpricedVolumes"], list),
+      str(type(_np["unpricedVolumes"]).__name__))
+check("و واقعاً حجم‌های بی‌نرخ را می‌شمارد",
+      len(_np["unpricedVolumes"]) >= 1,
+      str(_np["unpricedVolumes"]))
+
+
+color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

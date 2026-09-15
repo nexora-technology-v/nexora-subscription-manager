@@ -1848,8 +1848,19 @@ export function BillingInvoice({ password }) {
   const [sel, setSel] = useState("");
   const [inv, setInv] = useState(null);
   const [busy, setBusy] = useState(false);
+  //: صورتحساب از چه تاریخی به بعد.
+  //
+  //  خالی یعنی «هرچه خودِ گروه می‌گوید» — تسویه‌شده تا، و بعد شروع
+  //  همکاری. این فیلد برای وقتی است که مدیر می‌خواهد یک بار فاکتور
+  //  را از تاریخ دیگری بگیرد بدون اینکه تنظیمات گروه را دست بزند.
+  const [from, setFrom] = useState("");
 
   const billed = data?.groups?.filter((g) => g.billed) || [];
+  const cur = billed.find((g) => g.name === sel);
+  //  اگر مدیر تاریخی نزند، سرور همین را به کار می‌برد — پس همان را
+  //  نشان می‌دهیم، تا فاکتورِ کوتاه غافلگیرکننده نباشد.
+  const autoFrom = cur?.settledUntil || cur?.periodStart || "";
+  const q = from ? `?start=${encodeURIComponent(from)}` : "";
 
   /**
    * دانلود صورتحساب PDF.
@@ -1861,8 +1872,12 @@ export function BillingInvoice({ password }) {
     if (!sel) return;
     setBusy(true);
     try {
-      const res = await fetch(
-        `${API_URL}/api/admin/billing/invoice/${encodeURIComponent(sel)}/pdf`,
+      // بازه بیرون از قالب مسیر می‌چسبد، نه داخلش: تست درز مسیرها را
+      // از روی همین قالب‌ها استخراج می‌کند و ${q} داخلش یک قطعه‌ی
+      // جعلی می‌ساخت.
+      const url =
+        `${API_URL}/api/admin/billing/invoice/${encodeURIComponent(sel)}/pdf`;
+      const res = await fetch(url + q,
         { headers: { "X-Admin-Password": password } });
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
@@ -1885,7 +1900,9 @@ export function BillingInvoice({ password }) {
     if (!sel) return;
     setBusy(true);
     try {
-      const d = await fetch(`${API_URL}/api/admin/billing/invoice/${encodeURIComponent(sel)}`, {
+      const url =
+        `${API_URL}/api/admin/billing/invoice/${encodeURIComponent(sel)}`;
+      const d = await fetch(url + q, {
         headers: { "X-Admin-Password": password },
       }).then((r) => r.json());
       setInv(d);
@@ -1916,6 +1933,43 @@ export function BillingInvoice({ password }) {
                 {billed.map((g) => <option key={g.name} value={g.name}>{g.label}</option>)}
               </select>
             </Field>
+
+            <Field label="حساب کن از تاریخ">
+              <JalaliDate value={from} placeholder="پیش‌فرضِ همین گروه"
+                onChange={(v) => { setFrom(v || ""); setInv(null); }} />
+            </Field>
+            <div className="text-[12px] -mt-2 mb-3 leading-relaxed"
+              style={{ color: "var(--muted)" }}>
+              {from ? (
+                <>
+                  فقط کانفیگ‌ها و تمدیدهای بعد از{" "}
+                  <span style={{ color: "var(--accent-2)" }}>
+                    {isoToJalaliLabel(from)}
+                  </span>{" "}
+                  حساب می‌شوند.{" "}
+                  <button onClick={() => { setFrom(""); setInv(null); }}
+                    style={{ color: "var(--dim)", textDecoration: "underline" }}>
+                    برگرد به پیش‌فرض
+                  </button>
+                </>
+              ) : autoFrom ? (
+                <>
+                  خالی یعنی از{" "}
+                  <span style={{ color: "var(--accent-2)" }}>
+                    {isoToJalaliLabel(autoFrom)}
+                  </span>{" "}
+                  — {cur?.settledUntil ? "تسویه‌شده تا" : "شروع همکاری"}ی که
+                  برای این گروه ثبت شده.
+                </>
+              ) : (
+                <>
+                  برای این گروه نه «تسویه‌شده تا» ثبت شده نه «شروع همکاری»،
+                  پس کل عمر هر کانفیگ حساب می‌شود — یعنی تمدیدهای دوره‌های
+                  تسویه‌شده هم دوباره می‌آیند.
+                </>
+              )}
+            </div>
+
             <div className="fx-g3 grid grid-cols-2 gap-3">
               <button onClick={gen} disabled={busy}
                 className="fx-btn py-2.5 text-[14px] flex items-center justify-center gap-2">
@@ -1931,7 +1985,20 @@ export function BillingInvoice({ password }) {
 
           {inv && (
             <div className="fx-card p-5">
-              <div className="text-[14px] font-semibold text-white mb-4">{inv.label}</div>
+              <div className="text-[14px] font-semibold text-white mb-1">{inv.label}</div>
+              <div className="text-[12px] mb-4" style={{ color: "var(--muted)" }}>
+                {inv.sinceJalali
+                  ? `از ${inv.sinceJalali} تا امروز · ${inv.sinceWhy}`
+                  : "از ابتدای همکاری تا امروز"}
+              </div>
+
+              {inv.totals?.before > 0 && (
+                <InfoBox tone="info">
+                  {faNum(inv.totals.before)} کانفیگ روی این فاکتور نیامد، چون
+                  همه‌ی ماه‌هایشان ({faNum(inv.totals.beforeMonths)} ماه) پیش از
+                  این تاریخ بوده و قبلاً حساب شده.
+                </InfoBox>
+              )}
 
               {inv.unpricedVolumes?.length > 0 && (
                 <InfoBox tone="warn">

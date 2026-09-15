@@ -4534,44 +4534,94 @@ def _usage_percent(used_bytes, quota_bytes):
     return round(used_bytes * 100.0 / quota_bytes)
 
 
-def _renewal_dates(cl, logged_rows):
+def _start_ms(cl, since=None, first_seen=None):
     """
-    تاریخ تقریبی هر تمدید.
+    مبدأ زمانی یک کانفیگ، و اینکه از کجا آمده.
 
-    تمدیدهایی که نکسورا ثبت کرده تاریخ واقعی دارند. برای بقیه —
-    که از فاصله‌ی ایجاد تا انقضا تخمین زده می‌شوند — فرض می‌کنیم
-    هر تمدید سر ماه انجام شده: ایجاد + ۳۰ روز، + ۶۰ روز و همین‌طور.
+    شمارش ماه و تاریخ‌گذاری تمدیدها باید از *یک* مبدأ حساب کنند.
+    وقتی هر کدام مبدأ خودش را داشت، صورتحساب کلی و صورتحساب دوره‌ای
+    دو عدد متفاوت می‌دادند و معلوم نبود کدام درست است.
 
-    این تخمین است و صریح علامت می‌خورد، ولی برای دوره‌بندی لازم
-    است؛ وگرنه نمی‌شود گفت یک تمدید در کدام هفته اتفاق افتاده.
+    برمی‌گرداند: (میلی‌ثانیه یا None, نام منبع)
     """
-    email = cl["email"]
-    real = [r for r in (logged_rows or []) if r["email"] == email]
-    if real:
-        return [(r["created_at"][:10], "قطعی") for r in real]
+    ms = _epoch_ms(cl.get("createdAt"))
+    if ms is not None:
+        return ms, "ساخت"
+    ms = _epoch_ms(since)
+    if ms is not None:
+        return ms, "شروع گروه"
+    ms = _epoch_ms(first_seen)
+    if ms is not None:
+        return ms, "اولین‌دید"
+    return None, "پیش‌فرض"
 
-    created = cl.get("createdAt")
-    exp = cl.get("expiry") or 0
-    if not created or exp <= 0:
-        return []
+
+def _renewal_dates(cl, logged_rows, months=None, since=None, first_seen=None):
+    """
+    تاریخِ هر تمدید — دقیقاً به تعدادی که _months_for شمرده است.
+
+    دو منبع داریم و هیچ‌کدام تنهایی کافی نیست:
+
+      ثبت‌شده  تمدیدهایی که خودِ نکسورا دیده. تاریخ واقعی دارند،
+               ولی فقط از روزی که نصب شده به بعد.
+      تخمینی   بقیه — از فاصله‌ی ساخت تا انقضا. فرض این است که هر
+               تمدید سر ماه انجام شده: ایجاد + ۳۰ روز، + ۶۰ روز، …
+
+    چرا شمارش دیگر این‌جا انجام نمی‌شود:
+        این تابع اگر حتی *یک* تمدیدِ ثبت‌شده می‌دید، بقیه را دور
+        می‌ریخت و فقط همان را برمی‌گرداند. کانفیگی با دو سال سابقه و
+        یک تمدید ثبت‌شده، در صورتحساب کلی ۲۵ ماه بود و در صورتحساب
+        دوره‌ای یک تمدید — دو عدد از یک واقعیت.
+
+        حالا تعداد از _months_for می‌آید و این‌جا فقط *تاریخ* گذاشته
+        می‌شود. ماه‌هایی که ردی از آن‌ها نداریم مالِ گذشته‌اند: ثبت از
+        روز نصب شروع شده، پس ثبت‌شده‌ها تازه‌ترین‌ها هستند و تخمین‌ها
+        جای ماه‌های اول را می‌گیرند.
+
+    و چرا هر ردیفِ ثبت‌شده به اندازه‌ی months خودش باز می‌شود:
+        تمدید سه‌ماهه سه ماه صورتحساب است، نه یکی. قبلاً هر ردیف یک
+        تمدید حساب می‌شد.
+    """
+    email = cl.get("email")
+    real = []
+    for r in (logged_rows or []):
+        if r.get("email") != email:
+            continue
+        d = (r.get("created_at") or "")[:10]
+        if not d:
+            continue
+        try:
+            n = max(1, int(r.get("months") or 1))
+        except (TypeError, ValueError):
+            n = 1
+        real.extend([(d, "قطعی")] * n)
+    real.sort()
 
     # created ممکن است متن باشد. قبلاً float(created) بود و با متن
     # ValueError می‌داد، پس این تابع خالی برمی‌گشت — یعنی کانفیگی که
     # دو سال تمدید شده، در صورتحساب *صفر* تمدید داشت و تقریباً کل
     # مبلغ از قلم می‌افتاد.
-    c0 = _epoch_ms(created)
-    e0 = _epoch_ms(exp)
-    if not c0 or not e0:
-        return []
-    days = (e0 - c0) / 86400000.0
-    months = _months_from_days(days)
+    c0, _src = _start_ms(cl, since, first_seen)
+    e0 = _epoch_ms(cl.get("expiry") or 0)
+
+    if months is None:
+        if c0 is None or not e0 or e0 <= 0:
+            return real
+        months = max(1 + len(real),
+                     _months_from_days((e0 - c0) / 86400000.0))
+
+    need = max(0, int(months) - 1)
+    if len(real) >= need:
+        return real[len(real) - need:]
+    if c0 is None:
+        return real
 
     out = []
-    for i in range(1, months):
-        j, g = _to_jalali(int(c0 + i * 30 * 86400000))
+    for i in range(1, need - len(real) + 1):
+        _j, g = _to_jalali(int(c0 + i * 30 * 86400000))
         if g:
             out.append((g, "تخمینی"))
-    return out
+    return out + real
 
 
 def _period_bounds(conf, ref=None):
@@ -4649,14 +4699,7 @@ def _months_for(cl, logged, since=None, first_seen=None):
 
     _ms = _epoch_ms
 
-    created = _ms(cl.get("createdAt"))
-    source = "ساخت"
-    if created is None:
-        created = _ms(since)
-        source = "شروع گروه"
-    if created is None:
-        created = _ms(first_seen)
-        source = "اولین‌دید"
+    created, source = _start_ms(cl, since, first_seen)
 
     if not exp or exp <= 0 or created is None:
         return (floor, "ثبت‌شده", 0) if floor > 1 else (1, "پیش‌فرض", 0)
@@ -4690,6 +4733,48 @@ def _months_for(cl, logged, since=None, first_seen=None):
     if source == "ساخت" and drift <= 2:
         return months, "قطعی", 0
     return months, source, round(drift)
+
+
+def _bill_since(conf, explicit=""):
+    """
+    صورتحساب از چه تاریخی به بعد حساب شود، و چرا.
+
+    ترتیب:
+      ۱. تاریخی که مدیر همین حالا انتخاب کرده
+      ۲. «تسویه‌شده تا» — هرچه پیش از آن بوده، پولش گرفته شده
+      ۳. «شروع همکاری» — پیش از آن اصلاً همکاری‌ای نبوده
+      ۴. هیچ‌کدام — از ابتدای عمر هر کانفیگ
+
+    چرا لازم شد:
+        صورتحساب *همه‌ی* عمر هر کانفیگ را حساب می‌کرد و هیچ تاریخی
+        را نمی‌دید. واسطه‌ای که ماه پیش تسویه کرده بود، این ماه
+        دوباره همان تمدیدها را روی فاکتورش می‌دید.
+
+        «تسویه‌شده تا» از قبل در پایگاه داده بود و صفحه‌ی دوره‌ای هم
+        رعایتش می‌کرد — ولی صورتحساب و PDF، یعنی همان چیزی که دست
+        واسطه می‌رسد، اصلاً نگاهش نمی‌کردند.
+
+    برمی‌گرداند: (YYYY-MM-DD یا "", برچسب منبع)
+    """
+    from datetime import date as _date
+
+    def ok(v):
+        v = (v or "").strip()[:10]
+        if not v:
+            return ""
+        try:
+            _date.fromisoformat(v)
+        except ValueError:
+            return ""
+        return v
+
+    for value, why in ((explicit, "تاریخ انتخابی"),
+                       ((conf or {}).get("settled_until"), "تسویه‌شده تا"),
+                       ((conf or {}).get("period_start"), "شروع همکاری")):
+        v = ok(value)
+        if v:
+            return v, why
+    return "", ""
 
 
 def _price_per_gb(conf):
@@ -5700,8 +5785,19 @@ def billing_payment_del(pid: int, x_admin_password: str = Header(...)):
 
 
 @app.get("/api/admin/billing/invoice/{group_key}")
-def billing_invoice(group_key: str, x_admin_password: str = Header(...)):
-    """جزئیات کامل یک واسطه — برای صورتحساب."""
+def billing_invoice(group_key: str, start: str = "",
+                    x_admin_password: str = Header(...)):
+    """
+    جزئیات کامل یک واسطه — برای صورتحساب.
+
+    `start` اختیاری است؛ اگر ندهید خودِ تنظیمات گروه تصمیم می‌گیرد
+    («تسویه‌شده تا» و بعد «شروع همکاری»). هرچه پیش از آن تاریخ بوده —
+    چه ساختِ کانفیگ و چه تمدید — روی این فاکتور نمی‌آید.
+
+    تا پیش از این، این تابع هیچ تاریخی نمی‌دید و کل عمر هر کانفیگ را
+    حساب می‌کرد؛ یعنی واسطه‌ای که ماه پیش تسویه کرده بود، این ماه
+    دوباره همان تمدیدها را روی فاکتورش می‌دید.
+    """
     check_auth(x_admin_password)
 
     clients, _known, err = _read_xui_clients()
@@ -5719,25 +5815,74 @@ def billing_invoice(group_key: str, x_admin_password: str = Header(...)):
             rates = []
         logged = {r["email"]: r["m"] for r in bcon.execute(
             "SELECT email, COALESCE(SUM(months),0) m FROM renewals GROUP BY email")}
-        paid = bcon.execute(
-            "SELECT COALESCE(SUM(amount),0) s FROM payments WHERE group_key=?",
-            (group_key,)).fetchone()["s"]
+        logged_rows = [dict(r) for r in bcon.execute(
+            "SELECT email, months, created_at FROM renewals")]
+        # «از کی می‌شناسیمش» — برای کانفیگ‌هایی که x-ui تاریخ ساختشان
+        # را ندارد. بدون این، به‌محض فعال‌شدن بازه هیچ‌کدامشان
+        # دوره‌بندی نمی‌شدند و بی‌صدا از فاکتور می‌افتادند.
+        try:
+            seen = {r["email"]: r["first_seen"] for r in bcon.execute(
+                "SELECT email, first_seen FROM client_seen")}
+        except Exception:
+            seen = {}
+        since, since_why = _bill_since(conf, start)
+        if since:
+            # پرداختی هم باید با همان تاریخ بریده شود. وگرنه فاکتورِ
+            # دوره‌ی تازه، پول دوره‌ی تسویه‌شده را هم اعتبار حساب
+            # می‌کند و مانده منفیِ ساختگی درمی‌آید.
+            paid = bcon.execute(
+                "SELECT COALESCE(SUM(amount),0) s FROM payments "
+                "WHERE group_key=? AND COALESCE(paid_at,'') >= ?",
+                (group_key, since)).fetchone()["s"]
+        else:
+            paid = bcon.execute(
+                "SELECT COALESCE(SUM(amount),0) s FROM payments WHERE group_key=?",
+                (group_key,)).fetchone()["s"]
     finally:
         bcon.close()
 
     lines, due = [], 0
+    before_configs = before_months = 0
     for cl in clients:
         if cl["group"] != group_key:
             continue
-        months, kind, drift = _months_for(cl, logged)
+        fseen = seen.get(cl["email"])
+        months, kind, drift = _months_for(
+            cl, logged, since=conf.get("period_start"), first_seen=fseen)
+        created_j, created_g = _to_jalali(cl.get("createdAt"))
+
+        # ── چه تکه‌ای از عمر این کانفیگ روی *این* فاکتور می‌آید ──
+        #
+        # هر ماه یک رویداد تاریخ‌دار است: ماه اول تاریخ ساخت، بقیه
+        # تاریخ تمدید. فقط آن‌هایی شمرده می‌شوند که بعد از مبدأ
+        # افتاده‌اند.
+        if since:
+            base_g = created_g or (fseen or "")[:10]
+            is_new = bool(base_g) and base_g >= since
+            ren_in = sum(1 for d, _k in _renewal_dates(
+                cl, logged_rows, months, since=conf.get("period_start"),
+                first_seen=fseen) if d >= since)
+            billed = (1 if is_new else 0) + ren_in
+        else:
+            is_new = True
+            ren_in = months - 1
+            billed = months
+
+        if billed <= 0:
+            # کاملاً پیش از مبدأ — تسویه‌شده. از جدول بیرون می‌ماند
+            # ولی شمرده می‌شود، تا فاکتورِ کوتاه خودش توضیح بدهد چرا
+            # کوتاه است.
+            before_configs += 1
+            before_months += months
+            continue
+
         gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
         amount, price, per_dev, extra_dev = _line_amount(
-            gb, rates, months, cl.get("limitIp"))
+            gb, rates, billed, cl.get("limitIp"))
         price_why = None
         if price is None:
             _, price_why = _price_with_reason(gb, rates)
         due += amount
-        created_j, created_g = _to_jalali(cl.get("createdAt"))
         expiry_j, expiry_g = _to_jalali(cl.get("expiry"))
         days = _duration_days(cl.get("createdAt"), cl.get("expiry"))
         pct = _usage_percent(cl["used"], cl["totalGB"])
@@ -5764,15 +5909,20 @@ def billing_invoice(group_key: str, x_admin_password: str = Header(...)):
             "expiryJalali": expiry_j,
             "expiryGregorian": expiry_g,
             "days": days,
-            "months": months,
-            "renewals": months - 1,
+            "months": billed,
+            "renewals": ren_in,
+            "newInPeriod": is_new,
+            # عمر کامل، برای وقتی که مدیر می‌خواهد بداند این کانفیگ
+            # در کل چقدر بوده — نه فقط سهم این دوره
+            "totalMonths": months,
+            "totalRenewals": months - 1,
             "kind": kind,
             "drift": drift,
             "price": price,
             "priceWhy": price_why,
             "perDevice": per_dev,
             "extraDevices": extra_dev,
-            "deviceAmount": per_dev * extra_dev * months,
+            "deviceAmount": per_dev * extra_dev * billed,
             "amount": amount,
             "active": cl["enable"],
             "status": status,
@@ -5805,6 +5955,9 @@ def billing_invoice(group_key: str, x_admin_password: str = Header(...)):
         "inactive": sum(1 for l in lines if l["status"] == "غیرفعال"),
         "notStarted": sum(1 for l in lines if l["status"] == "شروع‌نشده"),
         "noExpiry": sum(1 for l in lines if l["status"] == "بدون انقضا"),
+        # کانفیگ‌هایی که کاملاً پیش از مبدأ بوده‌اند
+        "before": before_configs,
+        "beforeMonths": before_months,
     }
 
     # ردیف‌هایی که حسابدار باید خودش نگاهشان کند
@@ -5839,7 +5992,19 @@ def billing_invoice(group_key: str, x_admin_password: str = Header(...)):
         "totalAmount": totals["due"],
         "paid": totals["paid"],
         "balance": totals["balance"],
-        "unpricedVolumes": totals["unpriced"],
+        # از چه تاریخی حساب شده و چرا — بدون این، فاکتورِ کوتاه
+        # مثل فاکتورِ خراب به نظر می‌رسد
+        "since": since or None,
+        "sinceWhy": since_why or None,
+        "sinceJalali": (_to_jalali(_epoch_ms(since))[0]
+                        if since else None),
+        # فهرست حجم‌های بی‌نرخ، نه تعدادشان.
+        #
+        # این‌جا totals["unpriced"] گذاشته شده بود که یک عدد است، و
+        # رابط کاربری روی همان .length و .map صدا می‌زد — یعنی هشدارِ
+        # «حجم بدون نرخ» هرگز نمایش داده نمی‌شد.
+        "unpricedVolumes": sorted({l["gb"] for l in lines
+                                   if l["price"] is None}),
         # دلیل‌ها، نه فقط شمارش — همان چیزی که مدیر برای درست‌کردنش
         # لازم دارد
         "unpricedWhy": sorted({l["priceWhy"] for l in lines
@@ -6325,7 +6490,8 @@ def bot_users_report_pdf(days: int = 30, x_admin_password: str = Header(...)):
 
 
 @app.get("/api/admin/billing/invoice/{group_key}/pdf")
-def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
+def billing_invoice_pdf(group_key: str, start: str = "",
+                        x_admin_password: str = Header(...)):
     """
     صورتحساب PDF برای ارسال به واسطه.
 
@@ -6344,7 +6510,8 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
             status_code=500,
             detail="reportlab نصب نیست: pip install reportlab arabic-reshaper python-bidi")
 
-    inv = billing_invoice(group_key, x_admin_password=x_admin_password)
+    inv = billing_invoice(group_key, start=start,
+                          x_admin_password=x_admin_password)
     lines, t = inv["lines"], inv["totals"]
     F = _pdf_font()
     FB = _pdf_font(bold=True)
@@ -6426,6 +6593,17 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
     dates = [l.get("createdJalali") for l in lines if l.get("createdJalali")]
     span = f"{min(dates)} تا {max(dates)}" if dates else DASH
 
+    # وقتی فاکتور از تاریخی به بعد حساب شده، *همان* باید بالای صفحه
+    # بنشیند. واسطه‌ای که فاکتور کوتاه می‌گیرد باید در نگاه اول ببیند
+    # که این فاکتورِ یک دوره است، نه فاکتور ناقصِ کل همکاری.
+    since_j = inv.get("sinceJalali")
+    if since_j:
+        span_label = _fa("بازه صورتحساب") + ": "
+        span_value = _fa(f"از {since_j} تا {jnow}")
+    else:
+        span_label = _fa("بازه کانفیگ‌ها") + ": "
+        span_value = _fa(span)
+
     ML, MR = 10 * mm, 10 * mm
     CW = W - ML - MR
     page = [0]
@@ -6456,7 +6634,7 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
         rows_meta = [
             (_fa("شماره صورتحساب") + ": ", inv_no),
             (_fa("تاریخ صدور") + ": ", f"{jnow} ({stamp:%Y-%m-%d})"),
-            (_fa("بازه کانفیگ‌ها") + ": ", _fa(span)),
+            (span_label, span_value),
         ]
         yy = y - 3 * mm
         for label, val in rows_meta:
@@ -6527,7 +6705,8 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
     cards = [
         (_fa("تعداد کانفیگ"), str(t["configs"]),
          _fa(f"{t['active']} فعال · {t['inactive']} غیرفعال")),
-        (_fa("مجموع ماه"), str(t["months"]), _fa("دوره اول + تمدیدها")),
+        (_fa("مجموع ماه"), str(t["months"]),
+         _fa("در این بازه" if since_j else "دوره اول + تمدیدها")),
         (_fa("تعداد تمدید"), str(t["renewals"]),
          _fa("نرخ تمدید") + f" {t['renewalRate']}٪"),
         (_fa("ترافیک مصرفی"), f"{t['usedGB']:,.0f} GB",
@@ -6748,14 +6927,27 @@ def billing_invoice_pdf(group_key: str, x_admin_password: str = Header(...)):
     c.drawRightString(W - MR - 4 * mm, y - 4 * mm, _fa("روش محاسبه"))
     c.setFont(F, 7.8)
     y -= 10 * mm
-    for m in [
+    _how = [
         "پنل ۳x-ui تاریخچه‌ی تمدید نگه نمی‌دارد. تنها اثر تمدید این است که تاریخ انقضا",
         "جلو می‌رود در حالی که تاریخ ایجاد ثابت می‌ماند. بنابراین:",
         "مدت اشتراک = تاریخ انقضا منهای تاریخ ایجاد",
         "تعداد ماه = گِردشده‌ی مدت تقسیم بر ۳۰، حداقل ۱",
         "تعداد تمدید = تعداد ماه منهای یک",
         "مبلغ هر کانفیگ = تعداد ماه ضربدر نرخ حجم آن پلن",
-    ]:
+    ]
+    if since_j:
+        # بدون این خط، واسطه فقط می‌بیند که عددها از فاکتور قبلی
+        # کمترند و دلیلش را نمی‌داند.
+        _how += [
+            f"این فاکتور فقط از {since_j} به بعد را حساب کرده"
+            f" ({inv.get('sinceWhy') or 'بازه انتخابی'}).",
+        ]
+        if t.get("before"):
+            _how += [
+                f"{t['before']} کانفیگ که تمام ماه‌هایشان پیش از این تاریخ بوده"
+                f" ({t.get('beforeMonths', 0)} ماه) روی این فاکتور نیامده‌اند.",
+            ]
+    for m in _how:
         c.setFillColor(GREY)
         c.drawRightString(W - MR - 4 * mm, y, _fa(m))
         y -= 5 * mm
@@ -6848,6 +7040,13 @@ def billing_period(group_key: str, start: str = "", end: str = "",
             rates = []
         logged_rows = [dict(r) for r in bcon.execute(
             "SELECT email, months, created_at FROM renewals")]
+        logged = {r["email"]: r["m"] for r in bcon.execute(
+            "SELECT email, COALESCE(SUM(months),0) m FROM renewals GROUP BY email")}
+        try:
+            seen = {r["email"]: r["first_seen"] for r in bcon.execute(
+                "SELECT email, first_seen FROM client_seen")}
+        except Exception:
+            seen = {}
         pays = [dict(r) for r in bcon.execute(
             "SELECT * FROM payments WHERE group_key=? ORDER BY paid_at", (group_key,))]
     finally:
@@ -6917,7 +7116,17 @@ def billing_period(group_key: str, start: str = "", end: str = "",
                 "usedGB": round(cl["used"] / (1024 ** 3), 1),
             })
 
-        for rdate, kind in _renewal_dates(cl, logged_rows):
+        # تعداد از همان جایی می‌آید که صورتحساب کلی می‌شمارد.
+        #
+        # وقتی این‌جا مستقل شمرده می‌شد، کانفیگی با سابقه‌ی طولانی و
+        # یک تمدیدِ ثبت‌شده در صفحه‌ی دوره یک تمدید داشت و در
+        # صورتحساب بیست‌وچند ماه — دو عدد از یک واقعیت.
+        _months, _kind, _drift = _months_for(
+            cl, logged, since=conf.get("period_start"),
+            first_seen=seen.get(cl["email"]))
+        for rdate, kind in _renewal_dates(
+                cl, logged_rows, _months, since=conf.get("period_start"),
+                first_seen=seen.get(cl["email"])):
             if settled and rdate < settled:
                 continue
             if in_period(rdate):

@@ -4,6 +4,56 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.26.0]
+
+### Fixed — The invoice billed renewals that had already been paid for
+
+Reported against a real invoice: a reseller who had settled up was billed again,
+this month, for the same renewals.
+
+`billing_invoice` — which the PDF is built from — read no date at all. It counted
+every month of every config's life, every time, and subtracted every payment ever
+made. For a config created 400 days ago that gets renewed monthly, that is 14
+months on an invoice that should show 3.
+
+The date was already in the database. `settled_until` (تسویه‌شده تا) and
+`period_start` (شروع همکاری) were both being stored, and the صورتحساب دوره screen
+honoured them. The invoice and the PDF — the document that actually reaches the
+reseller — did not look at either.
+
+They do now, under one rule shared by every screen: an explicitly picked date
+first, then تسویه‌شده تا, then شروع همکاری, then the whole history if none is set.
+Only months dated on or after that point are billed, and payments are cut at the
+same date so money from a settled period cannot turn into credit against the new
+one. Configs whose every month falls before the date leave the table and are
+counted in a line that says so, because an invoice that is short for a good reason
+should say the reason itself.
+
+صورتحساب has a date field for one-off invoices that do not match the group's own
+setting, and says which default is in effect when it is left empty. The PDF prints
+the period at the top and explains, at the bottom, what it left out.
+
+### Fixed — Renewals were counted twice over, two different ways
+
+Two functions counted renewals independently and disagreed.
+
+`_renewal_dates` threw away its estimate as soon as it found a single logged
+renewal, so a config with two years of history and one logged renewal was 25 months
+on the invoice and one renewal on the period screen. It also counted a logged
+three-month renewal as one renewal, dropping two months of billing.
+
+Counting now happens in one place. `_months_for` decides how many months a config
+has; `_renewal_dates` only assigns dates to them, filling the earliest slots with
+estimates because logging only started the day Nexora was installed — the logged
+renewals are always the recent ones. Both read their origin date from the same
+helper, so the two numbers cannot drift apart again.
+
+### Fixed — The «حجم بدون نرخ» warning could never appear
+
+The invoice returned a count where the screen read a list, so `.length` was
+`undefined` and the warning was skipped in silence — on exactly the screen where
+an unpriced config means money not being charged. It returns the volumes now.
+
 ## [1.25.1]
 
 ### Fixed — The Jalali date picker would not open

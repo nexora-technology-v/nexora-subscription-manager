@@ -97,7 +97,6 @@ check("نرخ با مقدار غیرعددی نادیده گرفته می‌شو
 check("همه‌ی نرخ‌ها خراب", price_for(50, [{"gb": "x", "price": "y"}]) is None)
 
 print(f"\n{D}{'─' * 46}{X}")
-color = G if not _fail else R
 # ═══════════════════════════════════════════════════════════
 head("«بدون نرخ» باید بگوید چرا")
 
@@ -242,6 +241,50 @@ check("تقویم از کادر والد بیرون می‌زند", 'position: "
 check("و اگر پایین جا نباشد رو به بالا باز می‌شود", "const up =" in JD)
 
 
+head("صورتحساب از یک تاریخ به بعد")
+
+check("مبدأ صورتحساب یک قاعده‌ی مشترک دارد", "def _bill_since(" in APP,
+      "تسویه‌شده تا، بعد شروع همکاری — نه هر جا یک تصمیم جدا")
+check("صورتحساب تاریخ می‌گیرد", "def billing_invoice(group_key: str, start" in APP)
+check("و PDF هم همان را می‌گیرد",
+      "def billing_invoice_pdf(group_key: str, start" in APP)
+check("PDF تاریخ را به صورتحساب پاس می‌دهد",
+      "billing_invoice(group_key, start=start," in APP)
+check("ردیف‌های پیش از مبدأ کنار می‌روند، نه بی‌صدا",
+      '"before": before_configs' in APP and '"beforeMonths"' in APP,
+      "فاکتور کوتاه باید خودش بگوید چرا کوتاه است")
+check("پرداختی هم با همان تاریخ بریده می‌شود",
+      "AND COALESCE(paid_at,'') >= ?" in APP,
+      "وگرنه پول دوره‌ی تسویه‌شده، اعتبارِ دوره‌ی تازه می‌شود")
+check("عمر کامل هم گزارش می‌شود", '"totalMonths": months' in APP,
+      "تا معلوم باشد چقدرش قبلاً حساب شده")
+check("PDF بازه را بالای کاغذ می‌نویسد", "بازه صورتحساب" in APP,
+      "واسطه باید در نگاه اول ببیند این فاکتور یک دوره است")
+
+check("شمارش تمدید و تاریخ‌گذاری‌اش یک مبدأ دارند",
+      "def _start_ms(" in APP and "created, source = _start_ms(" in APP)
+check("تعداد تمدیدها از _months_for می‌آید",
+      "def _renewal_dates(cl, logged_rows, months=None" in APP,
+      "قبلاً هر کدام مستقل می‌شمردند و دو عدد می‌دادند")
+check("تمدید چندماهه چند ماه حساب می‌شود",
+      'real.extend([(d, "قطعی")] * n)' in APP,
+      "تمدید سه‌ماهه سه ماه صورتحساب است، نه یکی")
+check("صفحه‌ی دوره هم از همان تعداد استفاده می‌کند",
+      "cl, logged_rows, _months, since=conf.get" in APP)
+
+check("پنل فیلد «حساب کن از تاریخ» دارد", "حساب کن از تاریخ" in UI)
+check("و تاریخ را به هر دو دکمه می‌فرستد",
+      UI.count("fetch(url + q") == 2,
+      "بیرون از قالب مسیر می‌چسبد تا تست درز، مسیر جعلی نبیند")
+check("وقتی تاریخی زده نشده، می‌گوید پیش‌فرض چیست",
+      "const autoFrom =" in UI,
+      "فاکتورِ کوتاه نباید غافلگیرکننده باشد")
+check("حجم‌های بی‌نرخ دیگر یک عدد نیستند",
+      '"unpricedVolumes": sorted({l["gb"]' in APP,
+      "رابط روی .length و .map صدا می‌زد، پس هشدار هرگز دیده نمی‌شد")
+
+
+color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)
