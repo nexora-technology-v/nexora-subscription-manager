@@ -4,6 +4,26 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.32.1]
+
+### Fixed — A test that failed roughly one run in three hundred
+
+The 1.32.0 tag build failed on a check asserting that the digits `555` do not
+appear in a generated subscription id. The random half of that id is sixteen hex
+characters, and `555` turns up in about 0.33% of them by chance — one run in
+three hundred, with nothing wrong.
+
+The property that matters is that the id is not derivable, not that a particular
+string is absent. It now checks that the old `prefix_tgid_seq` shape is gone —
+deterministic, because hex contains no underscore — and that generating an id
+twice from the same input gives two different answers, which is the actual reason
+scanning cannot work. Both still fail if `make_sub_id` returns the email again,
+and twenty-five consecutive runs are clean.
+
+Second flaky test of mine caught this way today. The other put its fixture on an
+exact rounding boundary; this one asserted something about random data. Both
+passed locally and failed on CI.
+
 ## [1.32.0]
 
 ### Fixed — "None of these are customers" and "I could not tell" looked the same
