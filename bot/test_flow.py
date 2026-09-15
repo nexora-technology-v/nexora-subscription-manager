@@ -968,6 +968,48 @@ for _path in ("wallet_pay", "approve_order", "auto_renew_subscription"):
           "یکی از این دو بدون دیگری یعنی یک وعده‌ی نگه‌داشته‌نشده")
 
 
+# ═══════════════════════════════════════════════════════════
+section("هر رویدادِ پولی باید در گروه مدیریت دیده شود")
+
+# شارژ کیف پول، تمدید خودکار و خریدِ کارتی (که با رسیدش می‌آید) هر
+# کدام خودشان را به گروه اعلام می‌کنند. خریدِ کیف‌پولی تنها موردی بود
+# که هیچ ردی نداشت — و چون تاییدِ ادمین هم نمی‌خواهد، کل آن روشِ
+# پرداخت در لحظه نامرئی بود.
+
+_ntg, _nadmin = 992, tenant.get("admin_group_id")
+check("گروه مدیریت تنظیم است", bool(_nadmin), str(_nadmin))
+
+H.dispatch(tenant, bot, up_msg(_ntg, "/start", "خریدار"))
+_nu = D.get_user(_ntg)
+D.add_balance(_nu["id"], 1_000_000, "topup", "شارژ تست")
+
+SENT.clear()
+H.wallet_pay(H.Ctx(bot, tenant), D.get_user(_ntg), _ntg, None, plan["id"])
+
+_to_group = [m for m in SENT if m.get("to") == _nadmin]
+check("گروه مدیریت خبردار می‌شود", len(_to_group) >= 1,
+      f"{len(_to_group)} پیام به گروه")
+_txt = " ".join(m.get("text") or "" for m in _to_group)
+check("و پیام می‌گوید خرید با کیف پول بوده", "کیف پول" in _txt,
+      _txt[:60] or "—")
+check("نام پلن در پیام هست", plan["name"] in _txt)
+check("مبلغ هم در پیام هست",
+      core.toman(plan["price"]) in _txt.replace("،", "،"),
+      core.toman(plan["price"]))
+check("و مشتری هم شناسایی می‌شود", str(_ntg) in _txt)
+
+# تمدید با کیف پول باید از خرید تازه قابل تشخیص باشد
+_nsub = D.q("SELECT * FROM subscriptions WHERE tenant_id=? AND user_id=? "
+            "ORDER BY id DESC LIMIT 1", (tid, _nu["id"]), one=True)
+SENT.clear()
+H.wallet_pay(H.Ctx(bot, tenant), D.get_user(_ntg), _ntg, None, plan["id"],
+             renew_sub_id=_nsub["id"])
+_txt2 = " ".join(m.get("text") or "" for m in SENT
+                 if m.get("to") == _nadmin)
+check("تمدیدِ کیف‌پولی هم اعلام می‌شود", bool(_txt2.strip()))
+check("و «تمدید» بودنش مشخص است", "تمدید" in _txt2, _txt2[:60] or "—")
+
+
 # و هیچ مسیر تازه‌ای نباید دوباره خام approved بنویسد.
 #
 # این الگو سه بار پیدا شد: کیف پول، تمدید خودکار، و تست رایگان. هر
