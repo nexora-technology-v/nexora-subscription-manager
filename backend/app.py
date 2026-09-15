@@ -10126,6 +10126,48 @@ def _portal_new_email(t, taken):
     raise HTTPException(status_code=500, detail="ساخت نام یکتا ممکن نشد")
 
 
+def _portal_inbound_ids(t, inbound):
+    """
+    اینباندهایی که کانفیگِ این نماینده باید رویشان بنشیند.
+
+    برمی‌گرداند: فهرست، یا None یعنی «همه‌ی اینباندهای فعال» — که
+    تصمیمش با خود کلاینت x-ui است.
+
+    این دقیقاً همان قاعده‌ای است که ربات اجرا می‌کند
+    (`bot/handlers.py`، جایی که `inbound_mode` خوانده می‌شود). دو
+    پیاده‌سازی‌اند چون دو پردازه‌ی جدا هستند، پس تست برابری‌شان را
+    اجرا می‌کند.
+
+    چرا لازم شد: انتخابِ اینباندِ هر نماینده اضافه شد و ربات آن را
+    می‌خواند — ولی پنلِ خودِ نماینده نه. یعنی مالک می‌گفت «کانفیگ‌های
+    این نماینده روی اینباند ۴۱ و ۴۵»، نماینده از پنل خودش کانفیگ
+    می‌ساخت، و روی اینباند پیش‌فرض می‌نشست. بی‌صدا و بدون هیچ خطایی.
+    """
+    mode = (t.get("inbound_mode") or "all").strip().lower()
+
+    if mode == "custom":
+        raw = t.get("inbound_ids")
+    elif mode == "default":
+        raw = json.dumps([inbound]) if inbound else None
+    else:
+        return None
+
+    if not raw:
+        return None
+    try:
+        ids = json.loads(raw) if isinstance(raw, str) else raw
+    except (json.JSONDecodeError, TypeError):
+        ids = [x.strip() for x in str(raw).split(",") if x.strip()]
+
+    out = []
+    for x in (ids or []):
+        try:
+            out.append(int(x))
+        except (TypeError, ValueError):
+            continue
+    return out or None
+
+
 def _portal_inbound(t):
     """اینباندی که کانفیگ روی آن ساخته می‌شود."""
     ib = t.get("default_inbound")
@@ -10223,7 +10265,8 @@ def portal_create(payload: dict, t: dict = Depends(portal_tenant)):
         # گروه از ردیف مستاجر می‌آید، نه از درخواست. این تنها جایی
         # است که تعیین می‌کند کانفیگ تازه مال کیست.
         client = xui.add_client(inbound, email, gb=gb, days=months * 30,
-                                ip_limit=devices, group=group)
+                                ip_limit=devices, group=group,
+                                inbound_ids=_portal_inbound_ids(t, inbound))
     except Exception as e:
         _portal_refund(t, amount)
         raise HTTPException(status_code=502,

@@ -797,8 +797,10 @@ check("و کانفیگی ساخته نمی‌شود", not _MakeXUI.made,
 
 APP_SRC2 = io.open(os.path.join(str(ROOT), "backend", "app.py"),
                    encoding="utf-8").read()
+# به «group=group» بند است، نه به پرانتزِ بعدش: افزودن یک آرگومانِ
+# تازه به همان فراخوانی نباید تستی را قرمز کند که درباره‌ی گروه است.
 check("گروه در ساخت از _portal_group می‌آید",
-      "group=group)" in APP_SRC2 and "group = _portal_group(t)" in APP_SRC2)
+      "group=group" in APP_SRC2 and "group = _portal_group(t)" in APP_SRC2)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1879,6 +1881,88 @@ check("و برعکسش هم", _sales["sold"] == 650000)
 _none = AP._portal_sales(999999, _first)
 check("نماینده‌ی بدون ربات صفر می‌گیرد، نه خطا",
       _none["hasBot"] is False and _none["orders"] == 0, str(_none)[:60])
+
+
+# ═══════════════════════════════════════════════════════════
+head("پنل نماینده و ربات باید یک اینباند را انتخاب کنند")
+
+# انتخابِ اینباندِ هر نماینده اضافه شد و ربات آن را می‌خواند — ولی
+# پنلِ خودِ نماینده نه. یعنی مالک می‌گفت «کانفیگ‌های این نماینده روی
+# اینباند ۴۱ و ۴۵»، نماینده از پنل خودش کانفیگ می‌ساخت، و روی
+# اینباند پیش‌فرض می‌نشست. بی‌صدا و بدون هیچ خطایی.
+#
+# دو پیاده‌سازی‌اند چون دو پردازه‌ی جدا هستند. این تست برابری‌شان را
+# اجرا می‌کند.
+
+
+def _bot_rule(t, inbound):
+    """همان منطقِ bot/handlers.py، برای مقایسه."""
+    import json as _j
+    mode = t.get("inbound_mode") or "all"
+    raw = None
+    if mode == "custom":
+        raw = t.get("inbound_ids")
+    elif mode == "default":
+        raw = _j.dumps([inbound]) if inbound else None
+    if not raw:
+        return None
+    try:
+        ids = _j.loads(raw) if isinstance(raw, str) else raw
+    except Exception:      # noqa: BLE001
+        ids = [x.strip() for x in str(raw).split(",") if x.strip()]
+    out = []
+    for x in (ids or []):
+        try:
+            out.append(int(x))
+        except (TypeError, ValueError):
+            continue
+    return out or None
+
+
+_CASES = [
+    ({"inbound_mode": "all", "inbound_ids": None}, 28),
+    ({"inbound_mode": "all", "inbound_ids": "[41]"}, 28),
+    ({"inbound_mode": "default", "inbound_ids": None}, 28),
+    ({"inbound_mode": "default", "inbound_ids": "[41,45]"}, 28),
+    ({"inbound_mode": "custom", "inbound_ids": "[41,45]"}, 28),
+    ({"inbound_mode": "custom", "inbound_ids": "[]"}, 28),
+    ({"inbound_mode": "custom", "inbound_ids": None}, 28),
+    ({"inbound_mode": "custom", "inbound_ids": "چرند"}, 28),
+    ({"inbound_mode": None, "inbound_ids": "[41]"}, 28),
+    ({"inbound_mode": "default", "inbound_ids": None}, 0),
+]
+
+_diff = []
+for _t, _inb in _CASES:
+    _a = AP._portal_inbound_ids(_t, _inb)
+    _b = _bot_rule(_t, _inb)
+    if _a != _b:
+        _diff.append(f"{_t['inbound_mode']}/{_t['inbound_ids']} → "
+                     f"پنل {_a} در برابر ربات {_b}")
+
+check("هر ده حالت در هر دو یکی جواب می‌دهد", not _diff,
+      "، ".join(_diff) if _diff else f"{len(_CASES)} حالت سنجیده شد")
+
+# و چند نتیجه‌ی مشخص، تا برابریِ «هر دو غلط» بی‌معنی سبز نشود
+check("حالت all یعنی همه‌ی اینباندهای فعال",
+      AP._portal_inbound_ids({"inbound_mode": "all"}, 28) is None,
+      "None یعنی تصمیم با خود x-ui")
+check("حالت custom همان‌هایی را می‌دهد که انتخاب شده",
+      AP._portal_inbound_ids(
+          {"inbound_mode": "custom", "inbound_ids": "[41,45]"}, 28) == [41, 45])
+check("حالت default فقط اینباند پیش‌فرض",
+      AP._portal_inbound_ids({"inbound_mode": "default"}, 28) == [28])
+check("و custom با فهرست خالی به all برمی‌گردد، نه فهرست تهی",
+      AP._portal_inbound_ids(
+          {"inbound_mode": "custom", "inbound_ids": "[]"}, 28) is None,
+      "فهرست تهی به x-ui یعنی هیچ اینباندی — کانفیگ به هیچ‌جا وصل نمی‌شود")
+
+# و واقعا به x-ui پاس داده می‌شود
+_apsrc2 = io.open(os.path.join(str(ROOT), "backend", "app.py"),
+                  encoding="utf-8").read()
+check("و موقع ساخت کانفیگ به پنل x-ui داده می‌شود",
+      "inbound_ids=_portal_inbound_ids(t, inbound)" in _apsrc2,
+      "حساب‌کردنش بدون پاس‌دادنش بی‌فایده است")
 
 
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
