@@ -230,6 +230,135 @@ _sk.gethostbyname = _real_ghn
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("هشدار سلامت — به چه کسی، و چه وقت")
+
+# این تنها راهی است که مالک می‌فهمد سرورش مشکل دارد. دو ایراد داشت و
+# هر دو به سکوت یا به آدرس اشتباه ختم می‌شدند.
+
+import json as _json          # noqa: E402
+import sqlite3 as _sq         # noqa: E402
+import urllib.request as _ur  # noqa: E402
+
+_APPTMP = tempfile.mkdtemp()
+_spec = importlib.util.spec_from_file_location(
+    "nxapp_alert", os.path.join(ROOT, "backend", "app.py"))
+_AP = importlib.util.module_from_spec(_spec)
+sys.modules["nxapp_alert"] = _AP
+_spec.loader.exec_module(_AP)
+_AP.BOT_DB = Path(_APPTMP) / "bot.db"
+
+_sent = []
+
+
+def _fake_urlopen(req, timeout=None):
+    _sent.append({"url": req.full_url,
+                  "body": _json.loads(req.data.decode("utf-8"))})
+
+    class _R:
+        def read(self_):
+            return b"{}"
+
+        def __enter__(self_):
+            return self_
+
+        def __exit__(self_, *a):
+            return False
+    return _R()
+
+
+_ur.urlopen = _fake_urlopen
+
+
+def _tenants(rows):
+    """بازسازی جدول مستاجرها با ردیف‌های داده‌شده."""
+    c = _sq.connect(str(_AP.BOT_DB))
+    c.execute("DROP TABLE IF EXISTS tenants")
+    c.execute("""CREATE TABLE tenants (id INTEGER PRIMARY KEY, name TEXT,
+                 parent_id INTEGER, bot_token TEXT, admin_id INTEGER,
+                 group_id INTEGER)""")
+    c.executemany("INSERT INTO tenants VALUES (?,?,?,?,?,?)", rows)
+    c.commit()
+    c.close()
+
+
+def _fire(key, level):
+    _AP._health_alert("سرور تست", {"level": level, "summary": "خلاصه",
+                                   "checks": []}, key=key)
+
+
+# ── سروری که از همان ابتدا خراب است ──
+#
+# وضعیت در حافظه‌ی همین پردازه است، پس هر ری‌استارت پاکش می‌کند — و
+# `nexora update` هر بار ری‌استارت می‌کند. قبلاً اولین مشاهده ساکت
+# بود و بقیه هم چون سطح عوض نشده بود ساکت می‌ماندند: دیسک تا ابد پر
+# و هیچ پیامی.
+_tenants([(1, "owner", None, "OWNER", 111, -100)])
+_AP._health_state.clear()
+_sent.clear()
+for _ in range(3):
+    _fire("boot", "crit")
+check("سرورِ خراب از لحظه‌ی بالا آمدن خبر می‌دهد", len(_sent) == 1,
+      f"{len(_sent)} پیام — یکی، نه صفر و نه سه تا")
+
+# ── سرور سالم هیچ پیامی نمی‌سازد ──
+_AP._health_state.clear()
+_sent.clear()
+_fire("quiet", "ok")
+_fire("quiet", "ok")
+check("ری‌استارتِ سرور سالم پیام نمی‌سازد", not _sent,
+      f"{len(_sent)} پیام")
+
+# ── گذارها ──
+_AP._health_state.clear()
+_sent.clear()
+for _lvl in ("ok", "warn", "warn", "crit", "ok"):
+    _fire("flow", _lvl)
+check("فقط گذارها خبر می‌شوند", len(_sent) == 3,
+      "ok→warn، warn→crit، crit→ok")
+check("و پیام بازگشت هم می‌آید",
+      any("برطرف" in m["body"]["text"] for m in _sent))
+
+# ── با کدام ربات، و به کدام گروه ──
+#
+# اگر ردیف مالک یک‌بار پاک و دوباره ساخته شود — که با اجرای دوباره‌ی
+# نصب اتفاق می‌افتد — شناسه‌اش از شناسه‌ی نماینده بزرگ‌تر می‌شود.
+# بدون شرط parent_id، هشدارِ سرورِ مالک با رباتِ نماینده و به گروهِ
+# نماینده می‌رفت.
+_tenants([(2, "reseller", 1, "RESELLER", 222, -200),
+          (9, "owner", None, "OWNER", 111, -100)])
+_AP._health_state.clear()
+_sent.clear()
+_fire("who", "crit")
+check("هشدار با رباتِ مالک فرستاده می‌شود",
+      len(_sent) == 1 and "OWNER" in _sent[0]["url"],
+      _sent[0]["url"].split("/bot")[-1].split("/")[0] if _sent else "هیچ")
+check("و به گروهِ مالک، نه نماینده",
+      len(_sent) == 1 and _sent[0]["body"]["chat_id"] == -100,
+      str(_sent[0]["body"]["chat_id"]) if _sent else "هیچ")
+
+# ── گروه که نباشد، به خودِ مدیر ──
+_tenants([(1, "owner", None, "OWNER", 111, None)])
+_AP._health_state.clear()
+_sent.clear()
+_fire("dm", "warn")
+check("بدون گروه، پیام به شناسه‌ی مدیر می‌رود",
+      len(_sent) == 1 and _sent[0]["body"]["chat_id"] == 111,
+      str(_sent[0]["body"]["chat_id"]) if _sent else "هیچ")
+
+# ── بدون توکن، بی‌صدا رد می‌شود و نمی‌ترکد ──
+_tenants([(1, "owner", None, None, 111, -100)])
+_AP._health_state.clear()
+_sent.clear()
+try:
+    _fire("notoken", "crit")
+    _crashed = False
+except Exception as _e:
+    _crashed = str(_e)
+check("نبودِ توکن ربات خطا نمی‌دهد", not _crashed and not _sent,
+      _crashed or "بدون پیام، بدون خطا")
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

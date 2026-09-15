@@ -8733,16 +8733,30 @@ def _sysmon_fresh(node_id):
 
 def _health_alert(server, data, key):
     """
-    هشدار تلگرام — فقط وقتی وضعیت عوض شود.
+    هشدار تلگرام — وقتی وضعیت عوض شود، و اولین باری که خراب است.
 
-    اگر هر بار پیام بدهیم، بعد از چند ساعت کسی نگاهشان نمی‌کند.
-    پس فقط گذار از سالم به مشکل‌دار، و برگشتش، خبر می‌شود.
+    اگر هر بار پیام بدهیم، بعد از چند ساعت کسی نگاهشان نمی‌کند. پس
+    تکرارِ همان سطح خبر نمی‌شود.
+
+    ولی «اولین مشاهده» را هم ساکت گذاشتن یک سوراخ واقعی می‌ساخت:
+    وضعیت در حافظه‌ی همین پردازه نگه داشته می‌شود، پس هر ری‌استارت
+    پنل آن را پاک می‌کند — و `nexora update` هر بار ری‌استارت می‌کند.
+
+    اگر سروری با دیسک پر بالا می‌آمد، اجرای اول فقط ثبت می‌کرد و
+    ساکت می‌ماند؛ اجراهای بعدی هم چون سطح عوض نشده بود ساکت
+    می‌ماندند. دیسک تا ابد پر و هیچ پیامی. برای سامانه‌ای که تنها
+    کارش خبردادن است، بدترین حالت ممکن.
+
+    حالا اولین مشاهده هم خبر می‌شود، ولی فقط وقتی «ok» نباشد — پس
+    ری‌استارتِ سرورِ سالم هیچ پیامی نمی‌سازد.
     """
     level = data.get("level", "ok")
     prev = _health_state.get(key)
     _health_state[key] = level
 
-    if prev is None or prev == level:
+    if prev == level:
+        return
+    if prev is None and level == "ok":
         return
 
     crit = [c for c in data.get("checks", []) if c.get("level") == "crit"]
@@ -8764,8 +8778,18 @@ def _health_alert(server, data, key):
         import sqlite3 as sq
         con = sq.connect(f"file:{BOT_DB}?mode=ro", uri=True, timeout=5)
         con.row_factory = sq.Row
+        # مستاجر ریشه، نه هر ردیفی که اول بیاید.
+        #
+        # بدون این شرط، اگر ردیف مالک یک‌بار پاک و دوباره ساخته شود —
+        # که با اجرای دوباره‌ی نصب اتفاق می‌افتد — شناسه‌اش بزرگ‌تر از
+        # شناسه‌ی نماینده می‌شود و LIMIT 1 نماینده را برمی‌دارد.
+        #
+        # آن‌وقت هشدارِ سرورِ مالک با رباتِ نماینده و به گروهِ نماینده
+        # فرستاده می‌شود: دیسک پر، سرویس خاموش، انقضای گواهی و نام
+        # میزبان‌ها می‌رود دست شخص سوم، و مالک هیچ خبری نمی‌گیرد.
         r = con.execute(
-            "SELECT bot_token, admin_id, group_id FROM tenants LIMIT 1").fetchone()
+            "SELECT bot_token, admin_id, group_id FROM tenants "
+            "WHERE parent_id IS NULL ORDER BY id LIMIT 1").fetchone()
         con.close()
         if not r or not r["bot_token"]:
             return

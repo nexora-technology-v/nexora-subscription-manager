@@ -4,6 +4,48 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.30.0]
+
+### Fixed — A server that was already broken never reported it
+
+Health alerts fire on a change of level. The state lives in the panel process's
+memory, so every restart clears it — and `nexora update` restarts the panel every
+time.
+
+That made the first observation after a restart silent by design, and every
+observation after it silent too, because the level had not changed. A server that
+came up with a full disk stayed critical forever and sent nothing. For the one
+mechanism whose entire job is to tell you something is wrong, the worst possible
+failure.
+
+The first observation now sends, but only when it is not `ok`, so restarting a
+healthy server still says nothing. Repeats at the same level stay suppressed, and
+recovery still reports.
+
+### Fixed — The owner's server alerts could go to a reseller
+
+The alert picked its bot with `SELECT bot_token, admin_id, group_id FROM tenants
+LIMIT 1` — no filter, no ordering. It lands on the owner only because the owner
+usually holds the lowest row id.
+
+Delete and recreate the owner's tenant row, which is what re-running setup does,
+and the owner's id is now higher than a reseller's. The alert then goes out
+through the *reseller's* bot, to the *reseller's* group: full disk, stopped
+service, certificate expiry and hostnames handed to a third party, while the
+owner is told nothing.
+
+It selects the root tenant now, the same rule already used for subscription base
+URLs and bot income.
+
+### Checked and sound
+
+Read both monitoring modules closely. `_level` is used with higher-is-worse
+semantics at all ten call sites, including disk, which uses percent used rather
+than percent free. `memory()` prefers `MemAvailable` over `MemFree`, which is the
+difference between a real reading and every server looking exhausted. Network
+rates handle the first sample, a missing interface and counter decreases without
+producing negative or absurd numbers. Nothing needed changing there.
+
 ## [1.29.2]
 
 ### Added — Guards for the three ways the subscription page breaks for everyone
