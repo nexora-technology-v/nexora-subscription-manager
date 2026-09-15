@@ -4,6 +4,28 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.28.1]
+
+### Fixed — `nexora import-topups` refused its own arguments
+
+    $ nexora import-topups --apply
+    error: unrecognized arguments: import-topups
+
+`case "$1" in` does not consume the argument, so without a `shift` the command
+name stays in `"$@"` and reaches the script. The other tool commands shift; this
+one did not. It also now passes the install directory's database paths
+explicitly, the way `nexora reseller` does, instead of letting the tool guess.
+
+A seam test now checks every CLI branch that forwards `"$@"`: it must either
+shift first or discard its own name explicitly, which is how `rollback` handles
+it. The first version of that test passed with the bug still present, because
+the comment above the line contained the word "shift" — it strips comments
+before scanning now. A test that can be fooled by the explanation next to the
+code protects nothing.
+
+It also verifies every tool the CLI invokes exists, and that each tool command
+appears in the help text.
+
 ## [1.28.0]
 
 Every place in the codebase that counts money was checked against every other

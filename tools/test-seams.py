@@ -804,6 +804,83 @@ if unbound:
 
 
 # ═══════════════════════════════════════════════════════════
+head("درز · CLI ↔ ابزارها")
+
+# `case "$1" in` آرگومان‌ها را جابه‌جا نمی‌کند: بدون shift، نامِ خودِ
+# دستور هم داخل "$@" می‌ماند و به اسکریپت می‌رسد.
+#
+#     $ nexora import-topups --apply
+#     error: unrecognized arguments: import-topups
+#
+# دستور کاملاً سالم به نظر می‌رسد و فقط موقع اجرای واقعی می‌شکند —
+# یعنی دست کاربر، نه این‌جا.
+
+CLI = io.open(os.path.join(ROOT, "nexora-cli.sh"), encoding="utf-8").read()
+
+#: هر شاخه‌ی case، از برچسبش تا ;;
+_branches = re.findall(r'\n  ([a-z][a-z|_-]*\))\n(.*?)\n    ;;',
+                       CLI, re.S)
+check("شاخه‌های CLI استخراج شدند", len(_branches) > 10,
+      f"{len(_branches)} شاخه")
+
+def _code_only(body):
+    """
+    بدنه بدون کامنت‌ها.
+
+    اولین نسخه‌ی این تست کامنت‌ها را هم می‌خواند و برای همین وقتی
+    shift را عمداً برداشتم، همچنان سبز ماند: کامنتِ بالای همان خط
+    کلمه‌ی «shift» را داشت. تستی که با توضیحِ کنارِ کد فریب بخورد،
+    چیزی را محافظت نمی‌کند.
+    """
+    out = []
+    for ln in body.split("\n"):
+        cut = ln.find("#")
+        out.append(ln if cut < 0 else ln[:cut])
+    return "\n".join(out)
+
+
+_noshift = []
+for _label, _body in _branches:
+    _code = _code_only(_body)
+    if '"$@"' not in _code:
+        continue
+    _name = _label.rstrip(")")
+    # دو راه درست وجود دارد و هر دو قبول است:
+    #   ۱. shift پیش از اولین استفاده از "$@"
+    #   ۲. خودِ نام صریح دور انداخته شود — کاری که rollback می‌کند،
+    #      چون روی "$@" حلقه می‌زند و `rollback) ;;` را نادیده
+    #      می‌گیرد
+    _at = _code.index('"$@"')
+    if "shift" in _code[:_at]:
+        continue
+    if any(f"{alt})" in _code for alt in _name.split("|")):
+        continue
+    _noshift.append(_name)
+
+check("نام خودِ دستور به ابزار نمی‌رسد", not _noshift,
+      "، ".join(_noshift) if _noshift
+      else "یا shift می‌کنند یا نامشان را صریح دور می‌اندازند")
+if _noshift:
+    bullets(_noshift)
+
+# هر ابزاری که CLI صدا می‌زند باید واقعاً وجود داشته باشد
+_called = set(re.findall(r'tools/([a-z0-9-]+\.py)', CLI))
+_missing = [t for t in sorted(_called)
+            if not os.path.exists(os.path.join(ROOT, "tools", t))]
+check("هر ابزاری که CLI صدا می‌زند وجود دارد", not _missing,
+      "، ".join(_missing) if _missing else f"{len(_called)} ابزار")
+if _missing:
+    bullets(_missing)
+
+# و در راهنما دیده شود، وگرنه کسی پیدایش نمی‌کند
+_help = CLI[CLI.rfind("nexora update"):] if "nexora update" in CLI else CLI
+_cmds = {"reseller", "billing-why", "fix-flow", "import-topups"}
+_unlisted = [c for c in sorted(_cmds) if f"nexora {c}" not in CLI]
+check("دستورهای ابزاری در راهنما فهرست شده‌اند", not _unlisted,
+      "، ".join(_unlisted) if _unlisted else "، ".join(sorted(_cmds)))
+
+
+# ═══════════════════════════════════════════════════════════
 print(f"\n{D}{'─' * 54}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

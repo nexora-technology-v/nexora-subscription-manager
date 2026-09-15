@@ -873,7 +873,12 @@ PY
     # اعتبار می‌نشستند و به حسابداری نمی‌رسیدند. بدون آرگومان فقط
     # نشان می‌دهد چه چیزی وارد می‌شود؛ با --apply می‌نویسد.
     if [ -f "$INSTALL_DIR/tools/import-topups.py" ]; then
-      python3 "$INSTALL_DIR/tools/import-topups.py" "$@"
+      # shift لازم است: case روی "$1" است و بدون آن، نام خودِ دستور
+      # هم به‌عنوان آرگومان به اسکریپت می‌رسد و argparse ردش می‌کند.
+      shift
+      BOT_DB_PATH="$INSTALL_DIR/data/bot.db" \
+      BILLING_DB_PATH="$INSTALL_DIR/data/billing.db" \
+        python3 "$INSTALL_DIR/tools/import-topups.py" "$@"
     else
       err "tools/import-topups.py پیدا نشد — اول nexora update بزنید"
       exit 1
