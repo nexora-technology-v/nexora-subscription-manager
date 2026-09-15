@@ -92,6 +92,12 @@ spec.loader.exec_module(APP)
 
 from pathlib import Path  # noqa: E402
 APP.BILLING_DB = Path(TMP) / "billing.db"
+# دیتابیس ربات هم باید مالِ همین اجرا باشد.
+#
+# مسیر پیش‌فرضش نسبی است (`../data/`)، پس به پوشه‌ی کاری وابسته است و
+# همه‌ی اجراها روی یک فایل بیرون از مخزن می‌نشستند. تستی که ردِ اجرای
+# قبلی را ببیند یا به آن تکیه کند، تست نیست.
+APP.BOT_DB = Path(TMP) / "bot.db"
 APP.check_auth = lambda pw: True
 try:
     APP._xui_db_path = lambda: Path(XUI)
@@ -1608,6 +1614,66 @@ check("اجرای دوباره چیزی اضافه نمی‌کند", _books() ==
 check("و می‌گوید چرا رد شد",
       "already imported" in _r2.stdout,
       "سکوت یعنی کاربر نمی‌داند اجرا شده یا نه")
+
+
+# ═══════════════════════════════════════════════════════════
+head("درآمد ربات: نه دوباره، نه مالِ نماینده")
+
+# دو تله، هر دو در جهت بیشتر نشان‌دادن:
+#
+#   • سفارشی که از کیف پول پرداخت شده پول تازه نیست — همان پول یک‌بار
+#     موقع شارژ رسیده. مشتری‌ای که ۵۰۰٬۰۰۰ شارژ کند و خرجش کند،
+#     ۱٬۰۰۰٬۰۰۰ درآمد نشان می‌داد.
+#   • سفارش‌های رباتِ نماینده درآمد نماینده است، نه مالک.
+
+_tcon = APP._bot_rw()
+try:
+    _cols = {r[1] for r in _tcon.execute("PRAGMA table_info(tenants)")}
+    if "parent_id" not in _cols:
+        _tcon.execute("ALTER TABLE tenants ADD COLUMN parent_id INTEGER")
+    _tcon.execute("UPDATE tenants SET parent_id=NULL WHERE id=77")
+    _tcon.execute("INSERT OR REPLACE INTO tenants (id,name,credit,portal_group,"
+                  "parent_id) VALUES (90,'نماینده',0,'x',77)")
+    _tcon.execute("""CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER, kind TEXT,
+        amount INTEGER, paid_from TEXT, status TEXT, created_at TEXT)""")
+    _tcon.execute("DELETE FROM orders")
+    for _t, _k, _a, _pf, _st in (
+            (77, "topup", 500_000, "card", "approved"),    # پول واقعی
+            (77, "new", 300_000, "wallet", "approved"),    # همان پول، خرج شد
+            (77, "new", 400_000, "card", "approved"),      # پول واقعی
+            (77, "new", 900_000, "card", "rejected"),      # تایید نشده
+            (90, "new", 700_000, "card", "approved")):     # مالِ نماینده
+        _tcon.execute("INSERT INTO orders (tenant_id,kind,amount,paid_from,"
+                      "status,created_at) VALUES (?,?,?,?,?,date('now'))",
+                      (_t, _k, _a, _pf, _st))
+    _tcon.commit()
+finally:
+    _tcon.close()
+
+_in = APP._bot_money_in()
+check("فقط پرداخت کارتیِ تاییدشده شمرده می‌شود", _in == 900_000,
+      f"{_in:,} — انتظار ۹۰۰٬۰۰۰ (۵۰۰٬۰۰۰ شارژ + ۴۰۰٬۰۰۰ خرید کارتی)")
+check("خرید از کیف پول دوباره شمرده نمی‌شود", _in != 1_200_000,
+      "همان پول یک‌بار موقع شارژ رسیده")
+check("سفارش ردشده درآمد نیست", _in != 1_800_000)
+check("و فروش رباتِ نماینده در سود مالک نمی‌نشیند",
+      _in < 1_600_000, "۷۰۰٬۰۰۰ مالِ نماینده است")
+
+_lg2 = APP.billing_ledger(x_admin_password="x")
+check("دفتر کل آن را جدا گزارش می‌کند",
+      _lg2.get("botReceived") == 900_000, f"{_lg2.get('botReceived'):,}")
+check("و در سود حساب می‌شود",
+      _lg2["profit"] == _lg2["paid"] + 900_000 - _lg2["spent"],
+      f"{_lg2['profit']:,}")
+check("«اگر همه تسویه کنند» هم شاملش می‌شود",
+      _lg2["profitIfAllPaid"]
+      == _lg2["paid"] + 900_000 + _lg2["outstanding"] - _lg2["spent"])
+
+check("و چهار کارت بالای صفحه هنوز با هم جور درمی‌آیند",
+      (_lg2["billed"] - _lg2["paid"]) - _lg2["outstanding"]
+      == _lg2["settledGap"],
+      "درآمد ربات عمداً خارج از آن چهار کارت است")
 
 
 color = G if not _fail else R

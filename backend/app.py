@@ -5735,6 +5735,50 @@ def expenses_del(exp_id: int, x_admin_password: str = Header(...)):
     return {"ok": True, "note": "هزینه حذف شد"}
 
 
+def _bot_money_in():
+    """
+    پولی که از راه ربات واقعاً به دست مالک رسیده.
+
+    دو تله این‌جا هست و هر دو در جهت *بیشتر نشان‌دادن* خطا می‌کنند:
+
+      • سفارشی که از کیف پول پرداخت شده پول تازه نیست. همان پول
+        یک‌بار موقع شارژ کیف رسیده و یک‌بار موقع خرید شمرده می‌شود.
+        مشتری‌ای که ۵۰۰٬۰۰۰ شارژ کند و همان را خرج کند، ۱٬۰۰۰٬۰۰۰
+        درآمد نشان می‌دهد.
+
+      • سفارش‌های رباتِ *نماینده* درآمد نماینده است، نه مالک. بدون
+        فیلتر مستاجر، فروش آن‌ها در سود مالک می‌نشیند.
+
+    پس فقط سفارش‌های تاییدشده‌ی مستاجر اصلی که با کارت پرداخت
+    شده‌اند — شارژ کیف پول با کارت هم همین‌جاست، چون آن لحظه‌ی
+    رسیدن پول است.
+    """
+    con = _bot_conn()
+    if not con:
+        return 0
+    try:
+        cols = {r[1] for r in con.execute("PRAGMA table_info(orders)")}
+        # نصب‌های قدیمی ستون paid_from ندارند؛ آن‌جا همه‌ی سفارش‌ها
+        # کارتی بوده‌اند چون کیف پول هنوز نبوده.
+        card = (" AND COALESCE(paid_from,'card')='card'"
+                if "paid_from" in cols else "")
+        # «مستاجرِ ریشه» یعنی هرکسی که نماینده‌ی کس دیگری نیست. با
+        # ORDER BY id LIMIT 1 یک ردیف دلخواه انتخاب می‌شد و اگر
+        # مستاجر دیگری زودتر ساخته شده بود، درآمد واقعی صفر
+        # گزارش می‌شد — بی‌صدا.
+        r = con.execute(
+            "SELECT COALESCE(SUM(amount),0) s FROM orders "
+            "WHERE status='approved'" + card +
+            " AND tenant_id IN (SELECT id FROM tenants WHERE parent_id IS NULL)"
+        ).fetchone()
+        return int((r["s"] if r else 0) or 0)
+    except Exception:
+        log.debug("خواندن درآمد ربات ناموفق", exc_info=True)
+        return 0
+    finally:
+        con.close()
+
+
 @app.get("/api/admin/billing/ledger")
 def billing_ledger(x_admin_password: str = Header(...)):
     """
@@ -5772,6 +5816,10 @@ def billing_ledger(x_admin_password: str = Header(...)):
     finally:
         con.close()
 
+    # فروش مستقیم ربات هم درآمد است و همین سرورها را خرج می‌کند.
+    # بدون آن، «سود واقعی» فقط نیمی از کسب‌وکار را می‌بیند.
+    bot_in = _bot_money_in()
+
     # «چه کسی بدهکار است» سوالِ امروز است، نه سوالِ تاریخ: بدهیِ
     # دوره‌ی تسویه‌شده دیگر طلب نیست.
     outstanding = sum(g.get("balance", 0) for g in groups if g.get("billable"))
@@ -5798,12 +5846,13 @@ def billing_ledger(x_admin_password: str = Header(...)):
         "outstanding": outstanding,
         "spent": spent,
         "spentByKind": {k: by_kind.get(k, 0) for k in EXPENSE_KINDS},
-        "profit": paid - spent,
+        "botReceived": bot_in,
+        "profit": paid + bot_in - spent,
         # «اگر همه تسویه کنند» یعنی آنچه گرفته‌ام + آنچه هنوز طلب دارم،
         # منهای هزینه. قبلاً billed - spent بود، یعنی کلِ تاریخِ
         # صورتحساب — که اگر دوره‌ای با تخفیف یا گِردکردن بسته شده
         # باشد، آن اختلاف را دوباره طلب حساب می‌کرد.
-        "profitIfAllPaid": paid + outstanding - spent,
+        "profitIfAllPaid": paid + bot_in + outstanding - spent,
         # اختلاف «صورت‌حساب‌شده منهای دریافت‌شده» با «طلب شما»: همان
         # دوره‌هایی که تسویه‌شده اعلام شده‌اند. بدون این عدد، چهار
         # کارتِ بالای صفحه با هم جور درنمی‌آیند و صفحه شبیه خرابی
@@ -6450,7 +6499,9 @@ def bot_users_report_pdf(days: int = 30, x_admin_password: str = Header(...)):
         ("کاربر جدید", f"{int(u.get('newUsers') or 0):,}", NAVY),
         ("خریدار", f"{int(rep.get('buyerCount') or 0):,}", NAVY),
         ("سفارش موفق", f"{int(o.get('approved') or 0):,}", GOOD),
-        ("درآمد (تومان)", money(o.get("revenue")), GOOD),
+        # «فروش»، نه «درآمد»: سفارشی که از کیف پول پرداخت شده در این
+        # عدد هست، ولی پول تازه‌ای با آن نرسیده.
+        ("فروش (تومان)", money(o.get("revenue")), GOOD),
     ]
     cw = CW / len(cards)
     for idx, (label, val, col) in enumerate(cards):

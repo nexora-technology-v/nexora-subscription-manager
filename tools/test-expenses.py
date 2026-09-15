@@ -159,8 +159,19 @@ check("جدول هزینه‌ها amount_irt دارد", "amount_irt  INTEGER" in
 check("جدول هزینه‌ها نرخ را ذخیره می‌کند", "fx_rate     INTEGER" in src)
 check("هزینه بدون مبلغ تومانی رد می‌شود",
       'conv.get("toman") is None' in src)
+# سود از پولِ *رسیده* حساب می‌شود، نه از مبلغِ صورتحساب‌شده.
+# قبلاً رشته‌ی دقیق تست می‌شد و با اضافه‌شدن درآمد ربات شکست، در حالی
+# که قاعده عوض نشده بود — پس خودِ قاعده سنجیده می‌شود نه شکلش.
 check("دفتر کل سود را از پرداختی حساب می‌کند",
-      '"profit": paid - spent' in src)
+      '"profit": paid + bot_in - spent' in src
+      and '"profitIfAllPaid"' in src)
+check("و فروش مستقیم ربات را هم می‌شمارد",
+      "def _bot_money_in(" in src and '"botReceived": bot_in' in src)
+check("ولی خریدِ از کیف پول را دوباره نمی‌شمارد",
+      "COALESCE(paid_from,'card')='card'" in src,
+      "همان پول یک‌بار موقع شارژ رسیده")
+check("و فروش رباتِ نماینده را مالِ مالک حساب نمی‌کند",
+      "SELECT id FROM tenants WHERE parent_id IS NULL" in src)
 check("دفتر کل بدهکاران را جدا می‌کند", '"owing"' in src)
 
 # ═══════════════════════════════════════════════════════════

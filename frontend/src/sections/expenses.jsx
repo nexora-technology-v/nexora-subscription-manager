@@ -452,7 +452,7 @@ export function BillingLedger({ password }) {
       <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
         {[
           ["صورت‌حساب‌شده", d.billed, "var(--accent-2)", "از روز اول تا امروز"],
-          ["دریافت‌شده", d.paid, "#34d399", "آنچه واقعاً به دستتان رسیده"],
+          ["دریافت‌شده", d.paid, "#34d399", "از واسطه‌ها"],
           ["طلب شما", d.outstanding, "var(--warn)", "بدهیِ امروز"],
           ["هزینه", d.spent, "var(--danger)", "سرور، حجم، دامنه"],
         ].map(([label, val, color, hint]) => (
@@ -474,6 +474,25 @@ export function BillingLedger({ password }) {
       {/* چهار کارت بالا با هم جمع نمی‌خورند وقتی دوره‌ای تسویه شده
           باشد: «صورت‌حساب‌شده» کلِ تاریخ است و «طلب شما» فقط امروز.
           بدون این یک خط، صفحه شبیه خرابی به نظر می‌رسد. */}
+      {d.botReceived > 0 && (
+        <div className="fx-card p-4 mb-4 flex items-baseline justify-between
+                        gap-3 flex-wrap">
+          <div>
+            <div className="text-[13px]" style={{ color: "var(--dim)" }}>
+              فروش مستقیم ربات
+            </div>
+            <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+              فقط پرداخت‌های کارتی — خریدی که از کیف پول انجام شده پول
+              تازه نیست و دوباره شمرده نمی‌شود
+            </div>
+          </div>
+          <div className="text-[19px] font-bold"
+            style={{ color: "#34d399", fontFamily: "var(--mono)" }}>
+            {toman(d.botReceived)}
+          </div>
+        </div>
+      )}
+
       {d.settledGap > 0 && (
         <div className="text-[12px] mb-4 leading-relaxed"
           style={{ color: "var(--muted)" }}>
@@ -492,8 +511,15 @@ export function BillingLedger({ password }) {
               color: profit >= 0 ? "#34d399" : "var(--danger)",
               fontFamily: "var(--mono)",
             }}>{toman(profit)}</div>
+            {/* عددِ بی‌توضیح، مدیر را وامی‌دارد حدس بزند از کجا آمده.
+                وقتی ربات هم فروش دارد، سود از دو جا می‌آید. */}
             <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
-              دریافتی منهای هزینه — نه آنچه طلب دارید
+              {d.botReceived > 0 ? (
+                <>
+                  ({toman(d.paid)} از واسطه‌ها + {toman(d.botReceived)} از ربات)
+                  {" "}منهای {toman(d.spent)} هزینه
+                </>
+              ) : "دریافتی منهای هزینه — نه آنچه طلب دارید"}
             </div>
           </div>
           <div style={{ textAlign: "left" }}>
