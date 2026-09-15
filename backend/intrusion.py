@@ -68,9 +68,24 @@ def _within(line, cutoff):
     """
     آیا این خط لاگ از cutoff به بعد است؟
 
-    دو قالب: syslog («Sep 12 16:18:20» بدون سال) و ISO. برای syslog
-    سال جاری را فرض می‌کنیم و اگر نتیجه در آینده افتاد یک سال عقب
-    می‌بریم — تنها راه درست‌بودن حوالی اول ژانویه.
+    دو قالب: syslog («Sep 12 16:18:20» بدون سال) و ISO.
+
+    syslog سال ندارد، پس باید حدسش زد. حدسِ درست، *تازه‌ترین* سالی
+    است که این تاریخ را در آینده نمی‌اندازد — نه سالِ cutoff.
+
+    قبلاً سالِ cutoff فرض می‌شد و فقط حالتِ «در آینده افتاد» یک سال
+    عقب برده می‌شد. آن یک طرفِ ماجرا را می‌گرفت و طرف دیگر را نه:
+
+        حالا: ۱ ژانویه‌ی ۲۰۲۶، ساعت ۰۰:۳۰
+        cutoff: ۳۱ دسامبر ۲۰۲۵، ساعت ۰۰:۳۰
+        خط لاگ: «Jan  1 00:10» — یعنی بیست دقیقه پیش
+
+        با سالِ cutoff می‌شد ۱ ژانویه‌ی ۲۰۲۵، یعنی تقریباً یک سال
+        *پیش از* cutoff — و خط دور انداخته می‌شد.
+
+    یعنی در بیست‌وچهار ساعتِ اول هر سال، حمله‌های همان روز اصلاً
+    گزارش نمی‌شدند. برای صفحه‌ای که کارش دیدنِ حمله است، بدترین
+    زمانِ ممکن برای کور بودن.
 
     خطی که تاریخش خوانده نشود نگه داشته می‌شود: انداختنش یعنی
     بی‌صدا داده از دست دادن، و این‌جا همان چیزی است که می‌خواهیم
@@ -92,13 +107,22 @@ def _within(line, cutoff):
         mon = _MONTHS.index(m.group(1)) + 1
     except ValueError:
         return True
-    try:
-        when = datetime(cutoff.year, mon, int(m.group(2)),
-                        int(m.group(3)), int(m.group(4)), int(m.group(5)))
-    except ValueError:
+    # یک روز ارفاق برای اختلاف ساعتِ سرور و منطقه‌ی زمانی لاگ
+    limit = datetime.now() + timedelta(days=1)
+    when = None
+    for year in (cutoff.year + 1, cutoff.year, cutoff.year - 1):
+        try:
+            cand = datetime(year, mon, int(m.group(2)), int(m.group(3)),
+                            int(m.group(4)), int(m.group(5)))
+        except ValueError:
+            continue        # ۲۹ فوریه در سالی که کبیسه نیست
+        if cand > limit:
+            continue
+        # تازه‌ترین سالی که این تاریخ را در آینده نمی‌اندازد
+        if when is None or cand > when:
+            when = cand
+    if when is None:
         return True
-    if when > datetime.now() + timedelta(days=1):
-        when = when.replace(year=when.year - 1)
     return when >= cutoff
 
 

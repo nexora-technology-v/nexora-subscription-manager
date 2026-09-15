@@ -227,6 +227,87 @@ check("تاریخچه‌ی کهنه جایگزین نمی‌شود", "9.9.9.9" n
 
 
 
+# ═══════════════════════════════════════════════════════════
+head("خط لاگ syslog سال ندارد — حوالی اول ژانویه")
+
+# syslog می‌نویسد «Jan  1 00:10» و بس. سال باید حدس زده شود، و حدسِ
+# غلط یعنی خط دور انداخته می‌شود.
+#
+# قبلاً سالِ cutoff فرض می‌شد و فقط حالتِ «در آینده افتاد» اصلاح
+# می‌شد. آن یک طرف را می‌گرفت و طرف دیگر را نه: صبح اول ژانویه،
+# cutoff هنوز در سال قبل است، پس خطِ «Jan  1» یک سال *پیش از*
+# cutoff می‌افتاد و حذف می‌شد.
+#
+# یعنی در بیست‌وچهار ساعتِ اول هر سال، حمله‌های همان روز اصلاً دیده
+# نمی‌شدند — بدترین زمان ممکن برای کور بودن.
+
+_real_dt = IN.datetime
+
+
+class _FrozenDT(_real_dt):
+    FROZEN = None
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls.FROZEN
+
+
+IN.datetime = _FrozenDT
+
+#     اکنون                  خط لاگ            باید بماند؟  چرا
+_CASES = [
+    ("2026-01-01 00:30:00", "Jan  1 00:10:00", True,  "بیست دقیقه پیش"),
+    ("2026-01-01 00:30:00", "Dec 31 23:50:00", True,  "چهل دقیقه پیش"),
+    ("2026-01-01 12:00:00", "Jan  1 11:00:00", True,  "یک ساعت پیش"),
+    ("2026-01-02 06:00:00", "Jan  1 23:00:00", True,  "هفت ساعت پیش"),
+    ("2026-06-15 12:00:00", "Jun 15 11:00:00", True,  "یک ساعت پیش، وسط سال"),
+    ("2026-12-31 23:00:00", "Dec 31 22:00:00", True,  "شب سال نو"),
+    ("2026-06-15 12:00:00", "Jun 10 11:00:00", False, "پنج روز پیش"),
+    ("2026-01-01 00:30:00", "Dec 20 10:00:00", False, "دوازده روز پیش"),
+    ("2026-01-01 00:30:00", "Jan  1 00:10:00", True,  "همان خط، دوباره"),
+]
+
+_wrong = []
+for _now, _line, _want, _why in _CASES:
+    _FrozenDT.FROZEN = _real_dt.strptime(_now, "%Y-%m-%d %H:%M:%S")
+    _cut = _FrozenDT.FROZEN - _td(hours=24)
+    _got = IN._within(_line + " host sshd[1]: Failed password for root",
+                      _cut)
+    if _got is not _want:
+        _wrong.append(f"{_now} + «{_line}» ({_why}): {_got} به‌جای {_want}")
+
+check("سال خط لاگ درست حدس زده می‌شود", not _wrong,
+      " · ".join(_wrong) if _wrong else f"{len(_CASES)} حالت سنجیده شد")
+if _wrong:
+    for _w in _wrong:
+        print(f"      {D}▸ {_w}{X}")
+
+# ۲۹ فوریه در سالی که کبیسه نیست نباید بترکد
+_FrozenDT.FROZEN = _real_dt(2027, 3, 1, 12, 0, 0)
+try:
+    _leap = IN._within("Feb 29 10:00:00 host sshd[1]: Failed password",
+                       _FrozenDT.FROZEN - _td(hours=24))
+    _crashed = False
+except Exception as _e:
+    _leap, _crashed = None, str(_e)
+check("۲۹ فوریه در سال غیرکبیسه خطا نمی‌دهد", not _crashed, _crashed or "")
+check("و خطِ نامفهوم دور انداخته نمی‌شود", _leap is True,
+      "نگه‌داشتنِ خطِ مشکوک بهتر از از دست دادن بی‌صداست")
+
+# خطی که اصلاً تاریخ ندارد
+_FrozenDT.FROZEN = _real_dt(2026, 6, 15, 12, 0, 0)
+check("خط بدون تاریخ نگه داشته می‌شود",
+      IN._within("something with no timestamp at all",
+                 _FrozenDT.FROZEN - _td(hours=24)) is True)
+check("قالب ISO هم کار می‌کند",
+      IN._within("2026-06-15T11:00:00 host sshd[1]: Failed password",
+                 _FrozenDT.FROZEN - _td(hours=24)) is True
+      and IN._within("2026-06-10T11:00:00 host sshd[1]: Failed password",
+                     _FrozenDT.FROZEN - _td(hours=24)) is False)
+
+IN.datetime = _real_dt
+
+
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

@@ -4,6 +4,46 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.29.1]
+
+### Fixed — On New Year's Day the intrusion page dropped that day's attacks
+
+syslog writes `Jan  1 00:10` and no year, so the year has to be inferred. The
+code assumed the cutoff's year and corrected only one direction: a timestamp
+landing in the future was moved back twelve months.
+
+That misses the other side. On the morning of 1 January the cutoff is still in
+the old year, so a line stamped `Jan  1` became 1 January of the *previous* year
+— eleven months before the cutoff — and was discarded.
+
+For the first twenty-four hours of every year, SSH attempts from that day were
+dropped before anything counted them. The page reported a quiet night while a
+brute-force ran. For a screen whose only job is seeing attacks, the worst
+possible time to be blind.
+
+The year is now the most recent one that does not place the timestamp in the
+future, which is right on both sides of midnight. A line whose date cannot be
+read is still kept, because losing one silently is the failure this module exists
+to avoid.
+
+`_within` had no test at all. It has nine cases now, including both sides of New
+Year, 29 February in a non-leap year, ISO stamps, and lines with no date.
+
+### Checked and sound
+
+Read the blocking paths closely, since blocking a real customer is the worst
+outcome this area can produce, and changed nothing:
+
+`block_refusal` validates the address, refuses the one the request itself came
+from, and refuses loopback, unspecified, private, link-local and any range wider
+than the configured floor. The bulk attacker block requires explicit
+confirmation, skips addresses currently connected to the service unless told
+otherwise, and caps at a hundred per call. The monitoring page's single block
+asks first and says plainly that a customer will be cut off. The firewall page's
+block needs the address typed in. Commands are built as argument lists, so
+nothing there is shell-interpreted. `_is_private` covers 172.16/12 correctly,
+which is where I expected to find a gap and did not.
+
 ## [1.29.0]
 
 ### Fixed — The agent job table grew without limit
