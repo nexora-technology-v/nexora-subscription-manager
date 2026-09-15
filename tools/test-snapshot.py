@@ -172,6 +172,126 @@ check("برای آن‌چه نیست فایل خالی نمی‌سازد",
 
 shutil.rmtree(TMP, ignore_errors=True)
 
+# ═══════════════════════════════════════════════════════════
+head("اعتبارسنجی بیلد — یک تابع، نه دو نصفه")
+
+# «npm run build موفق شد» کافی نیست. دو حالت دیده شده که هر دو
+# خروجی موفق می‌دهند و پنل را خراب بالا می‌آورند: باندل جاوااسکریپتِ
+# خیلی کوچک، و CSSِ تقریباً خالی وقتی Tailwind اجرا نشده باشد.
+#
+# هر کدام در یک مسیر بررسی می‌شد و در دیگری نه: update فقط JS را
+# می‌دید و rollback فقط CSS. یعنی خرابیِ Tailwind روی به‌روزرسانی —
+# که هر ریلیز اجرا می‌شود — اصلاً گرفته نمی‌شد.
+
+check("تابع مشترک تعریف شده", "verify_build() {" in CLI)
+_upd = CLI[CLI.index("\n  update)"):CLI.index("\n  rebuild)")]
+_roll = CLI[CLI.index("\n  rollback)"):CLI.index("\n  snapshots)")]
+check("به‌روزرسانی از آن استفاده می‌کند", "verify_build" in _upd)
+check("بازگردانی هم", "verify_build" in _roll)
+# فقط داخل خودِ دستورها می‌گردیم، نه در تابع مشترک — وگرنه بررسی
+# روی پیاده‌سازیِ خودش می‌افتد و همیشه قرمز است.
+check("هیچ بررسیِ دستیِ دومی در خودِ دستورها نمانده",
+      not any(k in _upd or k in _roll
+              for k in ("JSSIZE", "-lt 15000", "-gt 50000", "CSSZ=")),
+      "وگرنه دوباره هر کدام نصفِ دیگری را می‌سنجد")
+
+
+def _build_says(js_bytes, css_bytes, index=True):
+    """verify_build را روی یک dist ساختگی اجرا می‌کند."""
+    d = Path(tempfile.mkdtemp())
+    (d / "dist" / "assets").mkdir(parents=True)
+    if index:
+        (d / "dist" / "index.html").write_text("<html>", encoding="utf-8")
+    if js_bytes is not None:
+        (d / "dist" / "assets" / "app.js").write_bytes(b"x" * js_bytes)
+    if css_bytes is not None:
+        (d / "dist" / "assets" / "app.css").write_bytes(b"y" * css_bytes)
+    script = (f"set -e\ncd '{d.as_posix()}'\n"
+              + CLI[CLI.index("verify_build() {"):CLI.index("snapshot_to() {")]
+              + "\nif verify_build; then echo OK; echo \"$BUILD_SIZES\"; "
+                "else echo BAD; echo \"$BUILD_WHY\"; fi\n")
+    r = subprocess.run([BASH, "-c", script], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    lines = [l for l in (r.stdout or "").splitlines() if l.strip()]
+    return (lines[0] if lines else "?"), (lines[1] if len(lines) > 1 else "")
+
+
+_v, _why = _build_says(400_000, 60_000)
+check("بیلد سالم پذیرفته می‌شود", _v == "OK", _why)
+
+_v, _why = _build_says(400_000, 900)
+check("CSS خالی رد می‌شود — همان خرابیِ Tailwind", _v == "BAD",
+      _why or "پذیرفته شد!")
+check("و دلیلش Tailwind را نام می‌برد", "Tailwind" in _why, _why)
+
+_v, _why = _build_says(1200, 60_000)
+check("باندل جاوااسکریپتِ کوچک رد می‌شود", _v == "BAD", _why or "پذیرفته شد!")
+
+_v, _why = _build_says(400_000, None)
+check("نبودِ فایل CSS هم رد می‌شود", _v == "BAD", _why or "پذیرفته شد!")
+
+_v, _why = _build_says(None, 60_000)
+check("نبودِ فایل جاوااسکریپت هم", _v == "BAD", _why or "پذیرفته شد!")
+
+_v, _why = _build_says(400_000, 60_000, index=False)
+check("نبودِ index.html هم", _v == "BAD", _why or "پذیرفته شد!")
+
+
+# ═══════════════════════════════════════════════════════════
+head("به‌روزرسانی نباید تنظیمات گیت‌هاب را پاک کند")
+
+# روی سرور، `$INSTALL_DIR/.github` یک *فایل* است که کاربر خودش
+# می‌سازد و آدرس مخزن در آن است — همان چیزی که `nexora update` برای
+# پیداکردن نسخه‌ی تازه می‌خواند.
+#
+# در خودِ بسته، `.github/` یک *پوشه* است پر از workflow.
+#
+# حلقه‌ی سطح‌بالای کپی از `"$SRC"/*` استفاده می‌کند و glob پیش‌فرض
+# بش فایل‌های نقطه‌دار را نمی‌گیرد، پس `.github` کاربر دست نمی‌خورد.
+# ولی این رفتار *ضمنی* است: کافی است کسی الگو را مثل copy_tree کند
+# (که `.[!.]*` را هم می‌گیرد) یا `shopt -s dotglob` بگذارد، تا فایل
+# تنظیمات با یک پوشه جایگزین شود و از آن به بعد هر `nexora update`
+# بگوید «مخزنی تنظیم نشده».
+
+_copy_loop = CLI[CLI.index('for item in "$SRC"/*'):]
+_copy_loop = _copy_loop[:_copy_loop.index("rm -rf \"$INSTALL_DIR/bot/__pycache__\"")]
+check("حلقه‌ی کپی فایل‌های نقطه‌دارِ سطح بالا را برنمی‌دارد",
+      '"$SRC"/.[!.]*' not in _copy_loop,
+      "وگرنه .github کاربر با پوشه‌ی workflowها جایگزین می‌شود")
+check("و dotglob هم روشن نشده",
+      "dotglob" not in CLI,
+      "روشن‌کردنش همان اثر را دارد، از راه دیگر")
+
+# و رفتار واقعی، نه فقط متن
+_st = Path(tempfile.mkdtemp())
+(_st / "src").mkdir()
+(_st / "src" / ".github").mkdir()
+(_st / "src" / ".github" / "ci.yml").write_text("on: push", encoding="utf-8")
+(_st / "src" / "VERSION").write_text("9.9.9", encoding="utf-8")
+(_st / "dst").mkdir()
+(_st / "dst" / ".github").write_text('GITHUB_REPO="me/mine"', encoding="utf-8")
+
+_script = (f"cd '{_st.as_posix()}'\n"
+           'SKIP_TOP="data"\nSKIP_SUB="node_modules venv dist"\n'
+           'SRC=src\nINSTALL_DIR=dst\n'
+           'for item in "$SRC"/*; do\n'
+           '  [ -e "$item" ] || continue\n'
+           '  name=$(basename "$item")\n'
+           '  case " $SKIP_TOP " in *" $name "*) continue ;; esac\n'
+           '  if [ -d "$item" ]; then mkdir -p "$INSTALL_DIR/$name";\n'
+           '  else cp -f "$item" "$INSTALL_DIR/"; fi\n'
+           'done\n'
+           'cat dst/.github 2>/dev/null || echo "GONE"\n')
+_r = subprocess.run([BASH, "-c", _script], capture_output=True, text=True,
+                    encoding="utf-8", errors="replace")
+check("تنظیمات گیت‌هاب بعد از کپی سر جایش است",
+      "me/mine" in (_r.stdout or ""),
+      (_r.stdout or _r.stderr or "").strip()[:60])
+check("و فایل تازه هم کپی شده",
+      (_st / "dst" / "VERSION").exists(),
+      "یعنی حلقه واقعاً کار کرده، نه اینکه چیزی کپی نشده باشد")
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

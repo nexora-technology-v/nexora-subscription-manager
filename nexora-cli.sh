@@ -30,6 +30,61 @@ info() { echo -e "  ${C_LBLUE}i${C_RESET} $1"; }
 #
 #  با یک تابع، دو فهرست نمی‌توانند از هم فاصله بگیرند.
 # ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════
+#  آیا بیلد واقعاً سالم است؟
+#
+#  «دستور موفق شد» کافی نیست. دو حالت دیده شده که هر دو خروجیِ
+#  «موفق» می‌دهند و پنل را خراب بالا می‌آورند:
+#
+#    · باندل جاوااسکریپت خیلی کوچک — چیزی وسط بیلد شکسته
+#    · CSS تقریباً خالی — Tailwind اجرا نشده، بیلد تمام شده، و پنل
+#      بدون هیچ ظاهری بالا می‌آید
+#
+#  هر کدام از این دو در یک مسیر بررسی می‌شد و در دیگری نه: update
+#  فقط JS را می‌دید و rollback فقط CSS. یعنی خرابیِ Tailwind روی
+#  به‌روزرسانی — که هر ریلیز اجرا می‌شود — اصلاً گرفته نمی‌شد، و
+#  فقط روی rollback که تقریباً هیچ‌وقت اجرا نمی‌شود.
+#
+#  با یک تابع، نصفه‌بررسی ممکن نیست.
+#
+#  برمی‌گرداند: ۰ سالم · ۱ خراب، با دلیل در BUILD_WHY
+# ═══════════════════════════════════════════════════════════
+verify_build() {
+  BUILD_WHY=""
+  BUILD_SIZES=""
+
+  if [ ! -f dist/index.html ]; then
+    BUILD_WHY="dist/index.html ساخته نشد"
+    return 1
+  fi
+
+  JSF=$(ls -1 dist/assets/*.js 2>/dev/null | head -1)
+  if [ -z "$JSF" ]; then
+    BUILD_WHY="هیچ فایل جاوااسکریپتی در dist/assets نیست"
+    return 1
+  fi
+  JSZ=$(wc -c < "$JSF" 2>/dev/null || echo 0)
+  if [ "${JSZ:-0}" -lt 50000 ]; then
+    BUILD_WHY="باندل جاوااسکریپت فقط ${JSZ} بایت است"
+    return 1
+  fi
+
+  CSSF=$(ls -1 dist/assets/*.css 2>/dev/null | head -1)
+  if [ -z "$CSSF" ]; then
+    BUILD_WHY="هیچ فایل CSSی نیست — پنل بدون ظاهر بالا می‌آید"
+    return 1
+  fi
+  CSSZ=$(wc -c < "$CSSF" 2>/dev/null || echo 0)
+  if [ "${CSSZ:-0}" -lt 15000 ]; then
+    BUILD_WHY="CSS فقط ${CSSZ} بایت است — Tailwind احتمالاً اجرا نشده"
+    return 1
+  fi
+
+  BUILD_SIZES="JS ${JSZ}B · CSS ${CSSZ}B"
+  return 0
+}
+
+
 snapshot_to() {
   SNAP_DEST="$1"
   SNAP_FROM="${2:-$VER}"
@@ -342,20 +397,15 @@ case "$1" in
 
     # اعتبارسنجی خروجی — فقط «موفق بودن دستور» کافی نیست
     BUILD_OK=0
-    if [ $BUILD_RC -eq 0 ] && [ -f dist/index.html ]; then
-      JSFILE=$(ls -1 dist/assets/*.js 2>/dev/null | head -1)
-      if [ -n "$JSFILE" ]; then
-        JSSIZE=$(stat -c%s "$JSFILE" 2>/dev/null || echo 0)
-        # باندل سالم صدها کیلوبایت است؛ کمتر از ۵۰ کیلو یعنی چیزی خراب شده
-        [ "$JSSIZE" -gt 50000 ] && BUILD_OK=1
-      fi
+    if [ $BUILD_RC -eq 0 ] && verify_build; then
+      BUILD_OK=1
     fi
 
     if [ $BUILD_OK -eq 1 ]; then
       rm -rf dist.prev
-      ok "Admin panel rebuilt"
+      ok "Admin panel rebuilt  ($BUILD_SIZES)"
     else
-      bad "Build failed"
+      bad "Build failed${BUILD_WHY:+ — $BUILD_WHY}"
       echo ""
       echo -e "  ${C_DIM}Last lines of the build log:${C_RESET}"
       tail -20 "$BUILD_LOG" 2>/dev/null | sed 's/^/      /'
@@ -706,18 +756,14 @@ BOTEOF
     cd "$INSTALL_DIR/frontend"
     export NODE_OPTIONS="--max-old-space-size=1536"
     npm install --no-fund --no-audit --loglevel=error > /dev/null 2>&1
-    if npm run build > /tmp/nexora-rollback.log 2>&1 && [ -f dist/index.html ]; then
-      # وجود index.html کافی نیست. اگر Tailwind اجرا نشود، build موفق
-      # تمام می‌شود ولی CSS تقریباً خالی است و پنل بدون ظاهر بالا می‌آید.
-      CSSF=$(ls dist/assets/*.css 2>/dev/null | head -1)
-      CSSZ=$(wc -c < "$CSSF" 2>/dev/null || echo 0)
-      if [ "$CSSZ" -lt 15000 ]; then
-        bad "Stylesheet too small (${CSSZ}B) — the panel would render unstyled"
+    if npm run build > /tmp/nexora-rollback.log 2>&1; then
+      if ! verify_build; then
+        bad "Build unusable — $BUILD_WHY"
         info "Restoring previous build"
         [ -d dist.prev ] && rm -rf dist && mv dist.prev dist
         exit 1
       fi
-      ok "Panel rebuilt (CSS ${CSSZ}B)"
+      ok "Panel rebuilt ($BUILD_SIZES)"
     else
       bad "Rebuild failed — see /tmp/nexora-rollback.log"
       [ -d dist.prev ] && rm -rf dist && mv dist.prev dist && info "Previous build restored"

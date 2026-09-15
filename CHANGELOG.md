@@ -4,6 +4,43 @@
 
 _کارهای انجام‌شده که هنوز ریلیز نشده‌اند._
 
+## [1.33.0]
+
+### Fixed — `nexora update` could leave the panel with no styling at all
+
+A finished `npm run build` is not proof of a usable build. Two failures have been
+seen that both exit zero: a JavaScript bundle far too small because something
+broke mid-build, and a nearly empty stylesheet because Tailwind never ran — which
+brings the panel up with no styling whatever.
+
+Each path checked one of them and not the other. `update` looked at the
+JavaScript bundle; `rollback` looked at the stylesheet, and its comment names the
+Tailwind incident that put it there.
+
+So the failure that check was written for went uncaught on `update` — the command
+run on every single release — and was caught only on `rollback`, which almost
+never runs.
+
+One `verify_build` does both now, plus the missing-file cases, and reports which
+check failed rather than a bare "Build failed". Both paths call it, so neither can
+end up with half the check again. Driven by real bash against fixture builds: a
+healthy one, an empty stylesheet, a tiny bundle, and each file missing in turn.
+
+### Added — A guard on the thing that keeps `nexora update` working at all
+
+On a server, `$INSTALL_DIR/.github` is a file holding the repository address —
+the one thing `nexora update` reads to find a new release. In the package,
+`.github/` is a directory of workflows.
+
+The top-level copy loop uses `"$SRC"/*`, and bash's default glob skips dotfiles,
+so the file survives. That is correct but entirely implicit: widening the pattern
+to match the nested loop, or enabling `dotglob`, would replace the address with a
+directory and every future `nexora update` would answer "no repository
+configured".
+
+Now pinned both ways — the pattern is checked, and a real copy run asserts the
+address is still there afterwards.
+
 ## [1.32.1]
 
 ### Fixed — A test that failed roughly one run in three hundred
