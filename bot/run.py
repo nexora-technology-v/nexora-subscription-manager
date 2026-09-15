@@ -228,8 +228,14 @@ def expire_stale_orders():
         )
         tg = Bot(t["bot_token"]) if t["bot_token"] else None
         for r in rows:
-            d.exec("UPDATE orders SET status='expired' WHERE tenant_id=? AND id=?",
-                   (t["id"], r["id"]))
+            # ادعا، نه دستورِ خام: اگر همین لحظه مشتری «لغو» بزند یا
+            # نخ دیگری سفارش را ببندد، تنها یکی از ما باید پول را
+            # برگرداند. close_order پولِ کیف پول را هم برمی‌گرداند —
+            # سفارشِ کیف‌پولیِ نیمه‌کاره (مثلاً ربات وسطِ ساختِ کانفیگ
+            # ری‌استارت شده) وگرنه با پولِ کم‌شده منقضی می‌شد.
+            won, money = d.close_order(r["id"], "expired")
+            if not won:
+                continue
 
             # رزرو سکه باید همین‌جا آزاد شود. سه مسیر دستی این کار را
             # می‌کردند، ولی این جاروکش هر دو دقیقه می‌دود و همیشه
@@ -237,6 +243,21 @@ def expire_stale_orders():
             # وقت برنمی‌گشتند.
             back = d.release_coins(r["id"])
             n += 1
+
+            if tg and money:
+                # پولِ برگشته باید گفته شود. سکه یک چیز است و پول
+                # چیز دیگر؛ مشتری نباید خودش حدس بزند کدام برگشت.
+                try:
+                    row = d.q("SELECT u.tg_id FROM orders o JOIN users u"
+                              " ON u.id=o.user_id WHERE o.tenant_id=?"
+                              " AND o.id=?", (t["id"], r["id"]), one=True)
+                    if row and row["tg_id"]:
+                        tg.send(row["tg_id"],
+                                "⌛️ <b>این سفارش ناتمام ماند</b>\n\n"
+                                f"مبلغ <b>{core.toman(money)}</b> تومان به "
+                                "کیف پولتان برگشت.")
+                except Exception:
+                    log.debug("اطلاع بازگشت وجه ناموفق", exc_info=True)
 
             if tg and back:
                 # مشتری باید بداند چرا سکه‌هایش برگشت، وگرنه فقط یک

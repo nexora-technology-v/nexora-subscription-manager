@@ -884,6 +884,86 @@ class TenantDB:
                  f"-{int(stale_minutes)} minutes"))
             return bool(cur.rowcount)
 
+    #: وضعیت‌هایی که یعنی «فروش نشد» — پول باید برگردد.
+    #
+    #  approved عمداً این‌جا نیست: سفارشِ تاییدشده یعنی کانفیگ تحویل
+    #  شده، و پس‌دادنِ پولِ آن یعنی هدیه‌دادنِ اشتراک.
+    REFUND_ON = ("rejected", "expired", "cancelled")
+
+    def close_order(self, order_id, status, note=None, from_status="pending"):
+        """
+        بستنِ یک سفارشِ باز — تنها راهِ درست عوض‌کردن وضعیت.
+        برمی‌گرداند: (ادعا برنده شد, مبلغی که به کیف پول برگشت)
+
+        چرا یک تابع، نه دو تا:
+            وضعیتِ سفارش و پولِ سفارش یک چیزند. هر جا این دو از هم
+            جدا نوشته شدند، از هم دور افتادند:
+
+            • خرید با کیف پول هیچ‌وقت approved نمی‌شد. کانفیگ ساخته و
+              تحویل می‌شد و سفارش pending می‌ماند — و جاروکشِ
+              سفارش‌های منقضی نیم‌ساعت بعد آن را «منقضی» می‌کرد. یعنی
+              فروشِ انجام‌شده در هیچ آماری دیده نمی‌شد.
+
+            • تمدید خودکار برعکسش را می‌کرد: *قبل* از ساخت، approved
+              می‌شد. اگر ساخت شکست می‌خورد پول برمی‌گشت ولی سفارش
+              approved می‌ماند — یعنی پولِ برگشته، «فروش» شمرده می‌شد.
+              و چون تمدیدِ ناموفق با فاصله دوباره تلاش می‌شود، هر روز
+              چند فروشِ خیالی به آمار اضافه می‌کرد.
+
+            دو خطا در دو جهت: جمعشان عددی می‌ساخت که درست به نظر
+            می‌رسید و نبود.
+
+        ادعا اول، پرداخت بعد — مثل release_coins. جاروکش در زمان‌بند
+        می‌دود و مسیرهای خطا در نخ گفتگو؛ قفلِ چت زمان‌بند را در بر
+        نمی‌گیرد. بدون ادعا، هر دو همان سفارش را می‌بینند و هر دو پول
+        را برمی‌گردانند.
+
+        مبلغِ برگشتی از خودِ دفتر حساب می‌شود (خرج منهای آنچه قبلاً
+        برگشته)، نه از مبلغِ سفارش — پس برگشتِ نصفه هم دوباره‌کاری
+        نمی‌سازد.
+        """
+        with conn() as c:
+            # این UPDATE هم ادعا است و هم قفلِ نوشتن را می‌گیرد، پس
+            # خواندن‌های بعدی داخل همین تراکنش امن‌اند.
+            cur = c.execute(
+                "UPDATE orders SET status=?, admin_note=COALESCE(?, admin_note) "
+                "WHERE tenant_id=? AND id=? AND status=?",
+                (status, note, self.tid, order_id, from_status))
+            if not cur.rowcount:
+                return False, 0
+
+            if status not in self.REFUND_ON:
+                return True, 0
+
+            row = c.execute(
+                "SELECT user_id, paid_from FROM orders WHERE tenant_id=? AND id=?",
+                (self.tid, order_id)).fetchone()
+            if not row or row["paid_from"] != "wallet":
+                return True, 0
+
+            spent = c.execute(
+                "SELECT COALESCE(SUM(-amount),0) s FROM wallet_tx "
+                "WHERE tenant_id=? AND order_id=? AND amount < 0",
+                (self.tid, order_id)).fetchone()["s"]
+            given = c.execute(
+                "SELECT COALESCE(SUM(amount),0) s FROM wallet_tx "
+                "WHERE tenant_id=? AND order_id=? AND amount > 0",
+                (self.tid, order_id)).fetchone()["s"]
+            owed = int(spent) - int(given)
+            if owed <= 0:
+                return True, 0
+
+            c.execute("UPDATE users SET balance = balance + ? "
+                      "WHERE tenant_id=? AND id=?",
+                      (owed, self.tid, row["user_id"]))
+            c.execute(
+                """INSERT INTO wallet_tx (tenant_id, user_id, amount, kind,
+                                          note, order_id)
+                   VALUES (?,?,?,?,?,?)""",
+                (self.tid, row["user_id"], owed, "refund",
+                 note or f"بازگشت وجه — سفارش #{order_id}", order_id))
+            return True, owed
+
     def release_coins(self, order_id):
         """
         سکه‌های رزروشده‌ی یک سفارش را برمی‌گرداند. تعدادِ رزروهای

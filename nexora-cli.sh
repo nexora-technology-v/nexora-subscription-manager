@@ -956,6 +956,23 @@ PY
     fi
     ;;
 
+  repair-orders)
+    # وضعیتِ سفارش‌های کیف پول که پیش از نسخه‌ی ۱.۳۴ اشتباه نوشته
+    # می‌شدند: خریدِ تحویل‌شده هیچ‌وقت approved نمی‌شد و تمدیدِ ناموفق
+    # approved می‌ماند. بدون آرگومان فقط نشان می‌دهد؛ با --apply
+    # می‌نویسد.
+    if [ -f "$INSTALL_DIR/tools/repair-orders.py" ]; then
+      # shift لازم است: case روی "$1" است و بدون آن، نام خودِ دستور
+      # هم به‌عنوان آرگومان به اسکریپت می‌رسد و argparse ردش می‌کند.
+      shift
+      BOT_DB_PATH="$INSTALL_DIR/data/bot.db" \
+        python3 "$INSTALL_DIR/tools/repair-orders.py" "$@"
+    else
+      err "tools/repair-orders.py پیدا نشد — اول nexora update بزنید"
+      exit 1
+    fi
+    ;;
+
   doctor)
     logo
     echo -e "  ${C_BOLD}System Check${C_RESET}"
@@ -1189,6 +1206,7 @@ PYEOF
     echo -e "  ${C_WHITE}nexora doctor${C_RESET}                 ${C_DIM}check and auto-fix common problems${C_RESET}"
     echo -e "  ${C_WHITE}nexora billing-why${C_RESET}            ${C_DIM}why a config shows as having no rate${C_RESET}"
     echo -e "  ${C_WHITE}nexora import-topups${C_RESET}          ${C_DIM}bring old prepaid top-ups into the books${C_RESET}"
+    echo -e "  ${C_WHITE}nexora repair-orders${C_RESET}          ${C_DIM}fix wallet order statuses written before 1.34${C_RESET}"
     echo -e "  ${C_WHITE}nexora reseller list${C_RESET}          ${C_DIM}reseller portal accounts${C_RESET}"
     echo -e "  ${C_WHITE}nexora fix-flow${C_RESET}               ${C_DIM}put every vless client on the same flow${C_RESET}"
     echo -e "  ${C_WHITE}nexora password${C_RESET}               ${C_DIM}change admin password${C_RESET}"

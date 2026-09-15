@@ -708,6 +708,136 @@ check("مسیر دعوت دوست هنوز شرط خودش را دارد",
       "اصلاح این یکی نباید آن یکی را برداشته باشد")
 
 
+# ═══════════════════════════════════════════════════════════
+section("وضعیت سفارش باید درباره‌ی پول راست بگوید")
+
+# دو خطا در دو جهت، که جمعشان عددی می‌ساخت که درست به نظر می‌رسید:
+#
+#   • خرید با کیف پول هیچ‌وقت approved نمی‌شد. کانفیگ ساخته و تحویل
+#     می‌شد و سفارش pending می‌ماند؛ جاروکشِ سفارش‌های منقضی نیم‌ساعت
+#     بعد آن را «منقضی» می‌کرد. فروشِ انجام‌شده در هیچ آماری نبود.
+#
+#   • تمدید خودکار برعکس: *قبل* از ساخت approved می‌شد. اگر ساخت
+#     شکست می‌خورد پول برمی‌گشت و سفارش approved می‌ماند — پولِ
+#     برگشته «فروش» شمرده می‌شد. و تمدیدِ ناموفق رها نمی‌شود؛ با
+#     فاصله دوباره تلاش می‌کند، پس هر روز چند فروشِ خیالی.
+
+from datetime import datetime as _dt      # noqa: E402
+
+H.dispatch(tenant, bot, up_msg(777, "/start", "مریم"))
+_w = D.get_user(777)
+D.add_balance(_w["id"], 1_000_000, "topup", "شارژ تست")
+_w = D.get_user(777)
+
+SENT.clear()
+H.wallet_pay(H.Ctx(bot, tenant), _w, 777, None, plan["id"])
+_o = D.q("SELECT * FROM orders WHERE tenant_id=? AND user_id=? "
+         "ORDER BY id DESC LIMIT 1", (tid, _w["id"]), one=True)
+
+check("خرید با کیف پول approved می‌شود", _o["status"] == "approved",
+      f"وضعیت: {_o['status']} — قبلاً pending می‌ماند")
+check("و پول کم شده", D.get_user(777)["balance"] == 800_000,
+      core.toman(D.get_user(777)["balance"]))
+
+# همان کوئریِ جاروکش در bot/run.py، عیناً
+D.exec("UPDATE orders SET expires_at=datetime('now','-1 hour') "
+       "WHERE tenant_id=? AND id=?", (tid, _o["id"]))
+_swept = D.q("""SELECT id FROM orders
+                WHERE tenant_id=? AND status='pending'
+                  AND expires_at IS NOT NULL AND expires_at < ?""",
+             (tid, _dt.now().isoformat()))
+check("جاروکش سفارشِ تحویل‌شده را منقضی نمی‌کند",
+      not any(r["id"] == _o["id"] for r in _swept),
+      "فروشِ انجام‌شده نباید «منقضی» شود")
+
+# ─── تمدید خودکارِ ناموفق ───
+_sub = D.q("SELECT * FROM subscriptions WHERE tenant_id=? AND user_id=? "
+           "ORDER BY id DESC LIMIT 1", (tid, _w["id"]), one=True)
+check("اشتراک ساخته شد", bool(_sub))
+
+_bal_before = D.get_user(777)["balance"]
+_orig_extend = FakeXUI.extend_subscription
+
+
+def _panel_down(self, *a, **k):
+    raise RuntimeError("پنل در دسترس نیست")
+
+
+FakeXUI.extend_subscription = _panel_down
+try:
+    H.auto_renew_subscription(tenant, bot, _sub)
+finally:
+    FakeXUI.extend_subscription = _orig_extend
+
+_o2 = D.q("SELECT * FROM orders WHERE tenant_id=? AND user_id=? "
+          "ORDER BY id DESC LIMIT 1", (tid, _w["id"]), one=True)
+check("تمدیدِ ناموفق فروش شمرده نمی‌شود", _o2["status"] != "approved",
+      f"وضعیت: {_o2['status']} — قبلاً approved می‌ماند")
+check("و پول برگشته", D.get_user(777)["balance"] == _bal_before,
+      core.toman(D.get_user(777)["balance"]))
+
+_ref = D.q("SELECT * FROM wallet_tx WHERE tenant_id=? AND order_id=? "
+           "AND amount > 0", (tid, _o2["id"]), one=True)
+check("برگشتِ وجه به سفارش گره خورده", bool(_ref),
+      "بدون order_id در دفتر پیدا نمی‌شد")
+
+# ─── ادعا: پول فقط یک بار برمی‌گردد ───
+_bal_now = D.get_user(777)["balance"]
+_again = D.close_order(_o2["id"], "expired")
+check("بستنِ دوباره‌ی همان سفارش برنده نمی‌شود", _again == (False, 0),
+      str(_again))
+check("و پول دوبار برنمی‌گردد", D.get_user(777)["balance"] == _bal_now,
+      "جاروکش و مسیر لغو هر دو می‌توانند همین سفارش را ببینند")
+
+# ─── سفارشِ تاییدشده هرگز پس داده نمی‌شود ───
+_o3 = D.create_order(_w["id"], plan["id"], plan["price"], plan["price"],
+                     paid_from="wallet")
+D.spend_balance(_w["id"], plan["price"], "spend", "خرید", _o3["id"])
+_b3 = D.get_user(777)["balance"]
+_won3, _back3 = D.close_order(_o3["id"], "approved")
+check("سفارشِ approved پول پس نمی‌دهد", (_won3, _back3) == (True, 0),
+      "وگرنه هر فروش یک اشتراکِ هدیه می‌شد")
+check("و موجودی دست نخورده می‌ماند", D.get_user(777)["balance"] == _b3)
+
+# ─── شاخه‌ی «موجودی وسطِ کار تمام شد» ───
+# این شاخه هرگز اجرا نشده بود: ستونی که می‌نوشت وجود ندارد، پس
+# به‌جای مدیریتِ مسابقه، خطای SQL می‌داد.
+import sqlite3 as _sq3      # noqa: E402
+
+_con = _sq3.connect(tmp)
+try:
+    _cols = [r[1] for r in _con.execute("PRAGMA table_info(orders)")]
+finally:
+    _con.close()
+check("ستون reject_reason واقعاً وجود ندارد", "reject_reason" not in _cols,
+      "پس هر دستوری که به آن اشاره کند خطا می‌دهد")
+
+# نکته‌ی دام‌دار: handlers با «import db as DB» ماژول را برمی‌دارد و
+# این فایل با «from bot import db». اینها دو شیء ماژولِ جدا هستند که
+# فقط یک فایلِ دیتابیس مشترک دارند — پس وصله‌زدن به db.TenantDB هیچ
+# اثری روی چیزی که handlers صدا می‌زند ندارد. باید همانی را وصله زد
+# که خودش در دست دارد.
+_orig_spend = H.DB.TenantDB.spend_balance
+H.DB.TenantDB.spend_balance = lambda self, *a, **k: (False, 0)
+try:
+    _raised = None
+    try:
+        H.wallet_pay(H.Ctx(bot, tenant), D.get_user(777), 777, None, plan["id"])
+    except Exception as e:      # noqa: BLE001
+        _raised = e
+finally:
+    H.DB.TenantDB.spend_balance = _orig_spend
+
+check("شاخه‌ی کسریِ لحظه‌ی آخر دیگر خطا نمی‌دهد", _raised is None,
+      f"{type(_raised).__name__}: {_raised}" if _raised else "")
+_o4 = D.q("SELECT * FROM orders WHERE tenant_id=? AND user_id=? "
+          "ORDER BY id DESC LIMIT 1", (tid, _w["id"]), one=True)
+check("و سفارشِ بی‌پرداخت رد می‌شود", _o4["status"] == "rejected",
+      f"وضعیت: {_o4['status']}")
+check("دلیل در admin_note می‌نشیند — همان ستونی که پنل می‌خواند",
+      "کافی نبود" in (_o4["admin_note"] or ""), _o4["admin_note"] or "—")
+
+
 os.unlink(tmp)
 
 print(f"\n{'═' * 52}")

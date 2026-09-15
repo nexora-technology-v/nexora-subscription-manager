@@ -135,6 +135,7 @@ def test_checks(fast):
                            "tools/test-nodes.py", "tools/test-jobs.py", "tools/test-backup.py", "tools/test-public-config.py", "tools/test-health.py", "tools/test-snapshot.py", "tools/test-agent.py",
                            "tools/test-slowdoctor.py",
                            "tools/test-netid.py",
+                           "tools/test-repair-orders.py",
                            "tools/test-ui-safety.py"]),
         ("اتصال‌ها", ["tools/test-bot-buttons.py", "tools/test-seams.py",
                       "tools/check-api-contract.py"]),

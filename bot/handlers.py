@@ -560,10 +560,10 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
     if not paid:
         # بین خواندن موجودی و این لحظه، پول جای دیگری خرج شده —
         # مثلاً تمدید خودکار همین کاربر که در نخ دیگری می‌دود.
-        ctx.db.exec(
-            "UPDATE orders SET status='rejected', "
-            "reject_reason='موجودی کیف پول کافی نبود' "
-            "WHERE tenant_id=? AND id=?", (ctx.tid, order["id"]))
+        # این شاخه هرگز اجرا نشده بود: ستون reject_reason در جدول
+        # سفارش‌ها وجود ندارد، پس این دستور خطا می‌داد نه اینکه
+        # مسابقه را مدیریت کند. پنل برای همین کار admin_note دارد.
+        ctx.db.close_order(order["id"], "rejected", "موجودی کیف پول کافی نبود")
         return _reply(ctx, chat_id, message_id,
                       "موجودی کیف پولتان کافی نیست.\n\n"
                       f"موجودی: <b>{core.toman(left)}</b> تومان\n"
@@ -575,6 +575,14 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
 
     ok, result = provision(ctx, order["id"])
     if ok:
+        # حالا که کانفیگ ساخته شد، این یک فروشِ تمام‌شده است.
+        #
+        # بدون این خط سفارش pending می‌ماند و جاروکشِ سفارش‌های
+        # منقضی نیم‌ساعت بعد «منقضی»‌اش می‌کرد — فروشی که انجام شده
+        # و در هیچ آماری نیست. همان قاعده‌ی مسیر کارت: تا کانفیگ
+        # نباشد approved نه، و به‌محض اینکه بود، approved.
+        ctx.db.close_order(order["id"], "approved")
+
         # فروش با کیف پول هم فروش است — همکار باید سهمش را بگیرد
         _pay_commission(ctx, fresh, order["id"], p["price"])
         _reply(ctx, chat_id, message_id,
@@ -582,9 +590,8 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
                "اشتراک آماده است — همین پایین برایتان فرستادیم.", None)
         deliver(ctx, fresh, result)
     else:
-        # برگرداندن پول در صورت خطا
-        ctx.db.add_balance(fresh["id"], p["price"], "refund",
-                           "خطا در ساخت کانفیگ", order["id"])
+        # بستن و برگرداندن پول، با هم و یک بار.
+        ctx.db.close_order(order["id"], "rejected", "خطا در ساخت کانفیگ")
         _reply(ctx, chat_id, message_id,
                "ساخت اشتراک به مشکل خورد و <b>مبلغ کامل به کیف پولتان برگشت</b>.\n\n"
                f"<i>{esc(result)}</i>\n\n"
@@ -3306,18 +3313,21 @@ def auto_renew_subscription(tenant, bot, sub):
         user["id"], plan["price"], "renew",
         f"تمدید خودکار اشتراک #{sub['id']}", order["id"])
     if not paid:
-        ctx.db.exec(
-            "UPDATE orders SET status='rejected', "
-            "reject_reason='موجودی کیف پول کافی نبود' "
-            "WHERE tenant_id=? AND id=?", (ctx.tid, order["id"]))
+        ctx.db.close_order(order["id"], "rejected", "موجودی کیف پول کافی نبود")
         log.info("تمدید خودکار اشتراک %s: موجودی کافی نبود (%s تومان)",
                  sub["id"], left)
         return
-    ctx.db.exec("UPDATE orders SET status='approved' WHERE tenant_id=? AND id=?",
-                (ctx.tid, order["id"]))
 
+    # سفارش این‌جا approved *نمی‌شود*.
+    #
+    # قبلاً می‌شد، و اگر ساخت شکست می‌خورد پول برمی‌گشت ولی سفارش
+    # approved می‌ماند — یعنی پولِ برگشته در آمار «فروش» شمرده
+    # می‌شد. و تمدیدِ ناموفق رها نمی‌شود؛ با فاصله دوباره تلاش
+    # می‌کند. پس یک اشتراکِ گیرکرده هر روز چند فروشِ خیالی به آمار
+    # اضافه می‌کرد.
     ok, result = provision(ctx, order["id"])
     if ok:
+        ctx.db.close_order(order["id"], "approved")
         ctx.db.renew_succeeded(sub["id"])
 
         # تمدید خودکار هم فروش است — همکار باید سهمش را بگیرد.
@@ -3353,8 +3363,10 @@ def auto_renew_subscription(tenant, bot, sub):
         ctx.notify_group(f"🔁 تمدید خودکار\n👤 <code>{user['tg_id']}</code>\n"
                          f"💰 {core.toman(plan['price'])} تومان", topic="renewals")
     else:
-        # پول برمی‌گردد تا کاربر ضرر نکند
-        ctx.db.add_balance(user["id"], plan["price"], "refund",
+        # پول برمی‌گردد و سفارش بسته می‌شود — با هم، وگرنه یکی از آن
+        # دو جا می‌ماند. برگشت هم به سفارش گره می‌خورد؛ قبلاً
+        # order_id نمی‌گرفت و در دفتر پیدا نمی‌شد.
+        ctx.db.close_order(order["id"], "rejected",
                            "بازگشت وجه — تمدید خودکار ناموفق")
 
         # همان خطا هر ساعت تکرار می‌شود. بدون شمردن، گروه مدیریت
