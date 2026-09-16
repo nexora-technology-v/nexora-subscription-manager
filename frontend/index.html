@@ -11,6 +11,11 @@
          index.css جایش را می‌گیرد. -->
     <link rel="stylesheet" media="print" onload="this.media='all'"
           href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" />
+    <!-- پلِ مینی‌اپ تلگرام. فقط روی /app لازم است، ولی همین‌جا بارگذاری
+         می‌شود چون یک بیلد و یک index.html داریم. اسکریپت کوچک است و
+         بیرون از تلگرام فقط window.Telegram را تعریف نمی‌کند — که
+         خودِ مینی‌اپ همان را می‌سنجد و پیام روشن می‌دهد. -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>
     <div id="root"></div>

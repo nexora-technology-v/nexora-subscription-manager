@@ -61,6 +61,10 @@ export const BOT_BEHAVIOUR = [
   { k: "sub_base_url", type: "text", label: "دامنه‌ی لینک اشتراک",
     ph: "https://sub.nexora.ir",
     hint: "خالی بماند، از تنظیمات خود پنل 3x-ui خوانده می‌شود" },
+  { k: "miniapp_url", type: "text", label: "آدرس مینی‌اپ",
+    ph: "https://sub.nexora.ir/app",
+    hint: "حتماً https — تلگرام با http پیام را اصلاً نمی‌فرستد. "
+        + "خالی بماند، دکمه‌اش در منوی ربات نشان داده نمی‌شود." },
 ];
 
 export function BotTextsSection({ password }) {

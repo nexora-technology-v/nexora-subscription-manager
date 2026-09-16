@@ -330,6 +330,14 @@ def kb(rows):
                 if not valid_button_url(data):
                     continue
                 line.append({"text": text, "url": data})
+            elif kind == "web_app":
+                # مینی‌اپ. تلگرام فقط https را باز می‌کند و با هر چیز
+                # دیگری خودِ *پیام* را رد می‌کند — یعنی یک آدرس غلط
+                # کل منو را از کار می‌اندازد، نه فقط یک دکمه را. پس
+                # مثل url، دکمه‌ی نامعتبر حذف می‌شود نه فرستاده.
+                if not data or not str(data).lower().startswith("https://"):
+                    continue
+                line.append({"text": text, "web_app": {"url": str(data)}})
             elif kind == "copy":
                 # دکمه‌ی کپی تلگرام: با یک ضربه متن در کلیپ‌بورد
                 # می‌نشیند. برای لینک اشتراک بهترین حالت است — کاربر

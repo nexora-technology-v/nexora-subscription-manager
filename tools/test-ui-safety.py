@@ -518,7 +518,19 @@ for _name, _src in ALL.items():
         _open_tag = _src[_m.start():_i + 1]
         _close = _src.find("</button>", _i)
         _body = _src[_i + 1:_close] if _close > 0 else ""
-        _txt = re.sub(r"\{[^{}]*\}", "", re.sub(r"<[^>]*>", "", _body)).strip()
+        _inner = re.sub(r"<[^>]*>", "", _body)
+        # متنِ ثابت
+        _txt = re.sub(r"\{[^{}]*\}", "", _inner).strip()
+        # و متنِ پویا: `{copied ? "کپی شد" : "کپی لینک"}` یا `{label}`
+        # هم برچسب‌اند و کاربر می‌بیندشان. بدون این، هر دکمه‌ای که
+        # متنش شرطی باشد «فقط‌آیکون» شمرده می‌شد — دو مورد در مینی‌اپ
+        # همین‌طور بی‌دلیل قرمز شدند.
+        if not _txt:
+            for _e in re.findall(r"\{([^{}]*)\}", _inner):
+                if re.search(r'"[^"]*[^\W\d_][^"]*"', _e) or \
+                        re.fullmatch(r"\s*[a-z]\w*\s*", _e):
+                    _txt = "(پویا)"
+                    break
         if _txt or not _ICON.search(_body):
             continue
         if "title=" in _open_tag or "aria-label" in _open_tag:

@@ -770,12 +770,15 @@ check("و چیزی روی پنل ساخته نمی‌شود", not _MakeXUI.made)
 for _bad_in, _why in ((({"gb": 50, "months": 0, "devices": 1}), "ماه صفر"),
                       (({"gb": 50, "months": 99, "devices": 1}), "ماه ۹۹"),
                       (({"gb": 50, "months": 1, "devices": 999}), "کاربر ۹۹۹")):
+    # نامش `_ok` نیست: آن، شمارنده‌ی خودِ check است و بازنویسی‌اش
+    # شمارش را از این‌جا به بعد صفر می‌کرد. عدد پایانِ این سوییت
+    # مدتی کمتر از واقع گزارش می‌شد.
     try:
         AP.portal_create(_bad_in, _T2)
-        _ok = False
+        _rejected = False
     except Exception as e:
-        _ok = getattr(e, "status_code", 0) == 400
-    check(f"{_why} رد می‌شود", _ok)
+        _rejected = getattr(e, "status_code", 0) == 400
+    check(f"{_why} رد می‌شود", _rejected)
 
 # ── اعتبار ناکافی ──
 _bd = _sq3.connect(str(AP.BOT_DB))
@@ -847,10 +850,10 @@ for _bad, _why in (("", "توکن خالی"), ("abc", "بدون دونقطه"),
                    ("1:2", "خیلی کوتاه")):
     try:
         AP.portal_bot_set({"token": _bad}, _TB)
-        _ok = False
+        _rejected = False
     except Exception as e:
-        _ok = getattr(e, "status_code", 0) == 400
-    check(f"{_why} رد می‌شود", _ok)
+        _rejected = getattr(e, "status_code", 0) == 400
+    check(f"{_why} رد می‌شود", _rejected)
 check("و برای هیچ‌کدام تلگرام صدا زده نشد", not _asked,
       "بررسی شکل قبل از شبکه است")
 
@@ -2206,6 +2209,145 @@ check("و مصرفِ کوچک به صفر گرد نمی‌شود",
 
 
 # ═══════════════════════════════════════════════════════════
+head("مینی‌اپ · امضا تنها دیواری است که بین مشتری‌هاست")
+
+# initData رشته‌ای است که تلگرام امضا کرده. اگر امضا سنجیده نشود، هر
+# کسی می‌تواند user={"id":...} بفرستد و اشتراک‌های هر مشتری‌ای را
+# ببیند. این تنها چیزی است که جلویش را می‌گیرد.
+
+import hashlib as _hl
+import hmac as _hm
+import re as _re
+import time as _tm
+import json as _json
+from urllib.parse import urlencode as _ue
+
+_APSRC = io.open(os.path.join(str(ROOT), "backend", "app.py"),
+                 encoding="utf-8").read()
+
+_BOT = "8100001:AA-token-for-the-signature-test"
+
+
+def _sign(token, user_id=555, age=0, extra=None):
+    """یک initData معتبر می‌سازد — همان‌طور که تلگرام می‌سازد."""
+    pairs = {
+        "auth_date": str(int(_tm.time()) - age),
+        "query_id": "AAH",
+        "user": _json.dumps({"id": user_id, "first_name": "آزمون"},
+                            ensure_ascii=False),
+    }
+    pairs.update(extra or {})
+    check = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs))
+    secret = _hm.new(b"WebAppData", token.encode(), _hl.sha256).digest()
+    pairs["hash"] = _hm.new(secret, check.encode(), _hl.sha256).hexdigest()
+    return _ue(pairs)
+
+
+_sok, _d = AP._mini_check(_sign(_BOT), _BOT)
+check("امضای درست پذیرفته می‌شود", _sok and _d["user"]["id"] == 555, str(_d)[:60])
+
+_sok2, _w2 = AP._mini_check(_sign(_BOT), "8100002:AA-a-different-bots-token")
+check("امضای یک ربات با توکن ربات دیگر رد می‌شود", not _sok2, str(_w2)[:52])
+
+_forged = _sign(_BOT).replace("hash=", "hash=0")
+check("امضای دستکاری‌شده رد می‌شود",
+      not AP._mini_check(_forged, _BOT)[0])
+
+_noHash = _ue({"auth_date": str(int(_tm.time())),
+               "user": _json.dumps({"id": 555})})
+check("بدون امضا اصلاً رد می‌شود", not AP._mini_check(_noHash, _BOT)[0],
+      "وگرنه فرستادن شناسه کافی بود تا حساب دیگری دیده شود")
+
+_old = _sign(_BOT, age=25 * 3600)
+_sok3, _w3 = AP._mini_check(_old, _BOT)
+check("امضای کهنه‌تر از ۲۴ ساعت رد می‌شود", not _sok3, str(_w3)[:46])
+
+_fresh = _sign(_BOT, age=23 * 3600)
+check("ولی امضای ۲۳ ساعته هنوز قبول است",
+      AP._mini_check(_fresh, _BOT)[0],
+      "سقف نباید آن‌قدر تنگ باشد که نشست وسط کار بیفتد")
+
+_future = _sign(_BOT, age=-3600)
+check("امضای با تاریخِ آینده رد می‌شود",
+      not AP._mini_check(_future, _BOT)[0])
+
+_noUser = _sign(_BOT, extra={"user": "{}"})
+check("امضای بدون شناسه‌ی کاربر رد می‌شود",
+      not AP._mini_check(_noUser, _BOT)[0])
+
+# داخل خودِ تابع، نه هرجای فایل: compare_digest شش جای دیگر app.py
+# هم هست و شکستنِ عمدی نشان داد جایگزینی‌اش با == گرفته نمی‌شود
+_chk_fn = _APSRC[_APSRC.find("def _mini_check("):]
+_chk_fn = _chk_fn[:_chk_fn.find(chr(10) + "def ", 10)]
+check("مقایسه‌ی امضا با compare_digest است",
+      "compare_digest" in _chk_fn and "want != got" not in _chk_fn,
+      "مقایسه‌ی معمولی از روی زمانش لو می‌دهد")
+
+
+# ═══════════════════════════════════════════════════════════
+head("مینی‌اپ · مرزها")
+
+_mini_routes = _re.findall(r'@app\.(?:get|post|put|delete)\("(/api/mini/[^"]*)"\)',
+                           _APSRC)
+check("مسیرهای مینی‌اپ پیدا شدند", len(_mini_routes) >= 3,
+      "، ".join(_mini_routes))
+
+# هر مسیر باید از mini_user رد شود — مثل همان قاعده‌ای که برای
+# /api/portal/* هست
+_unguarded = []
+for _r in _mini_routes:
+    _i = _APSRC.find('"%s"' % _r)
+    _seg = _APSRC[_i:_i + 400]
+    if "Depends(mini_user)" not in _seg:
+        _unguarded.append(_r)
+check("هر مسیر مینی‌اپ از احراز هویت رد می‌شود", not _unguarded,
+      "، ".join(_unguarded) if _unguarded else "%d مسیر" % len(_mini_routes))
+
+# و هیچ‌کدام نباید به حسابداری دست بزنند — مالک گفت جداست
+_MONEY = ("_billing_conn", "_line_amount", "_period_share", "_portal_charge",
+          "_bill_since", "billing.db", "group_config")
+_i0 = _APSRC.find("#  مینی‌اپ تلگرام")
+_i1 = _APSRC.find('@app.post("/api/admin/tenant/{tid}/credit")', _i0)
+_block = _APSRC[_i0:_i1] if _i0 >= 0 and _i1 > _i0 else ""
+_touched = [w for w in _MONEY if w in _block]
+check("مینی‌اپ به حسابداری دست نمی‌زند", _block and not _touched,
+      "، ".join(_touched) if _touched
+      else "نه نرخ حساب می‌کند، نه اعتبار کم می‌کند")
+
+check("و هیچ سفارشی را approved نمی‌کند",
+      "approved" not in _block,
+      "خرید در خودِ ربات می‌ماند")
+
+
+# ═══════════════════════════════════════════════════════════
+head("مینی‌اپ · ربات باید مسیر مستقل بماند")
+
+# مشتری‌های ما همان کسانی‌اند که اینترنتشان محدود است. اگر دامنه بالا
+# نیاید، مینی‌اپ صفحه‌ی سفید می‌شود و تلگرام چیزی نمی‌گوید. پس هر
+# کاری که از مینی‌اپ می‌شود کرد باید از منوی ربات هم بشود.
+_H = io.open(os.path.join(str(ROOT), "bot", "handlers.py"),
+             encoding="utf-8").read()
+
+# داخل خودِ main_menu، نه هرجای فایل: همین متن‌ها در حالت‌های خالی
+# هم به کار رفته‌اند و شکستنِ عمدی نشان داد حذفشان از منو گرفته
+# نمی‌شود
+_menu = _H[_H.find("def main_menu("):]
+_menu = _menu[:_menu.find(chr(10) + "def ", 10)]
+for _must in ("🛒 خرید اشتراک", "📊 اشتراک‌های من", "👛 کیف پول"):
+    check("دکمه‌ی «%s» هنوز در منوی ربات هست" % _must.split(" ", 1)[-1],
+          _must in _menu, "مینی‌اپ اضافه است، نه جایگزین")
+
+check("دکمه‌ی مینی‌اپ فقط با https ساخته می‌شود",
+      'app_url.lower().startswith("https://")' in _H,
+      "تلگرام با http خودِ پیام را رد می‌کند، نه فقط دکمه را")
+
+_TG = io.open(os.path.join(str(ROOT), "bot", "tg.py"), encoding="utf-8").read()
+check("و کیبورد هم آدرس نامعتبر را حذف می‌کند نه می‌فرستد",
+      'kind == "web_app"' in _TG and "startswith(\"https://\")" in _TG,
+      "یک آدرس غلط کل منو را از کار می‌اندازد")
+
+
+# ═══════════════════════════════════════════════════════════
 head("گزارش فروش و قیف باید یک نرخ تبدیل بدهند")
 
 # قیف در ۱.۳۷.۰ درست شد، ولی گزارش فروش تعریفِ خودش را داشت. روی
@@ -2348,6 +2490,27 @@ check("و فهرست نماینده‌ها همچنان می‌آید",
       _pl2.get("ready") is True and isinstance(_pl2.get("tenants"), list),
       "نخواندنِ گروه‌ها نباید کلِ صفحه را از کار بیندازد")
 
+
+# شمارنده نباید جای دیگری بازنویسی شده باشد.
+#
+# `_ok` دو جا به‌عنوان متغیر معمولی به کار رفته بود و هر بار شمارش را
+# از صفر شروع می‌کرد — سوییت ۳۱۳ بررسی را اجرا می‌کرد و ۱۸۲ گزارش
+# می‌داد. خود تست‌ها درست کار می‌کردند و شکست‌ها هم شمرده می‌شدند، ولی
+# عددِ پایانی دروغ می‌گفت و هیچ راهی نبود بفهمی بخشی از سوییت اصلاً
+# اجرا نشده.
+# آستانه: هر فراخوانیِ ایستا دست‌کم یک‌بار اجرا می‌شود و بعضی‌ها داخل
+# حلقه‌اند، پس شمرده‌شده باید **بیشتر** از تعداد ایستا باشد. کمتر بودن
+# یعنی یا شمارنده بازنویسی شده یا بخشی از سوییت اصلاً نرسیده.
+#
+# چند بررسی داخل شرط‌اند و ممکن است اجرا نشوند، پس کمی ارفاق —
+# ولی نه آن‌قدر که بازنویسی از زیرش در برود: با آستانه‌ی ۰٫۶ یک
+# بازنویسی که ۲۰۶ از ۲۷۹ را شمرد، بی‌صدا رد شد.
+_calls = io.open(__file__, encoding="utf-8").read().count("\ncheck(")
+_counted = _ok + _fail
+if _counted < _calls * 0.95:
+    print(f"  {R}✗ شمارنده بازنویسی شده — {_counted} شمرده شد، "
+          f"ولی {_calls} فراخوانی در فایل هست{X}")
+    _fail += 1
 
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()

@@ -247,6 +247,17 @@ def main_menu(ctx, user):
     except Exception:
         pass
 
+    # مینی‌اپ — اگر آدرسش تنظیم شده باشد.
+    #
+    # *اضافه* بر منو، نه جایگزینِ چیزی. مینی‌اپ از دامنه‌ی ما بارگذاری
+    # می‌شود و مشتری‌های ما همان کسانی‌اند که اینترنتشان محدود است.
+    # اگر آن صفحه بالا نیاید، تلگرام چیزی نمی‌گوید و کاربر صفحه‌ی سفید
+    # می‌بیند — پس هر کاری که از مینی‌اپ می‌شود کرد، باید از همین منو
+    # هم بشود.
+    app_url = (ctx.s.get("miniapp_url") or "").strip()
+    if app_url.lower().startswith("https://"):
+        rows.insert(0, [("📱 اپلیکیشن", app_url, "web_app")])
+
     if ctx.s.get("trial_enabled") and not user.get("trial_used"):
         rows.insert(1, [("🎉 دریافت اشتراک تست رایگان", "trial")])
     rows.append([("📚 آموزش نصب", "help"), ("💬 پشتیبانی", "support")])

@@ -535,6 +535,10 @@ KNOWN_PUBLIC = {
 # فهرست‌کردن تک‌تکشان این‌جاست.
 KNOWN_PUBLIC |= {p for p, _n in _routes if p.startswith("/api/portal/")}
 
+# مینی‌اپ هم همین‌طور: احراز هویتش هدر است نه پارامتر، پس اسکنرِ
+# بالا آن را «عمومی» می‌بیند. تستِ اختصاصیِ پایین سختگیرانه‌تر است.
+KNOWN_PUBLIC |= {p for p, _n in _routes if p.startswith("/api/mini/")}
+
 # ── هر مسیر نماینده باید به مستاجر خودش محدود باشد ──
 #
 # همان کاری که بالاتر برای check_auth روی مسیرهای مدیر انجام شد.
@@ -548,6 +552,17 @@ _unguarded = [p for p, n in _portal
 check("هر مسیر نماینده به مستاجر خودش محدود است", not _unguarded,
       "، ".join(_unguarded) if _unguarded
       else f"{len(_portal)} مسیر، همه پشت portal_tenant")
+# ── هر مسیر مینی‌اپ باید امضای تلگرام را بسنجد ──
+#
+# همان قاعده‌ی مسیرهای نماینده. initData تنها چیزی است که بین
+# مشتری‌ها دیوار می‌کشد: بدون سنجیدنش، فرستادن شناسه‌ی دیگری کافی
+# است تا کسی اشتراک‌های دیگری را ببیند.
+_mini = [(p, n) for p, n in _routes if p.startswith("/api/mini")]
+_mini_open = [p for p, n in _mini if "mini_user" not in _ast.unparse(n)]
+check("هر مسیر مینی‌اپ امضای تلگرام را می‌سنجد", not _mini_open,
+      "، ".join(_mini_open) if _mini_open
+      else f"{len(_mini)} مسیر، همه پشت mini_user")
+
 _new_public = [p for p in _public if p not in KNOWN_PUBLIC]
 check("مسیر عمومی تازه‌ای بی‌خبر اضافه نشده", not _new_public,
       ("، ".join(_new_public) if _new_public

@@ -9390,6 +9390,252 @@ def portal_tenant(x_portal_token: str = Header(None)):
     return t
 
 
+# ═══════════════════════════════════════════════════════════
+#  مینی‌اپ تلگرام
+#
+#  برگه‌اش: docs/specs/2026-09-16-miniapp.md
+#
+#  این‌جا هیچ پولی جابه‌جا نمی‌شود و هیچ نرخی حساب نمی‌شود. مینی‌اپ
+#  فقط نشان می‌دهد؛ خرید و رسید در خودِ ربات می‌مانند. مالک صریح گفت
+#  حسابداری از این بحث جداست.
+# ═══════════════════════════════════════════════════════════
+
+#: initData کهنه پذیرفته نمی‌شود.
+#
+#  بدون این، یک رشته‌ی امضاشده که یک‌بار از دست کسی در رفته، تا ابد
+#  کلیدِ حساب آن مشتری می‌ماند.
+MINI_MAX_AGE = 24 * 3600
+
+
+def _mini_check(init_data: str, token: str):
+    """
+    امضای تلگرام را می‌سنجد. برمی‌گرداند: (درست؟, داده یا پیام خطا)
+
+    الگوریتم خودِ تلگرام:
+        secret = HMAC-SHA256(key="WebAppData", msg=<توکن ربات>)
+        hash   = HMAC-SHA256(key=secret, msg=<رشته‌ی بررسی>)
+
+    رشته‌ی بررسی، همه‌ی کلیدها جز `hash` است که مرتب شده و با خط تازه
+    به هم چسبیده‌اند.
+
+    چرا سخت‌گیرانه: اگر امضا سنجیده نشود، هر کسی می‌تواند
+    `user={"id":...}` بفرستد و اشتراک‌های هر مشتری‌ای را ببیند. این
+    تنها چیزی است که بین مشتری‌ها دیوار می‌کشد.
+    """
+    import hashlib
+    from urllib.parse import parse_qsl
+
+    if not init_data or not token:
+        return False, "دسترسی بدون امضا ممکن نیست"
+
+    try:
+        pairs = dict(parse_qsl(init_data, strict_parsing=True))
+    except ValueError:
+        return False, "امضا خوانده نشد"
+
+    got = pairs.pop("hash", "")
+    if not got:
+        return False, "امضا نیامده"
+
+    check = "\n".join(f"{k}={pairs[k]}" for k in sorted(pairs))
+    secret = _hmac.new(b"WebAppData", token.encode(), hashlib.sha256).digest()
+    want = _hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+
+    # compare_digest، نه == : مقایسه‌ی معمولی به‌محض اولین اختلاف
+    # برمی‌گردد و از روی زمانش می‌شود امضا را حدس زد
+    if not _hmac.compare_digest(want, got):
+        return False, "امضا معتبر نیست"
+
+    try:
+        age = _time.time() - int(pairs.get("auth_date") or 0)
+    except (TypeError, ValueError):
+        return False, "تاریخ امضا خوانده نشد"
+    if age > MINI_MAX_AGE:
+        return False, "این نشست کهنه شده — مینی‌اپ را دوباره باز کنید"
+    if age < -300:
+        # ساعتِ جلوترِ سرور یا امضای ساختگی
+        return False, "تاریخ امضا از آینده است"
+
+    try:
+        user = json.loads(pairs.get("user") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return False, "اطلاعات کاربر خوانده نشد"
+    if not user.get("id"):
+        return False, "شناسه‌ی کاربر نیامده"
+
+    return True, {"user": user, "auth_date": pairs.get("auth_date")}
+
+
+def _mini_tenants():
+    """
+    رباتی که مینی‌اپ ممکن است از آن باز شده باشد.
+
+    فعلاً فقط مستاجر ریشه — تصمیم مالک. ولی فهرست برمی‌گرداند نه یک
+    ردیف، چون قدم بعدی دادنِ همین به نماینده‌هاست و آن‌وقت باید امضا
+    با توکنِ هر کدام جدا سنجیده شود.
+
+    `initData` نمی‌گوید از کدام ربات آمده، پس تنها راه امتحان‌کردن
+    توکن‌هاست. تعدادشان کم و کراندار است.
+    """
+    con = _bot_conn()
+    if not con:
+        return []
+    try:
+        rows = con.execute(
+            "SELECT * FROM tenants WHERE parent_id IS NULL AND is_active=1 "
+            "AND bot_token IS NOT NULL ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        log.debug("خواندن مستاجرها برای مینی‌اپ ناموفق", exc_info=True)
+        return []
+    finally:
+        con.close()
+
+
+def mini_user(x_telegram_init_data: str = Header(None)):
+    """
+    کاربرِ مینی‌اپ. هر مسیر `/api/mini/*` از این رد می‌شود.
+
+    برمی‌گرداند: (ردیف مستاجر, ردیف کاربر)
+
+    شناسه از **امضا** برداشته می‌شود، نه از بدنه‌ی درخواست. اگر از
+    بدنه خوانده شود، فرستادن شناسه‌ی دیگری کافی است تا کسی حساب
+    دیگری را ببیند.
+    """
+    tenants = _mini_tenants()
+    if not tenants:
+        raise HTTPException(
+            status_code=503,
+            detail="رباتی تنظیم نشده — از بخش «ربات تلگرام» توکن را ثبت کنید")
+
+    why = "امضا معتبر نیست"
+    for t in tenants:
+        ok, data = _mini_check(x_telegram_init_data or "", t.get("bot_token"))
+        if ok:
+            tg_id = int(data["user"]["id"])
+            con = _bot_conn()
+            try:
+                row = con.execute(
+                    "SELECT * FROM users WHERE tenant_id=? AND tg_id=?",
+                    (t["id"], tg_id)).fetchone() if con else None
+            finally:
+                if con:
+                    con.close()
+            if not row:
+                # کاربری که هنوز /start نزده. ساختنش کارِ ربات است،
+                # نه این‌جا — وگرنه دو جا کاربر ساخته می‌شود.
+                raise HTTPException(
+                    status_code=404,
+                    detail="هنوز وارد ربات نشده‌اید — یک‌بار /start را بزنید")
+            return t, dict(row)
+        why = data if isinstance(data, str) else why
+
+    raise HTTPException(status_code=401, detail=why)
+
+
+@app.get("/api/mini/me")
+def mini_me(tu: tuple = Depends(mini_user)):
+    """کیستم، چقدر پول و سکه دارم، و برندِ این ربات چیست."""
+    t, u = tu
+    try:
+        st = json.loads(t.get("settings") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        st = {}
+    return {
+        "name": u.get("first_name") or "",
+        "balance": int(u.get("balance") or 0),
+        "coins": int(u.get("coins") or 0),
+        "brand": st.get("brand") or t.get("name") or "",
+        "support": st.get("support_username") or st.get("support") or "",
+        "botUsername": t.get("bot_username") or "",
+        "trialUsed": bool(u.get("trial_used")),
+    }
+
+
+@app.get("/api/mini/subs")
+def mini_subs(tu: tuple = Depends(mini_user)):
+    """
+    اشتراک‌های همین کاربر، با مصرف واقعی.
+
+    مصرف از x-ui می‌آید؛ بدون آن کاربر نمی‌داند چقدر مانده و وقتی
+    حجمش تمام شود فکر می‌کند سرویس خراب است.
+    """
+    t, u = tu
+    con = _bot_conn()
+    if not con:
+        return {"subs": []}
+    try:
+        rows = [dict(r) for r in con.execute(
+            "SELECT s.*, p.name AS plan_name FROM subscriptions s "
+            "LEFT JOIN plans p ON p.id = s.plan_id "
+            "WHERE s.tenant_id=? AND s.user_id=? ORDER BY s.id DESC",
+            (t["id"], u["id"]))]
+    except Exception:
+        log.debug("خواندن اشتراک‌های مینی‌اپ ناموفق", exc_info=True)
+        rows = []
+    finally:
+        con.close()
+
+    clients, _k, _e = _read_xui_clients()
+    by_email = {c.get("email"): c for c in (clients or [])}
+
+    out = []
+    for s in rows:
+        cl = by_email.get(s.get("client_email")) or {}
+        total = int(cl.get("totalGB") or 0)
+        used = int(cl.get("used") or 0)
+        left = None
+        exp = (s.get("expires_at") or "")[:19]
+        if exp:
+            try:
+                left = (datetime.fromisoformat(exp) - datetime.now()).days
+            except ValueError:
+                left = None
+        out.append({
+            "id": s.get("id"),
+            "plan": s.get("plan_name") or "",
+            "email": s.get("client_email") or "",
+            "subUrl": s.get("sub_url") or "",
+            "gb": _gb_of(total),
+            "usedGB": round(used / (1024 ** 3), 1) if used else 0,
+            "usagePct": _usage_percent(used, total),
+            "expiryJalali": _to_jalali(_epoch_ms(exp))[0] if exp else None,
+            "daysLeft": left,
+            "active": bool(s.get("is_active")) and (left is None or left > 0),
+        })
+    return {"subs": out}
+
+
+@app.get("/api/mini/plans")
+def mini_plans(tu: tuple = Depends(mini_user)):
+    """
+    پلن‌های فروش — همان‌هایی که ربات نشان می‌دهد.
+
+    قیمت از جدول `plans` می‌آید، همان جایی که ربات می‌خواند. این‌جا
+    هیچ محاسبه‌ای انجام نمی‌شود؛ اگر می‌شد، همان باگِ «یک قاعده، دو
+    جا» برمی‌گشت.
+    """
+    t, _u = tu
+    con = _bot_conn()
+    if not con:
+        return {"plans": []}
+    try:
+        rows = [dict(r) for r in con.execute(
+            "SELECT id, name, description, gb, days, ip_limit, price, is_trial "
+            "FROM plans WHERE tenant_id=? AND is_active=1 "
+            "ORDER BY sort_order, id", (t["id"],))]
+    except Exception:
+        log.debug("خواندن پلن‌های مینی‌اپ ناموفق", exc_info=True)
+        rows = []
+    finally:
+        con.close()
+    return {"plans": [{
+        "id": r["id"], "name": r["name"], "desc": r.get("description") or "",
+        "gb": r["gb"], "days": r["days"], "devices": r.get("ip_limit") or 0,
+        "price": r["price"], "isTrial": bool(r.get("is_trial")),
+    } for r in rows]}
+
+
 @app.post("/api/admin/tenant/{tid}/credit")
 def tenant_credit(tid: int, payload: dict, x_admin_password: str = Header(...)):
     """
