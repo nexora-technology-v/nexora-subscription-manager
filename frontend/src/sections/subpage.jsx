@@ -6,25 +6,75 @@
  */
 import React, { useState, useEffect } from "react";
 import {
-  Activity, AlertTriangle, ArrowUpRight, Bell, Check, CheckCircle2, ChevronLeft, Clock, Copy, Download, ExternalLink, Eye, Gift, Globe, HelpCircle, Key, Layers, LayoutGrid, Loader2, MessageCircle, MessageSquare, Package, Palette, PlayCircle, Plus, Search, Settings, ShieldCheck, Sliders, Smartphone, Star, Trash2, Type, Upload, UserPlus, Users, Video,
+  Activity, AlertTriangle, ArrowUpRight, ShoppingCart, TrendingUp, Wallet, Bell, Check, CheckCircle2, ChevronLeft, Clock, Copy, Download, ExternalLink, Eye, Gift, Globe, HelpCircle, Key, Layers, LayoutGrid, Loader2, MessageCircle, MessageSquare, Package, Palette, PlayCircle, Plus, Search, Settings, ShieldCheck, Sliders, Smartphone, Star, Trash2, Type, Upload, UserPlus, Users, Video,
 } from "lucide-react";
-import { errText } from "../lib/format";
+import { errText, faNum } from "../lib/format";
 import { API_URL, LANG_TABS, OS_TABS, SCHEME_ICON, SCHEME_OPTIONS, WS_MODES } from "../lib/constants";
 import { WsModePreview } from "../shell/workspace";
-import { CountUp, EmptyState, Field, InfoBox, NumberStepper, SectionHead, Sparkline, StatusChip, Tabs, Toggle } from "../ui/index";
+import { AreaChart, BarList, CountUp, Donut, EmptyState, Field, InfoBox, NumberStepper,
+  SectionHead, Segmented, Skeleton, SkeletonCards, Sparkline, StatTile, StatusChip,
+  Tabs, Toggle } from "../ui/index";
 import { TemplateThumb } from "./bot/themes";
 
-export function OverviewSection({ config, stats, navigate, dirty }) {
-  const appsCount = stats?.appsCount ?? OS_TABS.reduce((s, t) => s + (config.downloadApps?.[t.key]?.length || 0), 0);
-  const faqCount = stats?.faqCount ?? LANG_TABS.reduce((s, t) => s + (config.faq?.[t.key]?.length || 0), 0);
-  const videosCount = stats?.videosCount ?? (config.videos?.length || 0);
-  const activeCount = stats?.activeFeaturesCount ?? 0;
+/**
+ * داشبورد — اولین چیزی که مالک بعد از ورود می‌بیند.
+ *
+ * چه چیزی عوض شد و چرا:
+ *
+ * نسخه‌ی قبل چهار شمارنده‌ی محتوا داشت (چند اپ، چند سوال، چند
+ * ویدیو) با اسپارک‌لاین‌هایی که **عدد ساختگی** بودند — `[2,3,3,4,5,5]`
+ * در خودِ کد نوشته شده بود. یعنی نموداری که چیزی را نشان نمی‌داد و
+ * فقط شبیه نمودار بود.
+ *
+ * حالا همان جا کارِ واقعیِ کسب‌وکار را نشان می‌دهد: کاربر تازه،
+ * سفارش، درآمد، نرخ تبدیل — همه از `/api/admin/bot/users/report` که
+ * از قبل وجود داشت و هیچ صفحه‌ای جز گزارشِ فروش از آن نمی‌خواند.
+ * اسپارک‌لاین‌ها هم از سریِ `daily` همان پاسخ می‌آیند، نه از عددِ
+ * دستی.
+ *
+ * شمارنده‌های محتوا نرفتند؛ یک ردیفِ کوچک‌تر پایین‌تر شدند. آن‌ها
+ * وضعیتِ صفحه‌اند، نه شاخصِ کسب‌وکار، و نباید با هم رقابت کنند.
+ */
+export function OverviewSection({ config, stats, navigate, dirty, password }) {
+  const [rep, setRep] = useState(null);
+  const [days, setDays] = useState(30);
+  const [err, setErr] = useState("");
 
-  const cards = [
-    { key: "apps", label: "اپلیکیشن‌های فعال", value: appsCount, icon: Smartphone, color: "var(--accent-2)", bg: "rgba(43,127,214,.12)", spark: [2, 3, 3, 4, 5, 5, appsCount || 1], sub: "روی ۳ پلتفرم" },
-    { key: "faq", label: "سوالات متداول", value: faqCount, icon: HelpCircle, color: "var(--purple)", bg: "rgba(167,139,250,.12)", spark: [1, 2, 3, 4, 4, 5, faqCount || 1], sub: "در ۴ زبان" },
-    { key: "videos", label: "ویدیوهای آموزشی", value: videosCount, icon: Video, color: "var(--ok)", bg: "rgba(52,211,153,.12)", spark: [0, 0, 1, 1, 2, 2, videosCount || 1], sub: videosCount ? "قابل نمایش" : "هنوز اضافه نشده" },
-    { key: "resellers", label: "واسطه‌های فعال", value: (config.resellers || []).filter(r => r.enabled !== false).length, icon: Users, color: "var(--warn)", bg: "rgba(251,191,36,.12)", spark: [0, 0, 1, 1, 1, 2, (config.resellers || []).length || 1], sub: "برند اختصاصی" },
+  useEffect(() => {
+    let alive = true;
+    setRep(null);
+    setErr("");
+    fetch(`${API_URL}/api/admin/bot/users/report?days=${days}`,
+      { headers: { "X-Admin-Password": password } })
+      .then((r) => r.json())
+      .then((j) => {
+        if (!alive) return;
+        // ربات ممکن است اصلاً وصل نباشد — آن حالت باید *گفته* شود،
+        // نه اینکه صفحه خالی بماند و مالک فکر کند خراب است
+        if (j && j.ready === false) setErr(errText(j.error, "دیتابیس ربات در دسترس نیست"));
+        setRep(j || {});
+      })
+      .catch(() => alive && setErr("اتصال به سرور برقرار نشد"));
+    return () => { alive = false; };
+  }, [days, password]);
+
+  const daily = (rep?.daily || []);
+  const orderSeries = daily.map((d) => Number(d.n) || 0);
+  const moneySeries = daily.map((d) => Number(d.sum) || 0);
+  const o = rep?.orders || {};
+  const u = rep?.users || {};
+  const s = rep?.subs || {};
+
+  const appsCount = stats?.appsCount ?? OS_TABS.reduce((a, t) => a + (config.downloadApps?.[t.key]?.length || 0), 0);
+  const faqCount = stats?.faqCount ?? LANG_TABS.reduce((a, t) => a + (config.faq?.[t.key]?.length || 0), 0);
+  const videosCount = stats?.videosCount ?? (config.videos?.length || 0);
+  const resellerCount = (config.resellers || []).filter((r) => r.enabled !== false).length;
+
+  const content = [
+    { key: "apps", label: "اپلیکیشن‌ها", value: appsCount, icon: Smartphone, sub: "روی ۳ پلتفرم" },
+    { key: "faq", label: "سوالات متداول", value: faqCount, icon: HelpCircle, sub: "در ۴ زبان" },
+    { key: "videos", label: "ویدیوهای آموزشی", value: videosCount, icon: Video, sub: videosCount ? "قابل نمایش" : "هنوز اضافه نشده" },
+    { key: "resellers", label: "واسطه‌های فعال", value: resellerCount, icon: Users, sub: "برند اختصاصی" },
   ];
 
   const features = [
@@ -34,109 +84,166 @@ export function OverviewSection({ config, stats, navigate, dirty }) {
     { l: "پاپ‌آپ راهنما", on: config.advanced?.showNotificationPopup !== false, k: "settings" },
   ];
 
-  const quickLinks = [
-    { l: "مشاهده پیش‌نمایش زنده", i: Eye, k: "preview" },
-    { l: "افزودن ویدیوی آموزشی", i: Video, k: "videos" },
-    { l: "ویرایش سوالات متداول", i: HelpCircle, k: "faq" },
-    { l: "تنظیمات پیشرفته", i: Settings, k: "settings" },
-  ];
-
-  const allApps = OS_TABS.flatMap((t) =>
-    (config.downloadApps?.[t.key] || []).map((a) => ({ ...a, platform: t.label }))
-  );
+  const busy = !rep && !err;
 
   return (
     <div className="fx-anim">
-      <div className="fx-g4 grid grid-cols-4 gap-4 mb-5">
-        {cards.map((c) => (
-          <button title="رفتن به این بخش" key={c.key} onClick={() => navigate(c.key)} className="fx-card fx-card-i p-5 text-right">
-            <div className="flex items-start justify-between mb-4">
-              <div className="fx-ico" style={{ background: c.bg }}><c.icon size={17} style={{ color: c.color }} /></div>
-              <ChevronLeft size={15} style={{ color: "#2A3444" }} />
-            </div>
-            <div className="flex items-end justify-between gap-2 mb-1">
-              <span className="fx-stat-num text-white"><CountUp value={c.value} /></span>
-            </div>
-            <div className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>{c.label}</div>
-            <div className="text-[12px] mb-3" style={{ color: "var(--muted)" }}>{c.sub}</div>
-            <Sparkline data={c.spark} color={c.color} />
-          </button>
-        ))}
-      </div>
 
-      <div className="fx-g2 grid gap-4">
-        <div className="fx-card overflow-hidden">
-          <div className="flex items-center justify-between p-5 pb-4 gap-3 flex-wrap">
-            <div>
-              <h2 className="text-[16px] font-bold text-white">اپلیکیشن‌های پیکربندی‌شده</h2>
-              <p className="text-[13px] mt-1" style={{ color: "var(--muted)" }}>لیست اپ‌های موجود در صفحه اشتراک</p>
-            </div>
-            <button onClick={() => navigate("apps")} className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
-              مدیریت <ChevronLeft size={13} />
-            </button>
+      {/* ── ردیف شاخص‌ها ── */}
+      {busy ? <SkeletonCards n={4} /> : (
+        <div className="fx-g4 grid grid-cols-4 gap-3">
+          <StatTile
+            label="کاربران تازه" icon={UserPlus} tone="var(--accent-2)"
+            value={faNum(u.newUsers ?? 0)}
+            unit={`از ${faNum(u.users ?? 0)} کل`}
+            hint={`${faNum(u.blocked ?? 0)} نفر بلاک شده`}
+            color="var(--text)" />
+          <StatTile
+            label="سفارش موفق" icon={ShoppingCart} tone="var(--ok)"
+            value={faNum(o.approved ?? 0)}
+            hint={`${faNum(o.pending ?? 0)} در انتظار · ${faNum(o.rejected ?? 0)} رد شده`}
+            spark={orderSeries} sparkColor="var(--ok)" color="var(--text)" />
+          <StatTile
+            label="درآمد دوره" icon={Wallet} tone="var(--accent-2)"
+            value={faNum(o.revenue ?? 0)} unit="تومان"
+            hint={`میانگین هر سفارش ${faNum(o.avg ?? 0)}`}
+            spark={moneySeries} sparkColor="var(--accent-2)" color="var(--text)" />
+          <StatTile
+            label="نرخ تبدیل" icon={TrendingUp} tone="var(--purple)"
+            value={faNum(rep?.conversion ?? 0)} unit="درصد"
+            hint={`${faNum(rep?.buyerCount ?? 0)} خریدار از ${faNum(u.newUsers ?? 0)} کاربر تازه`}
+            color="var(--text)" />
+        </div>
+      )}
+
+      {err && (
+        <div className="fx-card p-4" style={{ borderColor: "var(--warn-line)", background: "var(--warn-soft)" }}>
+          <div className="text-[13px] font-semibold" style={{ color: "var(--warn)" }}>{err}</div>
+          <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+            شاخص‌های فروش از دیتابیس ربات می‌آیند. بقیه‌ی صفحه سالم است.
           </div>
-          <div style={{ overflowX: "auto" }}>
-            {allApps.length === 0 ? (
-              <div className="py-12 text-center text-[13px]" style={{ color: "var(--muted)" }}>هنوز اپی اضافه نشده</div>
+        </div>
+      )}
+
+      {/* ── نمودار اصلی و ترکیب اشتراک‌ها ── */}
+      <div className="fx-g2 grid gap-3">
+        <div className="fx-card p-5">
+          <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+            <div>
+              <h2 className="text-[15px] font-bold text-white">روند فروش</h2>
+              <p className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+                موس را روی نمودار ببرید
+              </p>
+            </div>
+            <Segmented value={days} onChange={setDays}
+              items={[{ v: 7, l: "۷ روز" }, { v: 30, l: "۳۰ روز" }, { v: 90, l: "۹۰ روز" }]} />
+          </div>
+
+          {busy ? <Skeleton h={150} /> : orderSeries.length < 2 ? (
+            <EmptyState icon={TrendingUp} text="هنوز فروشی در این بازه ثبت نشده"
+              hint="با اولین سفارش موفق، روند این‌جا کشیده می‌شود." />
+          ) : (
+            <>
+              <AreaChart data={moneySeries} color="var(--accent-2)" height={150}
+                label="درآمد روزانه" format={(v) => `${faNum(v)} تومان`} />
+              <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+                <AreaChart data={orderSeries} color="var(--cy)" height={70} fill={false}
+                  label="تعداد سفارش" format={(v) => `${faNum(v)} سفارش`} />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div className="fx-card p-5">
+            <h3 className="text-[14px] font-bold text-white mb-1">وضعیت اشتراک‌ها</h3>
+            <p className="text-[12px] mb-4" style={{ color: "var(--muted)" }}>
+              {faNum(s.total ?? 0)} اشتراک در کل
+            </p>
+            {busy ? <Skeleton h={120} /> : (s.total ? (
+              <Donut center="فعال" items={[
+                { n: "فعال", v: s.active || 0, c: "var(--ok)" },
+                { n: "نزدیک انقضا", v: s.expiringSoon || 0, c: "var(--warn)" },
+                { n: "منقضی", v: Math.max(0, (s.total || 0) - (s.active || 0)), c: "#3E4C63" },
+              ]} />
             ) : (
-              <table className="fx-table">
-                <thead>
-                  <tr>
-                    <th>نام اپ</th>
-                    <th>پلتفرم</th>
-                    <th className="fx-hide-m">دیپ‌لینک</th>
-                    <th>وضعیت</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {allApps.map((a, i) => {
-                    const Icon = SCHEME_ICON[a.scheme] || Package;
-                    return (
-                      <tr key={i}>
-                        <td>
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                              style={{ background: a.recommended ? "linear-gradient(135deg,#2B7FD6,#8FC1EE)" : "rgba(255,255,255,.05)" }}>
-                              <Icon size={14} color={a.recommended ? "#06090F" : "#5A6880"} />
-                            </div>
-                            <span className="font-semibold text-white">{a.name}</span>
-                          </div>
-                        </td>
-                        <td style={{ color: "var(--dim)" }}>{a.platform}</td>
-                        <td className="fx-hide-m" dir="ltr" style={{ color: "var(--muted)", fontFamily: "var(--mono)", fontSize: 11 }}>
-                          {a.scheme === "none" ? "—" : `${a.scheme}://`}
-                        </td>
-                        <td>
-                          {a.recommended ? (
-                            <span className="fx-pill" style={{ background: "rgba(43,127,214,.14)", color: "var(--accent-2)" }}>
-                              <Star size={9} fill="var(--accent-2)" /> پیشنهادی
-                            </span>
-                          ) : (
-                            <span className="fx-pill" style={{ background: "rgba(255,255,255,.04)", color: "var(--muted)" }}>عادی</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <p className="text-[12px] py-6 text-center" style={{ color: "var(--muted)" }}>
+                هنوز اشتراکی ساخته نشده
+              </p>
+            ))}
+          </div>
+
+          <div className="fx-card p-5">
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <h3 className="text-[14px] font-bold text-white">بیشترین خرید</h3>
+              <button onClick={() => navigate("bot-users")}
+                className="fx-btn-g px-2.5 py-1.5 text-[12px] flex items-center gap-1">
+                همه <ChevronLeft size={12} />
+              </button>
+            </div>
+            {busy ? <Skeleton h={100} /> : (rep?.buyers || []).length ? (
+              <BarList color="linear-gradient(to left,var(--accent-2),var(--accent))"
+                format={(v) => faNum(v)}
+                items={(rep.buyers || []).slice(0, 5).map((b) => ({
+                  n: b.first_name || b.username || `#${b.tg_id}`,
+                  v: Number(b.spent) || 0,
+                }))} />
+            ) : (
+              <p className="text-[12px] py-5 text-center" style={{ color: "var(--muted)" }}>
+                در این بازه کسی خرید نکرده
+              </p>
             )}
           </div>
         </div>
+      </div>
 
-        <div className="flex flex-col gap-4">
-          <div className="fx-card p-5" style={{ background: "linear-gradient(150deg,rgba(43,127,214,.14),var(--surface))", borderColor: "rgba(90,169,230,.25)" }}>
+      {/* ── صفحه‌ی اشتراک: وضعیت محتوا ── */}
+      <div className="fx-g2 grid gap-3">
+        <div className="fx-card p-5">
+          <div className="flex items-center justify-between gap-2 mb-4">
+            <div>
+              <h3 className="text-[14px] font-bold text-white">محتوای صفحه‌ی اشتراک</h3>
+              <p className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+                چیزی که مشتری روی صفحه‌اش می‌بیند
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            {content.map((c) => (
+              <button title="رفتن به این بخش" key={c.key} onClick={() => navigate(c.key)}
+                className="fx-card fx-card-i p-3.5 text-right">
+                <div className="flex items-center gap-2 mb-2">
+                  <c.icon size={14} style={{ color: "var(--muted)" }} />
+                  <span className="text-[12px] truncate" style={{ color: "var(--muted)" }}>{c.label}</span>
+                  <ChevronLeft size={13} className="mr-auto shrink-0" style={{ color: "#2A3444" }} />
+                </div>
+                <div className="text-[21px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>
+                  <CountUp value={c.value} />
+                </div>
+                <div className="text-[11.5px] mt-0.5" style={{ color: "var(--muted)" }}>{c.sub}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          <div className="fx-card p-5"
+            style={{ background: "linear-gradient(150deg,rgba(43,127,214,.12),var(--surface))",
+                     borderColor: "rgba(90,169,230,.22)" }}>
             <div className="flex items-start justify-between gap-2 mb-3">
-              <div className="fx-ico" style={{ background: "rgba(43,127,214,.16)" }}><Activity size={17} style={{ color: "var(--accent-2)" }} /></div>
+              <div className="fx-ico" style={{ background: "rgba(43,127,214,.16)" }}>
+                <Activity size={17} style={{ color: "var(--accent-2)" }} />
+              </div>
               <StatusChip dirty={dirty} />
             </div>
-            <h3 className="text-[14px] font-bold text-white mb-1.5">وضعیت صفحه اشتراک</h3>
-            <p className="text-[13px] leading-relaxed mb-4" style={{ color: "var(--dim)" }}>قابلیت‌هایی که الان به مشتریان نمایش داده می‌شوند.</p>
+            <h3 className="text-[14px] font-bold text-white mb-3">قابلیت‌های روشن</h3>
             <div className="flex flex-col gap-2.5">
               {features.map((x, i) => (
                 <button key={i} onClick={() => navigate(x.k)} className="flex items-center justify-between w-full">
                   <span className="text-[13px]" style={{ color: "var(--dim)" }}>{x.l}</span>
-                  <span className="fx-pill" style={{ background: x.on ? "rgba(52,211,153,.12)" : "rgba(255,255,255,.04)", color: x.on ? "var(--ok)" : "var(--muted)" }}>
+                  <span className="fx-pill" style={{
+                    background: x.on ? "var(--ok-soft)" : "rgba(255,255,255,.04)",
+                    color: x.on ? "var(--ok)" : "var(--muted)" }}>
                     {x.on ? "فعال" : "خاموش"}
                   </span>
                 </button>
@@ -147,8 +254,12 @@ export function OverviewSection({ config, stats, navigate, dirty }) {
           <div className="fx-card p-5">
             <h3 className="text-[14px] font-bold text-white mb-3.5">دسترسی سریع</h3>
             <div className="flex flex-col gap-2">
-              {quickLinks.map((x, i) => (
-                <button title="رفتن به این بخش" key={i} onClick={() => navigate(x.k)} className="fx-btn-g flex items-center justify-between px-3 py-2.5 text-[13px] w-full">
+              {[{ l: "مشاهده پیش‌نمایش زنده", i: Eye, k: "preview" },
+                { l: "سفارش‌های ربات", i: Package, k: "bot-orders" },
+                { l: "صورتحساب نماینده‌ها", i: Layers, k: "bill-dash" },
+                { l: "تنظیمات پیشرفته", i: Settings, k: "settings" }].map((x, i) => (
+                <button title="رفتن به این بخش" key={i} onClick={() => navigate(x.k)}
+                  className="fx-btn-g flex items-center justify-between px-3 py-2.5 text-[13px] w-full">
                   <span className="flex items-center gap-2"><x.i size={14} /> {x.l}</span>
                   <ArrowUpRight size={13} />
                 </button>

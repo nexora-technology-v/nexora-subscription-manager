@@ -463,23 +463,42 @@ export function StatusPill({ s }) {
 }
 
 /** گروه دکمه‌ی انتخاب — برای فیلترهایی که گزینه‌هایشان کم و ثابت‌اند. */
+/**
+ * کلید چندحالته، با قرصی که زیر گزینه‌ها سُر می‌خورد.
+ *
+ * چرا سُر می‌خورد و ظاهر نمی‌شود: وقتی قرص از گزینه‌ی قبلی به
+ * گزینه‌ی تازه حرکت می‌کند، چشم می‌فهمد *از کجا به کجا* رفت. رنگ
+ * عوض‌شدنِ ناگهانی این را نمی‌گوید.
+ *
+ * `items` هر دو شکل را می‌پذیرد — `[[مقدار, برچسب]]` که همه‌ی
+ * صداکننده‌های قبلی می‌فرستند، و `[{ v, l }]`. دو شکل بهتر از
+ * دست‌زدن به ده صفحه است.
+ */
 export function Segmented({ value, onChange, items }) {
+  const box = useRef(null);
+  const [pill, setPill] = useState(null);
+  const list = (items || []).map((it) =>
+    Array.isArray(it) ? { v: it[0], l: it[1] } : it);
+
+  useEffect(() => {
+    const host = box.current;
+    const el = host?.querySelector('[aria-pressed="true"]');
+    if (!host || !el) { setPill(null); return; }
+    // در RTL قرص به لبه‌ی راست چسبیده و با transform به چپ می‌آید؛
+    // انیمیشن روی left/right یعنی محاسبه‌ی دوباره‌ی چیدمان
+    setPill({ w: el.offsetWidth,
+              d: host.offsetWidth - el.offsetLeft - el.offsetWidth - 3 });
+  }, [value, items]);
+
   return (
-    <div className="flex items-center rounded-[10px] overflow-hidden"
-      style={{ border: "1px solid var(--border-2)" }}>
-      {items.map(([v, label], i) => {
-        const on = value === v;
-        return (
-          <button key={v} onClick={() => onChange(v)}
-            className="px-3 py-2 text-[13px] transition-colors"
-            style={{
-              background: on ? "var(--accent-soft)" : "transparent",
-              color: on ? "var(--accent-2)" : "var(--muted)",
-              fontWeight: on ? 600 : 400,
-              borderRight: i ? "1px solid var(--border-2)" : "none",
-            }}>{label}</button>
-        );
-      })}
+    <div className="fx-seg" ref={box} role="group">
+      <span className="fx-seg-pill" aria-hidden="true"
+        style={{ width: pill?.w || 0, opacity: pill ? 1 : 0,
+                 transform: `translateX(${-(pill?.d || 0)}px)` }} />
+      {list.map((it) => (
+        <button key={it.v} onClick={() => onChange(it.v)}
+          aria-pressed={value === it.v}>{it.l}</button>
+      ))}
     </div>
   );
 }

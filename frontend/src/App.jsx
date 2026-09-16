@@ -339,7 +339,7 @@ export default function App() {
         <main className="fx-main flex-1 p-7 overflow-y-auto w-full mx-auto">
           <div key={active} className="fx-stg">
           <ErrorBoundary key={active}>
-          {active === "overview" && <OverviewSection config={config} stats={stats} navigate={navigate} dirty={dirty} />}
+          {active === "overview" && <OverviewSection config={config} stats={stats} navigate={navigate} dirty={dirty} password={password} />}
           {active === "preview" && <LivePreview dirty={dirty} onSave={save} saving={saving} />}
           {active === "apps" && <AppsSection config={config} setConfig={setConfig} requestDelete={setConfirmTarget} />}
           {active === "videos" && <VideosSection config={config} setConfig={setConfig} requestDelete={setConfirmTarget} />}
