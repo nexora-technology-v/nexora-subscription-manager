@@ -142,6 +142,73 @@ check("پاسخ کش نمی‌شود", "no-store" in (res.headers.get("Cache-Con
       "وگرنه مشتری ساعت‌ها تنظیمات قدیمی می‌بیند")
 
 
+
+
+# ═══════════════════════════════════════════════════════════
+head("صفحه‌ی اشتراک · لینک مشتری نباید از سرور ما بیرون برود")
+
+# QR از `api.qrserver.com` می‌آمد و لینکِ کاملِ کانفیگ در آدرسِ آن
+# درخواست فرستاده می‌شد: UUID، سرور، پورت. یعنی هر بار که مشتری
+# صفحه‌اش را باز می‌کرد، چیزی که با آن می‌شود از خودِ اشتراک
+# استفاده کرد، روی سرورِ یک سرویسِ غریبه و در لاگ‌هایش می‌نشست.
+import io as _io
+import re as _re
+
+_SUB = _io.open(os.path.join(ROOT, "sub-page-index.html"),
+                encoding="utf-8").read()
+# فقط کد شمرده می‌شود، نه توضیحی که دلیلِ همین تست را می‌نویسد
+_SUB_CODE = _re.sub(r"<!--[\s\S]*?-->", " ", _SUB)
+
+check("هیچ سرویسِ بیرونیِ QR صدا زده نمی‌شود",
+      "qrserver.com" not in _SUB_CODE and "chart.googleapis.com" not in _SUB_CODE,
+      "لینک اشتراک یعنی خودِ اعتبارنامه — جایی جز مرورگر مشتری نباید برود")
+
+check("QR در خودِ مرورگر ساخته می‌شود",
+      "function nexoraQr(" in _SUB_CODE and "createSvgTag" in _SUB_CODE)
+
+check("و سازنده‌اش داخل همین فایل است",
+      "var qrcode=function()" in _SUB_CODE,
+      "فایل دوم یعنی یک مرحله‌ی نصبِ تازه که روزی جا می‌ماند")
+
+check("اگر ساختن QR نشد، صفحه نمی‌افتد",
+      "catch (e)" in _SUB_CODE and "nexoraQr" in _SUB_CODE,
+      "QR نداشتن بهتر از فرستادنِ لینک به بیرون است")
+
+# هیچ لینکِ کانفیگی نباید در آدرسِ یک دامنه‌ی غیرخودی بنشیند
+#
+# «لینکِ کانفیگ» یعنی همان رشته‌ای که با آن می‌شود به سرویس وصل شد.
+# نامِ متغیرهایش در این فایل مشخص است، پس دقیقاً همان‌ها را
+# می‌گیریم — نه هر آدرسی که کلمه‌ی «link» دارد، وگرنه لینکِ
+# پشتیبانیِ خودِ مالک (`t.me/${cfg.links.support…}`) هم هشدار
+# می‌سازد و هشدارِ دروغ، هشدارِ واقعی را بی‌ارزش می‌کند.
+_ALLOWED = ("fonts.googleapis", "fonts.gstatic", "cdnjs.cloudflare",
+            "cdn.jsdelivr", "telegram.org", "t.me")
+_SECRET = _re.compile(r"\$\{[^}]*\b(?:encoded|encodedLink|parsed\.link|"
+                      r"subUrl|sub_url|configLink|rawLink)\b[^}]*\}")
+_leaks = []
+for _m in _re.finditer(r"https?://([^\s\"'`/]+)[^\s\"'`]*", _SUB_CODE):
+    _url = _m.group(0)
+    if any(a in _m.group(1) for a in _ALLOWED):
+        continue
+    if _SECRET.search(_url):
+        _leaks.append(_url[:70])
+check("هیچ داده‌ی مشتری در آدرسِ یک دامنه‌ی بیرونی نمی‌رود", not _leaks,
+      "، ".join(_leaks[:2]) if _leaks else "فقط قلم و آیکون از بیرون می‌آیند")
+
+
+head("صفحه‌ی اشتراک · حرکت")
+
+check("تنظیمِ کم‌کردنِ حرکتِ سیستم محترم است",
+      "prefers-reduced-motion" in _SUB_CODE,
+      "این صفحه نبض و رادارِ چرخان و موجِ پس‌زمینه دارد")
+check("و هیچ transition: all نمانده",
+      "transition: all" not in _SUB_CODE,
+      "مرورگر را مجبور می‌کرد چیدمانِ کل صفحه را دوباره حساب کند")
+check("توکن‌های موشن تعریف شده‌اند",
+      "--m-fast:" in _SUB_CODE and "--sp-snappy:" in _SUB_CODE,
+      "همان سه سرعتِ خودِ پنل")
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
