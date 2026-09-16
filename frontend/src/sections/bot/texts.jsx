@@ -9,7 +9,7 @@ import {
   Check, Circle, Loader2, Save,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
-import { Field, InfoBox, Msg, SectionHead, Toggle } from "../../ui/index";
+import { Field, InfoBox, Msg, NumberInput, SectionHead, Toggle } from "../../ui/index";
 
 export const BOT_TEXTS = [
   { k: "welcome_text", label: "پیام خوش‌آمد",
@@ -162,10 +162,10 @@ export function BotTextsSection({ password }) {
               )}
               {f.type === "num" && (
                 <div className="flex items-center gap-2">
-                  <input className="fx-input" type="number" min={f.min} max={f.max}
+                  <NumberInput className="fx-input" min={f.min} max={f.max}
                     value={s[f.k] ?? f.def}
                     onChange={(e) => upS({ [f.k]: Number(e.target.value) || f.def })}
-                    style={{ textAlign: "center" }} />
+                    style={{ textAlign: "center" }}  />
                   <span className="text-[12px] shrink-0"
                     style={{ color: "var(--muted)" }}>{f.unit}</span>
                 </div>

@@ -16,9 +16,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import {
-  ConfirmModal, EmptyState, Field, InfoBox, Msg, SectionHead,
-} from "../ui/index";
+import { ConfirmModal, EmptyState, Field, InfoBox, Msg, NumberInput, SectionHead } from "../ui/index";
 import { JalaliDate } from "../ui/jalali";
 
 const KIND_META = {
@@ -143,9 +141,9 @@ function ExpenseForm({ password, onDone, setMsg }) {
             onChange={(e) => setF({ ...f, label: e.target.value })} />
         </Field>
         <Field label="مبلغ">
-          <input className="fx-input" dir="ltr" type="number" step="0.01"
+          <NumberInput decimal className="fx-input"
             value={f.amount} style={{ fontFamily: "var(--mono)" }}
-            onChange={(e) => setF({ ...f, amount: e.target.value })} />
+            onChange={(e) => setF({ ...f, amount: e.target.value })}  />
         </Field>
         <Field label="ارز">
           <select className="fx-input" value={f.currency}
@@ -172,9 +170,9 @@ function ExpenseForm({ password, onDone, setMsg }) {
         </Field>
         {f.kind === "traffic" ? (
           <Field label="حجم (گیگابایت)">
-            <input className="fx-input" dir="ltr" type="number" value={f.gb}
+            <NumberInput className="fx-input" value={f.gb}
               style={{ fontFamily: "var(--mono)" }}
-              onChange={(e) => setF({ ...f, gb: e.target.value })} />
+              onChange={(e) => setF({ ...f, gb: e.target.value })}  />
           </Field>
         ) : (
           <Field label="توضیح" hint="اختیاری">
@@ -184,10 +182,10 @@ function ExpenseForm({ password, onDone, setMsg }) {
         )}
         {f.currency !== "IRT" && (
           <Field label="نرخ دستی" hint="خالی = نرخ روز بازار">
-            <input className="fx-input" dir="ltr" type="number" value={f.rate}
+            <NumberInput className="fx-input" value={f.rate}
               placeholder={fx && fx.ok ? String(fx.toman) : "—"}
               style={{ fontFamily: "var(--mono)" }}
-              onChange={(e) => setF({ ...f, rate: e.target.value })} />
+              onChange={(e) => setF({ ...f, rate: e.target.value })}  />
           </Field>
         )}
       </div>

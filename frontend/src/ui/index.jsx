@@ -12,6 +12,75 @@ import {
 import { API_URL } from "../lib/constants";
 import { faNum, errText } from "../lib/format";
 
+/**
+ * ارقام فارسی و عربی و جداکننده‌ها را به عددِ خامِ لاتین تبدیل می‌کند.
+ *
+ * چرا لازم است: ورودیِ نوع «number» هر چیزی جز رقم لاتین را
+ * **بی‌صدا دور می‌ریزد**. اندازه‌گیری‌شده در همین پنل:
+ *
+ *     تایپ «۱۲۳»    →  value === ""
+ *     تایپ «۱۲٬۳۴۵» →  value === ""
+ *     تایپ «1,234»  →  value === ""
+ *
+ * یعنی کاربر فارسی رقم می‌زند و هیچ چیزی در فیلد ظاهر نمی‌شود. نه
+ * خطایی، نه پیامی — فقط کار نمی‌کند.
+ */
+const _AR_FA_DIGIT = /[۰-۹٠-٩]/g;
+export const toAsciiDigits = (s) =>
+  String(s ?? "").replace(_AR_FA_DIGIT, (d) => {
+    const c = d.charCodeAt(0);
+    return String(c >= 0x06F0 ? c - 0x06F0 : c - 0x0660);
+  });
+
+export function normalizeNumeric(raw, { decimal = false } = {}) {
+  // جداکننده‌ی هزارگان (فارسی و لاتین) و فاصله حذف می‌شوند،
+  // ممیز فارسی «٫» به نقطه تبدیل می‌شود
+  let s = toAsciiDigits(raw)
+    .replace(/[٬,،\s]/g, "")
+    .replace(/٫/g, ".");
+  const neg = s.trim().startsWith("-");
+  s = s.replace(/[^0-9.]/g, "");
+  if (!decimal) {
+    s = s.replace(/\./g, "");
+  } else {
+    const i = s.indexOf(".");
+    if (i >= 0) s = s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, "");
+  }
+  return (neg ? "-" : "") + s;
+}
+
+/**
+ * فیلد عددی — به‌جای `type="number"`.
+ *
+ * `type="text"` با `inputMode` عددی: صفحه‌کلید عددی روی موبایل باز
+ * می‌شود، ولی مرورگر دیگر چیزی را دور نمی‌ریزد. نرمال‌سازی همین‌جا
+ * انجام می‌شود، پس `e.target.value` که به دستِ onChange می‌رسد
+ * **دقیقاً همان رشته‌ی لاتینی است که قبلاً می‌رسید** — قرارداد با
+ * بکند عوض نمی‌شود، فقط دیگر خالی نمی‌ماند.
+ *
+ * فلش‌های بالا/پایین هم می‌روند، که در چیدمان راست‌به‌چپ جای درستی
+ * نداشتند.
+ */
+export function NumberInput({ value, onChange, decimal = false,
+                              className = "fx-input", ...rest }) {
+  return (
+    <input
+      {...rest}
+      type="text"
+      inputMode={decimal ? "decimal" : "numeric"}
+      dir="ltr"
+      className={className}
+      value={value ?? ""}
+      onChange={(e) => {
+        // مقدار را روی خودِ فیلد می‌نشانیم تا هم کاربر نتیجه را
+        // ببیند و هم onChangeهای موجود بدون تغییر کار کنند
+        e.target.value = normalizeNumeric(e.target.value, { decimal });
+        onChange(e);
+      }}
+    />
+  );
+}
+
 export function Field({ label, hint, children }) {
   return (
     <div className="mb-3">
@@ -40,7 +109,7 @@ export function NumberStepper({ value, onChange, min = 0, max = 100, unit }) {
     <div>
       <div className="fx-stepper">
         <button className="fx-stepper-btn" onClick={() => onChange(clamp(value - 1))} disabled={value <= min} aria-label="کم کردن"><Minus size={16} /></button>
-        <input className="fx-stepper-val" type="number" value={value} onChange={(e) => onChange(clamp(Number(e.target.value) || min))} />
+        <NumberInput className="fx-stepper-val" value={value} onChange={(e) => onChange(clamp(Number(e.target.value) || min))}  />
         {unit && <span className="fx-stepper-unit">{unit}</span>}
         <button className="fx-stepper-btn" onClick={() => onChange(clamp(value + 1))} disabled={value >= max} aria-label="زیاد کردن"><Plus size={16} /></button>
       </div>

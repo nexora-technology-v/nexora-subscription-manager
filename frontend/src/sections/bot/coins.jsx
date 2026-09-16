@@ -9,7 +9,7 @@ import {
   Coins, Gift, Loader2, Plus as PlusIcon, Save, Trash2,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
-import { Field, InfoBox, Msg, NumberStepper, SectionHead } from "../../ui/index";
+import { Field, InfoBox, Msg, NumberInput, NumberStepper, SectionHead } from "../../ui/index";
 
 export function BotCoinsSection({ password }) {
   const [t, setT] = useState(null);
@@ -82,9 +82,9 @@ export function BotCoinsSection({ password }) {
         </div>
 
         <Field label="حداقل مبلغ خرید برای احتساب" hint="خریدهای کمتر از این، سکه نمی‌دهند">
-          <input className="fx-input" dir="ltr" type="number" value={s.min_purchase_for_coin ?? 0}
+          <NumberInput className="fx-input" value={s.min_purchase_for_coin ?? 0}
             onChange={(e) => upS({ min_purchase_for_coin: Number(e.target.value) })}
-            style={{ fontFamily: "var(--mono)" }} />
+            style={{ fontFamily: "var(--mono)" }}  />
         </Field>
 
         <InfoBox tone="warn">
@@ -113,15 +113,15 @@ export function BotCoinsSection({ password }) {
             <div className="flex-1 fx-g3 grid grid-cols-2 gap-3">
               <div>
                 <label className="text-[12px] mb-1 block" style={{ color: "var(--muted)" }}>سکه لازم</label>
-                <input className="fx-input" dir="ltr" type="number" value={tr.coins}
+                <NumberInput className="fx-input" value={tr.coins}
                   onChange={(e) => { const l = [...tiers]; l[i] = { ...tr, coins: Number(e.target.value) }; upS({ coin_tiers: l }); }}
-                  style={{ fontFamily: "var(--mono)" }} />
+                  style={{ fontFamily: "var(--mono)" }}  />
               </div>
               <div>
                 <label className="text-[12px] mb-1 block" style={{ color: "var(--muted)" }}>درصد تخفیف</label>
-                <input className="fx-input" dir="ltr" type="number" value={tr.pct}
+                <NumberInput className="fx-input" value={tr.pct}
                   onChange={(e) => { const l = [...tiers]; l[i] = { ...tr, pct: Number(e.target.value) }; upS({ coin_tiers: l }); }}
-                  style={{ fontFamily: "var(--mono)" }} />
+                  style={{ fontFamily: "var(--mono)" }}  />
               </div>
             </div>
             <button title="حذف این پله" onClick={() => upS({ coin_tiers: tiers.filter((_, x) => x !== i) })}

@@ -10100,11 +10100,15 @@ def portal_renew(payload: dict, t: dict = Depends(portal_tenant)):
             status_code=409,
             detail="برای این حجم نرخی تعریف نشده — با پشتیبانی تماس بگیرید")
 
+    # اتصال پیش از کسر اعتبار — مثل مسیر ساخت. اگر _portal_xui
+    # بیفتد (ماژول خوانده نشود، ردیف مالک پیدا نشود) خطا بالا می‌رود
+    # و هیچ‌جا پول را برنمی‌گرداند؛ فقط شکستِ خودِ تمدید برگشت دارد.
+    xui, _XUIError = _portal_xui(t)
+
     ok, why = _portal_charge(t, amount, f"تمدید {email}")
     if not ok:
         raise HTTPException(status_code=402, detail=why)
 
-    xui, _XUIError = _portal_xui(t)
     try:
         # حجم هم به همان اندازه‌ی ماه‌ها اضافه می‌شود — همان کاری که
         # تمدید از مسیر ربات می‌کند، پس مصرف و سقف با هم بالا می‌روند
@@ -10197,8 +10201,36 @@ def _portal_inbound_ids(t, inbound):
     return out or None
 
 
-def _portal_inbound(t):
-    """اینباندی که کانفیگ روی آن ساخته می‌شود."""
+def _portal_inbound(t, xui=None):
+    """
+    اینباندی که کانفیگ روی آن ساخته می‌شود.
+
+    ترتیب — و هر پله دلیلی دارد:
+
+      ۱. انتخابِ خودِ نماینده (`inbound_mode` / `inbound_ids`).
+         این پله اصلاً وجود نداشت. مالک برای نماینده اینباند ۴۱ و ۴۵
+         را تعریف می‌کرد و پنلِ نماینده باز هم می‌گفت «اینباند پیش‌فرض
+         تنظیم نشده» — چون فقط `default_inbound` را نگاه می‌کرد و آن
+         ستون خالی بود. یعنی پیامِ خطا دقیقاً چیزی را انکار می‌کرد که
+         تعریف شده بود.
+
+      ۲. پیش‌فرضِ خودِ نماینده، بعد پیش‌فرضِ مالک.
+
+      ۳. اولین اینباندِ فعالِ پنل.
+         این همان کاری است که ربات از قبل می‌کرد
+         (`bot/handlers.py`، جایی که default_inbound خالی است) و
+         کامنتش دلیلش را نوشته: شکستِ کامل از دید مشتری یعنی «پول
+         دادم و کانفیگ نگرفتم». پرتالِ نماینده عکسش را می‌کرد.
+
+    فقط وقتی خطا می‌دهد که هیچ اینباند فعالی هم پیدا نشود — یعنی
+    واقعاً جایی برای ساختن نیست.
+    """
+    # ۱. انتخابِ خودِ نماینده
+    ids = _portal_inbound_ids(t, t.get("default_inbound"))
+    if ids:
+        return ids[0]
+
+    # ۲. پیش‌فرضِ خودش، بعد پیش‌فرضِ مالک
     ib = t.get("default_inbound")
     if not ib:
         con = _bot_conn()
@@ -10216,11 +10248,28 @@ def _portal_inbound(t):
         ib = int(ib or 0)
     except (TypeError, ValueError):
         ib = 0
-    if ib <= 0:
-        raise HTTPException(
-            status_code=503,
-            detail="اینباند پیش‌فرض تنظیم نشده — با پشتیبانی تماس بگیرید")
-    return ib
+    if ib > 0:
+        return ib
+
+    # ۳. اولین اینباند فعال — مثل ربات
+    if xui is not None:
+        try:
+            active = [i for i in (xui.inbounds() or []) if i.get("enable", True)]
+        except Exception as e:
+            log.warning("خواندن اینباندها برای انتخاب خودکار ناموفق: %s", e)
+            active = []
+        for i in active:
+            try:
+                n = int(i.get("id") or 0)
+            except (TypeError, ValueError):
+                continue
+            if n > 0:
+                log.info("اینباند پیش‌فرض تنظیم نشده بود؛ اینباند %s استفاده شد", n)
+                return n
+
+    raise HTTPException(
+        status_code=503,
+        detail="هیچ اینباند فعالی در پنل پیدا نشد — با پشتیبانی تماس بگیرید")
 
 
 @app.post("/api/portal/config")
@@ -10284,12 +10333,20 @@ def portal_create(payload: dict, t: dict = Depends(portal_tenant)):
     taken = {c.get("email") for c in clients}
     email = _portal_new_email(t, taken)
 
+    # اتصال و اینباند *پیش* از کسر اعتبار حل می‌شوند.
+    #
+    # قبلاً اول پول کم می‌شد و بعد این دو. هر کدامشان که شکست
+    # می‌خورد، خطا بالا می‌رفت و هیچ‌جا پول را برنمی‌گرداند —
+    # فقط شکستِ خودِ add_client برگشت داشت. یعنی نماینده‌ای که
+    # اینباندش تنظیم نبود، اعتبارش کم می‌شد و کانفیگی نمی‌گرفت.
+    # هر دو فقط می‌خوانند، پس جابه‌جا کردنشان بی‌خطر است.
+    xui, _E = _portal_xui(t)
+    inbound = _portal_inbound(t, xui)
+
     ok, why = _portal_charge(t, amount, f"ساخت {email}")
     if not ok:
         raise HTTPException(status_code=402, detail=why)
 
-    inbound = _portal_inbound(t)
-    xui, _E = _portal_xui(t)
     try:
         # گروه از ردیف مستاجر می‌آید، نه از درخواست. این تنها جایی
         # است که تعیین می‌کند کانفیگ تازه مال کیست.

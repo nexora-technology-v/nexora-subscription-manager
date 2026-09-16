@@ -604,6 +604,60 @@ check("هیچ قاعده‌ی fx-stat-num بدون :where اندازه نمی‌
       else "پیش‌فرض‌ها صفر-ویژگی‌اند و text-[..] بر آن‌ها غلبه می‌کند")
 
 
+
+# ═══════════════════════════════════════════════════════════
+head("فیلد عددی · کاربر فارسی باید بتواند رقم بزند")
+
+# `<input type="number">` هر چیزی جز رقمِ لاتین را **بی‌صدا دور
+# می‌ریزد**. در مرورگر اندازه گرفته شد:
+#
+#     تایپ «۱۲۳»    →  value === ""
+#     تایپ «۱۲٬۳۴۵» →  value === ""
+#     تایپ «1,234»  →  value === ""
+#
+# یعنی کاربر فارسی رقم می‌زند و هیچ چیزی در فیلد ظاهر نمی‌شود؛ نه
+# خطایی، نه پیامی. و فلش‌های بالا/پایینش هم در چیدمان راست‌به‌چپ سر
+# جای درستی نمی‌نشستند.
+#
+# جایگزین NumberInput است: type=text با inputMode عددی، و
+# نرمال‌سازی در همان مرز. چیزی که به onChange و بعد به بکند می‌رسد
+# همان رشته‌ی لاتینِ قبلی است — قرارداد عوض نشده، فقط دیگر خالی
+# نمی‌ماند.
+
+_num_inputs = []
+for _name, _src in ALL.items():
+    if not _name.endswith(".jsx"):
+        continue
+    for _m in re.finditer(r"<input\b", _src):
+        _i, _d = _m.end(), 0
+        while _i < len(_src):
+            _c = _src[_i]
+            if _c == "{":
+                _d += 1
+            elif _c == "}":
+                _d -= 1
+            elif _c == ">" and _d == 0:
+                break
+            _i += 1
+        if 'type="number"' in _src[_m.start():_i + 1]:
+            _num_inputs.append("%s:%d"
+                               % (_name, _src[:_m.start()].count(chr(10)) + 1))
+
+check("هیچ <input type=\"number\"> نمانده", not _num_inputs,
+      "، ".join(_num_inputs[:6]) if _num_inputs
+      else "همه NumberInput شده‌اند")
+
+_ui = ALL.get("ui/index.jsx", "")
+check("NumberInput وجود دارد و type=text است",
+      "export function NumberInput" in _ui and 'type="text"' in _ui,
+      "با inputMode عددی، تا صفحه‌کلید موبایل هم عددی بماند")
+check("و ورودی را پیش از onChange نرمال می‌کند",
+      "normalizeNumeric(e.target.value" in _ui,
+      "وگرنه رقم فارسی دست‌نخورده به بکند می‌رسد")
+check("نرمال‌ساز ارقام فارسی و عربی را می‌شناسد",
+      "\u06F0" in _ui or "۰-۹" in _ui,
+      "هر دو مجموعه‌ی رقم در یونیکد جدا هستند")
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

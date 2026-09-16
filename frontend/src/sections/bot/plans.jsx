@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { errText } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { Field, Msg, SectionHead, Toggle } from "../../ui/index";
+import { Field, Msg, NumberInput, SectionHead, Toggle } from "../../ui/index";
 
 export function BotPlansSection({ password }) {
   const [plans, setPlans] = useState([]);
@@ -95,24 +95,24 @@ export function BotPlansSection({ password }) {
               <input className="fx-input" value={p.name || ""} onChange={(e) => up(i, { name: e.target.value })} />
             </Field>
             <Field label="قیمت (تومان)">
-              <input className="fx-input" dir="ltr" type="number" value={p.price ?? 0}
+              <NumberInput className="fx-input" value={p.price ?? 0}
                 onChange={(e) => up(i, { price: Number(e.target.value) })}
-                style={{ fontFamily: "var(--mono)" }} />
+                style={{ fontFamily: "var(--mono)" }}  />
             </Field>
           </div>
 
           <div className="fx-g3 grid grid-cols-3 gap-3">
             <Field label="حجم (GB)" hint="۰ = نامحدود">
-              <input className="fx-input" dir="ltr" type="number" value={p.gb ?? 0}
-                onChange={(e) => up(i, { gb: Number(e.target.value) })} />
+              <NumberInput className="fx-input" value={p.gb ?? 0}
+                onChange={(e) => up(i, { gb: Number(e.target.value) })}  />
             </Field>
             <Field label="مدت (روز)" hint="۰ = بدون انقضا">
-              <input className="fx-input" dir="ltr" type="number" value={p.days ?? 0}
-                onChange={(e) => up(i, { days: Number(e.target.value) })} />
+              <NumberInput className="fx-input" value={p.days ?? 0}
+                onChange={(e) => up(i, { days: Number(e.target.value) })}  />
             </Field>
             <Field label="کاربر همزمان">
-              <input className="fx-input" dir="ltr" type="number" value={p.ip_limit ?? 1}
-                onChange={(e) => up(i, { ip_limit: Number(e.target.value) })} />
+              <NumberInput className="fx-input" value={p.ip_limit ?? 1}
+                onChange={(e) => up(i, { ip_limit: Number(e.target.value) })}  />
             </Field>
           </div>
 

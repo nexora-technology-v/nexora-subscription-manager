@@ -1972,6 +1972,104 @@ check("و موقع ساخت کانفیگ به پنل x-ui داده می‌شود
 
 
 # ═══════════════════════════════════════════════════════════
+head("اینباندِ نماینده · انتخابش باید دیده شود")
+
+# مالک برای نماینده اینباند ۴۱ و ۴۵ را تعریف می‌کرد و پنلِ خودِ
+# نماینده باز هم می‌گفت «اینباند پیش‌فرض تنظیم نشده» — چون
+# _portal_inbound فقط ستون default_inbound را نگاه می‌کرد و
+# inbound_mode/inbound_ids را اصلاً نمی‌دید.
+#
+# یعنی پیامِ خطا دقیقاً چیزی را انکار می‌کرد که تعریف شده بود، و
+# نماینده هیچ راهی نداشت بفهمد چه کم است.
+
+
+class _FakeXui:
+    """x-ui با دو اینباند فعال — نصبِ معمولی."""
+
+    def __init__(self, ids=(41, 45)):
+        self._ids = ids
+
+    def inbounds(self):
+        return [{"id": i, "enable": True} for i in self._ids]
+
+
+def _inb(t, xui=_FakeXui()):
+    try:
+        return AP._portal_inbound(t, xui)
+    except Exception as e:
+        return "خطا:" + str(getattr(e, "detail", e))[:20]
+
+
+# x-ui عمداً اینباندِ دیگری می‌دهد (۷۷ و ۸۸)، وگرنه «از انتخابِ
+# نماینده خواند» و «به x-ui افتاد» هر دو ۴۱ می‌دادند و تست نمی‌توانست
+# فرقشان را بگذارد — شکستنِ عمدی همین را نشان داد.
+check("نماینده‌ای که اینباند دارد ولی پیش‌فرض ندارد، کار می‌کند",
+      _inb({"inbound_mode": "custom", "inbound_ids": "[41,45]",
+            "default_inbound": None}, _FakeXui(ids=(77, 88))) == 41,
+      "قبلاً همین حالت ۵۰۳ می‌گرفت — و ۴۱ فقط از انتخابِ خودش می‌آید")
+
+check("پیش‌فرضِ خودِ نماینده بر انتخابِ نداشته مقدم است",
+      _inb({"inbound_mode": "all", "inbound_ids": None,
+            "default_inbound": 45}, _FakeXui(ids=(77, 88))) == 45,
+      "۴۵ فقط می‌تواند از ستون خودش آمده باشد")
+
+check("و وقتی هیچ‌کدام نیست، اولین اینباند فعال — مثل ربات",
+      _inb({"inbound_mode": "all", "inbound_ids": None,
+            "default_inbound": None}) == 41,
+      "ربات از قبل همین کار را می‌کرد؛ پرتال خطا می‌داد")
+
+check("اینباند غیرفعال انتخاب نمی‌شود",
+      AP._portal_inbound(
+          {"inbound_mode": "all", "default_inbound": None},
+          type("X", (), {"inbounds": lambda s: [
+              {"id": 7, "enable": False}, {"id": 9, "enable": True}]})()) == 9)
+
+_no_xui = None
+try:
+    AP._portal_inbound({"inbound_mode": "all", "inbound_ids": None,
+                        "default_inbound": None}, _FakeXui(ids=()))
+    _no_xui = "بدون خطا رد شد"
+except Exception as e:
+    _no_xui = str(getattr(e, "detail", e))
+check("وقتی واقعاً هیچ اینباندی نیست، خطا می‌دهد و می‌گوید چرا",
+      "هیچ اینباند فعالی" in str(_no_xui),
+      str(_no_xui)[:54])
+
+
+# ═══════════════════════════════════════════════════════════
+head("پول نباید پیش از چیزی که ممکن است شکست بخورد کم شود")
+
+# _portal_charge اعتبار را واقعاً کم می‌کند. اگر بعد از آن چیزی
+# خطا بدهد و آن مسیر برگشت نداشته باشد، نماینده پول داده و کانفیگ
+# نگرفته.
+#
+# قبلاً ترتیب این بود:  charge → _portal_inbound → _portal_xui → add_client
+# و فقط شکستِ add_client برگشت داشت. یعنی همان نماینده‌ای که
+# اینباندش تنظیم نبود، اعتبارش هم می‌رفت.
+
+_ordering = []
+for _fn in ("portal_create", "portal_renew"):
+    _i = _apsrc2.find("def %s(" % _fn)
+    if _i < 0:
+        _ordering.append("%s پیدا نشد" % _fn)
+        continue
+    _body = _apsrc2[_i:_i + 4000]
+    _c = _body.find("_portal_charge(")
+    _x = _body.find("_portal_xui(")
+    if _c < 0:
+        continue
+    if 0 <= _c < _x:
+        _ordering.append("%s: اتصال بعد از کسر اعتبار" % _fn)
+    _ib = _body.find("_portal_inbound(")
+    if _ib >= 0 and _c < _ib:
+        _ordering.append("%s: اینباند بعد از کسر اعتبار" % _fn)
+
+check("اتصال و اینباند پیش از کسر اعتبار حل می‌شوند", not _ordering,
+      "، ".join(_ordering) if _ordering
+      else "هر دو فقط می‌خوانند، پس جایشان پیش از پول است")
+
+
+# ═══════════════════════════════════════════════════════════
 head("گزارش فروش و قیف باید یک نرخ تبدیل بدهند")
 
 # قیف در ۱.۳۷.۰ درست شد، ولی گزارش فروش تعریفِ خودش را داشت. روی

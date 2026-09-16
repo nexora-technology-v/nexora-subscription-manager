@@ -10,7 +10,9 @@ import {
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum } from "../lib/format";
-import { ConfirmModal, EmptyState, Field, InfoBox, LongList, Msg, SectionHead } from "../ui/index";
+import {
+  ConfirmModal, EmptyState, Field, InfoBox, LongList, Msg, NumberInput, SectionHead,
+} from "../ui/index";
 
 export const FW_ACTIONS = [
   ["allow", "اجازه", "var(--ok)"],
@@ -450,10 +452,10 @@ export function FirewallRules({ password }) {
         </div>
         <div className="fx-g4 grid grid-cols-4 gap-3">
           <Field label="پورت">
-            <input className="fx-input" dir="ltr" type="number" min="1" max="65535"
+            <NumberInput className="fx-input" min="1" max="65535"
               value={form.port} placeholder="۴۴۳"
               onChange={(e) => setForm({ ...form, port: e.target.value })}
-              style={{ fontFamily: "var(--mono)" }} />
+              style={{ fontFamily: "var(--mono)" }}  />
           </Field>
           <Field label="پروتکل">
             <select className="fx-input" value={form.proto}

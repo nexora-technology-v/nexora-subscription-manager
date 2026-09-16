@@ -12,7 +12,7 @@ import {
 import { JalaliDate, isoToJalaliLabel } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
 import { errText, faNum, monoIf } from "../lib/format";
-import { Field, InfoBox, Modal, Msg, SectionHead, Toggle } from "../ui/index";
+import { Field, InfoBox, Modal, Msg, NumberInput, SectionHead, Toggle } from "../ui/index";
 
 export function BillingPeriod({ password }) {
   const { data, loading: loadingGroups } = useBilling(password);
@@ -1192,14 +1192,14 @@ export function RateRow({ rate, onChange, onDelete }) {
                 boxShadow: unlimited ? "none" : "0 2px 8px rgba(0,0,0,.35) inset",
                 opacity: unlimited ? 0.42 : 1,
               }}>
-              <input type="number" min="1" dir="ltr"
+              <NumberInput min="1"
                 value={unlimited ? "" : rate.gb}
                 onFocus={() => unlimited && onChange({ gb: 30 })}
                 onChange={(e) => onChange({ gb: Math.max(0, Number(e.target.value)) })}
                 placeholder="50"
                 aria-label="حجم به گیگابایت"
                 className="flex-1 bg-transparent border-0 outline-none py-2.5 text-[14px]"
-                style={{ color: "var(--text)", fontFamily: "var(--mono)" }} />
+                style={{ color: "var(--text)", fontFamily: "var(--mono)" }}  />
               <span className="text-[12px] shrink-0" style={{ color: "var(--muted)" }}>گیگابایت</span>
             </div>
           </div>
@@ -1224,11 +1224,11 @@ export function RateRow({ rate, onChange, onDelete }) {
             boxShadow: "0 2px 8px rgba(0,0,0,.35) inset",
           }}>
           <button onClick={() => bump(-RATE_STEP)} className="nx-step">−</button>
-          <input type="number" dir="ltr" value={rate.price || ""}
+          <NumberInput value={rate.price || ""}
             onChange={(e) => onChange({ price: Math.max(0, Number(e.target.value)) })}
             placeholder="0"
             className="flex-1 bg-transparent border-0 outline-none text-center py-2 text-[16px] font-bold"
-            style={{ color: "var(--text)", fontFamily: "var(--mono)" }} />
+            style={{ color: "var(--text)", fontFamily: "var(--mono)" }}  />
           <button onClick={() => bump(RATE_STEP)} className="nx-step">+</button>
         </div>
 
@@ -1244,11 +1244,11 @@ export function RateRow({ rate, onChange, onDelete }) {
               {rate.perDevice ? `${faNum(rate.perDevice)} تومان` : "رایگان"}
             </span>
           </div>
-          <input type="number" min="0" dir="ltr" value={rate.perDevice || ""}
+          <NumberInput min="0" value={rate.perDevice || ""}
             onChange={(e) => onChange({ perDevice: Math.max(0, Number(e.target.value)) })}
             placeholder="0"
             className="fx-input w-full text-center py-2 text-[15px] font-bold"
-            style={{ fontFamily: "var(--mono)" }} />
+            style={{ fontFamily: "var(--mono)" }}  />
           <p className="text-[12px] mt-2 leading-relaxed" style={{ color: "var(--muted)" }}>
             نرخ پایه شامل کاربر اول است. کانفیگ{" "}
             <b>{faNum(4)} کاربره</b> می‌شود{" "}
@@ -1770,11 +1770,11 @@ export function BillingGroups({ password }) {
                         <Field label="نرخ هر گیگابایت (تومان)"
                           hint="بر اساس مصرف واقعی حساب می‌شود، نه سقف پلن">
                           <div className="flex items-center gap-2">
-                            <input className="fx-input" type="number" dir="ltr"
+                            <NumberInput className="fx-input"
                               value={d.perGb || ""}
                               onChange={(e) => set(g, { perGb: Math.max(0, +e.target.value) })}
                               placeholder="3000"
-                              style={{ fontFamily: "var(--mono)" }} />
+                              style={{ fontFamily: "var(--mono)" }}  />
                             <div className="flex gap-1.5 shrink-0">
                               {[2000, 3000, 5000].map((q) => (
                                 <button key={q} onClick={() => set(g, { perGb: q })}
@@ -2232,9 +2232,9 @@ export function BillingPayments({ password }) {
               </select>
             </Field>
             <Field label="مبلغ (تومان)">
-              <input className="fx-input" dir="ltr" type="number" value={form.amount}
+              <NumberInput className="fx-input" value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                style={{ fontFamily: "var(--mono)" }} />
+                style={{ fontFamily: "var(--mono)" }}  />
             </Field>
             <Field label="تاریخ" hint="اختیاری">
               <input className="fx-input" value={form.date}

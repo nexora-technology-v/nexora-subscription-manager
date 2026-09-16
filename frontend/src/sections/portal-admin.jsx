@@ -12,7 +12,7 @@ import {
 
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import { EmptyState, Field, InfoBox, Msg, SectionHead } from "../ui/index";
+import { EmptyState, Field, InfoBox, Msg, NumberInput, SectionHead } from "../ui/index";
 import { BotInboundsSection } from "./bot/inbounds";
 
 
@@ -253,13 +253,13 @@ function Row({ t, groups, password, onSaved, setMsg }) {
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
-          <input type="number" dir="ltr" value={topup}
+          <NumberInput value={topup}
             onChange={(e) => setTopup(e.target.value)}
             placeholder="100000"
             title="مبلغ شارژ به تومان — منفی یعنی برداشت"
             aria-label="مبلغ شارژ به تومان"
             className="fx-input text-[13px]"
-            style={{ width: 150, fontFamily: "var(--mono)" }} />
+            style={{ width: 150, fontFamily: "var(--mono)" }}  />
           <button disabled={busy || !topup}
             onClick={() => setCredit({ amount: Number(topup) },
               `اعتبار ${faNum(Math.abs(Number(topup)))} تومان `

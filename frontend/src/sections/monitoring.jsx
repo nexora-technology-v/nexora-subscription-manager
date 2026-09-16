@@ -12,7 +12,7 @@ import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum, fmtSize, fmtUptime, toFaDigits } from "../lib/format";
 import { usePolling } from "../lib/hooks";
 import {
-  ConfirmModal, CountChip, EmptyState, Field, InfoBox, LongList, Msg, SectionHead, Segmented, Toggle,
+  ConfirmModal, CountChip, EmptyState, Field, InfoBox, LongList, Msg, NumberInput, SectionHead, Segmented, Toggle,
 } from "../ui/index";
 
 export const LEVEL_STYLE = {
@@ -747,14 +747,14 @@ export function MaintenanceCard({ password }) {
 
       <div className="fx-g3 grid grid-cols-2 gap-3 mb-3">
         <Field label="ساعت" hint="به وقت سرور">
-          <input className="fx-input" dir="ltr" type="number" min="0" max="23"
+          <NumberInput className="fx-input" min="0" max="23"
             value={m.hour ?? 5} onChange={(e) => up({ hour: Number(e.target.value) })}
-            style={{ fontFamily: "var(--mono)" }} />
+            style={{ fontFamily: "var(--mono)" }}  />
         </Field>
         <Field label="دقیقه">
-          <input className="fx-input" dir="ltr" type="number" min="0" max="59"
+          <NumberInput className="fx-input" min="0" max="59"
             value={m.minute ?? 0} onChange={(e) => up({ minute: Number(e.target.value) })}
-            style={{ fontFamily: "var(--mono)" }} />
+            style={{ fontFamily: "var(--mono)" }}  />
         </Field>
       </div>
 

@@ -23,7 +23,7 @@ import { isoToJalaliLabel } from "../ui/jalali";
 // قاعده است و دو پیاده‌سازی از یک قاعده دیر یا زود از هم جدا
 // می‌شوند. این‌جا فقط همان چیزی گرفته می‌شود که ui/jalali هم هست —
 // ابزار عمومی، نه کدِ پنل مدیر.
-import { usePager } from "../ui/index";
+import { NumberInput, usePager } from "../ui/index";
 
 const TOKEN_KEY = "nexora_portal_token";
 
@@ -355,10 +355,10 @@ function NewBox({ token, plans, onDone, onClose }) {
             <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
               تعداد کاربر هم‌زمان
             </label>
-            <input type="number" min="1" max="20" dir="ltr" value={devices}
+            <NumberInput min="1" max="20" value={devices}
               onChange={(e) => setDevices(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
               className="fx-input w-full text-center mb-3"
-              style={{ fontFamily: "var(--mono)" }} />
+              style={{ fontFamily: "var(--mono)" }}  />
 
             {total !== null && (
               <div className="rounded-xl p-3 mb-3 text-[13px]"
@@ -648,10 +648,10 @@ function PlansBox({ token, onClose, onNote }) {
                     <div key={k}>
                       <label className="text-[11px] block mb-1"
                         style={{ color: "var(--muted)" }}>{lbl}</label>
-                      <input type="number" dir="ltr" min="0" value={r[k] ?? 0}
+                      <NumberInput min="0" value={r[k] ?? 0}
                         onChange={(e) => patch(i, { [k]: Number(e.target.value) || 0 })}
                         className="fx-input text-[13px] text-center"
-                        style={{ fontFamily: "var(--mono)" }} />
+                        style={{ fontFamily: "var(--mono)" }}  />
                     </div>
                   ))}
                 </div>
