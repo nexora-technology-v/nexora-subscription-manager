@@ -152,6 +152,10 @@ cd frontend && npx vite preview --outDir dist-test --port 5180
 node tools/make-subpage-harness.js   # → frontend/dist-test/sub.html
 ```
 
+**بعد از هر بیلد دوباره بسازش.** هر دو خروجی در `dist-test` می‌نشینند
+و `vite build` آن پوشه را پاک می‌کند؛ اگر یادت برود، `/sub.html` بی‌صدا
+به خودِ پنل برمی‌گردد (SPA fallback) و فکر می‌کنی صفحه خراب شده.
+
 همان درس، یک‌بار دیگر: تا وقتی این ابزار نبود، آن صفحه را فقط روی
 سرورِ واقعی با یک اشتراکِ واقعی می‌شد دید — یعنی عملاً هیچ‌وقت. اگر
 قالبِ تازه‌ای به `sub-page-index.html` اضافه شد و این اسکریپت
