@@ -15,7 +15,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 backend = (ROOT / "backend" / "app.py").read_text(encoding="utf-8")
-frontend = (ROOT / "frontend" / "src" / "App.jsx").read_text(encoding="utf-8")
+
+# ALL of frontend/src, not just App.jsx.
+#
+# This checker read App.jsx alone. When the panel was split into
+# sections/, the API calls went with them — so it was auditing 2 URLs
+# while the real frontend called dozens, and every one of those was
+# unchecked. A gate that passes because it is looking at an empty room
+# is worse than no gate: it is a green light nobody earned.
+SRC = ROOT / "frontend" / "src"
+_files = sorted(p for p in SRC.rglob("*")
+                if p.suffix in (".jsx", ".js") and p.is_file())
+frontend = "\n".join(p.read_text(encoding="utf-8") for p in _files)
 
 G = "\033[38;5;42m"
 R = "\033[38;5;203m"
@@ -33,15 +44,42 @@ for m in re.finditer(r'@app\.(\w+)\("(/api[^"]+)"', backend):
     routes.add(re.sub(r"\{[^}]+\}", "*", m.group(2)))
 
 called = set()
-for m in re.finditer(r"\$\{API_URL\}(/api/[^`\"']*)", frontend):
-    p = m.group(1)
-    # پارامترهای query جزو مسیر نیستند
-    p = p.split("?")[0]
-    p = re.sub(r"\$\{[^}]+\}", "*", p).rstrip("/")
-    if p:
-        called.add(p)
+# Two shapes, because the panel uses both:
+#
+#   fetch(`${API_URL}/api/admin/stats`)      ← literal template
+#   useJson("/api/admin/billing/ledger")     ← path handed to a helper
+#
+# Only the first was matched. Every section that went through call() or
+# useJson() — firewall rules, the ledger, the whole reseller portal and
+# the mini app — was invisible to this check. Those are most of them.
+#
+# Interpolations collapse to * first: `${encodeURIComponent(slug)}` has a
+# paren in it, so cutting the path at the first odd character left the
+# fragment `/api/portal/${encodeURIComponent` and reported a route that
+# does not exist. A checker that cries wolf gets switched off.
+# `${API_URL}` itself survives: it is the prefix the first pattern keys on.
+_flat = re.sub(r"\$\{(?!API_URL\})[^{}]*\}", "*", frontend)
+for pat in (r"\$\{API_URL\}(/api/[^`\"']*)",
+            r"[\"'`](/api/[a-zA-Z0-9_\-/*.]*)"):
+    for m in re.finditer(pat, _flat):
+        p = m.group(1).split("?")[0].rstrip("/")
+        if p and p != "/api":
+            called.add(p)
 
 print(f"\n{D}Checking {len(called)} URLs against {len(routes)} routes{X}\n")
+
+# A floor, so this cannot quietly go blind again.
+#
+# For years it read App.jsx only and audited 2 URLs while the panel
+# called dozens — and it reported "API contract is sound" every time.
+# If a refactor moves the calls somewhere this scanner cannot see, that
+# has to be a failure, not a green tick on an empty room.
+_FLOOR = 90
+if len(called) < _FLOOR:
+    print(f"  {R}✗{X} only {len(called)} URLs found, expected at least {_FLOOR}")
+    print(f"      {D}the scanner has stopped seeing the frontend's calls —{X}")
+    print(f"      {D}fix the extractor before trusting this result{X}\n")
+    sys.exit(1)
 
 
 def matches(path, route):
