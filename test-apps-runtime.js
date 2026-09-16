@@ -33,7 +33,33 @@ function jsdomPath() {
 const { JSDOM } = jsdomPath();
 
 const DIST = path.join(__dirname, "frontend", "dist-test");
-if (!fs.existsSync(path.join(DIST, "index.html"))) {
+
+/** تازه‌ترین زمانِ تغییر در یک درخت. */
+function newest(dir) {
+  let t = 0;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    t = Math.max(t, e.isDirectory() ? newest(p) : fs.statSync(p).mtimeMs);
+  }
+  return t;
+}
+
+/*
+ * کهنه بودن هم یعنی «باید دوباره ساخته شود».
+ *
+ * یک‌بار این تست در دروازه قرمز شد و در اجرای دستی سبز: `dist-test`
+ * از قبل وجود داشت ولی کدِ تازه در آن نبود، پس تست کدِ قدیمی را
+ * می‌سنجید. تستی که به یک فایلِ کهنه تکیه کند، هم دروغِ سبز می‌دهد
+ * هم دروغِ قرمز.
+ */
+let stale = false;
+try {
+  stale = fs.existsSync(path.join(DIST, "index.html"))
+    && newest(path.join(__dirname, "frontend", "src"))
+       > fs.statSync(path.join(DIST, "index.html")).mtimeMs;
+} catch { /* اگر نشد، بیلد می‌کنیم */ stale = true; }
+
+if (stale || !fs.existsSync(path.join(DIST, "index.html"))) {
   console.log("  ساختِ نسخه‌ی تک‌فایلی برای تست…");
   const r = spawnSync("npx", ["vite", "build"], {
     cwd: path.join(__dirname, "frontend"),
