@@ -6,11 +6,11 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, CheckCircle2, ChevronDown, Download, Layers, Loader2, Plus, Search, ShieldCheck, Sparkles, Trash2, Upload, XCircle,
+  AlertTriangle, CheckCircle2, ChevronDown, Download, Layers, Loader2, Lock, Plus, Search, ShieldCheck, Sparkles, Trash2, Unlock, Upload, XCircle,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum } from "../lib/format";
-import { ConfirmModal, EmptyState, Field, InfoBox, LongList, Msg, NumberInput, PageSkeleton, SectionHead } from "../ui/index";
+import { ConfirmModal, EmptyState, Field, InfoBox, LongList, Msg, NumberInput, PageSkeleton, SectionHead, StatTile } from "../ui/index";
 
 export const FW_ACTIONS = [
   ["allow", "اجازه", "var(--ok)"],
@@ -380,6 +380,9 @@ export function FirewallRules({ password }) {
 
   const hidden = merged.length - rules.length;
   const dupes = (d.rules || []).length - merged.length;
+  // شمارشِ باز و بسته — از همان قاعده‌هایی که در دست است
+  const openCount = merged.filter((r) => /allow/i.test(r.action || "")).length;
+  const denyCount = merged.filter((r) => /deny|reject|drop/i.test(r.action || "")).length;
 
   const add = () => {
     if (!form.port) return;
@@ -413,6 +416,23 @@ export function FirewallRules({ password }) {
         } />
 
       <Msg msg={msg} />
+
+      {/* وضعیتِ فایروال در یک نگاه.
+          قبلاً برای دانستنِ «چند در باز است و چند تا بسته» باید کلِ
+          فهرست خوانده می‌شد. همه از همان داده‌ای که صفحه دارد. */}
+      <div className="fx-g4 grid grid-cols-3 gap-3">
+        <StatTile label="وضعیت فایروال" icon={ShieldCheck}
+          tone={d.active ? "var(--ok)" : "var(--danger)"}
+          value={d.active ? "روشن" : "خاموش"}
+          color={d.active ? "var(--ok)" : "var(--danger)"}
+          hint={d.active ? "فقط درهای باز اجازه دارند" : "همه‌ی پورت‌ها بازند"} />
+        <StatTile label="درهای باز" icon={Unlock} tone="var(--accent-2)"
+          value={faNum(openCount)}
+          hint={hidden > 0 ? `${faNum(hidden)} قاعده پنهان شده` : "قاعده‌ی allow"} />
+        <StatTile label="درهای بسته" icon={Lock} tone="var(--warn)"
+          value={faNum(denyCount)}
+          hint={dupes > 0 ? `${faNum(dupes)} قاعده‌ی تکراری` : "قاعده‌ی deny"} />
+      </div>
 
       <FirewallSuggest password={password} onApplied={load} />
 

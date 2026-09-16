@@ -23,7 +23,7 @@ import { isoToJalaliLabel } from "../ui/jalali";
 // قاعده است و دو پیاده‌سازی از یک قاعده دیر یا زود از هم جدا
 // می‌شوند. این‌جا فقط همان چیزی گرفته می‌شود که ui/jalali هم هست —
 // ابزار عمومی، نه کدِ پنل مدیر.
-import { NumberInput, usePager } from "../ui/index";
+import { NumberInput, StatTile, usePager } from "../ui/index";
 
 const TOKEN_KEY = "nexora_portal_token";
 
@@ -119,20 +119,21 @@ function Login({ slug, onIn }) {
 
 // ═══════════════════════════════════════════════════════════
 
-function Stat({ icon: Icon, label, value, hint, color }) {
+/**
+ * کارت شاخصِ پنل نماینده.
+ *
+ * حالا همان `StatTile` مشترک است — قدِ یکسان، آیکونِ داخل مربع،
+ * و تپش وقتی عدد عوض می‌شود. سیزده جای این صفحه صدایش می‌زنند و
+ * هیچ‌کدام لازم نبود عوض شوند.
+ *
+ * `StatTile` از `ui/index` می‌آید که ابزارِ عمومی است، نه کدِ پنل
+ * مدیر — همان مرزی که این فایل از اول داشته.
+ */
+function Stat({ icon, label, value, hint, color, spark, sparkColor }) {
   return (
-    <div className="fx-card p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <Icon size={14} style={{ color: color || "var(--accent-2)" }} />
-        <span className="text-[12px]" style={{ color: "var(--muted)" }}>{label}</span>
-      </div>
-      <div className="text-[20px] font-bold" style={{ color: color || "var(--text)" }}>
-        {value}
-      </div>
-      {hint && (
-        <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>{hint}</div>
-      )}
-    </div>
+    <StatTile icon={icon} label={label} value={value} hint={hint}
+      color={color || "var(--text)"} tone={color || "var(--accent-2)"}
+      spark={spark} sparkColor={sparkColor} />
   );
 }
 

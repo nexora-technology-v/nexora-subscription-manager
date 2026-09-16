@@ -11,7 +11,7 @@ import {
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { usePolling } from "../lib/hooks";
-import { Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead } from "../ui/index";
+import { Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile } from "../ui/index";
 
 export const ENGINE_COLOR = {
   backhaul: "#34D399",
@@ -82,20 +82,27 @@ export function TunnelOverview({ password }) {
         action={<button onClick={reload} className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
           <RefreshCw size={13} /> تازه‌سازی</button>} />
 
-      <div className="fx-g4 grid grid-cols-4 gap-3 mb-5">
-        {[["سرورها", s.nodes, "var(--accent-2)", Server],
-          ["آنلاین", s.online, "var(--ok)", Activity],
-          ["تانل‌ها", s.tunnels, "#A78BFA", Network],
-          ["در حال کار", s.running, "var(--ok)", CheckCircle2]].map(([l, v, col, I], i) => (
-          <div key={i} className="fx-card fx-card-i p-4">
-            <div className="fx-ico mb-3" style={{ background: `color-mix(in srgb, ${col} 12%, transparent)` }}>
-              <I size={15} style={{ color: col }} />
-            </div>
-            <div className="fx-stat-num text-[21px] font-extrabold text-white leading-none"
-              style={{ fontFamily: "var(--mono)" }}>{faNum(v)}</div>
-            <div className="text-[12px] mt-1.5" style={{ color: "var(--dim)" }}>{l}</div>
-          </div>
-        ))}
+      {/* همان چهار عدد، ولی با زمینه: «۲ از ۳ آنلاین» چیزی می‌گوید
+          که «۲» تنها نمی‌گوید. */}
+      <div className="fx-g4 grid grid-cols-4 gap-3">
+        <StatTile label="سرورها" icon={Server} tone="var(--accent-2)"
+          value={faNum(s.nodes)}
+          hint={s.nodes ? `${faNum(s.online || 0)} تا آنلاین` : "هنوز سروری اضافه نشده"} />
+        <StatTile label="آنلاین" icon={Activity}
+          tone={s.online === s.nodes && s.nodes ? "var(--ok)" : "var(--warn)"}
+          value={faNum(s.online)}
+          color={s.online === s.nodes && s.nodes ? "var(--ok)" : "var(--warn)"}
+          hint={s.nodes - (s.online || 0) > 0
+                ? `${faNum(s.nodes - s.online)} سرور جواب نمی‌دهد` : "همه در دسترس‌اند"} />
+        <StatTile label="تانل‌ها" icon={Network} tone="var(--purple)"
+          value={faNum(s.tunnels)}
+          hint={s.tunnels ? `${faNum(s.running || 0)} تا در حال کار` : "هنوز تانلی ساخته نشده"} />
+        <StatTile label="در حال کار" icon={CheckCircle2}
+          tone={s.running === s.tunnels && s.tunnels ? "var(--ok)" : "var(--danger)"}
+          value={faNum(s.running)}
+          color={s.running === s.tunnels && s.tunnels ? "var(--ok)" : "var(--danger)"}
+          hint={s.tunnels - (s.running || 0) > 0
+                ? `${faNum(s.tunnels - s.running)} تانل خوابیده` : "هیچ تانلی نخوابیده"} />
       </div>
 
       {(data.nodes || []).length === 0 ? (
@@ -141,10 +148,10 @@ export function TunnelOverview({ password }) {
             ))}
           </div>
 
-          {data.tunnels.length > 0 && (
+          {(data.tunnels || []).length > 0 && (
             <div className="fx-card p-5">
               <div className="text-[14px] font-semibold text-white mb-4">تانل‌های اخیر</div>
-              {data.tunnels.slice(0, 6).map((t, i, arr) => {
+              {(data.tunnels || []).slice(0, 6).map((t, i, arr) => {
                 const st = TUN_STATUS[t.status] || TUN_STATUS.pending;
                 const ec = ENGINE_COLOR[t.engine] || "var(--accent-2)";
                 return (
@@ -153,7 +160,7 @@ export function TunnelOverview({ password }) {
                     <div className="min-w-0">
                       <div className="text-[14px] font-semibold text-white">{t.name}</div>
                       <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>
-                        {t.node_name} · {t.ports.length} پورت
+                        {t.node_name} · {(t.ports || []).length} پورت
                       </div>
                     </div>
                     <div className="flex items-center gap-2.5 shrink-0">
@@ -231,7 +238,7 @@ export function TunnelNodes({ password }) {
 
       {msg && <Msg msg={msg} />}
 
-      {(!data?.nodes || data.nodes.length === 0) ? (
+      {(!data?.nodes || (data.nodes || []).length === 0) ? (
         <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
           <Server size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
           <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز سروری اضافه نشده</div>
@@ -507,12 +514,12 @@ export function TunnelList({ password }) {
             اول از بخش «سرورها» یک سرور اضافه کنید
           </div>
         </div>
-      ) : data.tunnels.length === 0 ? (
+      ) : (data.tunnels || []).length === 0 ? (
         <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
           <Network size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
           <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز تانلی ساخته نشده</div>
         </div>
-      ) : data.tunnels.map((t) => {
+      ) : (data.tunnels || []).map((t) => {
         const st = TUN_STATUS[t.status] || TUN_STATUS.pending;
         const ec = ENGINE_COLOR[t.engine] || "var(--accent-2)";
         return (
@@ -538,7 +545,7 @@ export function TunnelList({ password }) {
             </div>
 
             <div className="flex gap-1.5 flex-wrap mb-4">
-              {t.ports.map((p, i) => (
+              {(t.ports || []).map((p, i) => (
                 <span key={i} className="text-[12px] px-2 py-1 rounded-lg" dir="ltr"
                   style={{ background: "var(--surface-3)", color: "var(--dim)",
                            fontFamily: "var(--mono)" }}>

@@ -308,7 +308,7 @@ export function BotReportSection({ password }) {
                   <th>مجموع خرید</th><th>آخرین خرید</th></tr>
               </thead>
               <tbody>
-                {d.buyers.map((b) => (
+                {(d.buyers || []).map((b) => (
                   <tr key={b.tg_id}>
                     <td>
                       {esc0(b.first_name) || "—"}

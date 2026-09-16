@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import { ConfirmModal, EmptyState, Field, InfoBox, Msg, NumberInput, PageSkeleton, SectionHead } from "../ui/index";
+import { ConfirmModal, EmptyState, Field, InfoBox, Msg, NumberInput, PageSkeleton, SectionHead, StatTile } from "../ui/index";
 import { JalaliDate } from "../ui/jalali";
 
 const KIND_META = {
@@ -280,40 +280,18 @@ export function BillingExpenses({ password }) {
 
       <Msg msg={msg} />
 
-      <div className="fx-g3 grid grid-cols-3 gap-3 mb-4">
-        <div className="fx-card p-4">
-          <div className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
-            هزینه‌ی این بازه
-          </div>
-          <div className="text-[21px] font-bold"
-            style={{ color: "var(--danger)", fontFamily: "var(--mono)" }}>
-            <Toman n={d.total} />
-          </div>
-        </div>
-        <div className="fx-card p-4">
-          <div className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
-            هزینه‌ی ثابت ماهانه
-          </div>
-          <div className="text-[21px] font-bold"
-            style={{ color: "var(--warn)", fontFamily: "var(--mono)" }}>
-            <Toman n={d.monthlyRecurring} />
-          </div>
-          <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
-            این مبلغ را هر ماه باید دربیاورید
-            {d.monthlyFromYearly > 0 && (
-              <> — شامل <Toman n={d.monthlyFromYearly} /> از هزینه‌های سالانه</>
-            )}
-          </div>
-        </div>
-        <div className="fx-card p-4">
-          <div className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
-            حجم خریداری‌شده
-          </div>
-          <div className="text-[21px] font-bold"
-            style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
-            {faNum(d.trafficGB || 0)} <span className="text-[14px] fx-fa-sub">گیگ</span>
-          </div>
-        </div>
+      <div className="fx-g3 grid grid-cols-3 gap-3">
+        <StatTile label="هزینه‌ی این بازه" icon={Wallet} tone="var(--danger)"
+          value={faNum(d.total || 0)} unit="تومان" color="var(--danger)"
+          hint={d.count ? `${faNum(d.count)} قلم هزینه` : "چیزی ثبت نشده"} />
+        <StatTile label="هزینه‌ی ثابت ماهانه" icon={RefreshCw} tone="var(--warn)"
+          value={faNum(d.monthlyRecurring || 0)} unit="تومان" color="var(--warn)"
+          hint={d.monthlyFromYearly > 0
+                ? `شامل ${faNum(d.monthlyFromYearly)} از هزینه‌های سالانه`
+                : "این مبلغ را هر ماه باید دربیاورید"} />
+        <StatTile label="حجم خریداری‌شده" icon={TrendingUp} tone="var(--accent-2)"
+          value={faNum(d.trafficGB || 0)} unit="گیگ" color="var(--accent-2)"
+          hint={d.trafficCost ? `${faNum(d.trafficCost)} تومان` : "ترافیک خریداری‌شده"} />
       </div>
 
       <div className="fx-card p-4 mb-4">

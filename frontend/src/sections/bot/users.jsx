@@ -515,7 +515,7 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
               {(d.orders || []).length > 0 && (
                 <>
                   <div className="text-[14px] font-semibold text-white mt-5 mb-3">آخرین سفارش‌ها</div>
-                  {d.orders.slice(0, 6).map((o) => (
+                  {(d.orders || []).slice(0, 6).map((o) => (
                     <div key={o.id} className="flex items-center justify-between gap-2 py-2.5"
                       style={{ borderBottom: "1px solid var(--border)" }}>
                       <div className="min-w-0">

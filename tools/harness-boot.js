@@ -112,7 +112,122 @@
              is_active: 1, is_trial: i === 0 ? 1 : 0 };
   }) };
 
+
+  var FIREWALL = {
+    installed: true, active: true, backend: "ufw",
+    rules: mk(9, function (i) {
+      return { num: i + 1, port: [22, 80, 443, 8100, 2053, 8443, 9090, 3000, 5432][i],
+               proto: i % 3 === 2 ? "udp" : "tcp",
+               action: i > 5 ? "DENY" : "ALLOW",
+               from: "Anywhere", comment: ["SSH", "HTTP", "HTTPS", "API", "x-ui",
+                                           "sub", "metrics", "dev", "db"][i] };
+    }),
+  };
+
+  var INTRUSION = { ready: true, hours: 24, attempts: mk(8, function (i) {
+    return { ip: "203.0.113." + (10 + i), tries: 40 - i * 4,
+             last: "2026-09-16 0" + (i % 9) + ":10", user: "root",
+             known: i === 2, blocked: i < 2 };
+  }), blocked: 2, total: 184 };
+
+  var AFFILIATES = {
+    ready: true, totalOwed: 3400000, totalPaid: 12600000, resellerOwed: 900000,
+    affiliates: mk(5, function (i) {
+      return { id: i + 1, tg_id: 7000 + i, name: NAMES[i % 7], code: "AF" + (100 + i),
+               pct: 10 + i, sales: 12 - i * 2, orders: 12 - i * 2,
+               owed: [1400000, 900000, 600000, 300000, 200000][i],
+               paid: i * 400000, is_active: 1 };
+    }),
+  };
+
+  var MONITOR = {
+    ready: true, summary: { nodes: 3, online: 3, cpu: 34, ram: 61, disk: 48 },
+    nodes: mk(3, function (i) {
+      return { id: i + 1, name: ["ایران-۱", "آلمان-۱", "فنلاند-۱"][i],
+               online: true, cpu: [22, 44, 36][i], ram: [51, 68, 64][i],
+               disk: [40, 55, 49][i], up: "۱۲ روز" };
+    }),
+  };
+
+  var TUNNEL = {
+    ready: true,
+    nodes: mk(3, function (i) {
+      return { id: i + 1, name: ["ایران-۱", "آلمان-۱", "فنلاند-۱"][i],
+               host: "10.0.0." + (i + 1), online: true, role: i ? "خارج" : "ایران" };
+    }),
+    tunnels: mk(2, function (i) {
+      return { id: i + 1, name: "تانل " + (i + 1), engine: "gost",
+               status: "running", src: 1, dst: i + 2, port: 2000 + i };
+    }),
+    events: mk(4, function (i) {
+      return { id: i, at: "2026-09-16 0" + i + ":00", kind: "info",
+               text: "تانل " + (i % 2 + 1) + " دوباره وصل شد" };
+    }),
+    engines: [{ key: "gost", label: "GOST" }, { key: "frp", label: "FRP" }],
+    stats: { nodes: 3, online: 3, tunnels: 2, running: 2 },
+  };
+
+
+  var CLIENTS = {
+    ready: true, total: 42,
+    groups: ["goroh-a", "goroh-b", "goroh-c", "بدون گروه"],
+    stats: { total: 42, renewed: 28, notRenewed: 14, totalRenewals: 61,
+             periodRenewals: 19, active: 33, expiringSoon: 5, expired: 3,
+             disabled: 1, noGroup: 4, usedGB: 812.4, amount: 9400000,
+             renewalRate: 66.7, newLast30: 9, olderThan30: 33, unpriced: 2 },
+    clients: mk(14, function (i) {
+      return { email: "nexora_" + (8800 + i * 7) + "_1",
+               group: ["goroh-a", "goroh-b", "goroh-c", "بدون گروه"][i % 4],
+               billable: i % 5 !== 0, gb: [50, 100, 30, 200][i % 4],
+               usedBytes: (i + 1) * 3.2 * 1024 * 1024 * 1024,
+               status: ["فعال", "رو به انقضا", "منقضی", "غیرفعال"][i % 4],
+               renewals: i % 3, totalRenewals: i % 4,
+               price: i % 7 === 0 ? null : 100000,
+               amount: i % 7 === 0 ? 0 : 100000 * (1 + (i % 3)),
+               created: "۱۴۰۴/۰۵/" + (10 + (i % 18)),
+               createdGregorian: "2026-08-" + (10 + (i % 18)),
+               expiry: "۱۴۰۴/۰۷/" + (5 + (i % 20)), daysLeft: 30 - i };
+    }),
+  };
+
+  var INVOICE = {
+    ready: true, group: "goroh-a", label: "حسین",
+    period: { from: "۱۴۰۴/۰۶/۰۱", to: "۱۴۰۴/۰۶/۳۱" },
+    totals: { due: 12400000, paid: 9000000, balance: 3400000,
+              configs: 96, months: 104, before: 0, beforeMonths: 0,
+              unused: 3, unusedWhy: { "هرگز روشن نشد": 3 } },
+    due: 12400000, paid: 9000000, balance: 3400000,
+    perGb: false, unpricedVolumes: [],
+    totalAmount: 12400000,
+    newConfigs: mk(3, function (i) {
+      return { email: "nexora_99" + i + "_1", gb: 50, months: 1,
+               devices: 1, price: 100000, amount: 100000 };
+    }),
+    renewals: mk(4, function (i) {
+      return { email: "nexora_88" + i + "_1", gb: 100, months: 1 + (i % 2),
+               devices: 2, price: 180000, amount: 180000 * (1 + (i % 2)) };
+    }),
+    items: mk(6, function (i) {
+      return { email: "nexora_" + (8800 + i * 5) + "_1", gb: [50, 100, 30][i % 3],
+               months: 1 + (i % 3), devices: 1 + (i % 2),
+               price: [100000, 180000, 70000][i % 3],
+               amount: [100000, 180000, 70000][i % 3] * (1 + (i % 3)),
+               kind: i % 4 === 0 ? "ساخت" : "تمدید" };
+    }),
+    payments: mk(2, function (i) {
+      return { id: i + 1, amount: [6000000, 3000000][i],
+               at: "۱۴۰۴/۰۶/" + (10 + i * 8), note: "کارت به کارت" };
+    }),
+  };
+
   function byPath(u) {
+    if (u.indexOf("/billing/clients") >= 0) return CLIENTS;
+    if (u.indexOf("/billing/invoice") >= 0) return INVOICE;
+    if (u.indexOf("/firewall/intrusion") >= 0) return INTRUSION;
+    if (u.indexOf("/firewall") >= 0) return FIREWALL;
+    if (u.indexOf("/tunnel/overview") >= 0 || u.indexOf("/tunnel") >= 0) return TUNNEL;
+    if (u.indexOf("/affiliates") >= 0) return AFFILIATES;
+    if (u.indexOf("/monitor") >= 0 || u.indexOf("/nodes") >= 0) return MONITOR;
     if (u.indexOf("/admin/config") >= 0) return CONFIG;
     if (u.indexOf("/admin/stats") >= 0) {
       return { appsCount: 7, faqCount: 4, videosCount: 2,

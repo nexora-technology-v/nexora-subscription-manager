@@ -6,11 +6,11 @@
  */
 import React, { useState, useEffect } from "react";
 import {
-  AlertTriangle, CheckCircle2, Coins, DollarSign, Eye, EyeOff, Loader2, Plus as PlusIcon, Sliders, Trash2,
+  AlertTriangle, Check, CheckCircle2, Coins, DollarSign, Eye, EyeOff, Loader2, Plus as PlusIcon, Sliders, Trash2, Users, Wallet,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errText, faNum } from "../../lib/format";
-import { Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead } from "../../ui/index";
+import { Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile } from "../../ui/index";
 
 export function BotAffiliates({ password }) {
   const [data, setData] = useState(null);
@@ -86,17 +86,24 @@ export function BotAffiliates({ password }) {
       {msg && <Msg msg={msg} />}
 
       {list.length > 0 && (
+        <>
+        <div className="fx-g3 grid grid-cols-3 gap-3">
+          <StatTile label="بدهی به همکاران" icon={Wallet}
+            tone={data.totalOwed > 0 ? "var(--warn)" : "var(--ok)"}
+            value={faNum(data.totalOwed)} unit="تومان"
+            color={data.totalOwed > 0 ? "var(--warn)" : "var(--ok)"}
+            hint={data.totalOwed > 0 ? "هنوز پرداخت نشده" : "همه تسویه‌اند"} />
+          <StatTile label="همکار فروش" icon={Users} tone="var(--accent-2)"
+            value={faNum(list.length)}
+            hint={`${faNum(list.filter((a) => (a.sales || a.orders || 0) > 0).length)} نفر فروش داشته‌اند`} />
+          <StatTile label="پرداخت‌شده تا امروز" icon={Check} tone="var(--ok)"
+            value={faNum(data.totalPaid || 0)} unit="تومان" color="var(--ok)"
+            hint={data.resellerOwed > 0
+                  ? `${faNum(data.resellerOwed)} بدهیِ همکارهای نماینده‌ها`
+                  : "پورسانتِ پرداخت‌شده"} />
+        </div>
+
         <div className="fx-card p-5 mb-4">
-          <div className="flex justify-between items-baseline flex-wrap gap-2">
-            <span className="text-[14px]" style={{ color: "var(--dim)" }}>
-              مجموع بدهی به همکاران
-            </span>
-            <span className="text-[21px] font-extrabold"
-              style={{ color: data.totalOwed > 0 ? "var(--warn)" : "var(--ok)",
-                       fontFamily: "var(--mono)" }}>
-              {faNum(data.totalOwed)} <span className="text-[13px] fx-fa-sub">تومان</span>
-            </span>
-          </div>
 
           {/* بدهیِ همکارهای نماینده‌ها جداست و در این عدد نمی‌آید —
               هزینه‌ی همان نماینده است، نه شما. قبلاً با هم جمع
@@ -116,6 +123,7 @@ export function BotAffiliates({ password }) {
             </div>
           )}
         </div>
+        </>
       )}
 
       {list.length === 0 ? (

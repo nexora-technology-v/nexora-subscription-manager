@@ -78,7 +78,9 @@ export function BillingPeriod({ password }) {
     );
   }
 
-  const t = inv?.totals;
+  // اگر فاکتور «آماده» باشد ولی totals نیاید (نسخه‌ی دیگر بکند، یا
+  // گروهی که هنوز چیزی ندارد)، صفحه نباید بیفتد
+  const t = inv?.totals || {};
   const p = inv?.period;
 
   return (
@@ -273,8 +275,11 @@ export function BillingPeriod({ password }) {
               </div>
 
               {/* ریز */}
-              {[["کانفیگ‌های جدید", inv.newConfigs, "var(--ok)"],
-                ["تمدیدها", inv.renewals, "var(--accent-2)"]].map(([title, rows, col]) => (
+              {/* اگر فاکتور این دو بخش را نداشته باشد صفحه نباید بیفتد:
+                   `rows.length` روی undefined، کلِ «صورتحساب دوره» را
+                   می‌انداخت — با داده‌ی واقع‌نما پیدا شد، نه با پاسخ خالی */}
+              {[["کانفیگ‌های جدید", inv.newConfigs || [], "var(--ok)"],
+                ["تمدیدها", inv.renewals || [], "var(--accent-2)"]].map(([title, rows, col]) => (
                 rows.length > 0 && (
                   <div key={title} className="fx-card p-5 mb-4">
                     <div className="text-[14px] font-semibold text-white mb-3">
@@ -1488,7 +1493,7 @@ export function BillingDash({ password }) {
     </div>
   );
 
-  const billed = data.groups.filter((g) => g.billed);
+  const billed = (data.groups || []).filter((g) => g.billed);
   const due = billed.reduce((s, g) => s + g.amount, 0);
   const paid = billed.reduce((s, g) => s + g.paid, 0);
   const uncertain = billed.reduce((s, g) => s + (g.uncertain || 0), 0);
@@ -1496,7 +1501,7 @@ export function BillingDash({ password }) {
   return (
     <div className="fx-anim">
       <SectionHead title="داشبورد حسابداری"
-        desc={`${faNum(data.totalClients)} کانفیگ در ${faNum(data.groups.length)} گروه`}
+        desc={`${faNum(data.totalClients)} کانفیگ در ${faNum((data.groups || []).length)} گروه`}
         action={
           <button onClick={reload} className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
             <RefreshCw size={13} /> تازه‌سازی
@@ -1724,7 +1729,7 @@ export function BillingGroups({ password }) {
         </div>
       )}
 
-      {data.groups.map((g) => {
+      {(data.groups || []).map((g) => {
         const d = get(g);
         const isOpen = open === g.name;
         const dirty = !!draft[g.name];
@@ -2084,16 +2089,16 @@ export function BillingInvoice({ password }) {
 
               {inv.totals?.before > 0 && (
                 <InfoBox tone="info">
-                  {faNum(inv.totals.before)} کانفیگ روی این فاکتور نیامد، چون
-                  همه‌ی ماه‌هایشان ({faNum(inv.totals.beforeMonths)} ماه) پیش از
+                  {faNum((inv.totals || {}).before)} کانفیگ روی این فاکتور نیامد، چون
+                  همه‌ی ماه‌هایشان ({faNum((inv.totals || {}).beforeMonths)} ماه) پیش از
                   این تاریخ بوده و قبلاً حساب شده.
                 </InfoBox>
               )}
 
               {inv.totals?.unused > 0 && (
                 <InfoBox tone="info">
-                  {faNum(inv.totals.unused)} کانفیگ حساب نشد —{" "}
-                  {Object.keys(inv.totals.unusedWhy || {}).join("، ")}. همین
+                  {faNum((inv.totals || {}).unused)} کانفیگ حساب نشد —{" "}
+                  {Object.keys((inv.totals || {}).unusedWhy || {}).join("، ")}. همین
                   قاعده در داشبورد هم اعمال می‌شود، پس دو صفحه یک عدد
                   می‌دهند.
                 </InfoBox>
@@ -2102,7 +2107,7 @@ export function BillingInvoice({ password }) {
               {inv.unpricedVolumes?.length > 0 && (
                 <InfoBox tone="warn">
                   حجم‌های بدون نرخ کنار گذاشته شدند:{" "}
-                  {inv.unpricedVolumes.map((v) => v ? `${faNum(v)}GB` : "نامحدود").join("، ")}
+                  {(inv.unpricedVolumes || []).map((v) => v ? `${faNum(v)}GB` : "نامحدود").join("، ")}
                   {(inv.unpricedWhy || []).map((why) => (
                     <div key={why} className="mt-1.5">— {why}</div>
                   ))}
@@ -2124,12 +2129,12 @@ export function BillingInvoice({ password }) {
               </div>
 
               <div className="text-[13px] mb-2" style={{ color: "var(--dim)" }}>
-                {faNum(inv.items.length)} کانفیگ
+                {faNum((inv.items || []).length)} کانفیگ
               </div>
               <div style={{ maxHeight: 320, overflowY: "auto" }}>
-                {inv.items.map((it, i) => (
+                {(inv.items || []).map((it, i) => (
                   <div key={i} className="flex justify-between items-center py-2.5 gap-3"
-                    style={{ borderBottom: i < inv.items.length - 1 ? "1px solid var(--border)" : "none" }}>
+                    style={{ borderBottom: i < (inv.items || []).length - 1 ? "1px solid var(--border)" : "none" }}>
                     <div className="min-w-0">
                       <div className="text-[13px] truncate" dir="ltr"
                         style={{ color: "var(--text)", fontFamily: "var(--mono)" }}>
