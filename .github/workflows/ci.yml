@@ -119,6 +119,7 @@ jobs:
         run: |
           node tools/test-render.cjs
           node test-panel-runtime.js
+          node test-apps-runtime.js
           node test-subpage.js
           node tools/test-components.cjs
           node tools/test-hooks.cjs

@@ -196,6 +196,9 @@ def frontend_checks(fast):
     env = dict(os.environ, NODE_PATH=nm)
     for f, label in [("tools/test-render.cjs", "ظاهر پنل"),
                      ("test-panel-runtime.js", "اجرای پنل"),
+                     # هر سه اپ، نه فقط پنل مدیر: پنل نماینده یک‌بار
+                     # کاملاً از کار افتاد و هیچ تستی اجرایش نمی‌کرد
+                     ("test-apps-runtime.js", "اجرای هر سه اپ"),
                      ("test-subpage.js", "صفحه‌ی اشتراک"),
                      ("tools/test-components.cjs", "رندر کامپوننت‌ها"),
                      ("tools/test-hooks.cjs", "ترتیب هوک‌ها"),

@@ -27,8 +27,16 @@ import { NumberInput, usePager } from "../ui/index";
 
 const TOKEN_KEY = "nexora_portal_token";
 
-/** نشانی نماینده از آدرس صفحه: /r/<slug> */
-export { portalSlug } from "../lib/route.js";
+/* نشانی نماینده از آدرس صفحه: /r/<slug>
+
+   import و بعد export، نه `export … from`.
+
+   شکل دوم فقط نام را *عبور* می‌دهد و آن را وارد دامنه‌ی خودِ
+   این ماژول نمی‌کند. کد همین فایل دو جا `portalSlug()` را صدا
+   می‌زند، پس با آن شکل، پنل نماینده موقع رندر می‌افتاد —
+   بیلد هم چیزی نمی‌گفت، چون خودِ نحو درست است. */
+import { portalSlug } from "../lib/route.js";
+export { portalSlug };
 
 async function api(path, { token, method = "GET", body } = {}) {
   const res = await fetch(`${API_URL}${path}`, {

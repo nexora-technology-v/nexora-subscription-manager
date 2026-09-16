@@ -23,8 +23,10 @@ import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { Skeleton } from "../ui/index";
 
-/** آیا این آدرس مینی‌اپ است؟ */
-export { isMini } from "../lib/route.js";
+/* آیا این آدرس مینی‌اپ است؟ — همان قاعده‌ی بالا در پنل نماینده:
+   نام باید در دامنه‌ی خودِ ماژول هم باشد، نه فقط عبور کند. */
+import { isMini } from "../lib/route.js";
+export { isMini };
 
 /**
  * پلِ تلگرام.
