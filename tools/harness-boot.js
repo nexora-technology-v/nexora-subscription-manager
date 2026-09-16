@@ -235,7 +235,20 @@
     }),
   };
 
+
+  var INBOUNDS = {
+    ready: true, mode: "all", selected: [7, 9], default: 7,
+    inbounds: mk(5, function (i) {
+      return { id: 5 + i * 2, remark: ["Reality-443", "VLESS-2053", "VMess-8443",
+                                       "Trojan-2083", "Shadowsocks-8080"][i],
+               protocol: ["vless", "vless", "vmess", "trojan", "ss"][i],
+               port: [443, 2053, 8443, 2083, 8080][i],
+               enable: i !== 3, clients: 120 - i * 18 };
+    }),
+  };
+
   function byPath(u) {
+    if (u.indexOf("/bot/inbounds") >= 0) return INBOUNDS;
     if (u.indexOf("/tenant/portal-list") >= 0) return PORTAL_LIST;
     if (u.indexOf("/billing/clients") >= 0) return CLIENTS;
     if (u.indexOf("/billing/invoice") >= 0) return INVOICE;
