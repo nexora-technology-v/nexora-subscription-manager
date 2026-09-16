@@ -461,9 +461,11 @@ export function FaqSection({ config, setConfig, requestDelete }) {
     <div className="fx-anim">
       <SectionHead title="سوالات متداول" desc="این سوال‌ها به‌صورت آکاردئون در پایین صفحه‌ی اشتراک نمایش داده می‌شوند." />
       <Tabs items={LANG_TABS} active={lang} onChange={setLang} counts={counts} />
-      <div className="flex flex-col gap-3">
-        {list.length === 0 && <EmptyState icon={HelpCircle} text="هنوز سوالی برای این زبان اضافه نشده"
-          hint="سوال‌های متداول در همان صفحه جواب می‌دهند و بار پشتیبانی را کم می‌کنند." />}
+      {list.length === 0 && <EmptyState icon={HelpCircle} text="هنوز سوالی برای این زبان اضافه نشده"
+        hint="سوال‌های متداول در همان صفحه جواب می‌دهند و بار پشتیبانی را کم می‌کنند." />}
+      {/* دو ستون: هر سوال یک کادر کوتاه است و تمام‌عرض‌بودنش فقط
+          فضای خالی می‌ساخت — سه سوال، ۸۱۰ پیکسل ارتفاع. */}
+      <div className="fx-g2-even grid gap-3">
         {list.map((item, i) => (
           <div key={i} className="fx-card p-4">
             <div className="flex items-start justify-between mb-2.5">
@@ -474,8 +476,8 @@ export function FaqSection({ config, setConfig, requestDelete }) {
             <Field label="متن پاسخ"><textarea className="fx-input" value={item.a} onChange={(e) => update(i, { a: e.target.value })} rows={2} /></Field>
           </div>
         ))}
-        <button onClick={add} className="fx-btn-dash flex items-center justify-center gap-2 py-3.5 text-[14px]"><Plus size={15} /> افزودن سوال جدید</button>
       </div>
+      <button onClick={add} className="fx-btn-dash w-full flex items-center justify-center gap-2 py-3.5 text-[14px]"><Plus size={15} /> افزودن سوال جدید</button>
     </div>
   );
 }

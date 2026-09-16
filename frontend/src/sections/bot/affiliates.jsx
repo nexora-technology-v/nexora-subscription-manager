@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errText, faNum } from "../../lib/format";
-import { Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile } from "../../ui/index";
+import { EmptyState, Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile } from "../../ui/index";
 
 export function BotAffiliates({ password }) {
   const [data, setData] = useState(null);
@@ -127,17 +127,8 @@ export function BotAffiliates({ password }) {
       )}
 
       {list.length === 0 ? (
-        <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
-          <Coins size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[14px] font-semibold text-white mb-2">
-            هنوز همکاری اضافه نشده
-          </div>
-          <p className="text-[13px] max-w-md mx-auto leading-relaxed"
-            style={{ color: "var(--muted)" }}>
-            هر همکار یک لینک اختصاصی می‌گیرد. هر کسی با آن لینک وارد ربات شود،
-            از تمام خریدهایش — نه فقط خرید اول — به آن همکار پورسانت می‌رسد.
-          </p>
-        </div>
+        <EmptyState icon={Coins} text="هنوز همکاری اضافه نشده"
+          hint="هر همکار یک لینک اختصاصی می‌گیرد. هر کسی با آن لینک وارد ربات شود، از تمام خریدهایش — نه فقط خرید اول — به آن همکار پورسانت می‌رسد." />
       ) : list.map((a) => (
         <div key={a.id} className="fx-card p-5 mb-3">
           <div className="flex items-start justify-between gap-3 flex-wrap mb-4">

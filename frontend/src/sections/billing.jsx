@@ -12,7 +12,7 @@ import {
 import { JalaliDate, isoToJalaliLabel } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
 import { errText, faNum, monoIf } from "../lib/format";
-import { Donut, Field, InfoBox, Modal, Msg, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../ui/index";
+import { Donut, EmptyState, Field, InfoBox, Modal, Msg, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../ui/index";
 
 export function BillingPeriod({ password }) {
   const { data, loading: loadingGroups } = useBilling(password);
@@ -89,12 +89,7 @@ export function BillingPeriod({ password }) {
         desc="فقط کانفیگ‌ها و تمدیدهای همین دوره — نه کل بدهی از ابتدا." />
 
       {billed.length === 0 ? (
-        <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
-          <Users size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[14px]" style={{ color: "var(--muted)" }}>
-            ابتدا یک گروه را واسطه علامت بزنید
-          </div>
-        </div>
+        <EmptyState icon={Users} text="ابتدا یک گروه را واسطه علامت بزنید" />
       ) : (
         <>
           <div className="fx-card p-5 mb-4">
@@ -2037,12 +2032,7 @@ export function BillingInvoice({ password }) {
       <SectionHead title="صورتحساب" desc="جزئیات کامل هر واسطه، آماده برای ارسال." />
 
       {billed.length === 0 ? (
-        <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
-          <FileText size={24} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[14px]" style={{ color: "var(--muted)" }}>
-            ابتدا حداقل یک گروه را واسطه علامت بزنید
-          </div>
-        </div>
+        <EmptyState icon={FileText} text="ابتدا حداقل یک گروه را واسطه علامت بزنید" />
       ) : (
         <>
           <div className="fx-card p-5 mb-4">
@@ -2350,10 +2340,7 @@ export function BillingPayments({ password }) {
         onDone={() => { load(); reload && reload(); }} />
 
       {list.length === 0 ? (
-        <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
-          <Wallet size={24} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز پرداختی ثبت نشده</div>
-        </div>
+        <EmptyState icon={Wallet} text="هنوز پرداختی ثبت نشده" />
       ) : (
         <div className="fx-card overflow-hidden" style={{ padding: 0 }}>
           {list.map((p, i) => {

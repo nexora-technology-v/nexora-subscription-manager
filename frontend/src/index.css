@@ -1139,3 +1139,35 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 /* ── نمودارها فشرده‌تر ── */
 .fx-chart-card { padding: 16px 18px 14px; }
 .fx-chart-card .fx-chart { margin-top: 2px; }
+
+/* ── گریدِ دوستونیِ یکنواخت ──
+   برای صفحه‌هایی که چند کارتِ هم‌شکل و کوچک دارند (قالب پیام،
+   تنظیمات، ردیف نماینده). تا امروز این‌ها یک ستونِ تمام‌عرض بودند:
+   هر کارت ۹۷۰ پیکسل پهنا برای یک کادرِ سه‌خطی، و صفحه‌ای که ۲۳۲۴
+   پیکسل بلند می‌شد. `.fx-g2` موجود برای «محتوا + ستون کناری» است و
+   نسبتش نابرابر؛ این یکی دو ستونِ مساوی است. */
+.fx-g2-even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 900px) {
+  .fx-g2-even { grid-template-columns: 1fr; }
+}
+
+/* ── حالت خالی ──
+   قبلاً یک آیکونِ کم‌رنگِ شناور بود روی یک کارتِ نقطه‌چین، که بیشتر
+   شبیه «چیزی بارگذاری نشد» به نظر می‌رسید تا «این‌جا عمداً خالی
+   است». حالا آیکون داخل یک مربعِ ملایم می‌نشیند و جمله‌ی اول
+   پررنگ است. */
+.fx-empty {
+  padding: 40px 24px; text-align: center;
+  border-style: dashed; border-color: var(--border-2);
+  background: linear-gradient(to bottom, rgba(255,255,255,.015), transparent);
+}
+.fx-empty-ico {
+  width: 46px; height: 46px; border-radius: 14px; margin: 0 auto 14px;
+  display: grid; place-items: center; color: var(--muted);
+  background: rgba(255,255,255,.04); border: 1px solid var(--border);
+}
+.fx-empty-title { display: block; font-size: 14px; color: var(--text); margin-bottom: 6px; }
+.fx-empty-hint {
+  font-size: 12.5px; color: var(--muted); line-height: 1.75;
+  max-width: 46ch; margin: 0 auto;
+}

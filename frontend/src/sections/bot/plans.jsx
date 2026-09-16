@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { errText, faNum } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { Field, Msg, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../../ui/index";
+import { EmptyState, Field, Msg, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../../ui/index";
 
 export function BotPlansSection({ password }) {
   const [plans, setPlans] = useState([]);
@@ -90,13 +90,8 @@ export function BotPlansSection({ password }) {
       )}
 
       {plans.length === 0 && (
-        <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
-          <Package size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[14px] text-white mb-1">هنوز پلنی تعریف نشده</div>
-          <div className="text-[13px]" style={{ color: "var(--muted)" }}>
-            بدون پلن، مشتری نمی‌تواند خرید کند
-          </div>
-        </div>
+        <EmptyState icon={Package} text="هنوز پلنی تعریف نشده"
+          hint="بدون پلن، مشتری نمی‌تواند خرید کند" />
       )}
 
       {plans.map((p, i) => (

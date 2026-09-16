@@ -126,8 +126,13 @@ export function BotTextsSection({ password }) {
         تغییرات <b>بدون ری‌استارت ربات</b> اعمال می‌شوند — ربات هر بار تنظیمات را تازه می‌خواند.
       </InfoBox>
 
+      {/* دو ستون، نه یک ستونِ ۹۷۰ پیکسلی.
+          هر کارت یک textarea سه‌خطی است؛ با تمام‌عرض بودنشان صفحه
+          ۲۳۲۴ پیکسل بلند می‌شد و هر کارت پر از فضای خالی بود.
+          روی موبایل خودش یک‌ستونه می‌شود. */}
+      <div className="fx-g2-even grid gap-3 mt-3">
       {BOT_TEXTS.map((f) => (
-        <div key={f.k} className="fx-card p-4 mt-3">
+        <div key={f.k} className="fx-card p-4">
           <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
             <span className="text-[14px] font-semibold text-white">{f.label}</span>
             {f.vars.length > 0 && (
@@ -146,6 +151,7 @@ export function BotTextsSection({ password }) {
           {f.hint && <div className="text-[12px] mt-1.5" style={{ color: "var(--muted)" }}>{f.hint}</div>}
         </div>
       ))}
+      </div>
 
       <SectionHead title="رفتار ربات"
         desc="تنظیم‌هایی که ربات موقع کار می‌خواند — بدون اینها روی مقدار پیش‌فرض می‌ماند." />

@@ -21,7 +21,7 @@ import {
 
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import { Skeleton } from "../ui/index";
+import { EmptyState, Skeleton } from "../ui/index";
 
 /* آیا این آدرس مینی‌اپ است؟ — همان قاعده‌ی بالا در پنل نماینده:
    نام باید در دامنه‌ی خودِ ماژول هم باشد، نه فقط عبور کند. */
@@ -391,24 +391,17 @@ export default function Mini() {
 
         {tab === "subs" && subs && (
           subs.length === 0 ? (
-            <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
-              <Package size={24} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-              <div className="text-[13px] mb-3" style={{ color: "var(--muted)" }}>
-                هنوز اشتراکی ندارید
-              </div>
-              <button onClick={() => setTab("plans")}
-                className="fx-btn px-4 py-2 text-[13px]">دیدن پلن‌ها</button>
-            </div>
+            <EmptyState icon={Package} text="هنوز اشتراکی ندارید"
+              hint="با اولین خرید، اشتراکتان همین‌جا با حجم و تاریخ انقضا نشان داده می‌شود."
+              action={<button onClick={() => setTab("plans")}
+                className="fx-btn px-4 py-2 text-[13px]">دیدن پلن‌ها</button>} />
           ) : subs.map((s) => <SubCard key={s.id} s={s} />)
         )}
 
         {tab === "plans" && plans && (
           plans.length === 0 ? (
-            <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
-              <div className="text-[13px]" style={{ color: "var(--muted)" }}>
-                فعلاً پلنی برای فروش نیست
-              </div>
-            </div>
+            <EmptyState icon={ShoppingCart} text="فعلاً پلنی برای فروش نیست"
+              hint="به‌زودی پلن‌ها اضافه می‌شوند. از پشتیبانی هم می‌توانید بپرسید." />
           ) : plans.map((p) => <PlanCard key={p.id} p={p} onBuy={buy} />)
         )}
 

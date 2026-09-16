@@ -11,7 +11,7 @@ import {
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { usePolling } from "../lib/hooks";
-import { Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile } from "../ui/index";
+import { EmptyState, Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile } from "../ui/index";
 
 export const ENGINE_COLOR = {
   backhaul: "#34D399",
@@ -106,14 +106,8 @@ export function TunnelOverview({ password }) {
       </div>
 
       {(data.nodes || []).length === 0 ? (
-        <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
-          <Server size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[14px] font-semibold text-white mb-2">هنوز سروری اضافه نشده</div>
-          <p className="text-[13px] max-w-sm mx-auto leading-relaxed" style={{ color: "var(--muted)" }}>
-            از بخش «سرورها» یک سرور ایران اضافه کنید. یک دستور نصب می‌گیرید
-            که روی آن سرور اجرا می‌کنید — بدون نیاز به باز کردن پورت یا دادن رمز.
-          </p>
-        </div>
+        <EmptyState icon={Server} text="هنوز سروری اضافه نشده"
+          hint="از بخش «سرورها» یک سرور ایران اضافه کنید. یک دستور نصب می‌گیرید که روی آن سرور اجرا می‌کنید — بدون نیاز به باز کردن پورت یا دادن رمز." />
       ) : (
         <>
           <div className="fx-card p-5 mb-4">
@@ -239,12 +233,13 @@ export function TunnelNodes({ password }) {
       {msg && <Msg msg={msg} />}
 
       {(!data?.nodes || (data.nodes || []).length === 0) ? (
-        <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
-          <Server size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز سروری اضافه نشده</div>
-        </div>
-      ) : (data.nodes || []).map((n) => (
-        <div key={n.id} className="fx-card p-5 mb-3">
+        <EmptyState icon={Server} text="هنوز سروری اضافه نشده" />
+      ) : (
+      /* کارت‌های وضعیتِ کوتاه، پس کنار هم — نه یک ستون از
+         نوارهای ۹۷۶ پیکسلی */
+      <div className="fx-g3 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))" }}>
+      {(data.nodes || []).map((n) => (
+        <div key={n.id} className="fx-card p-5">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 min-w-0">
               <div className="fx-ico" style={{
@@ -323,6 +318,8 @@ export function TunnelNodes({ password }) {
           </div>
         </div>
       ))}
+      </div>
+      )}
 
       {adding && (
         <Modal title="افزودن سرور" onClose={() => setAdding(false)}>
@@ -508,17 +505,9 @@ export function TunnelList({ password }) {
       {msg && <Msg msg={msg} />}
 
       {!hasNodes ? (
-        <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
-          <Server size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[14px]" style={{ color: "var(--muted)" }}>
-            اول از بخش «سرورها» یک سرور اضافه کنید
-          </div>
-        </div>
+        <EmptyState icon={Server} text="اول از بخش «سرورها» یک سرور اضافه کنید" />
       ) : (data.tunnels || []).length === 0 ? (
-        <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
-          <Network size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز تانلی ساخته نشده</div>
-        </div>
+        <EmptyState icon={Network} text="هنوز تانلی ساخته نشده" />
       ) : (data.tunnels || []).map((t) => {
         const st = TUN_STATUS[t.status] || TUN_STATUS.pending;
         const ec = ENGINE_COLOR[t.engine] || "var(--accent-2)";
@@ -1238,10 +1227,7 @@ export function TunnelEvents({ password }) {
       <SectionHead title="رویدادها" desc="آنچه روی سرورها اتفاق افتاده." />
 
       {events.length === 0 ? (
-        <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
-          <Clock size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز رویدادی ثبت نشده</div>
-        </div>
+        <EmptyState icon={Clock} text="هنوز رویدادی ثبت نشده" />
       ) : (
         <div className="fx-card overflow-hidden" style={{ padding: 0 }}>
           {events.map((e, i) => (

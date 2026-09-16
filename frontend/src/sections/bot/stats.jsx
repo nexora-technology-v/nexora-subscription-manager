@@ -33,10 +33,7 @@ export function BotStatsSection({ password }) {
     return (
       <div className="fx-anim">
         <SectionHead title="آمار و قیف تبدیل" desc="وقتی ربات راه بیفتد، آمار اینجا نمایش داده می‌شود." />
-        <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
-          <TrendingUp size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز داده‌ای نیست</div>
-        </div>
+        <EmptyState icon={TrendingUp} text="هنوز داده‌ای نیست" />
       </div>
     );
   }

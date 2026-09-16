@@ -184,18 +184,20 @@ export function Tabs({ items, active, onChange, counts }) {
  * متن، می‌شود یک قدم بعدی هم داد: `hint` توضیح می‌دهد چرا خالی است و
  * `action` کاری که باید کرد.
  */
-export function EmptyState({ icon: Icon, text, hint, action }) {
+export function EmptyState({ icon: Icon, text, hint, action, tone }) {
   return (
-    <div className="fx-card py-12 px-5 text-center fx-fade" style={{ borderStyle: "dashed" }}>
-      {/* آیکون اختیاری است: بدون این شرط، فراموش‌کردن آن یعنی
-          «Element type is invalid» و سقوط همان بخش */}
-      {Icon && <Icon size={24} className="mx-auto mb-3" style={{ color: "#2A3444" }} />}
-      <p className="text-[13px]" style={{ color: "var(--dim)" }}>{text}</p>
-      {hint && (
-        <p className="text-[12px] mt-2 mx-auto leading-relaxed"
-          style={{ color: "var(--muted)", maxWidth: "42ch" }}>{hint}</p>
-      )}
-      {action && <div className="mt-4 flex justify-center">{action}</div>}
+    <div className="fx-card fx-empty fx-fade">
+      {/* آیکون داخل یک مربعِ ملایم، نه شناور روی زمینه.
+          آیکونِ تنهای کم‌رنگ شبیه «چیزی بارگذاری نشد» بود؛ این
+          می‌گوید این‌جا عمداً خالی است. */}
+      <span className="fx-empty-ico" style={tone ? { color: tone } : undefined}>
+        {/* آیکون اختیاری است: بدون این شرط، فراموش‌کردنش یعنی
+            «Element type is invalid» و سقوط همان بخش */}
+        {Icon ? <Icon size={22} /> : <Info size={22} />}
+      </span>
+      <b className="fx-empty-title">{text}</b>
+      {hint && <p className="fx-empty-hint">{hint}</p>}
+      {action && <div className="mt-4 flex justify-center flex-wrap gap-2">{action}</div>}
     </div>
   );
 }
