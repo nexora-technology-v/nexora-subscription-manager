@@ -103,7 +103,11 @@
                "سارا احمدی", "رضا جعفری"];
 
   var ORDERS = { ready: true, total: 12, orders: mk(12, function (i) {
-    return { id: 900 + i, user_id: i + 1, name: NAMES[i % 7], tg_id: 5000 + i,
+    // بکند `u.first_name` و `u.username` را join می‌کند (نه `name`).
+    // با اسمِ اشتباه، هر ردیف «بدون نام» می‌شد — یعنی هارنس حالتی را
+    // نشان می‌داد که پنلِ واقعی هیچ‌وقت ندارد.
+    return { id: 900 + i, user_id: i + 1, first_name: NAMES[i % 7],
+             username: "user" + i, tg_id: 5000 + i,
              plan: ["یک‌ماهه", "سه‌ماهه", "شش‌ماهه"][i % 3],
              amount: [120000, 280000, 480000][i % 3],
              status: ["approved", "pending", "rejected"][i % 3],
