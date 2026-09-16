@@ -4417,6 +4417,31 @@ def _billing_conn():
             note        TEXT,
             created_at  TEXT DEFAULT CURRENT_TIMESTAMP
         );
+        -- کانفیگ‌هایی که پاک شدند در حالی که بدهی داشتند.
+        --
+        -- صورتحساب از فهرستِ *زنده‌ی* x-ui خوانده می‌شود، پس ردیفی که
+        -- پاک شود کاملاً از فاکتور غیب می‌شود — چه نماینده پاکش کند
+        -- چه خودِ مالک. این یعنی «حذف» می‌تواند راه فرار از پرداخت
+        -- باشد، درست همان چیزی که مالک درباره‌ی انقضا هشدار داد.
+        --
+        -- ردیف‌های این جدول عدد را عوض نمی‌کنند؛ فقط می‌گویند چه چیزی
+        -- و با چه مبلغی از فاکتور بیرون رفت، تا تصمیمش با مالک باشد
+        -- نه با سکوت.
+        CREATE TABLE IF NOT EXISTS deleted_clients (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            email       TEXT NOT NULL,
+            group_key   TEXT,
+            deleted_at  TEXT NOT NULL,
+            months      REAL DEFAULT 0,
+            amount      INTEGER DEFAULT 0,
+            gb          INTEGER,
+            used        INTEGER,
+            by_whom     TEXT,
+            note        TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_delcl_group
+            ON deleted_clients(group_key, deleted_at);
+
         CREATE INDEX IF NOT EXISTS idx_pay_group ON payments(group_key);
         CREATE INDEX IF NOT EXISTS idx_ren_email ON renewals(email);
         CREATE INDEX IF NOT EXISTS idx_exp_date ON expenses(spent_at);
@@ -4812,12 +4837,34 @@ def _period_share(cl, logged, rows, since, group_start=None, first_seen=None):
     if not since:
         return months, months, months - 1, True, kind, drift
 
+    today = datetime.now().strftime("%Y-%m-%d")
     _cj, created_g = _to_jalali(cl.get("createdAt"))
     base_g = created_g or (first_seen or "")[:10]
-    is_new = bool(base_g) and base_g >= since
-    ren_in = sum(1 for d, _k in _renewal_dates(
-        cl, rows, months, since=group_start, first_seen=first_seen)
-        if d >= since)
+    is_new = bool(base_g) and since <= base_g <= today
+
+    dates = _renewal_dates(cl, rows, months,
+                           since=group_start, first_seen=first_seen)
+
+    # هر ماه یک‌بار، در همان دوره‌ای که **سپری شده**.
+    #
+    # شرط قبلاً فقط `d >= since` بود، بدون سقف. `_renewal_dates` برای
+    # کانفیگی که تا ۱۴۰۶ اعتبار دارد، مرزهای ماهانه را تا همان‌جا جلو
+    # می‌برد — و آن تاریخ‌ها همیشه از «تسویه‌شده تا» جلوترند. پس هر
+    # دوره دوباره شمرده می‌شدند.
+    #
+    # اندازه‌گیری‌شده روی یک گروه واقعی: ۵۸ ماه در دوره‌ی اول، ۴۱ ماه
+    # در دوره‌ی دوم که **هر ۴۱ تایش قبلاً هم شمرده شده بود**، و ۳۰ ماه
+    # که در هر سه دوره آمدند. مالک بر اساس همین فاکتورها دو بار پول
+    # گرفت.
+    #
+    # چرا «سپری‌شده» و نه «فروخته‌شده»:
+    #     مدل «کلِ دوره را موقع فروش حساب کن» هم درست است، ولی برای
+    #     تکرارنشدن باید به خاطر بسپارد کدام ماه‌های آینده قبلاً روی
+    #     فاکتور رفته‌اند — و «تسویه‌شده تا» که یک تاریخ است نمی‌تواند
+    #     این را نگه دارد. با شمردنِ ماهِ سپری‌شده، جمعِ کلِ عمرِ
+    #     کانفیگ همان عدد است، فقط درست پخش می‌شود و هیچ ماهی دو بار
+    #     نمی‌آید.
+    ren_in = sum(1 for d, _k in dates if since <= d <= today)
     return (1 if is_new else 0) + ren_in, months, ren_in, is_new, kind, drift
 
 
@@ -5313,6 +5360,24 @@ def _record_seen(bcon, clients):
 
 
 
+def _gb_of(total):
+    """
+    حجمِ کانفیگ به گیگابایت.
+
+    ۳x-ui گاهی بایت می‌دهد و گاهی خودِ عدد گیگ — پس شرطِ «بزرگ‌تر از
+    ۱۰۲۴» تصمیم می‌گیرد کدام است. صفر یعنی نامحدود.
+
+    این یک خط تا امروز شش بار درون‌خطی تکرار شده بود و یک‌بار هم در
+    `tools/billing-why.py`. هفت کپی از یک قاعده‌ی پول، که هر کدامشان
+    جای تازه‌ای برای جدا افتادن بود.
+    """
+    try:
+        total = int(total or 0)
+    except (TypeError, ValueError):
+        return 0
+    return total // (1024 ** 3) if total > 1024 else total
+
+
 def _billable_config(cl):
     """
     آیا این کانفیگ باید نرخ بگیرد؟ برمی‌گرداند: (بله/خیر, دلیل)
@@ -5416,6 +5481,15 @@ def _billing_overview_impl():
                 "periodDays": conf.get("period_days") or 30,
                 "periodStart": conf.get("period_start"),
                 "settledUntil": conf.get("settled_until"),
+                # پول گرفته شده ولی هیچ دوره‌ای بسته نشده.
+                #
+                # این همان حالتی است که به مالک ضرر زد: پرداخت ثبت
+                # می‌شد، `settled_until` دست‌نخورده می‌ماند، و فاکتور
+                # ماه بعد همان کاربران و همان دوره را دوباره می‌آورد —
+                # و بر اساس همان فاکتور، پول دوباره گرفته شد.
+                #
+                # هیچ‌جا هم نمی‌گفت. حالا می‌گوید.
+                "unsettledPayments": 0,
                 # از چه تاریخی حساب شده — همان که صورتحساب به کار
                 # می‌برد، تا دو صفحه یک عدد بدهند
                 "since": since_of.get(g) or None,
@@ -5460,8 +5534,7 @@ def _billing_overview_impl():
             first_seen=seen.get(cl["email"]))
         G["monthsAll"] += all_months
         if G["billable"] and cl["email"] not in bot_emails and not G.get("perGb"):
-            gb_all = (cl["totalGB"] // (1024 ** 3)
-                      if cl["totalGB"] > 1024 else cl["totalGB"])
+            gb_all = (_gb_of(cl["totalGB"]))
             G["dueAll"] += _line_amount(gb_all, G["rates"], all_months,
                                         cl.get("limitIp"))[0]
         if months <= 0:
@@ -5480,7 +5553,7 @@ def _billing_overview_impl():
         # کلاینت ربات هرگز به واسطه صورت‌حساب نمی‌شود، حتی اگر
         # تصادفی در گروهی نشسته باشد.
         if G["billable"] and cl["email"] not in bot_emails:
-            gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
+            gb = _gb_of(cl["totalGB"])
 
             if G.get("perGb"):
                 # نرخ حجمی: بر اساس مصرف واقعی، نه پلن.
@@ -5535,6 +5608,10 @@ def _billing_overview_impl():
     for g in out:
         g["balance"] = g["due"] - g["paid"]
         g["balanceAll"] = g.get("dueAll", 0) - g.get("paidAll", 0)
+        # پول گرفته‌شده‌ای که هیچ دوره‌ای پشتش بسته نشده — همان حالتی
+        # که فاکتور را وادار می‌کند دوره‌ی قبل را دوباره بیاورد
+        if not (g.get("settledUntil") or "").strip():
+            g["unsettledPayments"] = int(g.get("paidAll") or 0)
         g["usedGB"] = round(g["used"] / (1024 ** 3), 1)
         g["quotaGB"] = round(g["quota"] / (1024 ** 3), 1) if g["quota"] > 1024 else g["quota"]
 
@@ -6117,6 +6194,88 @@ def billing_payment_add(payload: dict, x_admin_password: str = Header(...)):
         con.close()
 
 
+@app.post("/api/admin/billing/settle")
+def billing_settle(payload: dict, x_admin_password: str = Header(...)):
+    """
+    تسویه‌ی یک واسطه: پول را ثبت می‌کند **و** دوره را می‌بندد.
+
+    چرا یک تابع، نه دو تا:
+        تا امروز «پرداخت گرفتم» و «این دوره بسته شد» دو کارِ جدا در
+        دو صفحه‌ی جدا بودند. مالک پول را ثبت می‌کرد و تمام — ولی
+        `settled_until` دست‌نخورده می‌ماند و فاکتور ماه بعد **همان
+        کاربران و همان دوره را دوباره می‌آورد**.
+
+        این واقعاً اتفاق افتاد: مالک بر اساس همان فاکتور، پولِ دوره‌ی
+        قبل را دوباره از واسطه گرفت.
+
+        همان شکلِ آشنای این مخزن — پول یک جا ثبت می‌شود، وضعیت جای
+        دیگر، و از هم دور می‌افتند. پس مثل `close_order` یکی شدند.
+
+    عقب‌بردن تاریخ ممنوع است: اگر دوره‌ای یک‌بار بسته شده، بازکردنش
+    یعنی دوباره‌حساب‌کردنِ چیزی که پولش گرفته شده. برای آن حالت باید
+    آگاهانه از صفحه‌ی «واسطه‌ها و نرخ» دست برد.
+    """
+    check_auth(x_admin_password)
+    p = payload or {}
+
+    g = (p.get("group_key") or p.get("group") or "").strip()
+    if not g:
+        raise HTTPException(status_code=400, detail="واسطه مشخص نشده است")
+
+    try:
+        amount = int(p.get("amount") or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="مبلغ نامعتبر است")
+    if amount < 0:
+        raise HTTPException(status_code=400, detail="مبلغ منفی معنا ندارد")
+
+    until = (p.get("until") or p.get("settled_until")
+             or p.get("settledUntil") or "").strip()[:10]
+    if not until:
+        until = datetime.now().strftime("%Y-%m-%d")
+    from datetime import date as _date
+    try:
+        _date.fromisoformat(until)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="تاریخ تسویه نامعتبر است")
+
+    con = _billing_conn()
+    try:
+        row = con.execute(
+            "SELECT settled_until, label FROM group_config WHERE group_key=?",
+            (g,)).fetchone()
+        prev = ((row["settled_until"] if row else "") or "").strip()[:10]
+
+        if prev and until < prev:
+            raise HTTPException(
+                status_code=409,
+                detail=(f"این گروه تا {prev} تسویه شده و تاریخ تازه عقب‌تر "
+                        "است. عقب‌بردنش یعنی دوباره‌حساب‌کردنِ چیزی که "
+                        "پولش گرفته شده."))
+
+        if amount > 0:
+            con.execute(
+                "INSERT INTO payments (group_key,amount,paid_at,note) "
+                "VALUES (?,?,?,?)",
+                (g, amount, until, (p.get("note") or "تسویه").strip()))
+
+        # گروه ممکن است هنوز ردیفی در group_config نداشته باشد
+        con.execute(
+            "INSERT INTO group_config (group_key,label,settled_until) "
+            "VALUES (?,?,?) ON CONFLICT(group_key) DO UPDATE SET "
+            "settled_until=excluded.settled_until, "
+            "updated_at=CURRENT_TIMESTAMP",
+            (g, g, until))
+        con.commit()
+    finally:
+        con.close()
+
+    return {"ok": True, "group": g, "settledUntil": until,
+            "previousSettledUntil": prev or None, "amount": amount,
+            "note": f"تا {until} تسویه شد — فاکتور بعدی از همین تاریخ "
+                    "به بعد را حساب می‌کند"}
+
+
 @app.delete("/api/admin/billing/payment/{pid}")
 @app.delete("/api/admin/billing/payments/{pid}")
 def billing_payment_del(pid: int, x_admin_password: str = Header(...)):
@@ -6225,7 +6384,7 @@ def billing_invoice(group_key: str, start: str = "",
             before_months += months
             continue
 
-        gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
+        gb = _gb_of(cl["totalGB"])
         amount, price, per_dev, extra_dev = _line_amount(
             gb, rates, billed, cl.get("limitIp"))
         price_why = None
@@ -7465,7 +7624,7 @@ def billing_period(group_key: str, start: str = "", end: str = "",
             unused_why[why] = unused_why.get(why, 0) + 1
             continue
 
-        gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
+        gb = _gb_of(cl["totalGB"])
         _amt1, price, _pd, _ex = _line_amount(gb, rates, 1, cl.get("limitIp"))
         price_why = None
         if price is None:
@@ -7636,7 +7795,7 @@ def billing_clients(
             cl, logged, rows_by.get(cl["email"], []), since_of.get(g),
             group_start=conf.get("period_start"),
             first_seen=seen.get(cl["email"]))
-        gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
+        gb = _gb_of(cl["totalGB"])
 
         # نرخ و مبلغ دو چیز جدا هستند و باید جدا بمانند.
         #
@@ -9735,12 +9894,19 @@ def portal_configs(t: dict = Depends(portal_tenant)):
             continue
         cj, cg = _to_jalali(cl.get("createdAt"))
         ej, eg = _to_jalali(cl.get("expiry"))
-        gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
+        gb = _gb_of(cl["totalGB"])
         out.append({
             "email": cl["email"],
             "gb": gb,
             "gbLabel": "نامحدود" if gb == 0 else f"{gb} GB",
             "usedGB": round(cl["used"] / (1024 ** 3), 1),
+            # بایتِ خام هم می‌رود، نه فقط گیگِ گردشده.
+            #
+            # تصمیمِ «برگشت اعتبار هنگام حذف» با used <= 0 گرفته
+            # می‌شود. اگر رابط با usedGB قضاوت کند، مصرفِ چند
+            # مگابایتی به ۰٫۰ گرد می‌شود و دیالوگ وعده‌ی برگشتی
+            # می‌دهد که بک‌اند انجامش نمی‌دهد — دو جا، دو جواب.
+            "used": int(cl["used"] or 0),
             "usagePct": _usage_percent(cl["used"], cl["totalGB"]),
             "devices": cl.get("limitIp") or 0,
             "createdJalali": cj, "createdGregorian": cg,
@@ -9999,6 +10165,109 @@ def _portal_refund(t, amount):
         con.close()
 
 
+def _portal_due_so_far(t, cl):
+    """
+    بدهیِ این کانفیگ تا همین لحظه. برمی‌گرداند: (ماه, مبلغ)
+
+    از همان دو تابعی می‌خواند که کلِ حسابداری از آن‌ها می‌خواند —
+    `_period_share` برای ماه و `_line_amount` برای مبلغ. حساب‌کردنِ
+    دستی این‌جا یعنی سطح پنجمی که عدد خودش را می‌سازد، و مالک چهار
+    تای قبلی را دیده که چهار عدد متفاوت می‌دادند.
+    """
+    conf, rates = _portal_rates(t)
+    if not rates and not _price_per_gb(conf):
+        return 0, 0
+
+    since, _why = _bill_since(conf)
+    bcon = _billing_conn()
+    try:
+        first = {r["email"]: r["first_seen"] for r in bcon.execute(
+            "SELECT email, first_seen FROM client_seen")}
+        logged = {r["email"]: r["m"] for r in bcon.execute(
+            "SELECT email, COALESCE(SUM(months),0) m FROM renewals "
+            "GROUP BY email")}
+        rows = _rows_by_email([dict(r) for r in bcon.execute(
+            "SELECT email, months, created_at FROM renewals")])
+    except Exception:
+        log.debug("خواندن سابقه برای بدهیِ حذف ناموفق", exc_info=True)
+        return 0, 0
+    finally:
+        bcon.close()
+
+    try:
+        months, _all, _ren, _new, _kind, _drift = _period_share(
+            cl, logged, rows, since,
+            group_start=(conf or {}).get("period_start"),
+            first_seen=first.get(cl.get("email")))
+        gb = _gb_of(cl.get("totalGB"))
+        amount, _base, _per, _extra = _line_amount(
+            gb, rates, months, cl.get("limitIp"))
+    except Exception:
+        log.debug("محاسبه‌ی بدهیِ حذف ناموفق", exc_info=True)
+        return 0, 0
+    return months, int(amount or 0)
+
+
+def _portal_charge_for(t, email):
+    """
+    مبلغی که موقع ساختِ همین کانفیگ از اعتبار کم شد.
+
+    از دفتر اعتبار خوانده می‌شود، نه از نرخِ امروز — نرخ ممکن است در
+    این فاصله عوض شده باشد و آن‌وقت برگشتی می‌دادیم که با گرفته‌شده
+    نمی‌خواند.
+
+    صفر برمی‌گرداند اگر پیدا نشود یا قبلاً برگشته باشد، چون برگرداندنِ
+    دوباره یعنی هدیه‌دادنِ اعتبار.
+    """
+    credit = t.get("credit")
+    if credit is None or int(credit) < 0:
+        return 0                      # بدهکار: اصلاً اعتباری کم نشده
+    con = _bot_conn()
+    if not con:
+        return 0
+    try:
+        rows = con.execute(
+            "SELECT amount, note FROM credit_tx WHERE tenant_id=? "
+            "AND note LIKE ? ORDER BY id",
+            (t["id"], "%" + email + "%")).fetchall()
+    except Exception:
+        log.debug("خواندن دفتر اعتبار ناموفق", exc_info=True)
+        return 0
+    finally:
+        con.close()
+
+    spent = sum(-int(r["amount"]) for r in rows if int(r["amount"] or 0) < 0)
+    back = sum(int(r["amount"]) for r in rows if int(r["amount"] or 0) > 0)
+    return max(0, spent - back)
+
+
+def _bill_record_deleted(email, group, months, amount, gb, used, by_whom,
+                         note=""):
+    """
+    ثبت اینکه چه کانفیگی با چه بدهی‌ای از فاکتور بیرون رفت.
+
+    عدد فاکتور را عوض نمی‌کند — فقط جلوی بی‌صدا رفتنش را می‌گیرد.
+    شکستِ این ثبت نباید حذف را متوقف کند، ولی باید در لاگ دیده شود.
+    """
+    try:
+        con = _billing_conn()
+    except Exception:
+        log.warning("ثبت کانفیگ حذف‌شده ناموفق — دیتابیس حسابداری باز نشد")
+        return
+    try:
+        con.execute(
+            "INSERT INTO deleted_clients (email,group_key,deleted_at,months,"
+            "amount,gb,used,by_whom,note) VALUES (?,?,?,?,?,?,?,?,?)",
+            (email, group, datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+             float(months or 0), int(amount or 0),
+             int(gb or 0), int(used or 0), by_whom, note))
+        con.commit()
+    except Exception:
+        log.warning("ثبت کانفیگ حذف‌شده ناموفق", exc_info=True)
+    finally:
+        con.close()
+
+
 def _portal_log_renewal(t, email, months, new_expiry_ms=None):
     """
     تمدید را همان لحظه و دقیق ثبت می‌کند، و مبنای ناظرِ انقضا را جلو
@@ -10092,7 +10361,7 @@ def portal_renew(payload: dict, t: dict = Depends(portal_tenant)):
 
     cl, _live, uuid, ib = _portal_live(t, email)
     _conf, rates = _portal_rates(t)
-    gb = cl["totalGB"] // (1024 ** 3) if cl["totalGB"] > 1024 else cl["totalGB"]
+    gb = _gb_of(cl["totalGB"])
     amount, base, _per, _extra = _line_amount(gb, rates, months,
                                               cl.get("limitIp"))
     if base is None:
@@ -10138,20 +10407,43 @@ def portal_renew(payload: dict, t: dict = Depends(portal_tenant)):
 
 
 
-def _portal_new_email(t, taken):
+def _portal_new_email(t, taken, label=""):
     """
-    نام کانفیگ تازه — ساختِ ما، نه فرستاده‌ی نماینده.
+    نام کانفیگ تازه.
 
-    اگر نماینده نام را می‌فرستاد، می‌توانست نامی بسازد که با الگوی
-    گروه دیگری بخواند. صفحه‌ی اشتراک برند را از پیشوند ایمیل تشخیص
-    می‌دهد، پس نامِ جعلی یعنی مشتری او برند نماینده‌ی دیگری را
-    می‌بیند — و بدتر، حسابداری هم ممکن است آن ردیف را جای دیگری
-    بشمارد.
+    **پیشوند** ساختِ ماست، نه فرستاده‌ی نماینده — و این عمدی است:
+    `find_reseller` برندِ صفحه‌ی اشتراک را از همان تکه‌ی پیش از اولین
+    `_` تشخیص می‌دهد. اگر نماینده پیشوند را انتخاب می‌کرد، می‌توانست
+    نامی بسازد که با الگوی گروه دیگری بخواند — یعنی مشتریِ او برندِ
+    نماینده‌ی دیگری را ببیند، و حسابداری هم ممکن بود ردیف را جای
+    دیگری بشمارد.
 
-    پیشوند همان نشانیِ خودِ نماینده است که در کل سیستم یکتاست.
+    **بخشِ دوم** ولی مالِ خودِ نماینده است. تا امروز هشت نویسه‌ی
+    تصادفی بود (`ali_3f2a9b1c`) و نماینده هیچ راهی نداشت بفهمد کدام
+    کانفیگ مالِ کدام مشتری است. حالا می‌تواند نام بدهد و
+    `ali_hossein` بگیرد.
+
+    برچسب سخت‌گیرانه پاک می‌شود: فقط حرف و رقم لاتین و خط تیره. نه
+    برای زیبایی — این رشته در URLِ اشتراک و در جدول‌های x-ui می‌نشیند
+    و فاصله و حرف فارسی هر دو جا دردسر می‌سازند.
     """
     slug = "".join(ch for ch in str(t.get("portal_slug") or "nx")
                    if ch.isalnum())[:12].lower() or "nx"
+
+    clean = _re.sub(r"[^A-Za-z0-9-]+", "-", str(label or "")).strip("-")[:24]
+    clean = _re.sub(r"-{2,}", "-", clean).lower()
+
+    if clean:
+        name = f"{slug}_{clean}"
+        if name not in taken:
+            return name
+        # نام تکراری: عددِ کوچک می‌گیرد، نه هشت نویسه‌ی تصادفی —
+        # «hossein-2» هنوز برای نماینده معنا دارد
+        for n in range(2, 60):
+            cand = f"{slug}_{clean}-{n}"
+            if cand not in taken:
+                return cand
+
     for _ in range(40):
         name = f"{slug}_{_secrets.token_hex(4)}"
         if name not in taken:
@@ -10331,7 +10623,7 @@ def portal_create(payload: dict, t: dict = Depends(portal_tenant)):
     if clients is None:
         raise HTTPException(status_code=400, detail=err)
     taken = {c.get("email") for c in clients}
-    email = _portal_new_email(t, taken)
+    email = _portal_new_email(t, taken, p.get("label") or p.get("name") or "")
 
     # اتصال و اینباند *پیش* از کسر اعتبار حل می‌شوند.
     #
@@ -10388,6 +10680,74 @@ def portal_toggle(payload: dict, t: dict = Depends(portal_tenant)):
         raise HTTPException(status_code=502,
                             detail=f"پنل تغییر را انجام نداد: {str(e)[:140]}")
     return {"ok": True, "email": email, "enabled": want}
+
+
+@app.delete("/api/portal/config/{email}")
+def portal_config_delete(email: str, t: dict = Depends(portal_tenant)):
+    """
+    حذف کانفیگ — فقط از گروه خودش.
+
+    دو حالتِ کاملاً متفاوت که یک دکمه‌اند:
+
+      • **کانفیگی که هنوز کار نکرده.** مشتری همان لحظه پشیمان شده.
+        اعتبارِ نماینده باید برگردد، وگرنه بابت چیزی پول داده که
+        هیچ‌کس استفاده‌اش نکرد. مبلغ از همان `credit_tx`ی خوانده
+        می‌شود که موقع ساخت نوشته شد — نه از نرخِ امروز، چون ممکن
+        است نرخ در این فاصله عوض شده باشد.
+
+      • **کانفیگی که مصرف داشته.** دوره‌اش را کار کرده، پس بدهی‌اش
+        می‌ماند. این همان قاعده‌ای است که مالک برای انقضا گذاشت:
+        «منقضی شد» راه فرار از پرداخت نیست — و حذف راهِ فرارِ
+        بزرگ‌تری است، چون صورتحساب از فهرستِ زنده‌ی x-ui خوانده
+        می‌شود و ردیفِ حذف‌شده کاملاً از فاکتور غیب می‌شود.
+
+        پس پیش از پاک‌کردن، سهمِ همین دوره در `renewals` قفل می‌شود
+        تا فاکتور فراموشش نکند.
+    """
+    email = str(email or "").strip()
+    cl, _live, uuid, ib = _portal_live(t, email)
+
+    used = int((cl or {}).get("used") or 0)
+    billable, why = _billable_config(cl or {})
+
+    # مبلغی که موقع ساخت گرفته شد — اگر هنوز چیزی مصرف نشده،
+    # همان برمی‌گردد
+    refund = 0
+    if used <= 0:
+        refund = _portal_charge_for(t, email)
+
+    # سهمی که تا همین لحظه روی فاکتور آمده بود — پیش از پاک‌کردن
+    # حساب می‌شود، چون بعدش دیگر ردیفی نیست
+    owed_months, owed_amount = 0, 0
+    if billable:
+        owed_months, owed_amount = _portal_due_so_far(t, cl)
+
+    xui, _E = _portal_xui(t)
+    try:
+        xui.delete_client(ib, uuid, email=email)
+    except Exception as e:
+        raise HTTPException(status_code=502,
+                            detail=f"پنل کانفیگ را پاک نکرد: {str(e)[:140]}")
+
+    if refund:
+        _portal_refund(t, refund)
+
+    if billable and owed_amount > 0:
+        _bill_record_deleted(
+            email, _portal_group(t), owed_months, owed_amount,
+            (cl or {}).get("totalGB"), used,
+            f"نماینده #{t.get('id')}", why or "")
+
+    log.info("نماینده %s کانفیگ %s را حذف کرد (مصرف %s، برگشت %s، بدهی %s)",
+             t.get("id"), email, used, refund, owed_amount)
+
+    return {
+        "ok": True, "email": email,
+        "refunded": refund,
+        "owedAmount": owed_amount,
+        "note": ("کانفیگ حذف شد و اعتبارش برگشت — چیزی مصرف نشده بود"
+                 if refund else "کانفیگ حذف شد"),
+    }
 
 
 

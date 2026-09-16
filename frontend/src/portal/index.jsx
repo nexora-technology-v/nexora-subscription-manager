@@ -228,11 +228,101 @@ function RenewBox({ token, row, plans, onDone, onClose }) {
 }
 
 
-function NewBox({ token, plans, onDone, onClose }) {
+/**
+ * تأیید حذف.
+ *
+ * دو حالت کاملاً متفاوت است و کاربر باید *پیش* از زدن دکمه بداند
+ * کدام‌یک را دارد انجام می‌دهد:
+ *
+ *   • کانفیگی که هنوز مصرف نشده — اعتبارش برمی‌گردد. همان حالتی که
+ *     مشتری همان لحظه پشیمان می‌شود.
+ *   • کانفیگی که مصرف داشته — دوره‌اش را کار کرده، پس بدهی‌اش می‌ماند
+ *     و اعتباری برنمی‌گردد.
+ *
+ * نوشتنش این‌جا مهم است: بدون آن، نماینده فکر می‌کند حذف یعنی
+ * پس‌گرفتن پول، و وقتی برنگشت حس می‌کند چیزی دزدیده شده.
+ */
+function DropBox({ token, config, onDone, onClose }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const fresh = !config.used || config.used <= 0;
+
+  const go = async () => {
+    setBusy(true); setErr("");
+    try {
+      const j = await api(`/api/portal/config/${encodeURIComponent(config.email)}`,
+                          { token, method: "DELETE" });
+      onDone(j);
+      onClose();
+    } catch (e) {
+      setErr(e.message);
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
+      alignItems: "center", justifyContent: "center", padding: 16,
+      background: "rgba(0,0,0,.6)", overflowY: "auto",
+    }} onClick={onClose}>
+      <div className="fx-card p-5" style={{ width: 380, maxWidth: "100%" }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="text-[14px] font-semibold text-white mb-2">
+          حذف کانفیگ
+        </div>
+        <div dir="ltr" className="text-[13px] mb-3"
+          style={{ fontFamily: "var(--mono)", color: "var(--dim)",
+                   wordBreak: "break-all" }}>
+          {config.email}
+        </div>
+
+        <div className="rounded-xl p-3 mb-3 text-[13px] leading-relaxed"
+          style={{
+            background: fresh ? "rgba(52,211,153,.08)" : "rgba(251,191,36,.08)",
+            border: `1px solid ${fresh ? "rgba(52,211,153,.25)" : "rgba(251,191,36,.3)"}`,
+            color: "var(--dim)",
+          }}>
+          {fresh ? (
+            <>این کانفیگ هنوز هیچ مصرفی نداشته، پس <b style={{ color: "var(--ok)" }}>
+            اعتبارش به شما برمی‌گردد</b>.</>
+          ) : (
+            <>این کانفیگ مصرف داشته، پس دوره‌اش را کار کرده و
+            <b style={{ color: "var(--warn)" }}> اعتباری برنمی‌گردد</b>.
+            اگر فقط می‌خواهید مشتری وصل نشود، به‌جای حذف «غیرفعال» را بزنید.</>
+          )}
+        </div>
+
+        <div className="text-[12px] mb-4" style={{ color: "var(--muted)" }}>
+          لینک اشتراک این مشتری از کار می‌افتد و برگشت‌پذیر نیست.
+        </div>
+
+        {err && (
+          <div className="text-[13px] mb-3" style={{ color: "var(--danger)" }}>{err}</div>
+        )}
+
+        <div className="flex items-center gap-2">
+          <button onClick={go} disabled={busy}
+            className="fx-btn flex-1 py-2.5 text-[13px] flex items-center justify-center gap-1.5"
+            style={{ background: "var(--danger)", borderColor: "var(--danger)" }}>
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+            حذف کن
+          </button>
+          <button onClick={onClose} className="fx-btn-g px-4 py-2.5 text-[13px]">
+            انصراف
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function NewBox({ token, plans, slug, onDone, onClose }) {
   const tiers = plans?.plans || [];
   const [gb, setGb] = useState(tiers[0] ? tiers[0].gb : 0);
   const [months, setMonths] = useState(1);
   const [devices, setDevices] = useState(1);
+  const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [made, setMade] = useState(null);
@@ -247,7 +337,7 @@ function NewBox({ token, plans, onDone, onClose }) {
     setErr("");
     try {
       const j = await api("/api/portal/config", {
-        token, method: "POST", body: { gb, months, devices },
+        token, method: "POST", body: { gb, months, devices, label },
       });
       setMade(j);
       onDone();
@@ -313,6 +403,27 @@ function NewBox({ token, plans, onDone, onClose }) {
           </>
         ) : (
           <>
+            {/* نام مشتری.
+                پیشوند را نماینده تعیین نمی‌کند — برندِ صفحه‌ی اشتراک از
+                همان تکه خوانده می‌شود. ولی بخشِ دوم مالِ خودش است، تا
+                بداند کدام کانفیگ مالِ کدام مشتری است. تا امروز هشت
+                نویسه‌ی تصادفی بود و هیچ معنایی نداشت. */}
+            <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
+              نام مشتری <span style={{ opacity: .6 }}>(اختیاری)</span>
+            </label>
+            <input className="fx-input w-full mb-1" dir="ltr" value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="hossein" maxLength={24} />
+            <div className="text-[11.5px] mb-3 leading-relaxed"
+              style={{ color: label && !/[A-Za-z0-9]/.test(label)
+                ? "var(--warn)" : "var(--muted)" }}>
+              {label && !/[A-Za-z0-9]/.test(label)
+                ? "فقط حروف انگلیسی و عدد پذیرفته می‌شود — با این نام، شناسه‌ی تصادفی ساخته می‌شود"
+                : <>شناسه‌ای که ساخته می‌شود: <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>
+                    {slug}_{label.replace(/[^A-Za-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase() || "……"}
+                  </span></>}
+            </div>
+
             <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
               حجم
             </label>
@@ -1179,6 +1290,7 @@ function Dashboard({ token, onOut }) {
   const [busy, setBusy] = useState(false);
   const [plans, setPlans] = useState(null);
   const [renew, setRenew] = useState(null);
+  const [drop, setDrop] = useState(null);
   const [making, setMaking] = useState(false);
   const [botOpen, setBotOpen] = useState(false);
   const [plansOpen, setPlansOpen] = useState(false);
@@ -1569,6 +1681,11 @@ function Dashboard({ token, onOut }) {
                             <Power size={12}
                               style={{ color: c.active ? "var(--muted)" : "var(--ok)" }} />
                           </button>
+                          <button onClick={() => setDrop(c)}
+                            className="fx-ico-btn" style={{ width: 28, height: 28 }}
+                            aria-label={`حذف ${c.email}`} title="حذف کانفیگ">
+                            <Trash2 size={12} style={{ color: "var(--danger)" }} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -1587,8 +1704,14 @@ function Dashboard({ token, onOut }) {
           onDone={(m) => { setRenew(null); setNote(m); setErr(""); load(); }} />
       )}
 
+      {drop && (
+        <DropBox token={token} config={drop}
+          onClose={() => setDrop(null)}
+          onDone={(j) => { setNote(j.note || "کانفیگ حذف شد"); setErr(""); load(); }} />
+      )}
+
       {making && (
-        <NewBox token={token} plans={plans}
+        <NewBox token={token} plans={plans} slug={portalSlug()}
           onClose={() => { setMaking(false); load(); }}
           onDone={() => { setNote("کانفیگ تازه ساخته شد"); setErr(""); }} />
       )}

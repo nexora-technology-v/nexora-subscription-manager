@@ -2070,6 +2070,142 @@ check("اتصال و اینباند پیش از کسر اعتبار حل می‌
 
 
 # ═══════════════════════════════════════════════════════════
+head("تسویه · پول و بستنِ دوره باید یک کار باشند")
+
+# مالک پرداخت را ثبت می‌کرد و `settled_until` دست‌نخورده می‌ماند، پس
+# فاکتور ماه بعد همان کاربران و همان دوره را دوباره می‌آورد — و او
+# بر اساس همان فاکتور دوباره پول گرفت.
+#
+# همان شکلِ آشنا: پول یک جا ثبت می‌شود، وضعیت جای دیگر.
+
+_bc = AP._billing_conn()
+_bc.execute("INSERT OR REPLACE INTO group_config (group_key,label,billable) "
+            "VALUES ('tasvieh','tasvieh',1)")
+_bc.execute("DELETE FROM payments WHERE group_key='tasvieh'")
+_bc.commit()
+_bc.close()
+
+_st = AP.billing_settle({"group": "tasvieh", "amount": 750000,
+                         "until": "2026-03-01"}, x_admin_password="testpw")
+check("تسویه ثبت شد", _st.get("ok") and _st["settledUntil"] == "2026-03-01",
+      str(_st.get("settledUntil")))
+
+_bc = AP._billing_conn()
+_row = _bc.execute("SELECT settled_until FROM group_config "
+                   "WHERE group_key='tasvieh'").fetchone()
+_pay = _bc.execute("SELECT amount, paid_at FROM payments "
+                   "WHERE group_key='tasvieh'").fetchall()
+_bc.close()
+
+check("و دوره را هم بست", (_row["settled_until"] or "") == "2026-03-01",
+      "ثبت پرداخت بدون این، فاکتور بعدی را دوباره پر می‌کند")
+check("و پول هم ثبت شد", len(_pay) == 1 and _pay[0]["amount"] == 750000,
+      f"{len(_pay)} ردیف")
+check("تاریخ پرداخت همان تاریخ تسویه است",
+      (_pay[0]["paid_at"] or "")[:10] == "2026-03-01",
+      "وگرنه پرداخت بیرون از دوره‌ای می‌افتد که بسته شده")
+
+_back = None
+try:
+    AP.billing_settle({"group": "tasvieh", "amount": 1,
+                       "until": "2026-01-01"}, x_admin_password="testpw")
+    _back = "بدون خطا پذیرفته شد"
+except Exception as e:
+    _back = str(getattr(e, "detail", e))
+check("عقب‌بردن تاریخ تسویه رد می‌شود", "تسویه شده" in str(_back),
+      str(_back)[:58])
+
+_st2 = AP.billing_settle({"group": "tasvieh", "amount": 0,
+                          "until": "2026-04-01"}, x_admin_password="testpw")
+_bc = AP._billing_conn()
+_n = _bc.execute("SELECT COUNT(*) c FROM payments "
+                 "WHERE group_key='tasvieh'").fetchone()["c"]
+_bc.close()
+check("تسویه‌ی بدون مبلغ فقط دوره را می‌بندد",
+      _st2["settledUntil"] == "2026-04-01" and _n == 1,
+      f"{_n} پرداخت — صفر نباید ردیف بسازد")
+
+
+# ═══════════════════════════════════════════════════════════
+head("حذف کانفیگ · پولِ مشتریِ پشیمان باید برگردد")
+
+# موردی که مالک گفت: نماینده کانفیگ را می‌سازد، مشتری همان لحظه
+# پشیمان می‌شود. اگر اعتبار برنگردد، نماینده بابت چیزی پول داده که
+# هیچ‌کس استفاده‌اش نکرد.
+#
+# ولی کانفیگی که مصرف داشته دوره‌اش را کار کرده — همان قاعده‌ای که
+# مالک برای انقضا گذاشت: راه فرار از پرداخت نیست.
+
+
+class _DelXUI:
+    deleted = []
+
+    def find_client(self, _ib, email=None):
+        return {"id": "uuid-" + str(email), "inboundId": 7}
+
+    def delete_client(self, ib, uuid, email=None):
+        _DelXUI.deleted.append(email)
+
+
+_T3 = AP._tenant_by_slug("hossein")
+_before_credit = int(_T3.get("credit") or 0)
+
+# کانفیگی که ساخته و پولش کم شده، ولی یک بایت هم مصرف نکرده
+AP._portal_charge(_T3, 30000, "ساخت hossein_fresh")
+_T3 = AP._tenant_by_slug("hossein")
+_after_charge = int(_T3.get("credit") or 0)
+check("اعتبار موقع ساخت کم شد", _after_charge == _before_credit - 30000,
+      f"{_before_credit} → {_after_charge}")
+
+_FRESH = {"email": "hossein_fresh", "group": "goroh-a", "used": 0,
+          "enable": True, "totalGB": 50 * 1024 ** 3, "expiry": 0, "limitIp": 1}
+_USEDC = {"email": "hossein_used", "group": "goroh-a", "used": 9 * 1024 ** 3,
+          "enable": True, "totalGB": 50 * 1024 ** 3, "expiry": 0, "limitIp": 1}
+AP._read_xui_clients = lambda *a, **k: ([_FRESH, _USEDC], [], None)
+AP._portal_xui = lambda t: (_DelXUI(), Exception)
+
+_d1 = AP.portal_config_delete("hossein_fresh", _T3)
+_T3 = AP._tenant_by_slug("hossein")
+check("کانفیگ بی‌مصرف حذف شد", _d1["ok"] and "hossein_fresh" in _DelXUI.deleted)
+check("و اعتبارش برگشت", _d1["refunded"] == 30000,
+      f"برگشت {_d1['refunded']} — از دفتر اعتبار، نه از نرخ امروز")
+check("اعتبار مستاجر هم واقعاً برگشت",
+      int(_T3.get("credit") or 0) == _before_credit,
+      f"{_T3.get('credit')} در برابر {_before_credit}")
+
+_d2 = AP.portal_config_delete("hossein_used", _T3)
+check("کانفیگ با مصرف هم حذف می‌شود", _d2["ok"])
+check("ولی اعتباری برنمی‌گردد", _d2["refunded"] == 0,
+      "دوره‌اش را کار کرده — حذف راه فرار از پرداخت نیست")
+
+_bc = AP._billing_conn()
+_delrow = _bc.execute(
+    "SELECT email, amount FROM deleted_clients "
+    "WHERE email='hossein_used'").fetchone()
+_bc.close()
+check("و بیرون‌رفتنش از فاکتور بی‌صدا نمی‌ماند", _delrow is not None,
+      "ردیفی در deleted_clients، تا مالک ببیند چه چیزی از فاکتور رفت")
+
+
+# ═══════════════════════════════════════════════════════════
+head("فهرست کانفیگ‌ها · مصرف باید خام هم برود")
+
+# تصمیمِ «برگشت اعتبار» با used <= 0 گرفته می‌شود. اگر رابط با
+# usedGB قضاوت کند، مصرفِ چند مگابایتی به ۰٫۰ گرد می‌شود و دیالوگ
+# وعده‌ی برگشتی می‌دهد که بک‌اند انجامش نمی‌دهد.
+_TINY = {"email": "hossein_tiny", "group": "goroh-a", "used": 40 * 1024 ** 2,
+         "enable": True, "totalGB": 50 * 1024 ** 3, "expiry": 0, "limitIp": 1}
+AP._read_xui_clients = lambda *a, **k: ([_TINY], [], None)
+_lst = AP.portal_configs(_T3)
+_one = (_lst.get("configs") or [_lst])[0] if _lst.get("configs") else None
+check("مصرف خام در پاسخ هست", _one is not None and "used" in _one,
+      "کلیدهای موجود: " + "، ".join(sorted((_one or {}).keys()))[:60])
+check("و مصرفِ کوچک به صفر گرد نمی‌شود",
+      _one and _one["used"] > 0 and _one["usedGB"] == 0.0,
+      f"used={(_one or {}).get('used')} · usedGB={(_one or {}).get('usedGB')}")
+
+
+# ═══════════════════════════════════════════════════════════
 head("گزارش فروش و قیف باید یک نرخ تبدیل بدهند")
 
 # قیف در ۱.۳۷.۰ درست شد، ولی گزارش فروش تعریفِ خودش را داشت. روی

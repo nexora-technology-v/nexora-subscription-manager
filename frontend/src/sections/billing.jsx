@@ -2130,8 +2130,114 @@ export function BillingInvoice({ password }) {
   );
 }
 
+/**
+ * تسویه — ثبت پول و بستنِ دوره، با هم.
+ *
+ * چرا جداست از «ثبت پرداخت»: آن یکی فقط می‌گوید پولی رسیده. این یکی
+ * علاوه بر آن، دوره را می‌بندد؛ یعنی فاکتور بعدی از این تاریخ به بعد
+ * را حساب می‌کند و چیزی که تسویه شده دوباره نمی‌آید.
+ *
+ * تا امروز فقط اولی وجود داشت و دومی یک فیلدِ جدا در صفحه‌ی دیگری
+ * بود که کسی سراغش نمی‌رفت — و نتیجه‌اش این شد که پولِ دوره‌ی قبل یک
+ * بار دیگر از واسطه گرفته شد.
+ */
+function SettleBox({ password, groups, onDone }) {
+  const [g, setG] = useState("");
+  const [amount, setAmount] = useState("");
+  const [until, setUntil] = useState(new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const cur = groups.find((x) => x.name === g);
+  const owed = cur ? Math.max(0, cur.balance || 0) : 0;
+
+  // مبلغ پیش‌فرض همان مانده است — چون تسویه معمولاً یعنی همین
+  useEffect(() => { setAmount(owed ? String(owed) : ""); }, [g]);
+
+  const submit = async () => {
+    if (!g) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/billing/settle`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json",
+                   "X-Admin-Password": password },
+        body: JSON.stringify({ group: g, amount: Number(amount) || 0,
+                               until, note }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(errText(j.detail, "تسویه ثبت نشد"));
+      setMsg({ t: "ok", m: j.note || "تسویه شد" });
+      setAmount(""); setNote("");
+      onDone && onDone();
+    } catch (e) {
+      setMsg({ t: "err", m: e.message });
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fx-card p-5 mb-4">
+      <div className="text-[14px] font-semibold text-white mb-1">تسویه‌ی دوره</div>
+      <div className="text-[12px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+        پول را ثبت می‌کند <b>و</b> دوره را می‌بندد. بعد از این، فاکتور از
+        همین تاریخ به بعد حساب می‌شود و کاربران و ماه‌هایی که تسویه
+        شده‌اند دوباره نمی‌آیند.
+      </div>
+
+      <Msg msg={msg} />
+
+      <div className="fx-g3 grid grid-cols-3 gap-3">
+        <Field label="واسطه">
+          <select className="fx-input" value={g} onChange={(e) => setG(e.target.value)}>
+            <option value="">— انتخاب کنید —</option>
+            {groups.map((x) => (
+              <option key={x.name} value={x.name}>{x.label || x.name}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="مبلغ دریافتی" hint={cur ? `مانده: ${faNum(owed)} تومان` : "اختیاری — صفر یعنی فقط دوره بسته شود"}>
+          <NumberInput value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </Field>
+        <Field label="تسویه تا تاریخ" hint="هر چه پیش از این تاریخ است، پولش گرفته‌شده حساب می‌شود">
+          <JalaliDate value={until} onChange={setUntil} />
+        </Field>
+      </div>
+
+      <Field label="توضیح" hint="اختیاری">
+        <input className="fx-input" value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="مثلاً: کارت به کارت، تسویه‌ی شهریور" />
+      </Field>
+
+      {cur && (cur.settledUntil ? (
+        <InfoBox>
+          این گروه تا <b>{isoToJalaliLabel(cur.settledUntil)}</b> تسویه شده.
+          فاکتور از همان تاریخ به بعد را می‌شمارد.
+        </InfoBox>
+      ) : (
+        <InfoBox tone="warn">
+          برای این گروه هنوز هیچ دوره‌ای بسته نشده — یعنی فاکتور از
+          ابتدای همکاری حساب می‌شود و هر بار همان کاربران قبلی را هم
+          می‌آورد.
+          {cur.paidAll > 0 && (
+            <> تا حالا <b>{faNum(cur.paidAll)}</b> تومان از این گروه ثبت
+            شده که هیچ دوره‌ای پشتش بسته نشده.</>
+          )}
+        </InfoBox>
+      ))}
+
+      <button onClick={submit} disabled={busy || !g}
+        className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+        تسویه کن و دوره را ببند
+      </button>
+    </div>
+  );
+}
+
 export function BillingPayments({ password }) {
-  const { data } = useBilling(password);
+  const { data, reload } = useBilling(password);
   const [list, setList] = useState([]);
   const [add, setAdd] = useState(false);
   const [form, setForm] = useState({ group: "", amount: "", date: "", note: "" });
@@ -2173,13 +2279,16 @@ export function BillingPayments({ password }) {
 
   return (
     <div className="fx-anim">
-      <SectionHead title="پرداخت‌ها"
-        desc="پرداخت‌های واسطه در ۳x-ui ثبت نمی‌شوند — هر دریافتی را اینجا بزنید تا مانده درست حساب شود."
+      <SectionHead title="پرداخت‌ها و تسویه"
+        desc="پرداخت‌های واسطه در ۳x-ui ثبت نمی‌شوند — هر دریافتی را اینجا بزنید تا مانده درست حساب شود. وقتی حساب یک دوره را بستید، «تسویه» بزنید تا دوباره روی فاکتور نیاید."
         action={
-          <button onClick={() => setAdd(true)} className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
+          <button onClick={() => setAdd(true)} className="fx-btn-g px-4 py-2.5 text-[14px] flex items-center gap-1.5">
             <PlusIcon size={14} /> ثبت پرداخت
           </button>
         } />
+
+      <SettleBox password={password} groups={billed}
+        onDone={() => { load(); reload && reload(); }} />
 
       {list.length === 0 ? (
         <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>

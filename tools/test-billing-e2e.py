@@ -1266,9 +1266,28 @@ check("و مبلغش هم صفر، با دلیل",
       _all["dev_old"]["amount"] == 0
       and "تسویه" in (_all["dev_old"]["amountWhy"] or ""),
       _all["dev_old"]["amountWhy"])
-check("ماه‌های آینده‌ی یک کانفیگ همین حالا فروخته شده‌اند",
-      _all["dev_four"]["renewals"] == 1,
-      "ساخته‌شده ۲۰ روز پیش با ۴۵ روز عمر — ماه دومش حساب می‌شود")
+# ماهی که هنوز نرسیده، بدهی نیست — و مهم‌تر، دو بار شمرده نمی‌شود.
+#
+# قاعده‌ی قبلی این بود که ماه‌های آینده «همین حالا فروخته شده‌اند» و
+# باید همین حالا حساب شوند. ولی شرطش `d >= since` بود بدون سقف، و
+# تاریخ‌های آینده همیشه از «تسویه‌شده تا» جلوترند — پس هر دوره دوباره
+# می‌آمدند.
+#
+# اندازه‌گیری روی یک گروه واقعی: ۵۸ ماه در دوره‌ی اول، ۴۱ ماه در
+# دوره‌ی دوم که هر ۴۱ تایش قبلاً هم شمرده شده بود، و ۳۰ ماه که در هر
+# سه دوره آمدند. مالک بر اساس همین فاکتورها دو بار از واسطه پول
+# گرفت و خودش گزارشش کرد.
+#
+# نگه‌داشتنِ مدلِ «فروش» به حافظه نیاز داشت: باید یادش می‌ماند کدام
+# ماه‌های آینده قبلاً فاکتور شده‌اند، و «تسویه‌شده تا» که یک تاریخ
+# است نمی‌تواند این را نگه دارد. پس ماهِ سپری‌شده شمرده می‌شود —
+# جمعِ کلِ عمرِ کانفیگ همان عدد است، فقط درست پخش می‌شود.
+#
+# dev_four: ساخته‌شده ۲۰ روز پیش با ۴۵ روز عمر. مرزِ ماه دومش ۱۰ روز
+# دیگر است، پس هنوز بدهی نیست — و وقتی رسید، همان یک‌بار حساب می‌شود.
+check("ماهی که هنوز نرسیده حساب نمی‌شود",
+      _all["dev_four"]["renewals"] == 0,
+      f"{_all['dev_four']['renewals']} — ماه دومش ۱۰ روز دیگر می‌رسد")
 
 _b = sqlite3.connect(str(APP.BILLING_DB))
 _b.execute("UPDATE group_config SET settled_until=NULL WHERE group_key='دستگاه'")
@@ -1279,6 +1298,73 @@ check("هر سه صفحه از یک تابع حساب می‌کنند",
       APP_SRC_NS.count("_period_share(") >= 4
       and "months * price" not in APP_SRC_NS,
       "months × price نرخ کاربر اضافه را نادیده می‌گرفت")
+
+
+# ═══════════════════════════════════════════════════════════
+head("یک ماه، یک بار — در سه دوره‌ی پشت سر هم")
+
+# خودِ باگ، نه نشانه‌اش: مالک تسویه می‌کرد، ماه بعد همان کاربران و
+# همان ماه‌ها دوباره روی فاکتور بودند، و دوباره پول می‌گرفت.
+#
+# این آزمون سه دوره را پشت سر هم می‌بندد و جمعِ ماه‌ها را با عمرِ
+# واقعیِ کانفیگ می‌سنجد. اگر ماهی دو بار بیاید، جمع از عمر بیشتر
+# می‌شود.
+
+_c = sqlite3.connect(XUI)
+# کانفیگی با عمرِ بلند و آینده‌ی دور — همان شکلی که تکرار را می‌ساخت
+_cr = (_dtm.now() - _tdl(days=60)).isoformat(sep=" ", timespec="seconds")
+_ex = NOW_MS + 300 * 86400000
+_c.execute("INSERT INTO clients (id,email,group_name,total_gb,expiry_time,"
+           "enable,created_at,limit_ip) VALUES (910,'rep_1','تکرار',0,?,1,?,1)",
+           (_ex, _cr))
+_c.execute("INSERT INTO client_traffics (id,email,up,down,expiry_time,enable)"
+           " VALUES (910,'rep_1',0,?,?,1)", (2 * GB, _ex))
+_c.commit()
+_c.close()
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("INSERT OR REPLACE INTO group_config (group_key,label,billable,"
+           "rates,period_days) VALUES ('تکرار','تکرار',1,?,30)",
+           (_json.dumps([{"gb": 0, "price": 100000}]),))
+_b.commit()
+_b.close()
+APP._billing_overview_impl()
+
+
+def _months_after_settling(day_offset):
+    b = sqlite3.connect(str(APP.BILLING_DB))
+    b.execute("UPDATE group_config SET settled_until=? WHERE group_key='تکرار'",
+              ((_dtm.now() + _tdl(days=day_offset)).date().isoformat(),))
+    b.commit()
+    b.close()
+    inv = APP.billing_invoice("تکرار", x_admin_password="x")
+    return sum(l["months"] for l in inv["lines"])
+
+
+_p1 = _months_after_settling(-60)     # از ساخت تا حالا
+# عمرِ کامل همین‌جا خوانده می‌شود: بعد از تسویه‌های جلوتر، ردیف
+# اصلاً روی فاکتور نمی‌آید و totalMonths صفر می‌شود
+_lines = APP.billing_invoice("تکرار", x_admin_password="x")["lines"]
+_total_life = _lines[0]["totalMonths"] if _lines else 0
+_p2 = _months_after_settling(0)       # تسویه تا امروز
+_p3 = _months_after_settling(30)      # یک ماه بعد
+
+check("دوره‌ی اول ماه‌های سپری‌شده را می‌آورد", _p1 >= 2,
+      f"{_p1} ماه در ۶۰ روز")
+# مرزِ ماهی که دقیقاً امروز می‌افتد هنوز می‌تواند شمرده شود؛ چیزی
+# که نباید بماند، ده ماهِ آینده است
+check("بعد از تسویه تا امروز، ماه‌های آینده نمی‌مانند", _p2 <= 1,
+      f"{_p2} ماه — قبلاً ۱۰ ماهِ آینده این‌جا می‌ماند")
+check("و دوره‌ی بعد هم همان‌ها دوباره نمی‌آیند", _p3 == 0,
+      f"{_p3} ماه")
+check("جمعِ سه دوره از عمرِ کانفیگ بیشتر نیست",
+      _p1 + _p2 + _p3 <= _total_life,
+      f"جمع {_p1 + _p2 + _p3} · عمر {_total_life}")
+
+_b = sqlite3.connect(str(APP.BILLING_DB))
+_b.execute("UPDATE group_config SET settled_until=NULL WHERE group_key='تکرار'")
+_b.commit()
+_b.close()
 
 
 # ═══════════════════════════════════════════════════════════
