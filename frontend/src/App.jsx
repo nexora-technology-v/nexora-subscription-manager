@@ -34,7 +34,7 @@ import { AppsSection, BannersSection, FaqSection, LinksSection, OverviewSection,
 import { LivePreview, SystemSection } from "./sections/system";
 import { SystemHealth, TunnelEvents, TunnelList, TunnelNodes, TunnelOverview } from "./sections/tunnel";
 import { WorkspaceSwitch } from "./shell/workspace";
-import { ConfirmModal, ErrorBoundary, LoginScreen, StatusChip, Toast } from "./ui/index";
+import { CommandPalette, ConfirmModal, ErrorBoundary, LoginScreen, NavIndicator, StatusChip, Toast } from "./ui/index";
 
 
 const ALL_NAV = Object.values(WORKSPACES).flatMap((w) => w.groups.flatMap((g) => g.items));
@@ -69,7 +69,37 @@ export default function App() {
   const [confirmTarget, setConfirmTarget] = useState(null);
   const [toast, setToast] = useState(null);
   const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
+  const [palOpen, setPalOpen] = useState(false);
+
+  // جمع‌شدن سایدبار و کم‌کردن حرکت، هر دو سلیقه‌اند: در مرورگر
+  // می‌مانند تا هر بار دوباره تنظیم نشوند. روی <body> می‌نشینند
+  // چون CSSشان به کل صفحه مربوط است، نه به یک کامپوننت.
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem("nexora-collapsed") === "1"; } catch { return false; }
+  });
+  const [calm, setCalm] = useState(() => {
+    try { return localStorage.getItem("nexora-calm") === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    document.body.classList.toggle("fx-collapsed", collapsed);
+    try { localStorage.setItem("nexora-collapsed", collapsed ? "1" : "0"); } catch { /* بی‌صدا */ }
+  }, [collapsed]);
+  useEffect(() => {
+    document.body.classList.toggle("fx-calm", calm);
+    try { localStorage.setItem("nexora-calm", calm ? "1" : "0"); } catch { /* بی‌صدا */ }
+  }, [calm]);
+
+  // Ctrl+K — تنها راهِ رسیدن به ۴۵ صفحه بدون سه کلیک
+  useEffect(() => {
+    const k = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPalOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
 
   // نسخه‌ی آخرین حالت ذخیره‌شده — مرجع برای لغو تغییرات
   const [savedConfig, setSavedConfig] = useState(null);
@@ -186,18 +216,20 @@ export default function App() {
   if (loading || !config) return <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg)" }}><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
 
   const currentNav = ALL_NAV.find((n) => n.key === active);
-  const filteredNav = (items) => search ? items.filter((n) => n.label.includes(search)) : items;
 
   return (
     <div className="min-h-screen w-full flex" style={{ background: "var(--bg)" }} dir="rtl">
+      {/* نور محیطی — زیر همه چیز، فقط برای عمق */}
+      <div className="fx-amb" aria-hidden="true"><i /></div>
       {open && <div className="fx-backdrop fx-fade" onClick={() => setOpen(false)} />}
 
-      <aside className={`fx-side ${open ? "open" : ""}`}>
+      <aside className={`fx-side ${open ? "open" : ""}`} style={{ zIndex: 60 }}>
         <div className="flex items-center justify-between gap-2 px-2 mb-2">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-[18px] shrink-0"
-              style={{ background: "linear-gradient(135deg,#2B7FD6,#8FC1EE)", color: "#06090F" }}>N</div>
-            <div className="min-w-0">
+              style={{ background: "linear-gradient(140deg,#8FC1EE,#2B7FD6 62%,#2DD4BF)",
+                       color: "#06090F", boxShadow: "0 6px 18px -6px rgba(43,127,214,.7)" }}>N</div>
+            <div className="min-w-0 fx-hide-c">
               <div className="text-[16px] font-bold text-white leading-none">NEXORA</div>
               <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>پنل مدیریت</div>
             </div>
@@ -210,24 +242,28 @@ export default function App() {
 
         {/* در حالت تاشو، منو داخل خود آکاردئون است — اینجا تکرارش نمی‌کنیم */}
         {wsMode !== "accordion" && WORKSPACES[workspace].groups.map((group) => {
-          const items = filteredNav(group.items);
+          const items = group.items;
           if (items.length === 0) return null;
           return (
             <div key={group.title}>
               <div className="fx-side-label">{group.title}</div>
-              <nav className="flex flex-col gap-1">
+              <nav className="flex flex-col gap-1 relative">
+                <NavIndicator activeKey={active} />
                 {items.map((n) => (
-                  <button key={n.key} className={`fx-nav-item ${active === n.key ? "on" : ""}`}
+                  <button key={n.key} data-navkey={n.key}
+                    className={`fx-nav-item ${active === n.key ? "on" : ""}`}
                     onClick={() => navigate(n.key)} disabled={!!n.badge}
                     style={n.badge ? { opacity: 0.55, cursor: "not-allowed" } : {}}>
                     <n.icon size={16} />
-                    <span className="flex-1 text-right">{n.label}</span>
+                    <span className="flex-1 text-right fx-lbl">{n.label}</span>
                     {n.badge && (
-                      <span className="text-[11px] px-1.5 py-0.5 rounded-full shrink-0"
+                      <span className="text-[11px] px-1.5 py-0.5 rounded-full shrink-0 fx-hide-c"
                         style={{ background: "rgba(251,191,36,.15)", color: "var(--warn)" }}>
                         {n.badge}
                       </span>
                     )}
+                    {/* در حالت جمع، نامِ آیتم فقط روی تولتیپ می‌ماند */}
+                    <span className="fx-tip-nav">{n.label}</span>
                   </button>
                 ))}
               </nav>
@@ -251,16 +287,37 @@ export default function App() {
         <header className="fx-topbar">
           <div className="flex items-center gap-3 min-w-0">
             <button className="fx-burger" onClick={() => setOpen(true)} aria-label="منو"><Menu size={19} /></button>
+            {/* جمع‌کردن منو — روی دسکتاپ، تا وقتی جدول پهن است جا باز شود */}
+            <button className="fx-btn-g w-9 h-9 hidden lg:grid place-items-center shrink-0"
+              onClick={() => setCollapsed((v) => !v)}
+              title={collapsed ? "باز کردن منو" : "جمع کردن منو"}
+              aria-label={collapsed ? "باز کردن منو" : "جمع کردن منو"}>
+              <Layers size={16} />
+            </button>
             <div className="min-w-0">
               <h1 className="text-[18px] font-bold text-white truncate">{currentNav?.label}</h1>
-              <p className="text-[13px] mt-0.5 fx-hide-m" style={{ color: "var(--muted)" }}>مدیریت صفحه اشتراک مشتریان</p>
+              <p className="text-[13px] mt-0.5 fx-hide-m" style={{ color: "var(--muted)" }}>{WORKSPACES[workspace].label}</p>
             </div>
           </div>
           <div className="flex items-center gap-2.5">
-            <div className="fx-search">
+            {/* دکمه‌ی پالت — جستجوی سایدبار فقط همین فضای کاری را
+                فیلتر می‌کند؛ این، هر ۴۵ صفحه را یک‌جا می‌گردد */}
+            <button className="fx-search" onClick={() => setPalOpen(true)}
+              title="جستجو در همه‌ی صفحه‌ها" aria-label="جستجو در همه‌ی صفحه‌ها"
+              style={{ cursor: "pointer" }}>
               <Search size={14} style={{ color: "var(--muted)" }} />
-              <input placeholder="جستجو در بخش‌ها..." value={search} onChange={(e) => setSearch(e.target.value)} />
-            </div>
+              <span className="text-[13px] flex-1 text-right fx-hide-m"
+                style={{ color: "var(--muted)" }}>جستجو یا فرمان…</span>
+              <kbd className="text-[10px] px-1.5 py-0.5 rounded shrink-0 fx-hide-m"
+                style={{ background: "rgba(255,255,255,.07)", border: "1px solid var(--border-2)",
+                         color: "var(--dim)", fontFamily: "var(--mono)" }} dir="ltr">Ctrl K</kbd>
+            </button>
+            <button className="fx-btn-g w-9 h-9 grid place-items-center shrink-0 fx-hide-m"
+              onClick={() => setCalm((v) => !v)}
+              title={calm ? "حرکت: کم — برای روشن‌کردن بزنید" : "حرکت: روشن — برای کم‌کردن بزنید"}
+              aria-label="کم‌کردن حرکت" aria-pressed={calm}>
+              <Activity size={16} style={calm ? { color: "var(--muted)" } : {}} />
+            </button>
             <div className="fx-hide-m"><StatusChip dirty={dirty} /></div>
             {dirty && (
               <button onClick={discardChanges} title="بازگرداندن به آخرین حالت ذخیره‌شده"
@@ -276,7 +333,11 @@ export default function App() {
           </div>
         </header>
 
+        {/* ورودِ صفحه با هر بار عوض‌شدن بخش دوباره پخش می‌شود:
+            key که عوض شود، React درخت را از نو می‌سازد. «فوری ولی
+            زنده» — نه جایگزینیِ ناگهانی، نه انتظارِ نمایشی. */}
         <main className="fx-main flex-1 p-7 overflow-y-auto w-full mx-auto">
+          <div key={active} className="fx-stg">
           <ErrorBoundary key={active}>
           {active === "overview" && <OverviewSection config={config} stats={stats} navigate={navigate} dirty={dirty} />}
           {active === "preview" && <LivePreview dirty={dirty} onSave={save} saving={saving} />}
@@ -326,6 +387,7 @@ export default function App() {
           {active === "themes" && <ThemesSection config={config} setConfig={setConfig} password={password} />}
           {active === "system" && <SystemSection password={password} />}
           </ErrorBoundary>
+          </div>
         </main>
       </div>
 
@@ -343,6 +405,24 @@ export default function App() {
           onConfirm={confirmDelete} onCancel={() => setConfirmTarget(null)} />
       )}
       {toast && <Toast message={toast.message} type={toast.type} />}
+
+      {/* پالت فرمان — هم می‌برد، هم کار می‌کند */}
+      <CommandPalette
+        open={palOpen} onClose={() => setPalOpen(false)} workspaces={WORKSPACES}
+        onPick={(ws, key) => {
+          if (ws !== workspace) { setWorkspace(ws); localStorage.setItem("nexora_workspace", ws); }
+          setActive(key);
+          setOpen(false);
+        }}
+        extra={[
+          { label: dirty ? "ذخیره‌ی تغییرات" : "ذخیره (چیزی عوض نشده)",
+            group: "کارها", icon: Save, run: () => dirty && save() },
+          { label: collapsed ? "باز کردن منو" : "جمع کردن منو",
+            group: "کارها", icon: Layers, run: () => setCollapsed((v) => !v) },
+          { label: calm ? "روشن‌کردن حرکت" : "کم‌کردن حرکت",
+            group: "کارها", icon: Activity, run: () => setCalm((v) => !v) },
+          { label: "خروج از حساب", group: "کارها", icon: LogOut, run: logout },
+        ]} />
     </div>
   );
 }

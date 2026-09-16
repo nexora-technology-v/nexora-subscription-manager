@@ -23,9 +23,7 @@ import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 
 /** آیا این آدرس مینی‌اپ است؟ */
-export function isMini() {
-  return /^\/app(\/|$)/.test(window.location.pathname || "");
-}
+export { isMini } from "../lib/route.js";
 
 /**
  * پلِ تلگرام.

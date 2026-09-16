@@ -172,7 +172,12 @@ for name, src in ALL.items():
                  if x.strip()]
         target = os.path.normpath(os.path.join(
             os.path.dirname(name), m.group(2)))
-        cand = [target + ".jsx", target + ".js",
+        # خودِ مسیر هم یک گزینه است: وقتی import پسوند را صریح
+        # نوشته باشد (`./lib/route.js`)، چسباندنِ پسوند دوباره
+        # دنبال `route.js.js` می‌گشت و ماژولِ سالم را «پیدا نشد»
+        # گزارش می‌کرد — یعنی یک هشدار دروغ که هشدارهای واقعی را
+        # بی‌ارزش می‌کند.
+        cand = [target, target + ".jsx", target + ".js",
                 os.path.join(target, "index.jsx")]
         tsrc = next((ALL[c.replace(os.sep, "/")] for c in cand
                      if c.replace(os.sep, "/") in ALL), None)

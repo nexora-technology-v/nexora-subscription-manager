@@ -28,10 +28,7 @@ import { NumberInput, usePager } from "../ui/index";
 const TOKEN_KEY = "nexora_portal_token";
 
 /** نشانی نماینده از آدرس صفحه: /r/<slug> */
-export function portalSlug() {
-  const m = /^\/r\/([A-Za-z0-9_-]+)/.exec(window.location.pathname || "");
-  return m ? m[1] : "";
-}
+export { portalSlug } from "../lib/route.js";
 
 async function api(path, { token, method = "GET", body } = {}) {
   const res = await fetch(`${API_URL}${path}`, {

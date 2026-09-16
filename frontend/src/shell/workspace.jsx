@@ -9,7 +9,7 @@ import {
   Bot, Check, ChevronDown, Circle,
 } from "lucide-react";
 import { WORKSPACES, WS_COLOR } from "../lib/constants";
-import { SectionHead } from "../ui/index";
+import { NavIndicator, SectionHead } from "../ui/index";
 
 export function ComingSoon({ title, desc, features }) {
   return (
@@ -149,15 +149,16 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive }
               </button>
 
               {on && (
-                <div className="mt-1 pr-2.5 mr-4"
+                <div className="mt-1 pr-2.5 mr-4 relative"
                   style={{ borderRight: `1px solid color-mix(in srgb, ${col} 22%, transparent)` }}>
+                  <NavIndicator activeKey={active} />
                   {w.groups.flatMap((g) => g.items).map((it) => {
                     const sel = active === it.key;
                     return (
-                      <button key={it.key} onClick={() => setActive(it.key)}
-                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg mb-0.5 text-right transition-colors"
+                      <button key={it.key} data-navkey={it.key} onClick={() => setActive(it.key)}
+                        className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg mb-0.5 text-right transition-colors relative"
                         style={{
-                          background: sel ? "rgba(255,255,255,.04)" : "transparent",
+                          background: "transparent",
                           color: sel ? "var(--text)" : "var(--muted)",
                           fontWeight: sel ? 600 : 400,
                         }}>

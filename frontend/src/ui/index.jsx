@@ -223,29 +223,127 @@ export function InfoBox({ children, tone = "info" }) {
   );
 }
 
-export function Sparkline({ data, color }) {
-  if (!data || data.length < 2) return <div style={{ height: 30 }} />;
-  const max = Math.max(...data), min = Math.min(...data);
-  const range = max - min || 1;
-  const pts = data.map((v, i) => `${(i / (data.length - 1)) * 100},${28 - ((v - min) / range) * 24}`).join(" ");
+/** منحنی نرم از روی نقطه‌ها — کاتمول-رام تبدیل‌شده به بزیه.
+ *
+ * یک‌جا نوشته شده چون سه نمودار از آن استفاده می‌کنند؛ سه کپی
+ * یعنی سه منحنیِ کمی متفاوت در یک صفحه. */
+export function smoothPath(pts, closeAt) {
+  if (!pts || pts.length < 2) return "";
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i];
+    const p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    d += ` C${p1[0] + (p2[0] - p0[0]) / 6},${p1[1] + (p2[1] - p0[1]) / 6}`
+       + ` ${p2[0] - (p3[0] - p1[0]) / 6},${p2[1] - (p3[1] - p1[1]) / 6}`
+       + ` ${p2[0]},${p2[1]}`;
+  }
+  if (closeAt !== undefined) {
+    d += ` L${pts[pts.length - 1][0]},${closeAt} L${pts[0][0]},${closeAt} Z`;
+  }
+  return d;
+}
+
+export const reducedMotion = () =>
+  (typeof document !== "undefined" && document.body.classList.contains("fx-calm")) ||
+  (typeof window !== "undefined" &&
+   !!window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+
+/**
+ * اسپارک‌لاین — خطِ ریزِ کنار عدد.
+ *
+ * زیرش با گرادیان پر می‌شود تا حجم دیده شود، و خط موقع ورود
+ * *کشیده* می‌شود نه اینکه یکباره ظاهر شود: چشم مسیر را دنبال
+ * می‌کند و جهتِ روند بدون خواندن عدد فهمیده می‌شود.
+ */
+export function Sparkline({ data, color = "var(--accent-2)", height = 32 }) {
+  const id = useRef(`sp${Math.random().toString(36).slice(2, 9)}`).current;
+  const ref = useRef(null);
+  const ok = data && data.length >= 2;
+
+  useEffect(() => {
+    const ln = ref.current?.querySelector("path.ln");
+    if (!ln || reducedMotion()) return;
+    // getTotalLength در هر محیطی نیست (jsdom ندارد، و همین‌جا هم
+    // تست گرفتش). بدون این محافظ، نبودنش کلِ بخش را می‌انداخت —
+    // برای یک انیمیشنِ تزئینی. اگر نبود، خط بدون کشیده‌شدن رسم
+    // می‌شود و هیچ چیز دیگری فرق نمی‌کند.
+    let len;
+    try { len = ln.getTotalLength?.(); } catch { return; }
+    if (!len) return;
+    ln.style.setProperty("--len", len);
+    ln.classList.remove("fx-draw");
+    void ln.getBoundingClientRect();
+    ln.classList.add("fx-draw");
+  }, [data]);
+
+  if (!ok) return <div style={{ height }} />;
+
+  const W = 108, H = 34, pad = 4;
+  const mx = Math.max(...data), mn = Math.min(...data), rg = mx - mn || 1;
+  const pts = data.map((v, i) => [
+    (i / (data.length - 1)) * W,
+    H - pad - ((v - mn) / rg) * (H - pad * 2),
+  ]);
+
   return (
-    <svg width="100%" height="30" viewBox="0 0 100 30" preserveAspectRatio="none" style={{ opacity: .85 }}>
-      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    <svg ref={ref} className="fx-spark" viewBox={`0 0 ${W} ${H}`}
+      style={{ width: "100%", maxWidth: W, height }} aria-hidden="true">
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity=".5" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={smoothPath(pts, H)} fill={`url(#${id})`} />
+      <path className="ln" d={smoothPath(pts)} stroke={color} />
     </svg>
   );
 }
 
-export function ConfirmModal({ title, desc, onConfirm, onCancel, confirmLabel = "حذف کن" }) {
+/**
+ * حبسِ تمرکز داخل یک لایه، و برگرداندنش سر جای اول.
+ *
+ * چرا لازم شد: مودال‌ها `role="dialog"` نداشتند و تمرکز داخلشان
+ * حبس نمی‌شد — با Tab می‌شد به صفحه‌ی *زیر* مودال رفت و روی دکمه‌ای
+ * زد که دیده نمی‌شود. برای کسی که با کیبورد کار می‌کند، مودال عملاً
+ * یک تله بود.
+ */
+export function useFocusTrap(ref, onClose) {
   useEffect(() => {
-    const k = (e) => e.key === "Escape" && onCancel();
-    window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
-  }, [onCancel]);
+    const prev = document.activeElement;
+    const sel = 'button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])';
+    const box = ref.current;
+    const items = () => [...(box?.querySelectorAll(sel) || [])]
+      .filter((el) => !el.disabled && el.offsetParent !== null);
+    items()[0]?.focus();
+
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); onClose?.(); return; }
+      if (e.key !== "Tab") return;
+      const f = items();
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      if (prev && prev.focus) prev.focus();
+    };
+  }, [ref, onClose]);
+}
+
+export function ConfirmModal({ title, desc, onConfirm, onCancel, confirmLabel = "حذف کن" }) {
+  const box = useRef(null);
+  useFocusTrap(box, onCancel);
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 fx-fade"
       style={{ background: "rgba(3,6,12,.78)", backdropFilter: "blur(6px)" }} onClick={onCancel}>
-      <div className="w-full max-w-sm rounded-2xl p-5 fx-scale" onClick={(e) => e.stopPropagation()}
-        style={{ background: "var(--surface)", border: "1px solid rgba(248,113,113,.3)" }}>
+      <div ref={box} role="dialog" aria-modal="true" aria-label={title}
+        className="w-full max-w-sm rounded-2xl p-5 fx-scale" onClick={(e) => e.stopPropagation()}
+        style={{ background: "var(--surface)", border: "1px solid var(--danger-line)",
+                 boxShadow: "var(--e-3)" }}>
         <div className="flex items-center gap-2 mb-2.5" style={{ color: "var(--danger)" }}>
           <AlertTriangle size={18} /><span className="text-[16px] font-semibold">{title}</span>
         </div>
@@ -264,15 +362,30 @@ export function ConfirmModal({ title, desc, onConfirm, onCancel, confirmLabel = 
   );
 }
 
+/**
+ * توست.
+ *
+ * `role="status"` دارد، پس صفحه‌خوان «ذخیره شد» را اعلام می‌کند.
+ * بدون آن، کسی که صفحه را نمی‌بیند هیچ‌وقت نمی‌فهمید کارش انجام
+ * شده — همان بازخوردی که برای بقیه بدیهی است.
+ */
 export function Toast({ message, type }) {
   return (
-    <div className="fx-toast fixed bottom-[92px] lg:bottom-6 left-1/2 z-[80] px-4 py-3 rounded-xl text-[14px] font-medium flex items-center gap-2 shadow-2xl max-w-[90vw]"
+    <div role="status" aria-live="polite"
+      className="fx-toast fixed bottom-[92px] lg:bottom-6 left-1/2 z-[80] px-4 py-3 rounded-xl text-[14px] font-medium flex items-center gap-2 max-w-[90vw]"
       style={{
-        background: type === "error" ? "#3F1414" : "var(--surface)",
-        border: `1px solid ${type === "error" ? "var(--danger)" : "rgba(90,169,230,.4)"}`,
-        color: type === "error" ? "#FCA5A5" : "var(--accent-2)",
+        background: type === "error" ? "#3F1414" : "rgba(19,28,46,.92)",
+        backdropFilter: "blur(20px)",
+        border: `1px solid ${type === "error" ? "var(--danger)" : "var(--ok-line)"}`,
+        color: type === "error" ? "#FCA5A5" : "var(--ok)",
+        boxShadow: "var(--e-3)",
       }}>
-      {type === "error" ? <AlertTriangle size={15} /> : <CheckCircle2 size={15} />} {message}
+      {type === "error" ? <AlertTriangle size={15} /> : (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+          <path className="fx-chk" d="m4 12 5.5 5.5L20 7" />
+        </svg>
+      )} {message}
     </div>
   );
 }
@@ -382,26 +495,222 @@ export function CountChip({ label, n, color }) {
   );
 }
 
-export function StatTile({ label, value, unit, hint, color = "var(--text)" }) {
+/**
+ * کارتِ شاخص.
+ *
+ * چیزی بیش از «آیکون + عدد + متن»: وقتی مقدارش عوض می‌شود کارت یک
+ * تپشِ کوتاه می‌زند و عدد تا مقدار تازه می‌رود، پس تغییرِ داده دیده
+ * می‌شود بدون اینکه کاربر مجبور باشد عدد قبلی را به خاطر بسپارد.
+ *
+ * `spark`، `trend` و `icon` همه اختیاری‌اند — صدها جای پنل همین
+ * کامپوننت را با همان سه آرگومان قبلی صدا می‌زنند و باید دست‌نخورده
+ * کار کنند.
+ */
+export function StatTile({
+  label, value, unit, hint, color = "var(--text)",
+  icon: Icon, spark, sparkColor, trend, tone, className = "",
+}) {
+  const box = useRef(null);
+  const first = useRef(true);
+
+  useEffect(() => {
+    // بار اول تپش نمی‌زند: ورودِ صفحه خودش انیمیشن دارد و دو حرکت
+    // هم‌زمان، شلوغ است
+    if (first.current) { first.current = false; return; }
+    const el = box.current;
+    if (!el || reducedMotion()) return;
+    el.classList.remove("fx-bump");
+    void el.getBoundingClientRect();
+    el.classList.add("fx-bump");
+  }, [value]);
+
   return (
-    <div className="fx-card p-4">
-      <div className="text-[13px] mb-1.5" style={{ color: "var(--muted)" }}>{label}</div>
-      <div className="flex items-baseline gap-1.5">
-        <span className="text-[21px] font-bold" style={{ color, fontFamily: "var(--mono)" }}>
+    <div className={`fx-card fx-kpi p-4 ${className}`}>
+      <div className="flex items-center gap-2 mb-2">
+        {Icon && (
+          <span className="w-7 h-7 rounded-[8px] grid place-items-center shrink-0"
+            style={{ background: "rgba(255,255,255,.05)", color: tone || "var(--muted)" }}>
+            <Icon size={14} />
+          </span>
+        )}
+        <span className="text-[12px] min-w-0 truncate" style={{ color: "var(--muted)" }}>{label}</span>
+        {trend && (
+          <span className={`fx-badge ${trend.up ? "up" : "down"} mr-auto shrink-0`} dir="ltr">
+            {trend.up ? "▲" : "▼"} {trend.text}
+          </span>
+        )}
+      </div>
+
+      <div ref={box} className="flex items-baseline gap-1.5">
+        <span className="text-[24px] font-bold" style={{ color, fontFamily: "var(--mono)" }}>
           {value}
         </span>
-        {unit && <span className="text-[13px]" style={{ color: "var(--muted)" }}>{unit}</span>}
+        {unit && <span className="text-[12px] fx-fa-sub" style={{ color: "var(--muted)" }}>{unit}</span>}
       </div>
-      {hint && (
-        <div className="text-[12px] mt-1.5 leading-relaxed" style={{ color: "var(--muted)" }}>
-          {hint}
+
+      <div className="flex items-end justify-between gap-2 mt-1.5">
+        {hint ? (
+          <div className="text-[12px] leading-relaxed min-w-0" style={{ color: "var(--muted)" }}>
+            {hint}
+          </div>
+        ) : <span />}
+        {spark && spark.length > 1 && (
+          <div className="shrink-0" style={{ width: 96 }}>
+            <Sparkline data={spark} color={sparkColor || color} height={30} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * اسکلتون — جای چیزی که دارد می‌آید.
+ *
+ * چرخنده فقط می‌گوید «صبر کن» و وقتی داده رسید کل چیدمان می‌پرد.
+ * این، شکلِ محتوا را از قبل نگه می‌دارد.
+ */
+export function Skeleton({ w = "100%", h = 14, className = "", style }) {
+  return <div className={`fx-sk ${className}`} style={{ width: w, height: h, ...style }} />;
+}
+
+export function SkeletonCards({ n = 4, cols = "fx-g4" }) {
+  return (
+    <div className={`grid gap-3 ${cols}`}
+      style={{ gridTemplateColumns: `repeat(${Math.min(n, 4)}, minmax(0,1fr))` }}>
+      {Array.from({ length: n }, (_, i) => (
+        <div key={i} className="fx-card p-4">
+          <Skeleton w="52%" h={12} />
+          <div className="mt-3"><Skeleton w="70%" h={22} /></div>
+          <div className="mt-3"><Skeleton w="40%" h={10} /></div>
         </div>
-      )}
+      ))}
+    </div>
+  );
+}
+
+export function SkeletonTable({ rows = 6, cols = 4 }) {
+  return (
+    <div className="fx-card p-4">
+      <div className="flex gap-3 pb-3 mb-1" style={{ borderBottom: "1px solid var(--border)" }}>
+        {Array.from({ length: cols }, (_, i) => <Skeleton key={i} w={`${100 / cols - 4}%`} h={10} />)}
+      </div>
+      {Array.from({ length: rows }, (_, r) => (
+        <div key={r} className="flex gap-3 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+          {Array.from({ length: cols }, (_, c) => (
+            <Skeleton key={c} w={`${100 / cols - 4}%`} h={13}
+              style={{ opacity: 1 - r * 0.1 }} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * دونات — سهمِ هر دسته.
+ *
+ * بخش‌ها یکی‌یکی کشیده می‌شوند و با موس روی هرکدام، بقیه کم‌رنگ
+ * می‌شوند: مقایسه‌ی یک سهم با کل، بدون خواندن عدد.
+ */
+export function Donut({ items, size = 124, center }) {
+  const [hi, setHi] = useState(null);
+  const [on, setOn] = useState(false);
+  const R = 45, C = 2 * Math.PI * R;
+  const tot = (items || []).reduce((s, x) => s + (x.v || 0), 0);
+
+  useEffect(() => { const t = setTimeout(() => setOn(true), 30); return () => clearTimeout(t); }, []);
+  if (!tot) return null;
+
+  let off = 0;
+  const segs = items.map((it, i) => {
+    const len = (it.v / tot) * C;
+    const seg = { ...it, len, off, i };
+    off += len;
+    return seg;
+  });
+
+  return (
+    <div className="flex items-center gap-4 flex-wrap">
+      <svg className="fx-donut" viewBox="0 0 120 120"
+        style={{ width: size, height: size, flexShrink: 0 }} aria-hidden="true">
+        <g transform="rotate(-90 60 60)">
+          {segs.map((s) => (
+            <circle key={s.i} cx="60" cy="60" r={R} stroke={s.c} strokeWidth="15"
+              className={hi === null ? "" : hi === s.i ? "hi" : "dim"}
+              strokeDasharray={(on || reducedMotion())
+                ? `${Math.max(0, s.len - 2.5)} ${C - s.len + 2.5}` : `0 ${C}`}
+              strokeDashoffset={-s.off}
+              style={{ transition: `stroke-dasharray .8s var(--sp-soft) ${s.i * 90}ms,
+                                    stroke-width var(--m-base) var(--sp-snappy),
+                                    opacity var(--m-base) linear` }}
+              onMouseEnter={() => setHi(s.i)} onMouseLeave={() => setHi(null)} />
+          ))}
+        </g>
+        {center && (
+          <text x="60" y="65" textAnchor="middle" fontSize="15" fontWeight="700"
+            fill="var(--text)" fontFamily="var(--sans)">
+            {hi === null ? center : items[hi].n}
+          </text>
+        )}
+      </svg>
+      <div className="flex flex-col gap-0.5 flex-1" style={{ minWidth: 128 }}>
+        {segs.map((s) => (
+          <button key={s.i} className="flex items-center gap-2 px-2 py-1.5 rounded-[9px] text-[12px] w-full text-right"
+            style={{ color: hi === s.i ? "var(--text)" : "var(--dim)",
+                     background: hi === s.i ? "rgba(255,255,255,.05)" : "transparent",
+                     transition: "background var(--m-fast) linear, color var(--m-fast) linear" }}
+            onMouseEnter={() => setHi(s.i)} onMouseLeave={() => setHi(null)}
+            onFocus={() => setHi(s.i)} onBlur={() => setHi(null)}>
+            <i className="w-2 h-2 rounded-[3px] shrink-0" style={{ background: s.c }} />
+            <span className="truncate">{s.n}</span>
+            <b className="mr-auto shrink-0" style={{ fontFamily: "var(--mono)" }}>
+              {faNum(Math.round((s.v / tot) * 100))}٪
+            </b>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * میله‌های افقی — مقایسه‌ی چند چیزِ هم‌جنس.
+ *
+ * میله‌ها پلکانی پر می‌شوند تا ترتیبِ بزرگی دیده شود. مقیاس از
+ * بزرگ‌ترین مقدار می‌آید، نه از جمع، وگرنه ردیف‌های کوچک نامرئی
+ * می‌شوند.
+ */
+export function BarList({ items, color = "var(--accent)", format = (v) => faNum(v) }) {
+  const mx = Math.max(...(items || []).map((x) => x.v || 0), 1);
+  if (!items || !items.length) return null;
+  return (
+    <div className="flex flex-col gap-2.5">
+      {items.map((it, i) => (
+        <div key={it.n + i} className="grid items-center gap-2.5 text-[12px]"
+          style={{ gridTemplateColumns: "minmax(64px,96px) 1fr auto" }}>
+          <span className="truncate" style={{ color: "var(--dim)" }}>{it.n}</span>
+          <span className="h-2 rounded-full overflow-hidden"
+            style={{ background: "rgba(255,255,255,.06)" }}>
+            <i className="fx-barfill block" style={{
+              width: `${((it.v || 0) / mx) * 100}%`,
+              background: it.c || color,
+              animationDelay: `${i * 70}ms`,
+              ...(reducedMotion() ? { transform: "scaleX(1)", animation: "none" } : {}),
+            }} />
+          </span>
+          <b style={{ fontFamily: "var(--mono)", color: "var(--dim)" }} dir="ltr">
+            {format(it.v)}
+          </b>
+        </div>
+      ))}
     </div>
   );
 }
 
 export function Modal({ title, onClose, children, footer, width = "440px" }) {
+  const box = useRef(null);
+  useFocusTrap(box, onClose);
   return createPortal(
     <div className="nx-modal-wrap fx-fade"
       style={{ background: "rgba(3,6,12,.82)", backdropFilter: "blur(6px)" }}
@@ -409,7 +718,8 @@ export function Modal({ title, onClose, children, footer, width = "440px" }) {
       {/* سه بخش جدا: سر و ته ثابت، وسط اسکرول‌شونده.
           بدون این تقسیم، فرم‌های بلند از صفحه بیرون می‌زنند و
           دکمه‌ی پایین دیده نمی‌شود. */}
-      <div className="rounded-2xl fx-scale nx-modal" onClick={(e) => e.stopPropagation()}
+      <div ref={box} role="dialog" aria-modal="true" aria-label={title}
+        className="rounded-2xl fx-scale nx-modal" onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--surface)",
           border: "1px solid var(--border-2)",
@@ -516,6 +826,7 @@ export function AreaChart({
   format = (v) => String(v), fill = true,
 }) {
   const [hover, setHover] = useState(null);
+  const [tipX, setTipX] = useState(0);
   const id = useRef(`ac${Math.random().toString(36).slice(2, 9)}`).current;
 
   const pts = (data || []).filter((v) => typeof v === "number" && isFinite(v));
@@ -548,40 +859,61 @@ export function AreaChart({
   }
   const area = `${d} L ${W},${H} L 0,${H} Z`;
 
-  const onMove = (e) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const rel = (e.clientX - r.left) / r.width;
+  const track = (clientX, el) => {
+    const r = el.getBoundingClientRect();
+    const rel = (clientX - r.left) / r.width;
     // چیدمان راست‌به‌چپ است ولی نمودار زمانی چپ‌به‌راست می‌ماند
     const i = Math.round(rel * (pts.length - 1));
-    setHover(Math.max(0, Math.min(pts.length - 1, i)));
+    const idx = Math.max(0, Math.min(pts.length - 1, i));
+    setHover(idx);
+    setTipX((x(idx) / W) * r.width);
   };
+  const onMove = (e) => track(e.clientX, e.currentTarget);
+  const onTouch = (e) => track(e.touches[0].clientX, e.currentTarget);
 
   return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
-        style={{ width: "100%", height, display: "block", cursor: "crosshair" }}
-        onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+    <div className={`relative ${hover !== null ? "fx-hot" : ""}`}>
+      {/* تولتیپ شیشه‌ای — روی نمودار، نه زیرش.
+          مقدارِ همان نقطه‌ای که موس رویش است، بدون اینکه چشم پایین
+          برود و جایش را گم کند.
+
+          ظرف dir نمی‌گیرد: متنِ فارسی داخلش راست‌چین می‌ماند و
+          مختصاتِ SVG هم اصلاً به جهتِ نوشتار کاری ندارد. `left`
+          هم فیزیکی است و با RTL جابه‌جا نمی‌شود. */}
+      <div className="fx-tip" style={{ left: tipX, top: `${(y(pts[hover ?? 0]) / H) * 100}%` }}>
+        <div className="text-[11px] mb-1" style={{ color: "var(--muted)" }}>
+          {label || "مقدار"}
+        </div>
+        <div className="text-[13px] font-bold" style={{ color, fontFamily: "var(--mono)" }}>
+          {hover !== null ? format(pts[hover]) : ""}
+        </div>
+      </div>
+
+      <svg className="fx-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+        style={{ height, cursor: "crosshair" }}
+        onMouseMove={onMove} onMouseLeave={() => setHover(null)}
+        onTouchMove={onTouch} onTouchEnd={() => setHover(null)}>
         <defs>
           <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.35" />
+            <stop offset="0%" stopColor={color} stopOpacity="0.38" />
             <stop offset="100%" stopColor={color} stopOpacity="0.02" />
           </linearGradient>
+          <clipPath id={`${id}c`}>
+            <rect className={reducedMotion() ? "" : "fx-reveal"} x="0" y="0" width={W} height={H} />
+          </clipPath>
         </defs>
-        {fill && <path d={area} fill={`url(#${id})`} />}
-        <path d={d} fill="none" stroke={color} strokeWidth="1.6"
-          strokeLinecap="round" strokeLinejoin="round"
+        <g clipPath={`url(#${id}c)`}>
+          {fill && <path d={area} fill={`url(#${id})`} />}
+          <path d={d} fill="none" stroke={color} strokeWidth="1.8"
+            strokeLinecap="round" strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke" />
+        </g>
+        <line className="fx-guide" x1={x(hover ?? 0)} y1="0" x2={x(hover ?? 0)} y2={H}
           vectorEffect="non-scaling-stroke" />
-        {hover !== null && (
-          <>
-            <line x1={x(hover)} y1="0" x2={x(hover)} y2={H}
-              stroke={color} strokeWidth="0.6" strokeDasharray="2 2"
-              opacity="0.5" vectorEffect="non-scaling-stroke" />
-            <circle cx={x(hover)} cy={y(pts[hover])} r="2.2" fill={color}
-              stroke="var(--surface)" strokeWidth="1"
-              vectorEffect="non-scaling-stroke" />
-          </>
-        )}
+        <circle className="fx-dot" cx={x(hover ?? 0)} cy={y(pts[hover ?? 0])} r="2.6" fill={color}
+          stroke="var(--surface)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
       </svg>
+
       <div className="text-[12px] mt-1.5 h-[18px] flex justify-between"
         style={{ color: "var(--muted)" }}>
         <span>{label}</span>
@@ -765,5 +1097,144 @@ export function LongList({
       <Pager page={cur} pages={pages} total={filtered.length}
         perPage={perPage} onPage={setPage} />
     </div>
+  );
+}
+
+
+/**
+ * پالت فرمان — Ctrl+K.
+ *
+ * چرا این‌جا مهم است و در هر پنلی نه: نکسورا **۴۵ صفحه** دارد که
+ * در پنج فضای کاری پخش شده‌اند. رسیدن به «تلاش‌های نفوذ» یعنی اول
+ * فضای کاری را عوض کن، بعد گروه را پیدا کن، بعد آیتم را. جستجوی
+ * بالای سایدبار فقط *همان* فضای کاری را فیلتر می‌کند.
+ *
+ * این‌جا همه‌ی صفحه‌ها در یک فهرست‌اند، با نام فضای کاری‌شان، و
+ * انتخاب یک مورد هم فضای کاری را عوض می‌کند هم صفحه را. یعنی
+ * چیزی که دو تصمیم و سه کلیک بود، یک تایپ می‌شود.
+ *
+ * صفحه‌هایی که badge دارند (هنوز نیامده‌اند) نمی‌آیند — دکمه‌ی
+ * بی‌جواب از نبودِ دکمه بدتر است.
+ */
+export function CommandPalette({ open, onClose, workspaces, onPick, extra = [] }) {
+  const [q, setQ] = useState("");
+  const [idx, setIdx] = useState(0);
+  const box = useRef(null);
+  const listRef = useRef(null);
+
+  const all = [];
+  Object.values(workspaces || {}).forEach((ws) => {
+    ws.groups.forEach((g) => g.items.forEach((it) => {
+      if (it.badge) return;
+      all.push({ kind: "page", ws: ws.key, key: it.key, label: it.label,
+                 group: ws.label, icon: it.icon });
+    }));
+  });
+  extra.forEach((x) => all.push({ kind: "act", ...x }));
+
+  const hits = q
+    ? all.filter((x) => x.label.includes(q) || (x.group || "").includes(q))
+    : all;
+
+  useEffect(() => { setIdx(0); }, [q]);
+  useEffect(() => { if (open) { setQ(""); setIdx(0); } }, [open]);
+
+  // پیمایش با کیبورد — کلِ کار باید بدون موس تمام شود
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key === "ArrowDown") { e.preventDefault(); setIdx((i) => Math.min(hits.length - 1, i + 1)); }
+      if (e.key === "ArrowUp") { e.preventDefault(); setIdx((i) => Math.max(0, i - 1)); }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const h = hits[idx];
+        if (h) { h.kind === "act" ? h.run() : onPick(h.ws, h.key); onClose(); }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, hits, idx, onPick, onClose]);
+
+  useEffect(() => {
+    listRef.current?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [idx]);
+
+  if (!open) return null;
+
+  let lastGroup = "";
+  return createPortal(
+    <div className="fx-pal-wrap fx-fade" onClick={onClose}>
+      <div className="fx-pal" ref={box} role="dialog" aria-modal="true"
+        aria-label="پالت فرمان" onClick={(e) => e.stopPropagation()}>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)}
+          placeholder="بروید به، یا کاری انجام دهید…" aria-label="جستجوی فرمان" />
+        <div className="fx-pal-list" ref={listRef} role="listbox">
+          {hits.length === 0 && (
+            <div className="py-7 text-center text-[13px]" style={{ color: "var(--muted)" }}>
+              چیزی با «{q}» پیدا نشد
+            </div>
+          )}
+          {hits.map((h, i) => {
+            const head = h.group !== lastGroup ? (lastGroup = h.group) : null;
+            return (
+              <React.Fragment key={h.kind + (h.key || h.label) + i}>
+                {head && <div className="fx-pal-grp">{head}</div>}
+                <button className="fx-pal-it" role="option" aria-selected={i === idx}
+                  onMouseEnter={() => setIdx(i)}
+                  onClick={() => { h.kind === "act" ? h.run() : onPick(h.ws, h.key); onClose(); }}>
+                  {h.icon && <h.icon size={15} />}
+                  <span className="truncate">{h.label}</span>
+                  <span className="mr-auto text-[10px] shrink-0"
+                    style={{ color: "var(--muted)", fontFamily: "var(--mono)",
+                             opacity: i === idx ? 1 : 0 }}>↵</span>
+                </button>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * نشانگرِ متحرکِ منو.
+ *
+ * چرا به‌جای رنگ‌کردنِ ساده‌ی آیتم فعال: وقتی نشانگر از آیتم قبلی
+ * به آیتم تازه *سُر می‌خورد*، چشم مسیر را دنبال می‌کند و می‌فهمد
+ * کجای فهرست است. ظاهرشدنِ ناگهانی این را نمی‌دهد — مخصوصاً در
+ * منویی با ۴۵ آیتم که آدم جای خودش را گم می‌کند.
+ *
+ * والدش باید position: relative باشد و هر آیتم data-navkey داشته
+ * باشد. اگر آیتم فعال در این ظرف نباشد (فضای کاری دیگری است)،
+ * نشانگر محو می‌شود، نه اینکه روی آیتم اشتباه بنشیند.
+ */
+export function NavIndicator({ activeKey }) {
+  const ref = useRef(null);
+  const [box, setBox] = useState(null);
+
+  useEffect(() => {
+    let raf;
+    const measure = () => {
+      const host = ref.current?.parentElement;
+      if (!host) return;
+      const el = host.querySelector(`[data-navkey="${String(activeKey).replace(/"/g, "")}"]`);
+      setBox(el ? { top: el.offsetTop, h: el.offsetHeight } : null);
+    };
+    measure();
+    // یک فریم بعد هم: وقتی آکاردئون تازه باز شده، ارتفاع‌ها هنوز
+    // صفرند و اندازه‌گیریِ اول روی صفر می‌نشیند
+    raf = requestAnimationFrame(measure);
+    window.addEventListener("resize", measure);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", measure); };
+  }, [activeKey]);
+
+  return (
+    <span ref={ref} className="fx-ind" aria-hidden="true"
+      style={{ opacity: box ? 1 : 0, height: box?.h || 36,
+               transform: `translateY(${box?.top || 0}px)` }} />
   );
 }
