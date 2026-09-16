@@ -266,17 +266,31 @@ class XUI:
             f"هیچ مسیری برای {label} جواب نداد. امتحان شد:\n" + "\n".join(tried))
 
     def add_client(self, inbound_id, email, gb=0, days=0, ip_limit=0,
-                   client_uuid=None, tg_id=None, sub_id=None, flow=None, group=None, inbound_ids=None):
+                   client_uuid=None, tg_id=None, sub_id=None, flow=None,
+                   group=None, inbound_ids=None, start_on_use=False):
         """
         افزودن کلاینت به inbound.
 
         gb=0 یعنی نامحدود، days=0 یعنی بدون انقضا.
         مقدار expiryTime به میلی‌ثانیه است.
+
+        `start_on_use` یعنی «از اولین اتصال حساب کن»، نه از همین
+        حالا. قرارداد خودِ ۳x-ui است: expiryTime منفی را مدت
+        می‌فهمد و شمارش را وقتی شروع می‌کند که کلاینت اولین بار
+        وصل شود.
+
+        چرا لازم است: مشتری امروز می‌خرد و شاید هفته‌ی دیگر وصل
+        شود. بدون این، آن هفته از سهمش کم می‌شود و حق دارد شاکی
+        باشد.
         """
         client_uuid = client_uuid or str(uuidlib.uuid4())
         expiry = 0
         if days and days > 0:
-            expiry = int((datetime.now() + timedelta(days=days)).timestamp() * 1000)
+            if start_on_use:
+                expiry = -int(days * 86400 * 1000)
+            else:
+                expiry = int((datetime.now()
+                              + timedelta(days=days)).timestamp() * 1000)
 
         client = {
             "id": client_uuid,

@@ -320,24 +320,30 @@ function DropBox({ token, config, onDone, onClose }) {
 function NewBox({ token, plans, slug, onDone, onClose }) {
   const tiers = plans?.plans || [];
   const [gb, setGb] = useState(tiers[0] ? tiers[0].gb : 0);
-  const [months, setMonths] = useState(1);
+  const [days, setDays] = useState(30);
+  const [onUse, setOnUse] = useState(false);
   const [devices, setDevices] = useState(1);
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [made, setMade] = useState(null);
 
+  // همان گردکردنی که سرور برای صورتحساب به کار می‌برد: نیم‌ماه به
+  // بالا. اگر این‌جا جور دیگری حساب می‌شد، عددی که به نماینده نشان
+  // می‌دهیم با عددی که از اعتبارش کم می‌شود فرق می‌کرد.
+  const billMonths = Math.max(1, Math.round(days / 30));
   const tier = tiers.find((x) => x.gb === gb);
   const extra = devices > 1 ? devices - 1 : 0;
   const total = tier
-    ? (tier.price + (tier.perDevice || 0) * extra) * months : null;
+    ? (tier.price + (tier.perDevice || 0) * extra) * billMonths : null;
 
   const go = async () => {
     setBusy(true);
     setErr("");
     try {
       const j = await api("/api/portal/config", {
-        token, method: "POST", body: { gb, months, devices, label },
+        token, method: "POST",
+        body: { gb, days, devices, label, startOnFirstUse: onUse },
       });
       setMade(j);
       onDone();
@@ -378,6 +384,28 @@ function NewBox({ token, plans, slug, onDone, onClose }) {
                 {made.email}
               </div>
             </div>
+
+            {/* گروه ننشست — کانفیگ ساخته شده و پولش هم کم شده، ولی
+                در فهرست نماینده و در صورتحساب پیدا نمی‌شود. بدون این
+                پیام، نماینده فقط می‌دید که کانفیگش «گم شده». */}
+            {made.groupWarning && (
+              <div className="rounded-xl p-3 mb-3 text-[13px] leading-relaxed"
+                style={{ background: "rgba(251,191,36,.08)",
+                         border: "1px solid rgba(251,191,36,.3)",
+                         color: "var(--warn)" }}>
+                {made.groupWarning}
+              </div>
+            )}
+
+            {made.startOnFirstUse && (
+              <div className="rounded-xl p-3 mb-3 text-[13px] leading-relaxed"
+                style={{ background: "var(--surface-3)", color: "var(--dim)" }}>
+                شمارش از اولین اتصال شروع می‌شود — تا وقتی مشتری وصل
+                نشده، «شروع‌نشده» می‌ماند و از {faNum(made.days)} روزش
+                کم نمی‌شود.
+              </div>
+            )}
+
             {made.subUrl && (
               <div className="mb-3">
                 <div className="text-[12px] mb-1.5" style={{ color: "var(--muted)" }}>
@@ -446,22 +474,49 @@ function NewBox({ token, plans, slug, onDone, onClose }) {
               )}
             </div>
 
+            {/* روز، نه فقط ماه. دکمه‌های میان‌بر برای حالت‌های
+                معمول می‌مانند، ولی عدد را هم می‌شود دستی زد —
+                «۴۵ روز» یا «۱۰ روز» بین پله‌های ماه گیر نکند. */}
             <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
-              چند ماه
+              مدت اشتراک <span style={{ opacity: .6 }}>(روز)</span>
             </label>
-            <div className="flex gap-1.5 flex-wrap mb-3">
-              {[1, 2, 3, 6, 12].map((m) => (
-                <button key={m} onClick={() => setMonths(m)}
+            <div className="flex gap-1.5 flex-wrap mb-2">
+              {[7, 30, 60, 90, 180, 365].map((d) => (
+                <button key={d} onClick={() => setDays(d)}
                   className="px-3 py-2 rounded-lg text-[13px]"
                   style={{
-                    background: months === m ? "rgba(43,127,214,.18)" : "transparent",
-                    border: `1px solid ${months === m ? "rgba(43,127,214,.45)" : "var(--border)"}`,
-                    color: months === m ? "var(--accent-2)" : "var(--muted)",
+                    background: days === d ? "rgba(43,127,214,.18)" : "transparent",
+                    border: `1px solid ${days === d ? "rgba(43,127,214,.45)" : "var(--border)"}`,
+                    color: days === d ? "var(--accent-2)" : "var(--muted)",
                   }}>
-                  {faNum(m)}
+                  {faNum(d)}
                 </button>
               ))}
             </div>
+            <NumberInput min="1" max="366" value={days}
+              onChange={(e) => setDays(Math.max(1, Math.min(366, Number(e.target.value) || 1)))}
+              className="fx-input w-full text-center mb-1"
+              style={{ fontFamily: "var(--mono)" }} />
+            <div className="text-[11.5px] mb-3" style={{ color: "var(--muted)" }}>
+              برای حساب‌کردن مبلغ، {faNum(days)} روز = {faNum(billMonths)} ماه
+            </div>
+
+            {/* شروع از اولین اتصال — همان چیزی که خود پنل ۳x-ui دارد */}
+            <label className="flex items-start gap-2.5 mb-3 cursor-pointer">
+              <input type="checkbox" checked={onUse}
+                onChange={(e) => setOnUse(e.target.checked)}
+                style={{ accentColor: "var(--accent)", marginTop: 3 }} />
+              <span>
+                <span className="text-[13px]" style={{ color: "var(--dim)" }}>
+                  شمارش از اولین اتصال
+                </span>
+                <span className="block text-[11.5px] mt-0.5"
+                  style={{ color: "var(--muted)" }}>
+                  اگر مشتری چند روز دیرتر وصل شود، از سهمش کم نمی‌شود.
+                  تا وصل نشده «شروع‌نشده» نشان داده می‌شود.
+                </span>
+              </span>
+            </label>
 
             <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
               تعداد کاربر هم‌زمان

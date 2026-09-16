@@ -720,14 +720,30 @@ finally:
 _T2 = AP._tenant_by_slug("hossein")
 
 
+def _topup(amount=1000000):
+    """اعتبار را برمی‌گرداند سر جایش.
+
+    هر ساختی واقعاً پول کم می‌کند، پس چند بلوکِ پشت سر هم اعتبار را
+    تمام می‌کنند و تستِ بعدی به جای چیزی که می‌سنجد، ۴۰۲ می‌گیرد.
+    """
+    _c = _sq3.connect(str(AP.BOT_DB))
+    try:
+        _c.execute("UPDATE tenants SET credit=? WHERE portal_slug='hossein'",
+                   (amount,))
+        _c.commit()
+    finally:
+        _c.close()
+
+
 class _MakeXUI(_FakeXUI):
     made = []
 
     def add_client(self, inbound_id, email, gb=0, days=0, ip_limit=0,
                    client_uuid=None, tg_id=None, sub_id=None, flow=None,
-                   group=None, inbound_ids=None):
+                   group=None, inbound_ids=None, start_on_use=False):
         _MakeXUI.made.append({"inbound": inbound_id, "email": email, "gb": gb,
-                              "days": days, "ip": ip_limit, "group": group})
+                              "days": days, "ip": ip_limit, "group": group,
+                              "start_on_use": start_on_use})
         return {"id": "new-uuid", "email": email, "subId": email}
 
 
@@ -754,6 +770,112 @@ check("و تکراری نیست", _m.get("email") not in {c["email"] for c in _A
 # قیمت: ۵۰ گیگ = ۱۰۰٬۰۰۰، دو کاربر اضافه × ۲۰٬۰۰۰، دو ماه
 check("مبلغ درست کسر شد", _res["charged"] == (100000 + 40000) * 2,
       str(_res["charged"]))
+
+
+# ═══════════════════════════════════════════════════════════
+head("ساخت کانفیگ · روز، نه فقط ماه")
+
+# نماینده می‌خواهد «۴۵ روز» بدهد، نه اینکه بین ۱ و ۲ و ۳ ماه گیر
+# کند. ولی مبلغ باید با همان تابعی حساب شود که کلِ حسابداری از آن
+# می‌خواند — وگرنه سطح تازه‌ای می‌شود که عدد خودش را می‌سازد.
+
+_topup()
+_MakeXUI.made = []
+_r45 = AP.portal_create({"gb": 50, "days": 45, "devices": 1}, _T2)
+_m45 = _MakeXUI.made[0] if _MakeXUI.made else {}
+check("روز همان‌طور که خواسته شده به پنل می‌رود",
+      _m45.get("days") == 45, str(_m45.get("days")))
+check("و مبلغ با گردکردنِ خودِ حسابداری حساب می‌شود",
+      _r45["months"] == 2 and _r45["charged"] == 100000 * 2,
+      f"{_r45['months']} ماه · {_r45['charged']} تومان — ۴۵ روز یعنی ۲ ماه")
+
+_MakeXUI.made = []
+_r10 = AP.portal_create({"gb": 50, "days": 10, "devices": 1}, _T2)
+check("ده روز هم می‌شود، و یک ماه حساب می‌شود",
+      _MakeXUI.made[0].get("days") == 10 and _r10["months"] == 1,
+      f"{_r10['months']} ماه")
+
+# ماه هنوز پذیرفته می‌شود تا فراخوانی قدیمی نشکند
+_MakeXUI.made = []
+_rm = AP.portal_create({"gb": 50, "months": 3, "devices": 1}, _T2)
+check("«ماه» هنوز کار می‌کند و به روز تبدیل می‌شود",
+      _MakeXUI.made[0].get("days") == 90 and _rm["months"] == 3,
+      f"{_MakeXUI.made[0].get('days')} روز")
+
+for _bad, _why in (({"gb": 50, "days": 0, "devices": 1}, "روز صفر"),
+                   ({"gb": 50, "days": 400, "devices": 1}, "روز ۴۰۰")):
+    try:
+        AP.portal_create(_bad, _T2)
+        _ok_day = False
+    except Exception as e:
+        _ok_day = getattr(e, "status_code", 0) == 400
+    check("%s رد می‌شود" % _why, _ok_day)
+
+
+# ═══════════════════════════════════════════════════════════
+head("ساخت کانفیگ · شمارش از اولین اتصال")
+
+# قرارداد خودِ ۳x-ui: expiryTime منفی یعنی «این‌قدر مدت، از لحظه‌ای
+# که وصل شد». پنل از قبل این حالت را «شروع‌نشده» می‌شناسد.
+#
+# چرا مهم است: مشتری امروز می‌خرد و شاید هفته‌ی دیگر وصل شود. بدون
+# این، آن هفته از سهمش کم می‌شود.
+
+_topup()
+_MakeXUI.made = []
+_ru = AP.portal_create({"gb": 50, "days": 30, "devices": 1,
+                        "startOnFirstUse": True}, _T2)
+check("گزینه به پاسخ برمی‌گردد", _ru.get("startOnFirstUse") is True)
+check("و به پنل هم پاس داده می‌شود",
+      _MakeXUI.made[0].get("start_on_use") is True,
+      "وگرنه گزینه هست و هیچ کاری نمی‌کند")
+
+# و خودِ xui باید expiry را منفی بسازد
+import importlib.util as _iu3                            # noqa: E402
+_xspec = _iu3.spec_from_file_location(
+    "_xui_days", os.path.join(str(ROOT), "bot", "xui.py"))
+_xsrc = io.open(os.path.join(str(ROOT), "bot", "xui.py"),
+                encoding="utf-8").read()
+check("add_client حالت شروع‌از-اتصال را می‌شناسد",
+      "start_on_use" in _xsrc and "-int(days * 86400 * 1000)" in _xsrc,
+      "expiry منفی، قرارداد خودِ ۳x-ui")
+
+_neg = _xsrc[_xsrc.find("def add_client("):]
+_neg = _neg[:_neg.find(chr(10) + "    def ", 10)]
+check("و بدون آن، انقضا از همین حالا حساب می‌شود",
+      "timedelta(days=days)" in _neg,
+      "حالت پیش‌فرض نباید عوض شده باشد")
+
+
+# ═══════════════════════════════════════════════════════════
+head("ساخت کانفیگ · گروه باید واقعاً بنشیند")
+
+# گروه تنها چیزی است که می‌گوید این کانفیگ مالِ کدام نماینده است —
+# هم برای صورتحساب، هم برای اینکه خودش ببیندش. اگر ننشیند، کانفیگ
+# ساخته می‌شود، پولش کم می‌شود، و بعد در فهرست پیدا نمی‌شود. و
+# نسخه‌های قدیمی‌تر ۳x-ui اصلاً گروه ندارند و بی‌صدا دورش می‌ریزند.
+
+_topup()
+_MakeXUI.made = []
+_rg = AP.portal_create({"gb": 50, "days": 30, "devices": 1}, _T2)
+check("گروه به پنل فرستاده می‌شود", _MakeXUI.made[0].get("group") == "goroh-a",
+      str(_MakeXUI.made[0].get("group")))
+check("و وقتی درست نشسته، هشداری نیست",
+      "groupWarning" not in _rg,
+      "هشدار فقط برای وقتی است که واقعاً جا نیفتاده")
+
+# حالا پنلی که گروه را دور می‌ریزد
+_saved_read = AP._read_xui_clients
+AP._read_xui_clients = lambda *a, **k: ([
+    {"email": _MakeXUI.made[-1].get("email") if _MakeXUI.made else "x",
+     "group": "بدون گروه", "used": 0, "enable": True,
+     "totalGB": 0, "expiry": 0, "limitIp": 0}], [], None)
+_MakeXUI.made = []
+_rw = AP.portal_create({"gb": 50, "days": 30, "devices": 1}, _T2)
+AP._read_xui_clients = _saved_read
+check("ولی اگر گروه جا نیفتد، بی‌صدا نمی‌ماند",
+      "groupWarning" in _rw and "بدون گروه" in _rw["groupWarning"],
+      (_rw.get("groupWarning") or "(هیچ هشداری)")[:58])
 
 # ── حجمی که نرخ ندارد ──
 _MakeXUI.made = []

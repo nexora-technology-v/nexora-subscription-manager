@@ -10892,15 +10892,41 @@ def portal_create(payload: dict, t: dict = Depends(portal_tenant)):
 
     try:
         gb = max(0, _num("gb", 0))
-        months = _num("months", 1)
         devices = _num("devices", 1)
+        # روز، نه فقط ماه.
+        #
+        # نماینده می‌خواهد «۴۵ روز» یا «۱۰ روز» بدهد، نه اینکه بین
+        # ۱ و ۲ و ۳ ماه گیر کند. ماه هنوز پذیرفته می‌شود تا هر
+        # فراخوانیِ قدیمی بشکند نشود.
+        days = _num("days", 0)
+        months_in = _num("months", 0)
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="ورودی نامعتبر است")
 
-    if not 1 <= months <= 12:
-        raise HTTPException(status_code=400, detail="تعداد ماه باید بین ۱ تا ۱۲ باشد")
+    # «نفرستاده» با «صفر فرستاده» یکی نیست: اگر هیچ‌کدام نیامده باشد
+    # یک ماه پیش‌فرض است، ولی روزِ صفر یک ورودیِ غلط است و باید
+    # گفته شود — نه اینکه بی‌صدا یک ماه شود.
+    if p.get("days") is None and p.get("months") is None:
+        months_in = 1
+    if months_in and not days:
+        days = months_in * 30
+
+    if not 1 <= days <= 366:
+        raise HTTPException(status_code=400,
+                            detail="تعداد روز باید بین ۱ تا ۳۶۶ باشد")
     if not 0 <= devices <= 20:
         raise HTTPException(status_code=400, detail="تعداد کاربر باید بین ۰ تا ۲۰ باشد")
+
+    # مبلغ همچنان بر حسب ماه حساب می‌شود، با همان تابعی که کلِ
+    # حسابداری از آن می‌خواند. اگر این‌جا روز را جدا قیمت‌گذاری
+    # می‌کردیم، سطح تازه‌ای می‌شد که عدد خودش را می‌سازد — همان
+    # چیزی که چهار بار قبلاً چهار عدد متفاوت داد.
+    months = _months_from_days(days)
+
+    # شروع از اولین اتصال — همان کاری که خود پنل ۳x-ui می‌کند:
+    # expiryTime منفی یعنی «این‌قدر مدت، از لحظه‌ای که وصل شد».
+    # پنل از قبل این حالت را می‌شناسد و «شروع‌نشده» نشانش می‌دهد.
+    on_use = bool(p.get("startOnFirstUse") or p.get("start_on_use"))
 
     # حجم باید دقیقاً یکی از پله‌های تعریف‌شده باشد
     tiers = set()
@@ -10941,8 +10967,9 @@ def portal_create(payload: dict, t: dict = Depends(portal_tenant)):
     try:
         # گروه از ردیف مستاجر می‌آید، نه از درخواست. این تنها جایی
         # است که تعیین می‌کند کانفیگ تازه مال کیست.
-        client = xui.add_client(inbound, email, gb=gb, days=months * 30,
+        client = xui.add_client(inbound, email, gb=gb, days=days,
                                 ip_limit=devices, group=group,
+                                start_on_use=on_use,
                                 inbound_ids=_portal_inbound_ids(t, inbound))
     except Exception as e:
         _portal_refund(t, amount)
@@ -10959,9 +10986,38 @@ def portal_create(payload: dict, t: dict = Depends(portal_tenant)):
     _b = _sub_base(t)
     sub_url = (f"{_b}/{(client or {}).get('subId') or email}") if _b else None
 
-    return {"ok": True, "email": email, "gb": gb, "months": months,
-            "devices": devices, "charged": amount,
-            "uuid": (client or {}).get("id"), "subUrl": sub_url}
+    # گروه واقعاً نشست؟
+    #
+    # گروه تنها چیزی است که می‌گوید این کانفیگ مالِ کدام نماینده
+    # است — هم برای صورتحساب، هم برای اینکه خودِ نماینده ببیندش.
+    # اگر ننشیند، کانفیگ ساخته می‌شود، پولش هم کم می‌شود، و بعد در
+    # فهرستِ نماینده پیدا نمی‌شود. هیچ خطایی هم نمی‌آید.
+    #
+    # نسخه‌های قدیمی‌تر ۳x-ui اصلاً گروه ندارند و `groupName` را
+    # بی‌صدا دور می‌ریزند، پس این را نمی‌شود فرض گرفت — باید خواند.
+    group_ok, group_got = True, group
+    try:
+        fresh, _k, _e = _read_xui_clients()
+        for c in (fresh or []):
+            if c.get("email") == email:
+                group_got = (c.get("group") or "").strip()
+                group_ok = (group_got == group)
+                break
+    except Exception:
+        log.debug("بازخوانی گروهِ کانفیگ تازه ناموفق", exc_info=True)
+
+    out = {"ok": True, "email": email, "gb": gb, "months": months,
+           "days": days, "startOnFirstUse": on_use,
+           "devices": devices, "charged": amount,
+           "uuid": (client or {}).get("id"), "subUrl": sub_url}
+    if not group_ok:
+        log.warning("کانفیگ %s ساخته شد ولی گروهش «%s» شد نه «%s»",
+                    email, group_got, group)
+        out["groupWarning"] = (
+            f"کانفیگ ساخته شد ولی در گروه «{group_got or 'بدون گروه'}» "
+            f"نشست، نه «{group}». تا وقتی گروهش درست نشود، در فهرست "
+            "شما و در صورتحساب دیده نمی‌شود — به پشتیبانی بگویید.")
+    return out
 
 
 @app.post("/api/portal/toggle")
