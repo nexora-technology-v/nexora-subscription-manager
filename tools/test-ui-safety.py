@@ -194,6 +194,37 @@ check("هر import به یک export واقعی می‌رسد", not broken,
 for b in broken[:8]:
     print(f"      {Y}▸{X} {b}")
 
+
+
+# ═══════════════════════════════════════════════════════════
+head("CSS · دو قاعده نباید بی‌صدا همدیگر را پاک کنند")
+
+# `.fx-card` و `.fx-kpi` روی یک عنصر با هم می‌آیند. اگر هر دو
+# `::before` بسازند، هرکدام دیرتر در فایل بیاید دیگری را پاک
+# می‌کند — بدون هیچ خطایی، فقط یک افکت که ناپدید می‌شود.
+_PAIRS = [("fx-card", "fx-kpi"), ("fx-card", "fx-sk")]
+_clash = []
+for _a, _b in _PAIRS:
+    for _pseudo in ("::before", "::after"):
+        _ra = re.search(r"^\.%s%s\s*\{" % (_a, _pseudo), CSS, re.M)
+        _rb = re.search(r"^\.%s%s\s*\{" % (_b, _pseudo), CSS, re.M)
+        if _ra and _rb:
+            _clash.append("%s + %s هر دو %s" % (_a, _b, _pseudo))
+check("کلاس‌هایی که با هم می‌آیند، یک شبه‌عنصر را دو بار نمی‌سازند",
+      not _clash, "، ".join(_clash) if _clash
+      else "کارت از ::before، شاخص از ::after")
+
+# و هر عنصری که شبه‌عنصرِ مطلق دارد باید خودش جایگاه داشته باشد،
+# وگرنه آن شبه‌عنصر روی نزدیک‌ترین والدِ جایگاه‌دار می‌نشیند و کلِ
+# صفحه را می‌گیرد
+for _cls in ("fx-card", "fx-kpi"):
+    _blk = re.search(r"^\.%s\s*\{([^}]*)\}" % _cls, CSS, re.M)
+    _all = "".join(m.group(1) for m in
+                   re.finditer(r"^\.%s\s*\{([^}]*)\}" % _cls, CSS, re.M))
+    check("%s جایگاه دارد" % _cls,
+          "position: relative" in _all or "position:relative" in _all,
+          "شبه‌عنصرِ absolute بدون آن، از کارت بیرون می‌زند")
+
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R
 # ═══════════════════════════════════════════════════════════

@@ -764,12 +764,15 @@ code, kbd, samp, pre { overflow-wrap: anywhere; }
 /* ── کارتِ شاخص ── */
 .fx-kpi { position: relative; overflow: hidden;
           transition: transform var(--m-base) var(--sp-snappy), border-color var(--m-base) linear; }
-.fx-kpi::before {
+/* ::after و نه ::before — چون .fx-card هم ::before دارد (خطِ نازکِ
+   لبه‌ی بالا) و کارت شاخص هر دو کلاس را با هم می‌گیرد. با ::before،
+   هرکدام که دیرتر در فایل بیاید دیگری را بی‌صدا پاک می‌کند. */
+.fx-kpi::after {
   content: ""; position: absolute; inset: 0; opacity: 0; pointer-events: none;
   background: radial-gradient(22rem 12rem at 80% -20%, rgba(90,169,230,.14), transparent 70%);
   transition: opacity var(--m-base) linear;
 }
-.fx-kpi:hover::before { opacity: 1; }
+.fx-kpi:hover::after { opacity: 1; }
 .fx-kpi:hover { transform: translateY(-3px); border-color: var(--border-2); }
 .fx-bump { animation: fx-bump var(--m-slow) var(--sp-snappy); }
 @keyframes fx-bump {
@@ -990,3 +993,67 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
               border-color var(--m-base) linear, box-shadow var(--m-base) var(--sp-snappy);
 }
 .fx-card-i:hover { transform: translateY(-2px); box-shadow: var(--e-2); }
+
+
+/* ══════════════════════════════════════════════════════════════
+   ارتقای سراسری — چیزهایی که هر صفحه از آن‌ها ساخته شده
+   ------------------------------------------------------------
+   این‌جا عمداً هیچ کلاسِ تازه‌ای لازم نیست: صفحه‌ها همین حالا
+   .fx-card و .fx-table و .fx-pill دارند. با عوض‌شدن خودِ این‌ها،
+   هر ۴۵ صفحه با هم عوض می‌شوند — به‌جای اینکه ۴۵ فایل دستی
+   ویرایش شود و نیمی‌شان جا بماند.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── کارت: سطحِ تخت نبود، حالا یک شیب بسیار ملایم دارد ──
+   بالای کارت کمی روشن‌تر از پایینش است، مثل چیزی که نور از بالا
+   می‌گیرد. ۳ درصد اختلاف — دیده نمی‌شود ولی عمق می‌دهد. */
+.fx-card {
+  background: linear-gradient(to bottom, var(--surface-2), var(--surface));
+  border-radius: var(--r-l);
+  box-shadow: var(--e-1);
+}
+/* خطِ نازکِ روشن روی لبه‌ی بالایی — همان چیزی که کارت را از
+   پس‌زمینه جدا می‌کند بدون اینکه مرزش پررنگ شود */
+.fx-card::before {
+  content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+  background: linear-gradient(to left, transparent,
+              rgba(255,255,255,.10) 22%, rgba(255,255,255,.10) 78%, transparent);
+  border-radius: var(--r-l) var(--r-l) 0 0; pointer-events: none;
+}
+
+/* ── جدول ── */
+.fx-table th {
+  font-size: 11px; letter-spacing: .04em; font-weight: 600;
+  background: rgba(255,255,255,.015);
+  position: sticky; top: 0; z-index: 1;
+  backdrop-filter: blur(8px);
+}
+.fx-table td { font-size: 13px; }
+/* ردیفِ زیرِ موس: یک خطِ رنگی در لبه‌ی راست، نه فقط پس‌زمینه.
+   در جدولِ بلند، چشم همان ردیف را گم نمی‌کند. */
+.fx-table tbody tr { position: relative; }
+.fx-table tbody tr::after {
+  content: ""; position: absolute; inset-inline-start: 0; top: 0; bottom: 0;
+  width: 2px; background: var(--accent-2); transform: scaleY(0);
+  transition: transform var(--m-fast) var(--sp-snappy);
+}
+.fx-table tbody tr:hover::after { transform: scaleY(1); }
+
+/* ── نشان‌ها: کمی بلندتر و خواناتر ── */
+.fx-pill { padding: 4px 10px; font-weight: 600; }
+
+/* ── عنوانِ بخش ──
+   قبلاً فقط یک متنِ درشت بود. حالا یک خطِ رنگیِ کوتاه کنارش
+   می‌نشیند که می‌گوید «این‌جا سرِ یک بخش است». */
+.fx-sec-head { position: relative; padding-inline-start: 13px; }
+.fx-sec-head::before {
+  content: ""; position: absolute; inset-inline-start: 0; top: 3px; bottom: 3px;
+  width: 3px; border-radius: 3px;
+  background: linear-gradient(to bottom, var(--accent-2), transparent);
+}
+
+/* ── ورودی و دکمه: گردی از توکن ── */
+.fx-input, .fx-btn, .fx-btn-g, .fx-stepper, .fx-search { border-radius: var(--r-m); }
+
+/* ── نوار پیشرفت: همه‌جا یک شکل ── */
+.fx-usebar { height: 5px; }

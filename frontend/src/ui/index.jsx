@@ -150,7 +150,7 @@ export function CountUp({ value, duration = 850 }) {
 export function SectionHead({ title, desc, action }) {
   return (
     <div className="flex items-start justify-between gap-3 mb-5 flex-wrap">
-      <div className="min-w-0">
+      <div className="min-w-0 fx-sec-head">
         <h2 className="text-[16px] font-bold text-white">{title}</h2>
         {desc && <p className="text-[13px] mt-1.5 leading-relaxed" style={{ color: "var(--muted)" }}>{desc}</p>}
       </div>

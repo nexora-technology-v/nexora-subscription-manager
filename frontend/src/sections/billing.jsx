@@ -12,7 +12,7 @@ import {
 import { JalaliDate, isoToJalaliLabel } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
 import { errText, faNum, monoIf } from "../lib/format";
-import { Field, InfoBox, Modal, Msg, NumberInput, PageSkeleton, SectionHead, Toggle } from "../ui/index";
+import { Donut, Field, InfoBox, Modal, Msg, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../ui/index";
 
 export function BillingPeriod({ password }) {
   const { data, loading: loadingGroups } = useBilling(password);
@@ -1511,19 +1511,38 @@ export function BillingDash({ password }) {
           می‌داد. ۱۲۳ میلیون تومان ۹ رقم است و از کارت بیرون می‌زد.
           با ۲۰۰، روی موبایل یک ستون می‌شود و تا عددِ میلیاردی هم جا
           می‌گیرد؛ روی تبلت و دسکتاپ هنوز هر سه کنار هم‌اند. */}
-      <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
-        {[["کل بدهی دوره", due, "var(--accent-2)"],
-          ["دریافت‌شده", paid, "var(--ok)"],
-          ["مانده", due - paid, due - paid > 0 ? "var(--warn)" : "var(--ok)"]].map(([l, v, col], i) => (
-          <div key={i} className="fx-card p-4">
-            <div className="fx-stat-num text-[21px] font-extrabold leading-none"
-              style={{ color: col, fontFamily: "var(--mono)" }}>{faNum(v)}</div>
-            <div className="text-[12px] mt-2" style={{ color: "var(--dim)" }}>{l} · تومان</div>
-          </div>
-        ))}
+      {/* ۲۰۰ و نه ۱۶۰ — دلیلش بالا نوشته شده. StatTile همان قاعده را
+          نگه می‌دارد و آیکون و روند را هم اضافه می‌کند. */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
+        <StatTile label="کل بدهی دوره" icon={FileText} tone="var(--accent-2)"
+          value={faNum(due)} unit="تومان" color="var(--accent-2)"
+          hint={`${faNum(billed.length)} واسطه‌ی صورتحساب‌دار`} />
+        <StatTile label="دریافت‌شده" icon={Check} tone="var(--ok)"
+          value={faNum(paid)} unit="تومان" color="var(--ok)"
+          hint={due ? `${faNum(Math.round(paid * 100 / due))}٪ از کل دوره` : "—"} />
+        <StatTile label="مانده" icon={Clock}
+          tone={due - paid > 0 ? "var(--warn)" : "var(--ok)"}
+          value={faNum(due - paid)} unit="تومان"
+          color={due - paid > 0 ? "var(--warn)" : "var(--ok)"}
+          hint={due - paid > 0 ? "هنوز تسویه نشده" : "همه‌ی واسطه‌ها تسویه‌اند"} />
       </div>
 
-      <div className="fx-card p-5 mb-4">
+      {/* سهمِ تسویه‌شده از کل — عددی که در سه کارت بالا هست، این‌جا
+          *دیده* می‌شود. برای تصمیم‌گرفتن، نسبت مهم‌تر از مبلغ است. */}
+      {due > 0 && (
+        <div className="fx-card p-5">
+          <div className="text-[14px] font-semibold text-white mb-1">تسویه‌ی دوره</div>
+          <p className="text-[12px] mb-4" style={{ color: "var(--muted)" }}>
+            از {faNum(due)} تومانِ این دوره
+          </p>
+          <Donut center="تسویه" items={[
+            { n: "دریافت‌شده", v: paid, c: "var(--ok)" },
+            { n: "مانده", v: Math.max(0, due - paid), c: "var(--warn)" },
+          ]} />
+        </div>
+      )}
+
+      <div className="fx-card p-5">
         <div className="text-[14px] font-semibold text-white mb-4">وضعیت هر واسطه</div>
         {billed.length === 0 ? (
           <div className="text-center py-8 text-[13px]" style={{ color: "var(--muted)" }}>
@@ -1536,8 +1555,23 @@ export function BillingDash({ password }) {
             <div key={g.name} className="py-3.5"
               style={{ borderBottom: i < billed.length - 1 ? "1px solid var(--border)" : "none" }}>
               <div className="flex justify-between items-start gap-3 mb-2.5 flex-wrap">
-                <div>
-                  <div className="text-[14px] font-semibold text-white">{g.label}</div>
+                <div className="flex items-start gap-2.5 min-w-0">
+                  {/* حرفِ اولِ نام: در فهرستی از چند واسطه، چشم ردیف
+                      را از روی همین پیدا می‌کند، نه از خواندنِ نام */}
+                  <span className="w-8 h-8 rounded-[10px] grid place-items-center shrink-0 text-[13px] font-bold"
+                    style={{ background: rest > 0 ? "var(--warn-soft)" : "var(--ok-soft)",
+                             color: rest > 0 ? "var(--warn)" : "var(--ok)" }}>
+                    {(g.label || g.name || "?").trim().charAt(0)}
+                  </span>
+                  <div className="min-w-0">
+                  <div className="text-[14px] font-semibold text-white flex items-center gap-2 flex-wrap">
+                    {g.label}
+                    <span className="fx-pill" style={{
+                      background: rest > 0 ? "var(--warn-soft)" : "var(--ok-soft)",
+                      color: rest > 0 ? "var(--warn)" : "var(--ok)" }}>
+                      {rest > 0 ? `${faNum(pct)}٪ تسویه` : "تسویه شده"}
+                    </span>
+                  </div>
                   {/* کلیدِ گروه در bdi می‌نشیند، نه در یک div با dir="ltr".
                       با ltr روی کلِ خط، نامِ فارسیِ گروه («بدون گروه»)
                       جای خودش را با جداکننده‌ها عوض می‌کرد؛ و واحدها
@@ -1546,6 +1580,7 @@ export function BillingDash({ password }) {
                   <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
                     <bdi style={{ fontFamily: monoIf(g.name) }}>{g.name}</bdi>
                     {" · "}{faNum(g.configs)} کانفیگ · {faNum(g.months)} ماه
+                  </div>
                   </div>
                 </div>
                 <div className="text-left">
