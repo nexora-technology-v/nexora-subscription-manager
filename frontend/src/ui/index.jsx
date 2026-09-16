@@ -5,6 +5,7 @@
  * در آن عملاً ناممکن.
  */
 import React, { useState, useEffect, useRef } from "react";
+import { NexoraMark } from "../lib/mark.jsx";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Loader2, Minus, Plus, Search, X,
@@ -419,9 +420,8 @@ export function LoginScreen({ onLogin }) {
       style={{ background: "radial-gradient(ellipse 60% 50% at 50% 0%, var(--accent-soft), transparent), var(--bg)" }} dir="rtl">
       <div className="w-full max-w-sm rounded-2xl p-7 fx-anim" style={{ background: "var(--surface)", border: "1px solid var(--accent-halo)", boxShadow: "0 0 80px var(--accent-fill)" }}>
         <div className="flex flex-col items-center text-center mb-7">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-[28px] mb-4"
-            style={{ background: "linear-gradient(135deg,#2B7FD6,#8FC1EE)", color: "#06090F" }}>N</div>
-          <span className="text-white font-bold text-[18px]">NEXORA</span>
+          <NexoraMark size={76} animate className="mb-3" />
+          <span className="nx-word" style={{ marginTop: 0, fontSize: 18 }}>NEXORA</span>
           <span className="text-[13px] mt-1" style={{ color: "var(--muted)" }}>پنل مدیریت صفحه اشتراک</span>
         </div>
         <Field label="رمز عبور مدیریت">

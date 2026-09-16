@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { isMini, portalSlug } from "./lib/route.js";
+import { Splash } from "./lib/mark.jsx";
 import "./index.css";
 
 // آدرس تعیین می‌کند کدام اپ بالا بیاید.
@@ -19,15 +20,17 @@ const Admin = lazy(() => import("./App.jsx"));
 
 const Root = isMini() ? Mini : portalSlug() ? Portal : Admin;
 
-// تا رسیدنِ تکه، صفحه نباید سفید بماند — همان زمینه‌ی خودِ پنل با
-// یک نبضِ آرام، که «دارد می‌آید» را بگوید بدون اینکه چیزی بپرد.
+// تا رسیدنِ تکه، صفحه نباید سفید بماند.
+//
+// `Splash` از `lib/mark.jsx` می‌آید که مثل `lib/route.js` هیچ
+// وابستگی‌ای ندارد — اگر از کتابخانه‌ی UI می‌آمد، همه‌ی آیکون‌هایش
+// هم داخل تکه‌ی ورودی می‌نشستند و lazy بی‌معنی می‌شد.
+const BOOT_LABEL = isMini() ? "اشتراک من"
+  : portalSlug() ? "پنل نمایندگی"
+  : "پنل مدیریت";
+
 function Booting() {
-  return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center",
-                  background: "var(--bg)" }}>
-      <div className="fx-sk" style={{ width: 132, height: 8, borderRadius: 99 }} />
-    </div>
-  );
+  return <Splash label={BOOT_LABEL} />;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(

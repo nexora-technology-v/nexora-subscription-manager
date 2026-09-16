@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { NexoraMark } from "./lib/mark.jsx";
 import { createPortal } from "react-dom";
 import {
   Activity, AlertTriangle, Apple, ArrowUpRight, Bell, Bot, Check, CheckCircle2, ChevronLeft,
@@ -226,9 +227,9 @@ export default function App() {
       <aside className={`fx-side ${open ? "open" : ""}`} style={{ zIndex: 60 }}>
         <div className="flex items-center justify-between gap-2 px-2 mb-2">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-[18px] shrink-0"
-              style={{ background: "linear-gradient(140deg,#8FC1EE,#2B7FD6 62%,#2DD4BF)",
-                       color: "#06090F", boxShadow: "0 6px 18px -6px var(--accent-edge)" }}>N</div>
+            {/* همان نشانِ صفحه‌ی ورود، نه یک مربعِ «N» دیگر — دو شکلِ
+                متفاوت برای یک برند، یعنی هیچ‌کدام شناخته نمی‌شوند */}
+            <NexoraMark size={36} className="shrink-0" />
             <div className="min-w-0 fx-hide-c">
               <div className="text-[16px] font-bold text-white leading-none">NEXORA</div>
               <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>پنل مدیریت</div>

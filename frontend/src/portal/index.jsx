@@ -24,6 +24,7 @@ import { isoToJalaliLabel } from "../ui/jalali";
 // می‌شوند. این‌جا فقط همان چیزی گرفته می‌شود که ui/jalali هم هست —
 // ابزار عمومی، نه کدِ پنل مدیر.
 import { Avatar, NumberInput, StatTile, usePager } from "../ui/index";
+import { NexoraMark } from "../lib/mark.jsx";
 
 const TOKEN_KEY = "nexora_portal_token";
 
@@ -85,8 +86,7 @@ function Login({ slug, onIn }) {
       <div className="w-full max-w-sm rounded-2xl p-7"
         style={{ background: "var(--surface)", border: "1px solid var(--accent-halo)" }}>
         <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-[28px] mb-4"
-            style={{ background: "linear-gradient(135deg,#2B7FD6,#8FC1EE)", color: "#06090F" }}>N</div>
+          <NexoraMark size={76} animate className="mb-3" />
           <span className="text-white font-bold text-[18px]">پنل نمایندگی</span>
           <span className="text-[13px] mt-1" style={{ color: "var(--muted)" }}>
             {slug ? `نشانی: ${slug}` : "نشانی نامشخص"}
