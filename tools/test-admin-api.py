@@ -2541,6 +2541,51 @@ for _h, _why in ((("http"), "بدون https"), ((""), "بدون هدر proto")):
     check("%s چیزی ثبت نمی‌کند" % _why, _stored_mini() == "",
           "تلگرام هم http را رد می‌کند؛ ثبتش فقط مقدار مرده می‌سازد")
 
+# و بدون آن هدر هم باید کار کند.
+#
+# نسخه‌ی اول فقط x-forwarded-proto را می‌خواند و روی نصب‌های واقعی
+# هیچ‌وقت ثبت نشد: بلوک nginx خودمان آن هدر را جلو نمی‌فرستاد، پس
+# درخواست به شکل http می‌رسید و شرط همیشه رد می‌شد. مالک آخرین نسخه
+# را نصب کرد و هیچ دکمه‌ای ندید.
+_clear_mini()
+AP._learn_panel_origin(_Req(host="panel.example.com",
+                            referer="https://panel.example.com/"))
+check("بدون هدر پروکسی هم، از نوار آدرسِ مرورگر یاد می‌گیرد",
+      _stored_mini() == "https://panel.example.com/app",
+      _stored_mini() or "(هیچ) — همان چیزی که روی سرور واقعی افتاد")
+
+_clear_mini()
+AP._learn_panel_origin(_Req(host="10.0.0.5:8100",
+                            referer="https://panel.example.com:8443/#/x"))
+check("و دامنه را از خودِ Referer می‌گیرد، نه از Host",
+      _stored_mini() == "https://panel.example.com:8443/app", _stored_mini())
+
+_clear_mini()
+AP._learn_panel_origin(_Req(host="panel.example.com",
+                            origin="https://panel.example.com"))
+check("هدر Origin هم پذیرفته است",
+      _stored_mini() == "https://panel.example.com/app", _stored_mini())
+
+# ولی http در هیچ شکلی قبول نیست — تلگرام خودِ پیام را رد می‌کند
+_clear_mini()
+AP._learn_panel_origin(_Req(host="panel.example.com",
+                            referer="http://panel.example.com/"))
+check("Refererِ http چیزی ثبت نمی‌کند", _stored_mini() == "",
+      "وگرنه دکمه‌ای می‌ساخت که کل منوی ربات را از کار می‌اندازد")
+
+_clear_mini()
+AP._learn_panel_origin(_Req(host="panel.example.com",
+                            referer="https://good.ir@evil.com/x"))
+check("Refererِ آلوده هم رد می‌شود", _stored_mini() == "",
+      "@ در آدرس یعنی هاستِ واقعی چیز دیگری است")
+
+# و همان قاعده در nginx هم باید نوشته باشد، وگرنه نصب تازه دوباره
+# همان‌جا می‌ماند
+_INST = io.open(os.path.join(str(ROOT), "install.sh"), encoding="utf-8").read()
+check("nginx هم هدر پروتکل را جلو می‌فرستد",
+      _INST.count("X-Forwarded-Proto") >= 3,
+      "%d بلوک — ریشه‌ی خودِ باگ" % _INST.count("X-Forwarded-Proto"))
+
 _clear_mini()
 AP._learn_panel_origin(_Req(host="evil.com/x?a=b",
                             **{"x-forwarded-proto": "https"}))

@@ -394,6 +394,10 @@ server {
         proxy_pass http://127.0.0.1:8100;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
+        # بدون این، بک‌اند نمی‌داند پنل روی https باز شده — TLS این‌جا
+        # تمام می‌شود و درخواست به شکل http به uvicorn می‌رسد. اولین
+        # قربانی‌اش ثبتِ خودکار آدرس مینی‌اپ بود که هیچ‌وقت انجام نشد.
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
@@ -468,6 +472,10 @@ $IP_RULE
         proxy_pass http://127.0.0.1:8100;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
+        # بدون این، بک‌اند نمی‌داند پنل روی https باز شده — TLS این‌جا
+        # تمام می‌شود و درخواست به شکل http به uvicorn می‌رسد. اولین
+        # قربانی‌اش ثبتِ خودکار آدرس مینی‌اپ بود که هیچ‌وقت انجام نشد.
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 60s;
     }
 }
@@ -496,6 +504,10 @@ $IP_RULE
         proxy_pass http://127.0.0.1:8100;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
+        # بدون این، بک‌اند نمی‌داند پنل روی https باز شده — TLS این‌جا
+        # تمام می‌شود و درخواست به شکل http به uvicorn می‌رسد. اولین
+        # قربانی‌اش ثبتِ خودکار آدرس مینی‌اپ بود که هیچ‌وقت انجام نشد.
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 60s;
     }
 }

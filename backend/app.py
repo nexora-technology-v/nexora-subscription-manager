@@ -641,6 +641,47 @@ def login(payload: dict):
     return {"ok": True}
 
 
+def _panel_host(request):
+    """
+    دامنه‌ی پنل، فقط وقتی مطمئن باشیم روی https باز شده. وگرنه "" .
+
+    چرا دو منبع و نه فقط هدر `X-Forwarded-Proto`:
+
+    نسخه‌ی اول فقط آن هدر را می‌خواند، و روی نصب‌های واقعی **هیچ‌وقت
+    درست نشد** — چون بلوک nginx خودمان آن را جلو نمی‌فرستاد. TLS روی
+    nginx تمام می‌شد و درخواست به uvicorn به شکل http می‌رسید، پس
+    شرط همیشه رد می‌شد و آدرس مینی‌اپ هرگز ثبت نمی‌شد. یعنی قابلیتی
+    که «بدون تنظیم کار می‌کند» اعلام شده بود، روی سرور کار نمی‌کرد و
+    هیچ‌جا هم نمی‌گفت چرا. (بلوک nginx هم در همین نسخه اصلاح شد، ولی
+    نصب‌های موجود فایل قدیمی را دارند.)
+
+    `Referer` را خودِ مرورگر می‌گذارد و نوار آدرسِ همان پنل است — یعنی
+    دقیقاً همان چیزی که می‌خواهیم بدانیم، بدون وابستگی به تنظیم nginx.
+    این مسیر رمز مدیر می‌خواهد، پس فقط مرورگرِ خودِ مالک به این‌جا
+    می‌رسد و سطح اعتماد همان قبلی است.
+    """
+    def _clean(h):
+        h = (h or "").split(",")[0].strip()
+        return "" if (not h or any(c in h for c in " /\\?#@")) else h
+
+    # ۱) نوار آدرسِ خودِ مرورگر
+    for key in ("referer", "origin"):
+        raw = (request.headers.get(key) or "").strip()
+        if not raw.lower().startswith("https://"):
+            continue
+        host = _clean(raw[len("https://"):].split("/")[0])
+        if host:
+            return host
+
+    # ۲) هدر پروکسی — برای نصب‌هایی که تنظیمش دارند
+    if (request.headers.get("x-forwarded-proto") or "").strip().lower() == "https":
+        return _clean(request.headers.get("host"))
+
+    # بدون https آدرسی نمی‌سازیم: تلگرام خودش ردش می‌کند و
+    # ثبت‌کردنش فقط یک مقدارِ مرده به جا می‌گذارد
+    return ""
+
+
 def _learn_panel_origin(request):
     """
     دامنه‌ی خودِ پنل را یک‌بار یاد می‌گیرد و آدرس مینی‌اپ را می‌سازد.
@@ -659,13 +700,8 @@ def _learn_panel_origin(request):
     گذاشت، بازکردنِ دوباره‌ی پنل رویش ننویسد.
     """
     try:
-        host = (request.headers.get("host") or "").split(",")[0].strip()
-        proto = (request.headers.get("x-forwarded-proto") or "").strip().lower()
-        if not host or proto != "https":
-            # بدون https آدرسی نمی‌سازیم: تلگرام خودش ردش می‌کند و
-            # ثبت‌کردنش فقط یک مقدارِ مرده به جا می‌گذارد
-            return
-        if any(c in host for c in " /\\?#"):
+        host = _panel_host(request)
+        if not host:
             return
 
         con = _bot_rw()
