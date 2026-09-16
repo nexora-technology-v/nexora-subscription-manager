@@ -11,9 +11,7 @@ import {
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum, fmtSize, fmtUptime, toFaDigits } from "../lib/format";
 import { usePolling } from "../lib/hooks";
-import {
-  ConfirmModal, CountChip, EmptyState, Field, InfoBox, LongList, Msg, NumberInput, SectionHead, Segmented, Toggle,
-} from "../ui/index";
+import { ConfirmModal, CountChip, EmptyState, Field, InfoBox, LongList, Msg, NumberInput, PageSkeleton, SectionHead, Segmented, Toggle } from "../ui/index";
 
 export const LEVEL_STYLE = {
   ok: { c: "var(--ok)", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.30)",
@@ -884,7 +882,7 @@ export function MonitorSection({ password }) {
   usePolling(load, live ? 8000 : 0, [password]);
 
   if (loading) {
-    return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+    return <PageSkeleton />;
   }
 
   const sec = d?.sections || {};

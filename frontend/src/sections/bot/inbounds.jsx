@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errText, faNum } from "../../lib/format";
-import { EmptyState, InfoBox, Msg, SectionHead, StatusChip } from "../../ui/index";
+import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatusChip } from "../../ui/index";
 
 // سه حالت انتخاب اینباند. متن‌ها عمداً توضیحی‌اند تا مدیر
 // بدون خواندن مستندات بفهمد هرکدام چه اثری روی کانفیگ مشتری دارد.
@@ -134,7 +134,7 @@ export function BotInboundsSection({ password, tenant = null }) {
   };
 
   if (loading) {
-    return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+    return <PageSkeleton />;
   }
 
   return (

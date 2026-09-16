@@ -711,6 +711,150 @@ check("و رنگش از روی درصد می‌آید",
       "usagePct >= 90" in _PI and "usagePct >= 75" in _PI,
       "قرمز بالای ۹۰، زرد بالای ۷۵ — تا نگاه سریع کافی باشد")
 
+TW = io.open(os.path.join(ROOT, "frontend", "tailwind.config.js"),
+             encoding="utf-8").read()
+
+
+# ═══════════════════════════════════════════════════════════
+head("بارگذاری · اسکلتون، نه چرخنده‌ی وسطِ صفحه")
+
+# چرخنده فقط می‌گوید «صبر کن» و وقتی داده رسید کل چیدمان می‌پرد.
+# اسکلتون جای محتوا را از قبل نگه می‌دارد.
+#
+# چرخنده‌ی داخلِ دکمه درست است و باید بماند: آن‌جا واقعاً یعنی
+# «این دکمه مشغول است» و جای چیزی را نگرفته.
+_page_spin = []
+for _n, _s in ALL.items():
+    for _m in re.finditer(
+            r'<div className="flex (?:justify-center|items-center justify-center)'
+            r'[^"]*"[^>]*>\\s*<Loader2[^/]*/>\\s*</div>', _s):
+        _page_spin.append(f"{_n}:{_s[:_m.start()].count(chr(10)) + 1}")
+
+check("هیچ چرخنده‌ی تمام‌صفحه‌ای نمانده", not _page_spin,
+      "، ".join(_page_spin[:4]) if _page_spin else "همه اسکلتون شده‌اند")
+
+check("اسکلتونِ صفحه وجود دارد", "export function PageSkeleton" in UI)
+check("و به صفحه‌خوان هم می‌گوید مشغول است", 'aria-busy="true"' in UI,
+      "وگرنه کسی که صفحه را نمی‌بیند نمی‌فهمد چیزی در راه است")
+
+_sk_users = [n for n, s in ALL.items()
+             if "<PageSkeleton" in s or "<Skeleton" in s or "<SkeletonTable" in s]
+check("و واقعاً در صفحه‌ها استفاده شده", len(_sk_users) >= 18,
+      f"{len(_sk_users)} فایل")
+
+
+# ═══════════════════════════════════════════════════════════
+head("مودال · نباید تله‌ی کیبورد باشد")
+
+# با Tab می‌شد از داخل مودال به صفحه‌ی زیرش رفت و روی دکمه‌ای زد که
+# اصلاً دیده نمی‌شود. برای کسی که با کیبورد کار می‌کند، مودال عملاً
+# یک تله بود.
+check("حبس تمرکز نوشته شده", "export function useFocusTrap" in UI)
+check("و تمرکز را سر جای اولش برمی‌گرداند", "prev.focus" in UI,
+      "بعد از بستن، کاربر باید همان‌جا باشد که بود")
+check("و با Escape بسته می‌شود", 'e.key === "Escape"' in UI)
+
+for _name in ("Modal", "ConfirmModal"):
+    _fn = UI[UI.find(f"export function {_name}("):]
+    _fn = _fn[:_fn.find(chr(10) + "export ", 10)]
+    check(f"{_name} از حبس تمرکز استفاده می‌کند", "useFocusTrap(box" in _fn)
+    check(f"{_name} به صفحه‌خوان می‌گوید مودال است",
+          'role="dialog"' in _fn and 'aria-modal="true"' in _fn)
+
+_toast = UI[UI.find("export function Toast("):]
+_toast = _toast[:_toast.find(chr(10) + "export ", 10)]
+check("توست اعلام می‌شود", 'role="status"' in _toast and 'aria-live' in _toast,
+      "بدون این، «ذخیره شد» برای صفحه‌خوان اتفاق نیفتاده است")
+
+
+# ═══════════════════════════════════════════════════════════
+head("موشن · یک زبان، نه سلیقه‌ی هر کامپوننت")
+
+_css_all = CSS
+for _tok in ("--m-fast", "--m-base", "--m-slow",
+             "--sp-snappy", "--sp-soft", "--sp-inout"):
+    check(f"توکن {_tok} تعریف شده", _tok + ":" in _css_all)
+
+check("تیلویند توکن‌ها را می‌شناسد",
+      "theme: { extend: {} }" not in TW
+      and 'accent: "var(--accent)"' in TW
+      and "transitionTimingFunction" in TW,
+      "وگرنه هر کامپوننت باید style درون‌خطی بنویسد")
+check("و رنگ‌ها را از همان متغیرهای CSS می‌خواند",
+      TW.count("var(--") >= 14, f"{TW.count('var(--')} ارجاع")
+
+# انیمیشن روی width/height/top/left یعنی مرورگر باید چیدمان را
+# دوباره حساب کند — روی موبایل همان‌جا می‌لنگد
+_bad_anim = []
+for _m in re.finditer(r"transition:\\s*([^;]+);", _css_all):
+    _t = _m.group(1)
+    for _prop in ("width", "height", "top", "left", "right", "bottom", "margin"):
+        # «width» داخل «stroke-width» و «max-width» نباید شمرده شود
+        if re.search(r"(?:^|[\\s,])" + _prop + r"(?:\\s|,|$)", _t):
+            _bad_anim.append(_t.strip()[:60])
+check("هیچ transition روی خصوصیت‌های چیدمانی نیست", not _bad_anim,
+      "، ".join(sorted(set(_bad_anim))[:3]) if _bad_anim
+      else "فقط transform و opacity و رنگ — یعنی روی GPU")
+
+check("حرکت را می‌شود کم کرد", "body.fx-calm" in _css_all)
+check("و تنظیمِ خودِ سیستم هم محترم است",
+      "prefers-reduced-motion" in _css_all)
+
+
+# ═══════════════════════════════════════════════════════════
+head("پالت فرمان · ۴۵ صفحه با یک تایپ")
+
+_APPJ = ALL.get("App.jsx", "")
+check("پالت فرمان وجود دارد", "export function CommandPalette" in UI)
+check("و با Ctrl+K باز می‌شود",
+      'e.key.toLowerCase() === "k"' in _APPJ and "ctrlKey" in _APPJ)
+check("همه‌ی فضاهای کاری را می‌گردد، نه فقط یکی",
+      "workspaces={WORKSPACES}" in _APPJ,
+      "جستجوی سایدبار فقط همان فضای کاری را فیلتر می‌کرد")
+check("و انتخاب، فضای کاری را هم عوض می‌کند",
+      "setWorkspace(ws)" in _APPJ,
+      "وگرنه به صفحه‌ای می‌رفت که در فهرست جاری نیست و پرت می‌شد")
+check("صفحه‌های نیامده در پالت نمی‌آیند", "if (it.badge) return;" in UI,
+      "دکمه‌ی بی‌جواب از نبودِ دکمه بدتر است")
+check("با کیبورد کامل کار می‌کند",
+      '"ArrowDown"' in UI and '"ArrowUp"' in UI and '"Enter"' in UI)
+
+
+# ═══════════════════════════════════════════════════════════
+head("سه اپ نباید در یک فایل باشند")
+
+# مشتریِ مینی‌اپ کلِ پنل مدیر را هم دانلود می‌کرد — و همان مشتری،
+# همان کسی است که اینترنتش محدود است.
+_MAIN = ALL.get("main.jsx", "")
+check("اپ‌ها با lazy بارگذاری می‌شوند",
+      _MAIN.count("lazy(() => import(") >= 3, "پنل مدیر، پنل نماینده، مینی‌اپ")
+check("و شرطِ مسیر از ماژولِ بی‌وابستگی می‌آید",
+      'from "./lib/route.js"' in _MAIN,
+      "وگرنه خودِ تصمیم، هر سه اپ را بار می‌کند")
+_ROUTE = ALL.get("lib/route.js", "")
+check("و آن ماژول واقعاً هیچ وابستگی‌ای ندارد",
+      "import " not in _ROUTE, "یک import کافی است تا همه‌چیز دوباره به هم بچسبد")
+check("تا رسیدنِ تکه، صفحه سفید نمی‌ماند", "Suspense" in _MAIN and "fallback" in _MAIN)
+
+
+# ═══════════════════════════════════════════════════════════
+head("مینی‌اپ · باید شبیه خودِ تلگرام باشد")
+
+_MINI = ALL.get("mini/index.jsx", "")
+check("رنگ‌ها را از تلگرام می‌گیرد", "themeParams" in _MINI,
+      "وگرنه روی تلگرامِ روشن، یک جعبه‌ی تیره‌ی غریبه است")
+check("و وقتی کاربر پوسته را عوض کند، دنبالش می‌رود",
+      '"themeChanged"' in _MINI)
+check("نوار بالای تلگرام هم هم‌رنگ می‌شود", "setHeaderColor" in _MINI)
+check("هیچ متنِ سفیدِ ثابتی نمانده", "text-white" not in _MINI,
+      "روی پوسته‌ی روشن، سفید روی سفید نامرئی است")
+check("لرزشِ بازخورد دارد", "HapticFeedback" in _MINI)
+check("ولی نبودنش چیزی را نمی‌شکند",
+      "catch { /* بی‌صدا — لرزش اختیاری است */ }" in _MINI)
+check("و هنوز هیچ پولی این‌جا حساب نمی‌شود",
+      "price *" not in _MINI and "* months" not in _MINI,
+      "خرید در خودِ ربات می‌ماند — قرار خودِ مالک")
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { errText } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { Field, Msg, SectionHead, StatusPill, Tabs } from "../../ui/index";
+import { Field, Msg, PageSkeleton, SectionHead, StatusPill, Tabs } from "../../ui/index";
 
 export const REJECT_REASONS = [
   "مبلغ واریزی با مبلغ سفارش مطابقت ندارد.",
@@ -97,7 +97,7 @@ export function BotOrdersSection({ password }) {
       <Tabs items={FILTERS.map(f => ({ key: f.k, label: f.l }))} active={filter} onChange={setFilter} />
 
       {loading ? (
-        <div className="flex justify-center py-14"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>
+        <PageSkeleton />
       ) : orders.length === 0 ? (
         <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
           <CreditCard size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />

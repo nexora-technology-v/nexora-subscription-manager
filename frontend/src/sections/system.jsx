@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { errText } from "../lib/format";
 import { API_URL } from "../lib/constants";
-import { ConfirmModal, Field, InfoBox, Msg, SectionHead } from "../ui/index";
+import { ConfirmModal, Field, InfoBox, Msg, PageSkeleton, SectionHead } from "../ui/index";
 
 export function RollbackCard({ password }) {
   const [snaps, setSnaps] = useState([]);
@@ -553,7 +553,7 @@ export function SystemSection({ password }) {
   );
 
   if (loading) {
-    return <div className="flex items-center justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+    return <PageSkeleton />;
   }
 
   return (

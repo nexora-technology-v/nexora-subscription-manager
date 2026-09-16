@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import { ConfirmModal, EmptyState, Field, InfoBox, Msg, NumberInput, SectionHead } from "../ui/index";
+import { ConfirmModal, EmptyState, Field, InfoBox, Msg, NumberInput, PageSkeleton, SectionHead } from "../ui/index";
 import { JalaliDate } from "../ui/jalali";
 
 const KIND_META = {
@@ -254,9 +254,7 @@ export function BillingExpenses({ password }) {
 
   if (!d) {
     return (
-      <div className="flex justify-center py-16">
-        <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
-      </div>
+      <PageSkeleton />
     );
   }
 
@@ -437,9 +435,7 @@ export function BillingLedger({ password }) {
 
   if (!d) {
     return (
-      <div className="flex justify-center py-16">
-        <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
-      </div>
+      <PageSkeleton />
     );
   }
 

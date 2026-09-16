@@ -9,7 +9,7 @@ import {
   Coins, Gift, Loader2, Plus as PlusIcon, Save, Trash2,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
-import { Field, InfoBox, Msg, NumberInput, NumberStepper, SectionHead } from "../../ui/index";
+import { Field, InfoBox, Msg, NumberInput, NumberStepper, PageSkeleton, SectionHead } from "../../ui/index";
 
 export function BotCoinsSection({ password }) {
   const [t, setT] = useState(null);
@@ -53,7 +53,7 @@ export function BotCoinsSection({ password }) {
     finally { setSaving(false); }
   };
 
-  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="fx-anim">

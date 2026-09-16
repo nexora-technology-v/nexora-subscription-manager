@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { errText } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { Field, InfoBox, Msg, SectionHead, Toggle } from "../../ui/index";
+import { Field, InfoBox, Msg, PageSkeleton, SectionHead, Toggle } from "../../ui/index";
 
 export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
   const [busy, setBusy] = useState(null);
@@ -357,7 +357,7 @@ export function BotSection({ password, dirty }) {
     finally { setSaving(false); }
   };
 
-  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
 
   // اگر به هر دلیلی tenant ساخته نشد، به‌جای صفحه‌ی سفید یک پیام
   // با راه‌حل نشان می‌دهیم.

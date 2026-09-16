@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { errText } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { ConfirmModal, Field, InfoBox, SectionHead } from "../../ui/index";
+import { ConfirmModal, Field, InfoBox, PageSkeleton, SectionHead } from "../../ui/index";
 
 // نمایش کوچک ساختار هر Template
 export function TemplateThumb({ id, vars, active }) {
@@ -136,7 +136,7 @@ export function ThemesSection({ config, setConfig, password }) {
   useEffect(() => { load(); }, [password]);
   useEffect(() => { if (msg) { const t = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(t); } }, [msg]);
 
-  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
 
   const templates = data?.templates || [];
   const palettes = [...(data?.palettes || []), ...(data?.customPalettes || [])];

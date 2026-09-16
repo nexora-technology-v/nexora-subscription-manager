@@ -9,7 +9,7 @@ import {
   Check, Circle, Loader2, Save,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
-import { Field, InfoBox, Msg, NumberInput, SectionHead, Toggle } from "../../ui/index";
+import { Field, InfoBox, Msg, NumberInput, PageSkeleton, SectionHead, Toggle } from "../../ui/index";
 
 export const BOT_TEXTS = [
   { k: "welcome_text", label: "پیام خوش‌آمد",
@@ -108,7 +108,7 @@ export function BotTextsSection({ password }) {
     finally { setSaving(false); }
   };
 
-  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="fx-anim">

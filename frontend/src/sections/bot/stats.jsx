@@ -6,13 +6,11 @@
  */
 import React, { useState, useEffect } from "react";
 import {
-  FileText, Download, Loader2, RefreshCw, TrendingUp, Users,
+  FileText, Download, RefreshCw, TrendingUp, Users,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errText, esc0, faNum } from "../../lib/format";
-import {
-  AreaChart, CountUp, EmptyState, SectionHead, Segmented, StatTile,
-} from "../../ui/index";
+import { AreaChart, CountUp, EmptyState, PageSkeleton, SectionHead, Segmented, StatTile } from "../../ui/index";
 
 export function BotStatsSection({ password }) {
   const [d, setD] = useState(null);
@@ -29,7 +27,7 @@ export function BotStatsSection({ password }) {
   };
   useEffect(() => { load(); }, [password]);
 
-  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
 
   if (!d?.ready) {
     return (
@@ -194,7 +192,7 @@ export function BotReportSection({ password }) {
     `/api/admin/bot/users/report/pdf?days=${days}`,
     `nexora-bot-report-${days}d-${today}.pdf`);
 
-  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
 
   if (!d?.ready) {
     return (

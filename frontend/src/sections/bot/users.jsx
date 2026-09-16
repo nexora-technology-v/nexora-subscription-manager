@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { daysLeft, errText, faNum, fmtBytes, fmtDate } from "../../lib/format";
-import { EmptyState, InfoBox, Modal, Msg, SectionHead, StatusPill } from "../../ui/index";
+import { EmptyState, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatusPill } from "../../ui/index";
 
 // فیلترهای بخش کاربران — کلیدها باید عیناً با _USER_FILTERS در
 // backend/app.py بخوانند.
@@ -139,7 +139,7 @@ export function BotUsersSection({ password }) {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-14"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>
+        <PageSkeleton />
       ) : users.length === 0 ? (
         <EmptyState icon={Users} text={q ? `چیزی برای «${q}» پیدا نشد` : "در این دسته کاربری نیست"} />
       ) : (
@@ -359,9 +359,7 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
 
         <div className="p-5 overflow-y-auto flex-1" style={{ minHeight: 0 }}>
           {loading && (
-            <div className="flex justify-center py-14">
-              <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
-            </div>
+            <PageSkeleton />
           )}
 
           {err && (

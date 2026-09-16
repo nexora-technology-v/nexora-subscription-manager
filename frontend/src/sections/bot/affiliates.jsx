@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errText, faNum } from "../../lib/format";
-import { Field, InfoBox, Modal, Msg, SectionHead } from "../../ui/index";
+import { Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead } from "../../ui/index";
 
 export function BotAffiliates({ password }) {
   const [data, setData] = useState(null);
@@ -53,8 +53,7 @@ export function BotAffiliates({ password }) {
   };
 
   if (loading) {
-    return <div className="flex justify-center py-16">
-      <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+    return <PageSkeleton />;
   }
 
   if (!data?.ready) {

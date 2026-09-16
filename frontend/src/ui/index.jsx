@@ -1238,3 +1238,35 @@ export function NavIndicator({ activeKey }) {
                transform: `translateY(${box?.top || 0}px)` }} />
   );
 }
+
+/**
+ * اسکلتونِ یک صفحه‌ی کامل.
+ *
+ * جایگزینِ چرخنده‌ی وسطِ صفحه — که ۳۸ جای این پنل یکسان تکرار شده
+ * بود. تفاوتش این است که وقتی داده می‌رسد، چیدمان **نمی‌پرد**:
+ * جای کارت‌ها و ردیف‌ها از قبل گرفته شده.
+ *
+ * شکلش تقریبی است، نه دقیق. هدف نگه‌داشتنِ فضا و ریتم است، نه
+ * ساختنِ یک کپیِ بی‌نقص از هر صفحه — که خودش می‌شد یک قاعده‌ی دوم
+ * که باید با هر تغییرِ صفحه هماهنگ بماند.
+ */
+export function PageSkeleton({ cards = 4, rows = 6 }) {
+  return (
+    <div className="fx-anim" aria-busy="true" aria-live="polite">
+      <span className="sr-only">در حال بارگذاری…</span>
+      {cards > 0 && (
+        <div className="grid gap-3 fx-g4"
+          style={{ gridTemplateColumns: `repeat(${cards}, minmax(0,1fr))` }}>
+          {Array.from({ length: cards }, (_, i) => (
+            <div key={i} className="fx-card p-4" style={{ animationDelay: `${i * 50}ms` }}>
+              <Skeleton w="54%" h={11} />
+              <div className="mt-3"><Skeleton w="72%" h={21} /></div>
+              <div className="mt-3"><Skeleton w="42%" h={9} /></div>
+            </div>
+          ))}
+        </div>
+      )}
+      {rows > 0 && <SkeletonTable rows={rows} cols={4} />}
+    </div>
+  );
+}

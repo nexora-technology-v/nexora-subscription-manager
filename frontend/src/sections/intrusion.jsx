@@ -9,13 +9,11 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, Download, Loader2, RefreshCw, ShieldCheck,
+  AlertTriangle, Download, RefreshCw, ShieldCheck,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum } from "../lib/format";
-import {
-  ConfirmModal, EmptyState, InfoBox, Msg, SectionHead, usePager,
-} from "../ui/index";
+import { ConfirmModal, EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, usePager } from "../ui/index";
 import { MetricCard } from "./monitoring";
 
 export function FirewallIntrusion({ password }) {
@@ -104,9 +102,7 @@ export function FirewallIntrusion({ password }) {
 
   if (!d) {
     return (
-      <div className="flex justify-center py-16">
-        <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
-      </div>
+      <PageSkeleton />
     );
   }
 

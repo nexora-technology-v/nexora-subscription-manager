@@ -11,7 +11,7 @@ import {
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { usePolling } from "../lib/hooks";
-import { Field, InfoBox, Modal, Msg, SectionHead } from "../ui/index";
+import { Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead } from "../ui/index";
 
 export const ENGINE_COLOR = {
   backhaul: "#34D399",
@@ -54,8 +54,7 @@ export function useTunnel(password) {
 export function TunnelOverview({ password }) {
   const { data, loading, reload } = useTunnel(password);
 
-  if (loading) return <div className="flex justify-center py-16">
-    <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
 
   if (!data?.ready) {
     return (
@@ -218,8 +217,7 @@ export function TunnelNodes({ password }) {
     if (res.ok) setCreated({ id, token: d.token, rotated: true });
   };
 
-  if (loading) return <div className="flex justify-center py-16">
-    <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="fx-anim">
@@ -360,8 +358,7 @@ export function NodeDiagnoseModal({ nodeId, password, onClose }) {
   return (
     <Modal title="چرا نود آفلاین است" onClose={onClose} width="520px">
       {!d ? (
-        <div className="flex justify-center py-8">
-          <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>
+        <PageSkeleton />
       ) : (
         <>
           {d.steps?.map((s, i) => (
@@ -484,8 +481,7 @@ export function TunnelList({ password }) {
     reload();
   };
 
-  if (loading) return <div className="flex justify-center py-16">
-    <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
 
   const hasNodes = data?.nodes?.length > 0;
 
@@ -923,9 +919,7 @@ export function TunnelMonitorModal({ tunnel, password, onClose }) {
   return (
     <Modal title={`کیفیت — ${tunnel.name}`} onClose={onClose} width="540px">
       {!m ? (
-        <div className="flex justify-center py-8">
-          <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
-        </div>
+        <PageSkeleton />
       ) : (
         <>
           {s ? (
@@ -1055,8 +1049,7 @@ export function TunnelConfigModal({ tunnel, password, onClose }) {
       </p>
 
       {!cfg ? (
-        <div className="flex justify-center py-8">
-          <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>
+        <PageSkeleton />
       ) : (
         <>
           <div className="rounded-xl p-3.5 mb-3 overflow-auto" dir="ltr"
@@ -1125,8 +1118,7 @@ export function SystemHealth({ password }) {
     } finally { setBusy(false); }
   };
 
-  if (loading) return <div className="flex justify-center py-16">
-    <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
 
   const servers = data?.servers || [];
   const worst = HEALTH_COLOR[data?.level] || "var(--muted)";
@@ -1226,8 +1218,7 @@ export function SystemHealth({ password }) {
 export function TunnelEvents({ password }) {
   const { data, loading } = useTunnel(password);
 
-  if (loading) return <div className="flex justify-center py-16">
-    <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
 
   const events = data?.events || [];
   const color = { error: "var(--danger)", warn: "var(--warn)", info: "var(--muted)" };

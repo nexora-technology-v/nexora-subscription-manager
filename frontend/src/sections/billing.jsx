@@ -12,7 +12,7 @@ import {
 import { JalaliDate, isoToJalaliLabel } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
 import { errText, faNum, monoIf } from "../lib/format";
-import { Field, InfoBox, Modal, Msg, NumberInput, SectionHead, Toggle } from "../ui/index";
+import { Field, InfoBox, Modal, Msg, NumberInput, PageSkeleton, SectionHead, Toggle } from "../ui/index";
 
 export function BillingPeriod({ password }) {
   const { data, loading: loadingGroups } = useBilling(password);
@@ -66,8 +66,7 @@ export function BillingPeriod({ password }) {
   // جایش را به داده می‌داد — یعنی هر بار ورود به این صفحه یک خطای
   // دروغین دیده می‌شد.
   if (loadingGroups) {
-    return <div className="flex justify-center py-16">
-      <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+    return <PageSkeleton />;
   }
 
   if (!data?.ready) {
@@ -198,9 +197,7 @@ export function BillingPeriod({ password }) {
           </div>
 
           {loading ? (
-            <div className="flex justify-center py-14">
-              <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
-            </div>
+            <PageSkeleton />
           ) : !inv?.ready ? (
             <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
               <div className="text-[13px]" style={{ color: "var(--muted)" }}>
@@ -420,8 +417,7 @@ export function BillingClients({ password }) {
   };
 
   if (loading && !data) {
-    return <div className="flex justify-center py-16">
-      <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+    return <PageSkeleton />;
   }
 
   if (!data?.ready) {
@@ -1038,7 +1034,7 @@ export function BillingSettings({ password }) {
     finally { setBusy(null); if (fileRef.current) fileRef.current.value = ""; }
   };
 
-  if (!info) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (!info) return <PageSkeleton />;
 
   return (
     <div className="fx-anim">
@@ -1484,7 +1480,7 @@ function NeedStartBanner({ groups, password, onDone }) {
 
 export function BillingDash({ password }) {
   const { data, loading, reload } = useBilling(password);
-  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
   if (!data?.ready) return (
     <div className="fx-anim">
       <SectionHead title="داشبورد حسابداری" desc="" />
@@ -1621,7 +1617,7 @@ export function BillingGroups({ password }) {
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(null);
 
-  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
   if (!data?.ready) return (
     <div className="fx-anim">
       <SectionHead title="واسطه‌ها و نرخ" desc="" />
@@ -1968,7 +1964,7 @@ export function BillingInvoice({ password }) {
     } finally { setBusy(false); }
   };
 
-  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
   if (!data?.ready) return (
     <div className="fx-anim"><SectionHead title="صورتحساب" desc="" /><BillingUnavailable info={data} password={password} /></div>
   );

@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import { EmptyState, InfoBox, Msg, SectionHead } from "../ui/index";
+import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead } from "../ui/index";
 
 export function FirewallEnable({ password, onChanged }) {
   const [pre, setPre] = useState(null);
@@ -109,9 +109,7 @@ export function FirewallEnable({ password, onChanged }) {
 
   if (!pre) {
     return (
-      <div className="flex justify-center py-16">
-        <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
-      </div>
+      <PageSkeleton />
     );
   }
 

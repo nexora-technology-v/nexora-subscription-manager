@@ -350,7 +350,10 @@ for dirpath, _dirs, files in os.walk(FRONT):
         src = io.open(path, encoding="utf-8").read()
 
         imported = set()
-        for im in re.finditer(r'import \{([^}]*)\} from', src):
+        # `import React, { Suspense } from "react"` هم باید دیده شود:
+        # الگوی قبلی فقط `import {…}` را می‌گرفت و شکلِ ترکیبی را
+        # «import نشده» گزارش می‌کرد — یک هشدار دروغ.
+        for im in re.finditer(r'import (?:\w+,\s*)?\{([^}]*)\} from', src):
             for chunk in im.group(1).split(","):
                 chunk = chunk.strip()
                 if chunk:

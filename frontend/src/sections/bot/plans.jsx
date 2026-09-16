@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { errText } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { Field, Msg, NumberInput, SectionHead, Toggle } from "../../ui/index";
+import { Field, Msg, NumberInput, PageSkeleton, SectionHead, Toggle } from "../../ui/index";
 
 export function BotPlansSection({ password }) {
   const [plans, setPlans] = useState([]);
@@ -46,7 +46,7 @@ export function BotPlansSection({ password }) {
     finally { setSaving(false); }
   };
 
-  if (loading) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="fx-anim">

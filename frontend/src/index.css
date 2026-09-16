@@ -947,3 +947,46 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   animation-iteration-count: 1 !important;
   transition-duration: .01ms !important;
 }
+
+
+/* ── ورودِ پلکانیِ خودکارِ گریدها ──
+   بدون این، هر صفحه باید روی تک‌تک کارت‌هایش کلاس تأخیر بگذارد —
+   یعنی یک قاعده که در ۴۵ صفحه دستی تکرار می‌شود و روزی یکی‌اش جا
+   می‌ماند. این‌جا خودِ ظرف ترتیب را می‌داند.
+
+   فقط ۶ تای اول تأخیر می‌گیرند: بعد از آن، انتظار حس می‌شود. */
+.fx-g2 > *, .fx-g3 > *, .fx-g4 > * {
+  animation: fx-up var(--m-slow) var(--sp-snappy) both;
+}
+.fx-g2 > *:nth-child(2), .fx-g3 > *:nth-child(2), .fx-g4 > *:nth-child(2) { animation-delay: 50ms; }
+.fx-g2 > *:nth-child(3), .fx-g3 > *:nth-child(3), .fx-g4 > *:nth-child(3) { animation-delay: 100ms; }
+.fx-g2 > *:nth-child(4), .fx-g3 > *:nth-child(4), .fx-g4 > *:nth-child(4) { animation-delay: 150ms; }
+.fx-g2 > *:nth-child(5), .fx-g3 > *:nth-child(5), .fx-g4 > *:nth-child(5) { animation-delay: 200ms; }
+.fx-g2 > *:nth-child(n+6), .fx-g3 > *:nth-child(n+6), .fx-g4 > *:nth-child(n+6) { animation-delay: 250ms; }
+
+/* ── دکمه: فشردن باید حس شود ──
+   بازخوردِ لمس، نه تزئین. `.fx-btn` از قبل scale داشت؛ این همان را
+   به بقیه‌ی دکمه‌ها می‌دهد و از یک منحنی می‌خواند. */
+.fx-btn, .fx-btn-g, .fx-ico-btn, .fx-nav-item {
+  transition: transform var(--m-fast) var(--sp-snappy),
+              background var(--m-fast) linear, color var(--m-fast) linear,
+              border-color var(--m-fast) linear, box-shadow var(--m-base) var(--sp-snappy);
+}
+.fx-btn-g:active:not(:disabled), .fx-ico-btn:active:not(:disabled) { transform: scale(.95); }
+
+/* ── تمرکزِ دیده‌شونده ──
+   کسی که با کیبورد کار می‌کند باید بداند کجاست. مرورگرها حلقه‌ی
+   پیش‌فرض را روی پس‌زمینه‌ی تیره تقریباً نامرئی می‌کشند. */
+.fx-btn:focus-visible, .fx-btn-g:focus-visible, .fx-ico-btn:focus-visible,
+.fx-nav-item:focus-visible, .fx-chip:focus-visible, .fx-pal-it:focus-visible,
+.fx-seg > button:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+/* ── کارت: بالا آمدن هنگام هاور، فقط جایی که کارت کلیک‌شدنی است ── */
+.fx-card-i {
+  transition: transform var(--m-base) var(--sp-snappy),
+              border-color var(--m-base) linear, box-shadow var(--m-base) var(--sp-snappy);
+}
+.fx-card-i:hover { transform: translateY(-2px); box-shadow: var(--e-2); }

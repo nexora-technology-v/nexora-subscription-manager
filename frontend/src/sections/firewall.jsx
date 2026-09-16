@@ -10,9 +10,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum } from "../lib/format";
-import {
-  ConfirmModal, EmptyState, Field, InfoBox, LongList, Msg, NumberInput, SectionHead,
-} from "../ui/index";
+import { ConfirmModal, EmptyState, Field, InfoBox, LongList, Msg, NumberInput, PageSkeleton, SectionHead } from "../ui/index";
 
 export const FW_ACTIONS = [
   ["allow", "اجازه", "var(--ok)"],
@@ -207,9 +205,7 @@ export function FirewallSuggest({ password, onApplied }) {
           <Msg msg={msg} />
 
           {!d ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
-            </div>
+            <PageSkeleton />
           ) : (
             <div className="mt-3">
               <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -324,7 +320,7 @@ export function FirewallRules({ password }) {
   const [only, setOnly] = useState("all");
   const [confirmDel, setConfirmDel] = useState(null);
 
-  if (!d) return <div className="flex justify-center py-16"><Loader2 className="animate-spin" style={{ color: "var(--muted)" }} /></div>;
+  if (!d) return <PageSkeleton />;
 
   if (!d.installed) {
     return (
@@ -857,9 +853,7 @@ export function FirewallBlocked({ password }) {
 
   if (!d) {
     return (
-      <div className="flex justify-center py-16">
-        <Loader2 className="animate-spin" style={{ color: "var(--muted)" }} />
-      </div>
+      <PageSkeleton />
     );
   }
 
