@@ -802,6 +802,26 @@ check("«ماه» هنوز کار می‌کند و به روز تبدیل می�
       _MakeXUI.made[0].get("days") == 90 and _rm["months"] == 3,
       f"{_MakeXUI.made[0].get('days')} روز")
 
+# همان قاعده، دو جا — پس تستِ برابری می‌خواهد.
+#
+# پنل نماینده مبلغ را *پیش از* فرستادن نشان می‌دهد، پس مجبور است
+# خودش هم روز را به ماه تبدیل کند. اگر این دو از هم جدا بیفتند،
+# عددی که نماینده می‌بیند با عددی که از اعتبارش کم می‌شود فرق
+# می‌کند — و او تازه بعد از کسر می‌فهمد.
+_PSRC = io.open(os.path.join(str(ROOT), "frontend", "src", "portal",
+                             "index.jsx"), encoding="utf-8").read()
+check("پنل همان فرمول گردکردن را دارد",
+      "const billMonths = Math.max(1, Math.round(days / 30));" in _PSRC,
+      "اگر شکلش عوض شد، برابریِ زیر را دوباره بسنج")
+
+import math as _math                                        # noqa: E402
+_drift = [d for d in range(1, 367)
+          # Math.round در جاوااسکریپت نیم را به بالا می‌برد
+          if max(1, _math.floor(d / 30.0 + 0.5)) != AP._months_from_days(d)]
+check("و برای هر روزی از ۱ تا ۳۶۶ همان عدد را می‌دهد",
+      not _drift, "اختلاف در: %s" % (_drift[:6] or "هیچ روزی"))
+
+
 for _bad, _why in (({"gb": 50, "days": 0, "devices": 1}, "روز صفر"),
                    ({"gb": 50, "days": 400, "devices": 1}, "روز ۴۰۰")):
     try:
