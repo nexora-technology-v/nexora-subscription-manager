@@ -218,7 +218,7 @@ export default function App() {
   const currentNav = ALL_NAV.find((n) => n.key === active);
 
   return (
-    <div className="min-h-screen w-full flex" style={{ background: "var(--bg)" }} dir="rtl">
+    <div className="min-h-screen w-full flex fx-shell" dir="rtl">
       {/* نور محیطی — زیر همه چیز، فقط برای عمق */}
       <div className="fx-amb" aria-hidden="true"><i /></div>
       {open && <div className="fx-backdrop fx-fade" onClick={() => setOpen(false)} />}

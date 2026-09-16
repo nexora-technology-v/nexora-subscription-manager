@@ -429,8 +429,8 @@ export function BillingClients({ password }) {
     );
   }
 
-  const s = data.stats;
-  const pages = Math.ceil(data.total / PER);
+  const s = data.stats || {};
+  const pages = Math.ceil((data.total || 0) / PER) || 1;
 
   return (
     <div className="fx-anim">
@@ -513,7 +513,7 @@ export function BillingClients({ password }) {
           <select className="fx-input" value={group}
             onChange={(e) => { setGroup(e.target.value); setPage(0); }}>
             <option value="">همه گروه‌ها</option>
-            {data.groups.map((g) => <option key={g} value={g}>{g}</option>)}
+            {(data.groups || []).map((g) => <option key={g} value={g}>{g}</option>)}
           </select>
           <select className="fx-input" value={renewed}
             onChange={(e) => { setRenewed(e.target.value); setPage(0); }}>
@@ -616,7 +616,7 @@ export function BillingClients({ password }) {
               </tr>
             </thead>
             <tbody>
-              {data.clients.map((c, i) => {
+              {(data.clients || []).map((c, i) => {
                 const col = CLIENT_STATUS_COLOR[c.status] || "var(--muted)";
                 const pctColor = c.usagePct === null ? "var(--muted)"
                   : c.usagePct >= 90 ? "var(--danger)"
@@ -625,7 +625,7 @@ export function BillingClients({ password }) {
                   <tr key={c.email} onClick={() => setDetail(c)}
                     className="cursor-pointer nx-row"
                     style={{
-                      borderBottom: i < data.clients.length - 1 ? "1px solid var(--border)" : "none",
+                      borderBottom: i < (data.clients || []).length - 1 ? "1px solid var(--border)" : "none",
                       background: i % 2 ? "rgba(255,255,255,.015)" : "transparent",
                     }}>
 
@@ -820,7 +820,7 @@ export function BillingClients({ password }) {
           </table>
         </div>
 
-        {data.clients.length === 0 && (
+        {(data.clients || []).length === 0 && (
           <div className="py-16 text-center">
             <Users size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
             <div className="text-[14px]" style={{ color: "var(--muted)" }}>

@@ -7,11 +7,11 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, CheckCircle2, CreditCard, Loader2, RefreshCw, Search, X,
+  AlertTriangle, CheckCircle2, Clock, CreditCard, Loader2, RefreshCw, Search, Wallet, X,
 } from "lucide-react";
-import { errText } from "../../lib/format";
+import { errText, faNum } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { Field, Msg, PageSkeleton, SectionHead, StatusPill, Tabs } from "../../ui/index";
+import { Field, Msg, PageSkeleton, SectionHead, StatTile, StatusPill, Tabs } from "../../ui/index";
 
 export const REJECT_REASONS = [
   "مبلغ واریزی با مبلغ سفارش مطابقت ندارد.",
@@ -83,6 +83,13 @@ export function BotOrdersSection({ password }) {
     { k: "all", l: "همه" },
   ];
 
+  // از همان آرایه‌ای که در دست است — نه یک درخواست تازه
+  const sumAmount = orders.reduce((a, o) => a + (Number(o.amount) || 0), 0);
+  const waiting = orders.filter((o) => (o.status || "") === "pending"
+                                    || (o.status || "") === "awaiting").length;
+  const newest = orders.reduce((m, o) =>
+    (o.created_at && (!m || o.created_at > m)) ? o.created_at : m, "");
+
   return (
     <div className="fx-anim">
       <SectionHead title="سفارش‌ها و رسیدها"
@@ -94,6 +101,25 @@ export function BotOrdersSection({ password }) {
         } />
 
       <Msg msg={msg} />
+
+      {/* خلاصه‌ی همین فهرست، بالای خودش.
+          قبلاً برای دانستنِ «چند تا در انتظار است و چقدر می‌شود»
+          باید ردیف‌ها شمرده می‌شدند. این‌ها از همان داده‌ای
+          می‌آیند که صفحه از قبل گرفته — هیچ درخواست تازه‌ای. */}
+      {!loading && orders.length > 0 && (
+        <div className="fx-g4 grid grid-cols-3 gap-3">
+          <StatTile label="سفارش در این نما" icon={CreditCard} tone="var(--accent-2)"
+            value={faNum(orders.length)}
+            hint={FILTERS.find((f) => f.k === filter)?.l} />
+          <StatTile label="ارزش کل" icon={Wallet} tone="var(--ok)"
+            value={faNum(sumAmount)} unit="تومان" color="var(--ok)"
+            hint={orders.length ? `میانگین ${faNum(Math.round(sumAmount / orders.length))}` : ""} />
+          <StatTile label="تازه‌ترین" icon={Clock} tone="var(--warn)"
+            value={newest ? faNum(String(newest).slice(0, 10)) : "—"}
+            hint={waiting ? `${faNum(waiting)} مورد در انتظار تایید` : "چیزی معطل نمانده"} />
+        </div>
+      )}
+
       <Tabs items={FILTERS.map(f => ({ key: f.k, label: f.l }))} active={filter} onChange={setFilter} />
 
       {loading ? (

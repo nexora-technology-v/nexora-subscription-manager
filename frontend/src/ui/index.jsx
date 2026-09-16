@@ -544,15 +544,15 @@ export function StatTile({
   }, [value]);
 
   return (
-    <div className={`fx-card fx-kpi p-4 ${className}`}>
-      <div className="flex items-center gap-2 mb-2">
+    <div className={`fx-card fx-kpi ${className}`}>
+      <div className="flex items-center gap-2">
         {Icon && (
           <span className="w-7 h-7 rounded-[8px] grid place-items-center shrink-0"
             style={{ background: "rgba(255,255,255,.05)", color: tone || "var(--muted)" }}>
             <Icon size={14} />
           </span>
         )}
-        <span className="text-[12px] min-w-0 truncate" style={{ color: "var(--muted)" }}>{label}</span>
+        <span className="fx-kpi-label">{label}</span>
         {trend && (
           <span className={`fx-badge ${trend.up ? "up" : "down"} mr-auto shrink-0`} dir="ltr">
             {trend.up ? "▲" : "▼"} {trend.text}
@@ -560,23 +560,25 @@ export function StatTile({
         )}
       </div>
 
-      <div ref={box} className="flex items-baseline gap-1.5">
-        <span className="text-[24px] font-bold" style={{ color, fontFamily: "var(--mono)" }}>
-          {value}
-        </span>
-        {unit && <span className="text-[12px] fx-fa-sub" style={{ color: "var(--muted)" }}>{unit}</span>}
+      {/* عدد و واحدش روی یک خط می‌مانند.
+          بدون nowrap، «تومان» به خط بعد می‌افتاد و ارتفاع کارت‌ها با
+          هم فرق می‌کرد — چهار کارتِ کنار هم که هرکدام یک قد دارند. */}
+      <div ref={box} className="fx-kpi-val">
+        <span style={{ color, fontFamily: "var(--mono)" }}>{value}</span>
+        {unit && <span className="u fx-fa-sub">{unit}</span>}
       </div>
 
-      <div className="flex items-end justify-between gap-2 mt-1.5">
-        {hint ? (
-          <div className="text-[12px] leading-relaxed min-w-0" style={{ color: "var(--muted)" }}>
-            {hint}
-          </div>
-        ) : <span />}
+      {/* یک خط، و اگر بلندتر بود بریده می‌شود.
+          متنِ چندخطی ارتفاع کارت را بالا می‌برد و ردیفِ شاخص‌ها را
+          ناهموار می‌کند؛ عددِ اصلی همان بالاست و این فقط زمینه است. */}
+      <div className="fx-kpi-foot">
+        <span className="fx-kpi-note" title={typeof hint === "string" ? hint : undefined}>
+          {hint || ""}
+        </span>
         {spark && spark.length > 1 && (
-          <div className="shrink-0" style={{ width: 96 }}>
+          <span className="fx-kpi-spark">
             <Sparkline data={spark} color={sparkColor || color} height={30} />
-          </div>
+          </span>
         )}
       </div>
     </div>
@@ -650,9 +652,8 @@ export function Donut({ items, size = 124, center }) {
   });
 
   return (
-    <div className="flex items-center gap-4 flex-wrap">
-      <svg className="fx-donut" viewBox="0 0 120 120"
-        style={{ width: size, height: size, flexShrink: 0 }} aria-hidden="true">
+    <div className="fx-donut-row">
+      <svg className="fx-donut" viewBox="0 0 120 120" aria-hidden="true">
         <g transform="rotate(-90 60 60)">
           {segs.map((s) => (
             <circle key={s.i} cx="60" cy="60" r={R} stroke={s.c} strokeWidth="15"
@@ -673,7 +674,7 @@ export function Donut({ items, size = 124, center }) {
           </text>
         )}
       </svg>
-      <div className="flex flex-col gap-0.5 flex-1" style={{ minWidth: 128 }}>
+      <div className="legend flex flex-col gap-0.5">
         {segs.map((s) => (
           <button key={s.i} className="flex items-center gap-2 px-2 py-1.5 rounded-[9px] text-[12px] w-full text-right"
             style={{ color: hi === s.i ? "var(--text)" : "var(--dim)",
@@ -831,24 +832,33 @@ export class ErrorBoundary extends React.Component {
 
 
 /**
- * نمودار سطحی با منحنی نرم.
+ * نمودار سطحی — یک یا دو سری روی یک محور.
  *
- * خط شکسته بین نقطه‌ها درست است ولی خشن به نظر می‌رسد و چشم را
- * روی نویز نگه می‌دارد. منحنی کاتمول-رام از همان نقطه‌ها رد می‌شود
- * — پس داده دستکاری نمی‌شود — ولی روند را نشان می‌دهد نه دندانه را.
+ * چرا دو سری روی *یک* نمودار و نه دو نمودار زیر هم: دو نمودارِ
+ * جدا یعنی دو بار خواندنِ محور و دو بار پیداکردنِ همان روز. وقتی
+ * روی هم بیفتند، «فروش بالا رفت ولی تعداد سفارش نه» در یک نگاه
+ * دیده می‌شود. ارتفاع کارت هم نصف می‌شود — که همان فضای خالی بود.
  *
- * زیر منحنی با گرادیان پر می‌شود تا حجم دیده شود، و نشانگر مقدار
- * هر نقطه را می‌گوید.
+ * سری دوم مقیاسِ خودش را دارد: تومان و «تعداد» هیچ‌وقت روی یک
+ * مقیاس معنا نمی‌دهند؛ با یک مقیاس، خطِ تعداد همیشه صاف کفِ نمودار
+ * می‌چسبد.
+ *
+ * `data`/`color` مثل قبل کار می‌کنند — ده جای پنل همان‌طور صدایش
+ * می‌زنند و نباید دست بخورند.
  */
 export function AreaChart({
   data, color = "var(--accent-2)", height = 90, label,
   format = (v) => String(v), fill = true,
+  data2, color2 = "var(--cy)", label2, format2,
 }) {
   const [hover, setHover] = useState(null);
   const [tipX, setTipX] = useState(0);
+  const tipRef = useRef(null);
   const id = useRef(`ac${Math.random().toString(36).slice(2, 9)}`).current;
 
-  const pts = (data || []).filter((v) => typeof v === "number" && isFinite(v));
+  const clean = (a) => (a || []).filter((v) => typeof v === "number" && isFinite(v));
+  const pts = clean(data);
+  const pts2 = clean(data2);
   if (pts.length < 2) {
     return (
       <div className="text-[12px] py-6 text-center" style={{ color: "var(--muted)" }}>
@@ -857,26 +867,32 @@ export function AreaChart({
     );
   }
 
-  const W = 100, H = 34;
+  const W = 100, H = 34, PB = 1;
   const max = Math.max(...pts, 1);
+  const max2 = Math.max(...pts2, 1);
+  const x = (i, n) => (i / ((n || pts.length) - 1)) * W;
   // کف صفر است تا نسبت‌ها صادقانه دیده شوند
-  const x = (i) => (i / (pts.length - 1)) * W;
-  const y = (v) => H - (v / max) * (H - 2) - 1;
+  const y = (v) => H - (v / max) * (H - 2) - PB;
+  const y2 = (v) => H - (v / max2) * (H - 2) - PB;
 
-  // کاتمول-رام → بزیه: منحنی از خودِ نقطه‌ها رد می‌شود
-  let d = `M ${x(0)},${y(pts[0])}`;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[i === 0 ? 0 : i - 1];
-    const p1 = pts[i];
-    const p2 = pts[i + 1];
-    const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
-    const c1x = x(i) + (x(i + 1) - x(i === 0 ? 0 : i - 1)) / 6;
-    const c1y = y(p1) + (y(p2) - y(p0)) / 6;
-    const c2x = x(i + 1) - (x(i + 2 < pts.length ? i + 2 : i + 1) - x(i)) / 6;
-    const c2y = y(p2) - (y(p3) - y(p1)) / 6;
-    d += ` C ${c1x},${c1y} ${c2x},${c2y} ${x(i + 1)},${y(p2)}`;
-  }
+  const curve = (arr, fy) => {
+    const n = arr.length;
+    let d = `M ${x(0, n)},${fy(arr[0])}`;
+    for (let i = 0; i < n - 1; i++) {
+      const p0 = arr[i === 0 ? 0 : i - 1], p1 = arr[i];
+      const p2 = arr[i + 1], p3 = arr[i + 2 < n ? i + 2 : i + 1];
+      const c1x = x(i, n) + (x(i + 1, n) - x(i === 0 ? 0 : i - 1, n)) / 6;
+      const c1y = fy(p1) + (fy(p2) - fy(p0)) / 6;
+      const c2x = x(i + 1, n) - (x(i + 2 < n ? i + 2 : i + 1, n) - x(i, n)) / 6;
+      const c2y = fy(p2) - (fy(p3) - fy(p1)) / 6;
+      d += ` C ${c1x},${c1y} ${c2x},${c2y} ${x(i + 1, n)},${fy(p2)}`;
+    }
+    return d;
+  };
+
+  const d = curve(pts, y);
   const area = `${d} L ${W},${H} L 0,${H} Z`;
+  const d2 = pts2.length >= 2 ? curve(pts2, y2) : null;
 
   const track = (clientX, el) => {
     const r = el.getBoundingClientRect();
@@ -885,27 +901,51 @@ export function AreaChart({
     const i = Math.round(rel * (pts.length - 1));
     const idx = Math.max(0, Math.min(pts.length - 1, i));
     setHover(idx);
-    setTipX((x(idx) / W) * r.width);
+    // تولتیپ داخل نمودار می‌ماند.
+    //
+    // بدون این، در دو سرِ نمودار نصفش بیرون می‌زد و چون
+    // translate(-50%) دارد، پهنای *کلِ صفحه* را زیاد می‌کرد —
+    // اندازه‌گیری‌شده: کارت ۴۸۰ پیکسل، محتوا ۵۲۱. یعنی یک نوار
+    // اسکرول افقی که هیچ‌کس دلیلش را پیدا نمی‌کرد.
+    const half = ((tipRef.current && tipRef.current.offsetWidth) || 140) / 2 + 6;
+    const px = (x(idx) / W) * r.width;
+    setTipX(Math.max(half, Math.min(r.width - half, px)));
   };
   const onMove = (e) => track(e.clientX, e.currentTarget);
   const onTouch = (e) => track(e.touches[0].clientX, e.currentTarget);
 
+  const hv = hover ?? 0;
+  // نقطه‌ی متناظر در سری دوم — اگر طولشان یکی نبود، نسبتی
+  const j = pts2.length
+    ? Math.min(pts2.length - 1, Math.round((hv / (pts.length - 1)) * (pts2.length - 1)))
+    : 0;
+
   return (
     <div className={`relative ${hover !== null ? "fx-hot" : ""}`}>
       {/* تولتیپ شیشه‌ای — روی نمودار، نه زیرش.
-          مقدارِ همان نقطه‌ای که موس رویش است، بدون اینکه چشم پایین
-          برود و جایش را گم کند.
-
           ظرف dir نمی‌گیرد: متنِ فارسی داخلش راست‌چین می‌ماند و
-          مختصاتِ SVG هم اصلاً به جهتِ نوشتار کاری ندارد. `left`
-          هم فیزیکی است و با RTL جابه‌جا نمی‌شود. */}
-      <div className="fx-tip" style={{ left: tipX, top: `${(y(pts[hover ?? 0]) / H) * 100}%` }}>
-        <div className="text-[11px] mb-1" style={{ color: "var(--muted)" }}>
-          {label || "مقدار"}
+          مختصاتِ SVG اصلاً به جهتِ نوشتار کاری ندارد. */}
+      {/* پیش از اولین هاور وسط می‌ماند: با left:0 و translate(-50%)
+          نصفش بیرونِ کارت بود و همان پهنای صفحه را زیاد می‌کرد. */}
+      <div className="fx-tip" ref={tipRef}
+        style={{ left: hover === null ? "50%" : tipX,
+                 top: `${(y(pts[hv]) / H) * 100}%` }}>
+        <div className="flex items-center gap-2 text-[12px]">
+          <i className="w-2 h-2 rounded-[3px] shrink-0" style={{ background: color }} />
+          <span style={{ color: "var(--muted)" }}>{label || "مقدار"}</span>
+          <b className="mr-auto" style={{ color, fontFamily: "var(--mono)" }}>
+            {hover !== null ? format(pts[hv]) : ""}
+          </b>
         </div>
-        <div className="text-[13px] font-bold" style={{ color, fontFamily: "var(--mono)" }}>
-          {hover !== null ? format(pts[hover]) : ""}
-        </div>
+        {d2 && (
+          <div className="flex items-center gap-2 text-[12px] mt-1">
+            <i className="w-2 h-2 rounded-[3px] shrink-0" style={{ background: color2 }} />
+            <span style={{ color: "var(--muted)" }}>{label2 || ""}</span>
+            <b className="mr-auto" style={{ color: color2, fontFamily: "var(--mono)" }}>
+              {hover !== null ? (format2 || format)(pts2[j]) : ""}
+            </b>
+          </div>
+        )}
       </div>
 
       <svg className="fx-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
@@ -921,22 +961,50 @@ export function AreaChart({
             <rect className={reducedMotion() ? "" : "fx-reveal"} x="0" y="0" width={W} height={H} />
           </clipPath>
         </defs>
+
+        {/* خطوط راهنمای افقی — بدون آن‌ها منحنی در فضای خالی شناور است */}
+        {[0.25, 0.5, 0.75].map((f) => (
+          <line key={f} className="gl" x1="0" y1={H * f} x2={W} y2={H * f}
+            vectorEffect="non-scaling-stroke" />
+        ))}
+
         <g clipPath={`url(#${id}c)`}>
           {fill && <path d={area} fill={`url(#${id})`} />}
           <path d={d} fill="none" stroke={color} strokeWidth="1.8"
             strokeLinecap="round" strokeLinejoin="round"
             vectorEffect="non-scaling-stroke" />
+          {d2 && (
+            <path d={d2} fill="none" stroke={color2} strokeWidth="1.3"
+              strokeDasharray="3 4" strokeLinecap="round" opacity=".62"
+              vectorEffect="non-scaling-stroke" />
+          )}
         </g>
-        <line className="fx-guide" x1={x(hover ?? 0)} y1="0" x2={x(hover ?? 0)} y2={H}
+
+        <line className="fx-guide" x1={x(hv)} y1="0" x2={x(hv)} y2={H}
           vectorEffect="non-scaling-stroke" />
-        <circle className="fx-dot" cx={x(hover ?? 0)} cy={y(pts[hover ?? 0])} r="2.6" fill={color}
+        <circle className="fx-dot" cx={x(hv)} cy={y(pts[hv])} r="2.6" fill={color}
           stroke="var(--surface)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
+        {d2 && (
+          <circle className="fx-dot" cx={x(hv)} cy={y2(pts2[j])} r="2.2" fill={color2}
+            stroke="var(--surface)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
+        )}
       </svg>
 
-      <div className="text-[12px] mt-1.5 h-[18px] flex justify-between"
+      {/* افسانه، و بیشینه‌ی هر سری — تا وقتی موس روی نمودار نیست هم
+          معلوم باشد این خط‌ها چه‌اند و سقفشان کجاست */}
+      <div className="flex items-center gap-3 flex-wrap text-[11.5px] mt-2"
         style={{ color: "var(--muted)" }}>
-        <span>{label}</span>
-        <span style={{ color: hover !== null ? color : "var(--muted)" }}>
+        <span className="flex items-center gap-1.5">
+          <i className="w-2 h-2 rounded-[3px]" style={{ background: color }} />
+          {label}
+        </span>
+        {d2 && (
+          <span className="flex items-center gap-1.5">
+            <i className="w-2 h-2 rounded-[3px]" style={{ background: color2 }} />
+            {label2}
+          </span>
+        )}
+        <span className="mr-auto" style={{ color: hover !== null ? color : "var(--muted)" }}>
           {hover !== null ? format(pts[hover]) : `بیشینه ${format(max)}`}
         </span>
       </div>

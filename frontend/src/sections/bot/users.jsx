@@ -7,11 +7,11 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, ChevronLeft, Loader2, Package, RefreshCw, Search, Send, Users, X,
+  AlertTriangle, Ban, ChevronLeft, Loader2, Package, RefreshCw, Search, Send, Users, Wallet, X,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { daysLeft, errText, faNum, fmtBytes, fmtDate } from "../../lib/format";
-import { EmptyState, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatusPill } from "../../ui/index";
+import { EmptyState, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile, StatusPill } from "../../ui/index";
 
 // فیلترهای بخش کاربران — کلیدها باید عیناً با _USER_FILTERS در
 // backend/app.py بخوانند.
@@ -80,6 +80,12 @@ export function BotUsersSection({ password }) {
 
   const users = d.users;
   const pages = Math.ceil(d.total / PAGE) || 1;
+
+  // خلاصه‌ی همین صفحه — بدون درخواست تازه
+  const rows = d.users || [];
+  const walletSum = rows.reduce((a, u) => a + (Number(u.balance) || 0), 0);
+  const withPhone = rows.filter((u) => u.phone).length;
+  const blocked = rows.filter((u) => u.is_blocked).length;
   const page = Math.floor(offset / PAGE) + 1;
 
   return (
@@ -92,6 +98,23 @@ export function BotUsersSection({ password }) {
             <RefreshCw size={13} /> بازخوانی
           </button>
         } />
+
+      {/* خلاصه، از همان داده‌ای که فهرست از آن ساخته شده */}
+      {!loading && (d.users || []).length > 0 && (
+        <div className="fx-g4 grid grid-cols-3 gap-3">
+          <StatTile label="کاربران" icon={Users} tone="var(--accent-2)"
+            value={faNum(d.total || 0)}
+            hint={`${faNum((d.users || []).length)} مورد در این صفحه`} />
+          <StatTile label="کیف پول این صفحه" icon={Wallet} tone="var(--ok)"
+            value={faNum(walletSum)} unit="تومان" color="var(--ok)"
+            hint={`${faNum(withPhone)} نفر شماره ثبت کرده‌اند`} />
+          <StatTile label="بلاک‌شده" icon={Ban}
+            tone={blocked ? "var(--danger)" : "var(--muted)"}
+            value={faNum(blocked)}
+            color={blocked ? "var(--danger)" : "var(--text)"}
+            hint={blocked ? "به ربات دسترسی ندارند" : "کسی بلاک نیست"} />
+        </div>
+      )}
 
       <div className="fx-card p-4 mb-4">
         <div className="fx-search mb-3" style={{ width: "auto" }}>

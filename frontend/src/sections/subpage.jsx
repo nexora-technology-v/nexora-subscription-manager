@@ -97,21 +97,21 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
             value={faNum(u.newUsers ?? 0)}
             unit={`از ${faNum(u.users ?? 0)} کل`}
             hint={`${faNum(u.blocked ?? 0)} نفر بلاک شده`}
-            color="var(--text)" />
+            spark={orderSeries} sparkColor="var(--accent-2)" color="var(--text)" />
           <StatTile
             label="سفارش موفق" icon={ShoppingCart} tone="var(--ok)"
             value={faNum(o.approved ?? 0)}
-            hint={`${faNum(o.pending ?? 0)} در انتظار · ${faNum(o.rejected ?? 0)} رد شده`}
+            hint={`${faNum(o.pending ?? 0)} در انتظار تأیید`}
             spark={orderSeries} sparkColor="var(--ok)" color="var(--text)" />
           <StatTile
             label="درآمد دوره" icon={Wallet} tone="var(--accent-2)"
             value={faNum(o.revenue ?? 0)} unit="تومان"
-            hint={`میانگین هر سفارش ${faNum(o.avg ?? 0)}`}
+            hint={`میانگین ${faNum(o.avg ?? 0)} تومان`}
             spark={moneySeries} sparkColor="var(--accent-2)" color="var(--text)" />
           <StatTile
             label="نرخ تبدیل" icon={TrendingUp} tone="var(--purple)"
             value={faNum(rep?.conversion ?? 0)} unit="درصد"
-            hint={`${faNum(rep?.buyerCount ?? 0)} خریدار از ${faNum(u.newUsers ?? 0)} کاربر تازه`}
+            hint={`${faNum(rep?.buyerCount ?? 0)} خریدار از ${faNum(u.newUsers ?? 0)} نفر`}
             color="var(--text)" />
         </div>
       )}
@@ -132,7 +132,7 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
             <div>
               <h2 className="text-[15px] font-bold text-white">روند فروش</h2>
               <p className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
-                موس را روی نمودار ببرید
+{faNum(days)} روز گذشته · {faNum(o.approved ?? 0)} سفارش
               </p>
             </div>
             <Segmented value={days} onChange={setDays}
@@ -143,14 +143,14 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
             <EmptyState icon={TrendingUp} text="هنوز فروشی در این بازه ثبت نشده"
               hint="با اولین سفارش موفق، روند این‌جا کشیده می‌شود." />
           ) : (
-            <>
-              <AreaChart data={moneySeries} color="var(--accent-2)" height={150}
-                label="درآمد روزانه" format={(v) => `${faNum(v)} تومان`} />
-              <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
-                <AreaChart data={orderSeries} color="var(--cy)" height={70} fill={false}
-                  label="تعداد سفارش" format={(v) => `${faNum(v)} سفارش`} />
-              </div>
-            </>
+            /* هر دو سری روی یک محور — نه دو نمودار زیر هم. کارت
+               نصف ارتفاع می‌گیرد و «فروش بالا رفت ولی تعداد سفارش
+               نه» در یک نگاه دیده می‌شود. */
+            <AreaChart
+              data={moneySeries} color="var(--accent-2)" height={168}
+              label="درآمد روزانه" format={(v) => `${faNum(v)} تومان`}
+              data2={orderSeries} color2="var(--cy)" label2="تعداد سفارش"
+              format2={(v) => `${faNum(v)} سفارش`} />
           )}
         </div>
 

@@ -791,6 +791,8 @@ code, kbd, samp, pre { overflow-wrap: anywhere; }
 /* ── نمودار: خط راهنما، نقطه، و تولتیپ شیشه‌ای ── */
 .fx-chart { width: 100%; display: block; overflow: visible; touch-action: none; }
 .fx-chart .gl { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 5; }
+/* نورِ محیطی باید *کمی* دیده شود، وگرنه بودن و نبودنش فرقی ندارد */
+.fx-amb::before { opacity: 1; }
 .fx-chart .ax { font-family: var(--mono); font-size: 10px; fill: var(--muted); }
 .fx-reveal { transform: scaleX(0); transform-origin: left; transform-box: fill-box;
              animation: fx-rev 1s var(--sp-soft) .1s forwards; }
@@ -1057,3 +1059,83 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 
 /* ── نوار پیشرفت: همه‌جا یک شکل ── */
 .fx-usebar { height: 5px; }
+
+
+/* ══════════════════════════════════════════════════════════════
+   چیدمان — اندازه‌گیری‌شده روی خودِ صفحه، نه حدس
+   ------------------------------------------------------------
+   قبل از این:  کارت شاخص ۱۹۰px (به‌خاطر متنی که سه خط می‌شد)،
+                کارتِ دونات ۲۷۰px که افسانه‌اش زیر نمودار می‌افتاد،
+                نوار بالا اصلاً نمی‌چسبید و با اسکرول می‌رفت،
+                و لایه‌ی نورِ محیطی زیر یک پس‌زمینه‌ی مات گم بود.
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── نوار بالا باید بچسبد ──
+   پنل پر از جدول‌های بلند است. وقتی نوار بالا می‌رود، دکمه‌ی
+   «ذخیره» و جستجو هم می‌روند و باید تا بالای صفحه برگردی. */
+.fx-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+/* ── کارت شاخص: قدِ یکسان، متنِ یک‌خطی ── */
+.fx-kpi {
+  padding: 14px 16px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  /* همه‌ی کارت‌های یک ردیف هم‌قد می‌شوند، پس ردیف صاف می‌ماند */
+  min-height: 142px;
+}
+.fx-kpi-label {
+  font-size: 12px; color: var(--muted); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fx-kpi-val {
+  display: flex; align-items: baseline; gap: 5px;
+  font-size: 25px; font-weight: 700; line-height: 1.05;
+  letter-spacing: -.01em; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+  margin-top: auto;
+}
+.fx-kpi-val .u { font-size: 12px; font-weight: 500; color: var(--muted); }
+.fx-kpi-foot {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 10px; min-height: 30px;
+}
+/* حداکثر دو خط، بعد سه‌نقطه.
+   یک‌خطی، روی کارتِ باریک نصفِ جمله را می‌خورد؛ بی‌سقف، ارتفاع
+   کارت‌ها را ناهموار می‌کند. دو خط هر دو را حل می‌کند و سقفِ
+   ارتفاع هم ثابت می‌ماند. */
+.fx-kpi-note {
+  font-size: 11.5px; color: var(--muted); min-width: 0; line-height: 1.45;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; align-self: center;
+}
+.fx-kpi-spark { width: 84px; flex-shrink: 0; display: block; }
+
+/* روی کارتِ باریک، اسپارک‌لاین جا را از جمله می‌گیرد */
+@media (max-width: 1400px) { .fx-kpi-spark { width: 68px; } }
+@media (max-width: 1100px) { .fx-kpi-spark { width: 56px; } }
+@media (max-width: 860px) { .fx-kpi-spark { display: none; } }
+
+/* ── دونات: افسانه نباید زیرش بیفتد ──
+   کارتِ ستونِ کناری حدود ۲۷۰ پیکسل است. دوناتِ ۱۲۴ + افسانه‌ی ۱۲۸
+   + فاصله‌ی ۱۶ دقیقاً همان ۲۶۸ می‌شد و با کوچک‌ترین تغییری
+   می‌شکست. حالا با فضای اضافه جا می‌گیرد. */
+.fx-donut-row { display: flex; align-items: center; gap: 14px; }
+.fx-donut-row > svg { width: 104px; height: 104px; flex-shrink: 0; }
+.fx-donut-row > .legend { flex: 1; min-width: 96px; }
+@media (max-width: 420px) {
+  .fx-donut-row { flex-wrap: wrap; justify-content: center; }
+}
+
+/* ── پوسته: نورِ محیطی باید دیده شود ──
+   روی خودِ shell یک پس‌زمینه‌ی مات نشسته بود که کل لایه‌ی نور را
+   می‌پوشاند. رنگِ زمینه از body می‌آید، پس این‌جا لازم نیست. */
+.fx-shell { position: relative; z-index: 1; background: transparent; }
+
+/* ── نمودارها فشرده‌تر ── */
+.fx-chart-card { padding: 16px 18px 14px; }
+.fx-chart-card .fx-chart { margin-top: 2px; }

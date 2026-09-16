@@ -120,10 +120,113 @@ console.log("\n" + "═".repeat(52));
 console.log("  هر سه اپ باید بالا بیایند");
 console.log("═".repeat(52) + "\n");
 
+
+/**
+ * هر صفحه‌ی پنل باید *چیزی* رندر کند.
+ *
+ * چرا: پنل ۴۷ صفحه دارد و هیچ‌کدامشان جز داشبورد در هیچ تستی باز
+ * نمی‌شدند. یک import جاافتاده یا یک پراپِ عوض‌شده، همان یک صفحه را
+ * سفید می‌کند و تا وقتی کسی رویش کلیک نکند معلوم نمی‌شود — دقیقاً
+ * همان شکلی که پنل نماینده یک‌بار کاملاً از کار افتاد.
+ *
+ * این‌جا قضاوتِ ظاهری نمی‌شود (jsdom چیدمان ندارد). فقط: باز شد؟
+ * متنی تولید کرد؟ خطایی داد؟
+ */
+async function everyPage() {
+  const errors = [];
+  const dom = new JSDOM(html.replace(/<script[^>]*src="[^"]*"[^>]*><\/script>/g, ""), {
+    url: "https://panel.example.com/", runScripts: "outside-only", pretendToBeVisual: true,
+  });
+  const w = dom.window;
+  w.localStorage.setItem("nexora_subpage_admin_pw", "t");
+  w.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+  w.scrollTo = () => {};
+  w.fetch = () => Promise.resolve({
+    ok: true, status: 200,
+    json: () => Promise.resolve({ ready: true, groups: [], orders: [], users: [],
+                                  plans: [], daily: [], buyers: [], downloadApps: {},
+                                  faq: {}, videos: [], resellers: [], links: {},
+                                  advanced: {}, banners: {}, referral: {} }),
+    text: () => Promise.resolve(""),
+  });
+  w.console.error = (...a) => { errors.push(a.map(String).join(" ")); };
+  try { w.eval(js); } catch (e) { errors.push(String(e && e.message || e)); }
+  await tick(150); await tick(150);
+
+  const d = w.document;
+  const WS = ["صفحه اشتراک", "حسابداری", "تانل", "نمایندگی", "فایروال", "ربات تلگرام"];
+  // سرِ هر فضای کاری، تازه از DOM — بعد از هر رندر عوض می‌شوند
+  const heads = () => [...d.querySelectorAll(".fx-side button")]
+    .filter((b) => WS.some((t) => (b.textContent || "").trim().startsWith(t)));
+
+  // آکاردئون *کلید* است: کلیک دوم می‌بنددش.
+  //
+  // نسخه‌ی اول همه‌ی سرها را یک‌بار می‌زد و بعد دوباره — یعنی
+  // می‌بستشان — و بعد دنبال آیتم می‌گشت و پیدا نمی‌کرد. نتیجه:
+  // هیچ صفحه‌ای باز نمی‌شد و تست *سبز* بود، چون فهرستِ خرابی‌ها
+  // خالی می‌ماند. دقیقاً همان دروازه‌ای که به اتاق خالی نگاه می‌کند.
+  async function openKey(k) {
+    let btn = d.querySelector(`[data-navkey="${k}"]`);
+    if (btn) { btn.click(); await tick(100); return true; }
+    for (const h of heads()) {
+      h.click(); await tick(50);
+      btn = d.querySelector(`[data-navkey="${k}"]`);
+      if (btn) { btn.click(); await tick(100); return true; }
+      h.click(); await tick(20);          // بستن و رفتن سراغ بعدی
+    }
+    return false;
+  }
+
+  // همه‌ی کلیدها: هر فضای کاری را باز می‌کنیم و می‌بندیم
+  const keys = new Set();
+  for (const h of heads()) {
+    h.click(); await tick(50);
+    d.querySelectorAll("[data-navkey]").forEach((e) => keys.add(e.dataset.navkey));
+    h.click(); await tick(20);
+  }
+
+  const broken = [];
+  let opened = 0;
+  for (const k of keys) {
+    const before = errors.length;
+    if (!(await openKey(k))) { broken.push(k + " (در منو پیدا نشد)"); continue; }
+    opened++;
+    const main = d.querySelector(".fx-main");
+    const txt = ((main && main.textContent) || "").trim();
+    const fresh = errors.slice(before).filter((e) =>
+      !/not implemented|Not implemented|jsdom|act\(|Warning:/.test(e));
+    // مرزِ خطا صفحه را سفید نمی‌کند — پیامِ خودش را نشان می‌دهد،
+    // پس «خالی نبودن» کافی نیست
+    const crashed = txt.includes("بقیه‌ی پنل سالم است") || txt.includes("دوباره تلاش");
+    if (txt.length < 12 || fresh.length || crashed) {
+      broken.push(k + (crashed ? " (کرش کرد)"
+                     : fresh.length ? " (" + fresh[0].slice(0, 60) + ")" : " (خالی)"));
+    }
+  }
+
+  // نگهبانِ خودِ تست: اگر ناگهان هیچ صفحه‌ای باز نشد، یعنی این تست
+  // کور شده، نه اینکه پنل سالم است
+  if (opened < 30) {
+    fail++;
+    console.log(`  ${R}✗${X} فقط ${opened} صفحه باز شد — این تست کور شده، نه پنل سالم`);
+    return;
+  }
+  if (broken.length) {
+    fail++;
+    console.log(`  ${R}✗${X} ${broken.length} صفحه از ${keys.size} مشکل دارد`);
+    broken.slice(0, 8).forEach((b) => console.log(`      ${D}▸ ${b}${X}`));
+  } else {
+    ok++;
+    console.log(`  ${G}✓${X} هر ${opened} صفحه‌ی پنل باز می‌شود ${D}— بدون خطا، با محتوا${X}`);
+  }
+}
+
+
 (async () => {
   await boot("پنل مدیر روی /", "/");
   await boot("پنل نماینده روی /r/<نشانی>", "/r/hossein", "پنل نمایندگی");
   await boot("مینی‌اپ روی /app", "/app");
+  await everyPage();
 
   console.log("\n" + "─".repeat(52));
   if (fail) {

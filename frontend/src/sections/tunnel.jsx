@@ -70,7 +70,10 @@ export function TunnelOverview({ password }) {
     );
   }
 
-  const s = data.stats;
+  // پاسخ ممکن است شکل دیگری داشته باشد (خطا، نسخه‌ی قدیمی، مستاجری
+  // که این بخش را ندارد). آن‌وقت صفحه باید حالت خالی نشان بدهد، نه
+  // اینکه کل بخش بیفتد.
+  const s = data.stats || {};
 
   return (
     <div className="fx-anim">
@@ -95,7 +98,7 @@ export function TunnelOverview({ password }) {
         ))}
       </div>
 
-      {data.nodes.length === 0 ? (
+      {(data.nodes || []).length === 0 ? (
         <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
           <Server size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
           <div className="text-[14px] font-semibold text-white mb-2">هنوز سروری اضافه نشده</div>
@@ -108,7 +111,7 @@ export function TunnelOverview({ password }) {
         <>
           <div className="fx-card p-5 mb-4">
             <div className="text-[14px] font-semibold text-white mb-4">سرورها</div>
-            {data.nodes.map((n, i, arr) => (
+            {(data.nodes || []).map((n, i, arr) => (
               <div key={n.id} className="flex items-center justify-between gap-3 py-3 flex-wrap"
                 style={{ borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
                 <div className="flex items-center gap-3 min-w-0">
@@ -233,7 +236,7 @@ export function TunnelNodes({ password }) {
           <Server size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
           <div className="text-[14px]" style={{ color: "var(--muted)" }}>هنوز سروری اضافه نشده</div>
         </div>
-      ) : data.nodes.map((n) => (
+      ) : (data.nodes || []).map((n) => (
         <div key={n.id} className="fx-card p-5 mb-3">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 min-w-0">
@@ -586,7 +589,7 @@ export function TunnelList({ password }) {
       })}
 
       {adding && (
-        <TunnelForm password={password} nodes={data.nodes} engines={data.engines}
+        <TunnelForm password={password} nodes={data.nodes || []} engines={data.engines || []}
           onClose={() => setAdding(false)}
           onDone={() => { setAdding(false); reload(); setMsg({ t: "ok", m: "تانل ساخته شد" }); }} />
       )}
