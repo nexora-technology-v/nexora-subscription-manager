@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errText, esc0, faNum } from "../../lib/format";
-import { AreaChart, CountUp, EmptyState, PageSkeleton, SectionHead, Segmented, StatTile } from "../../ui/index";
+import { AreaChart, Avatar, CountUp, EmptyState, PageSkeleton, SectionHead, Segmented, StatTile } from "../../ui/index";
 
 export function BotStatsSection({ password }) {
   const [d, setD] = useState(null);
@@ -308,7 +308,10 @@ export function BotReportSection({ password }) {
                 {(d.buyers || []).map((b) => (
                   <tr key={b.tg_id}>
                     <td>
-                      {esc0(b.first_name) || "—"}
+                      <span className="inline-flex items-center gap-2 align-middle">
+                        <Avatar name={b.first_name || b.username} id={b.tg_id} size={24} />
+                        <span>{esc0(b.first_name) || "—"}</span>
+                      </span>
                       {b.username && (
                         <span dir="ltr" className="mr-2" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                           @{b.username}

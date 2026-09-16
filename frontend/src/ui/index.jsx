@@ -1359,3 +1359,44 @@ export function PageSkeleton({ cards = 4, rows = 6 }) {
     </div>
   );
 }
+
+/**
+ * نشانِ کاربر — حرفِ اول روی یک زمینه‌ی رنگی.
+ *
+ * چرا رنگ از خودِ شناسه می‌آید و تصادفی نیست: در فهرستی از چند ده
+ * نفر، چشم ردیف را از روی *رنگ* پیدا می‌کند نه از خواندنِ نام. اگر
+ * رنگ هر بار عوض شود، این کمک از بین می‌رود. پس از یک هشِ ساده روی
+ * شناسه می‌آید — همان کاربر، همیشه همان رنگ.
+ *
+ * `ring` برای جایی است که خودِ کاربر است (مثلاً بالای مینی‌اپ)، نه
+ * یک ردیف در فهرست.
+ */
+const AVATAR_HUES = [
+  ["#2B7FD6", "#5AA9E6"], ["#2DD4BF", "#14B8A6"], ["#A78BFA", "#8B5CF6"],
+  ["#34D399", "#10B981"], ["#FBBF24", "#F59E0B"], ["#F87171", "#EF4444"],
+  ["#60A5FA", "#3B82F6"], ["#F472B6", "#EC4899"],
+];
+
+export function Avatar({ name, id, size = 32, ring = false, className = "" }) {
+  const label = String(name || "").trim();
+  // حرفِ اول: اگر نام خالی بود، «؟» — نه یک مربعِ خالی که شبیه
+  // خرابی به نظر برسد
+  const ch = label ? [...label][0] : "؟";
+  let h = 0;
+  const key = String(id ?? label);
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  const [a, b] = AVATAR_HUES[h % AVATAR_HUES.length];
+
+  return (
+    <span className={`fx-avatar ${ring ? "ring" : ""} ${className}`}
+      title={label || undefined} aria-hidden={label ? undefined : "true"}
+      style={{
+        width: size, height: size,
+        fontSize: Math.max(11, Math.round(size * 0.42)),
+        background: `linear-gradient(140deg, ${a}, ${b})`,
+        ...(ring ? { "--ring": a } : {}),
+      }}>
+      {ch}
+    </span>
+  );
+}

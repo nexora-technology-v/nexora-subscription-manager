@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { daysLeft, errText, faNum, fmtBytes, fmtDate } from "../../lib/format";
-import { EmptyState, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile, StatusPill } from "../../ui/index";
+import { Avatar, EmptyState, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile, StatusPill } from "../../ui/index";
 
 // فیلترهای بخش کاربران — کلیدها باید عیناً با _USER_FILTERS در
 // backend/app.py بخوانند.
@@ -173,7 +173,11 @@ export function BotUsersSection({ password }) {
                 className="flex items-center justify-between gap-3 p-4 flex-wrap transition-colors hover:bg-white/[.02]"
                 style={{ borderBottom: i < users.length - 1 ? "1px solid var(--border)" : "none" }}>
                 <button onClick={() => setDetail(u.tg_id)}
-                  className="min-w-0 flex-1 text-right">
+                  className="min-w-0 flex-1 text-right flex items-center gap-3">
+                  {/* چهره‌ی کاربر — در فهرستِ بلندِ هم‌شکل، چشم روی
+                      رنگ می‌ایستد نه روی شناسه‌ی چهارده‌رقمی */}
+                  <Avatar name={u.first_name || u.username} id={u.tg_id} size={38} />
+                  <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[14px] font-semibold text-white">
                       {u.first_name || "بدون نام"}
@@ -209,6 +213,7 @@ export function BotUsersSection({ password }) {
                         <span>{faNum(u.ordersCount)} خرید · {faNum(u.spent)} تومان</span>
                       </>
                     )}
+                  </div>
                   </div>
                 </button>
                 <div className="flex items-center gap-3 text-[13px] shrink-0">

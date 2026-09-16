@@ -12,7 +12,7 @@ import {
 
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import { EmptyState, Field, InfoBox, Msg, NumberInput, SectionHead, StatTile } from "../ui/index";
+import { Avatar, EmptyState, Field, InfoBox, Msg, NumberInput, SectionHead, StatTile } from "../ui/index";
 import { BotInboundsSection } from "./bot/inbounds";
 
 
@@ -130,6 +130,7 @@ function Row({ t, groups, password, onSaved, setMsg }) {
     <div className="fx-card p-5 mb-3">
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-2">
+          <Avatar name={t.name} id={t.id ?? t.portalSlug} size={30} />
           <span className="text-[14px] font-semibold text-white">{t.name}</span>
           <span className="fx-pill" style={{
             background: on ? "rgba(52,211,153,.14)" : "var(--surface-3)",

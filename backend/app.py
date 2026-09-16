@@ -9632,6 +9632,11 @@ def mini_me(tu: tuple = Depends(mini_user)):
         st = {}
     return {
         "name": u.get("first_name") or "",
+        # شناسه‌ی تلگرام روی کارتِ موجودی نشان داده می‌شود — همان
+        # چیزی که مشتری موقع پشتیبانی باید بگوید، پس باید جایی
+        # باشد که بتواند بخواند و کپی کند.
+        "tgId": int(u.get("tg_id") or 0),
+        "username": u.get("username") or "",
         "balance": int(u.get("balance") or 0),
         "coins": int(u.get("coins") or 0),
         "brand": st.get("brand") or t.get("name") or "",
@@ -9691,6 +9696,14 @@ def mini_subs(tu: tuple = Depends(mini_user)):
             "expiryJalali": _to_jalali(_epoch_ms(exp))[0] if exp else None,
             "daysLeft": left,
             "active": bool(s.get("is_active")) and (left is None or left > 0),
+            # صفحه‌ی جزئیات این‌ها را می‌خواهد. بایت خام می‌رود و
+            # واحدش سمت مشتری انتخاب می‌شود: ۵۰ مگابایت نباید
+            # «۰٫۰ گیگ» نوشته شود.
+            "usedBytes": int(used or 0),
+            "totalBytes": int(total or 0),
+            "remainBytes": max(0, int(total or 0) - int(used or 0)) if total else None,
+            "isTrial": bool(s.get("is_trial")),
+            "months": int(s.get("months") or 0) or None,
         })
     return {"subs": out}
 
@@ -11789,7 +11802,36 @@ def portal_stats(t: dict = Depends(portal_tenant)):
     new_m = sum(1 for c in mine
                 if str(c.get("createdAt") or "")[:10] >= first)
 
+    # سریِ چهارده‌روزه — کارت‌های آمار پنل نماینده تا امروز فقط یک عدد
+    # خشک بودند، در حالی که همان کامپوننتِ مشترک نمودارِ کوچک هم
+    # می‌گیرد. عدد می‌گوید «۸۴»، نمودار می‌گوید «داشت بالا می‌رفت».
+    days = [(datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+            for i in range(13, -1, -1)]
+    idx = {d: i for i, d in enumerate(days)}
+    new_series = [0] * 14
+    for c in mine:
+        i = idx.get(str(c.get("createdAt") or "")[:10])
+        if i is not None:
+            new_series[i] += 1
+    renew_series = [0] * 14
+    bcon = _billing_conn()
+    try:
+        for row in bcon.execute(
+                "SELECT substr(created_at,1,10) d, COUNT(*) n FROM renewals "
+                "WHERE group_key=? AND substr(created_at,1,10) >= ? "
+                "GROUP BY d", (group, days[0])).fetchall():
+            i = idx.get(row["d"])
+            if i is not None:
+                renew_series[i] = int(row["n"] or 0)
+    except Exception:
+        # سریِ نمودار تزئینی است؛ نبودش نباید کل صفحه‌ی آمار را
+        # بیندازد
+        renew_series = [0] * 14
+    finally:
+        bcon.close()
+
     return {
+        "series": {"new": new_series, "renew": renew_series},
         "total": len(mine),
         "active": active,
         "inactive": len(mine) - active,

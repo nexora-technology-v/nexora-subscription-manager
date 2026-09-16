@@ -12,19 +12,26 @@
  * و یک قاعده که نباید شکسته شود: **هیچ پولی این‌جا حساب نمی‌شود.**
  * قیمت از API می‌آید، خرید در خودِ ربات انجام می‌شود. مالک صریح گفت
  * حسابداری از این بحث جداست.
+ *
+ * ── چیدمان ──
+ *
+ * سه صفحه با نوار پایین، نه تب‌های بالا: انگشتِ شست روی گوشی به
+ * پایینِ صفحه می‌رسد، نه به بالایش. همان الگویی که مالک نمونه‌اش را
+ * فرستاد و در هر اپِ موبایلی دیده‌ایم.
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, ArrowLeft, Check, Copy, Gift, Link2, Loader2, Package,
-  RefreshCw, ShoppingCart, Wallet,
+  AlertTriangle, ArrowLeft, ChevronLeft, Copy, ExternalLink, Gift, Home,
+  Layers, Link2, Package, QrCode, RefreshCw, Shield, ShoppingBag,
+  ShoppingCart, Trash2, Wallet, Zap,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
-import { errText, faNum } from "../lib/format";
-import { EmptyState, Skeleton } from "../ui/index";
+import { errText, faNum, toFaDigits as faDigits } from "../lib/format";
+import { Avatar, EmptyState, Skeleton } from "../ui/index";
 
-/* آیا این آدرس مینی‌اپ است؟ — همان قاعده‌ی بالا در پنل نماینده:
-   نام باید در دامنه‌ی خودِ ماژول هم باشد، نه فقط عبور کند. */
+/* آیا این آدرس مینی‌اپ است؟ — نام باید در دامنه‌ی خودِ ماژول هم
+   باشد، نه فقط عبور کند. */
 import { isMini } from "../lib/route.js";
 export { isMini };
 
@@ -57,15 +64,12 @@ function buzz(kind = "light") {
  * رنگ‌ها را از خودِ تلگرام می‌گیرد.
  *
  * چرا: مینی‌اپ تنها جایی است که **مشتری نهایی** می‌بیند، و کنار
- * بقیه‌ی اپ‌های تلگرام قضاوت می‌شود. تا امروز همیشه سرمه‌ایِ نکسورا
- * بود — روی تلگرامِ روشن، مثل صفحه‌ی وبی که تصادفاً آن‌جا باز شده.
+ * بقیه‌ی اپ‌های تلگرام قضاوت می‌شود.
  *
- * `themeParams` همان متغیرهایی را می‌دهد که خودِ تلگرام به پوسته‌اش
- * می‌دهد. روی همان `--bg` و `--surface` و … می‌نشینند، پس هیچ
- * کامپوننتی لازم نیست عوض شود.
- *
- * اگر تلگرام چیزی نداد (نسخه‌ی قدیمی)، هیچ‌کدام نوشته نمی‌شوند و
- * پالتِ خودِ نکسورا سر جایش می‌ماند.
+ * ولی رنگِ *برند* از تلگرام نمی‌آید: اکسنت همان سرمه‌ای-فیروزه‌ای
+ * نکسورا می‌ماند، وگرنه اپ هویت خودش را ندارد. فقط زمینه و متن —
+ * یعنی چیزهایی که باید با پوسته‌ی کاربر جور باشند — از تلگرام
+ * می‌آیند.
  */
 function syncTheme() {
   const w = tg();
@@ -82,16 +86,11 @@ function syncTheme() {
   set("--text", p.text_color);
   set("--dim", p.hint_color || p.subtitle_text_color);
   set("--muted", p.hint_color || p.subtitle_text_color);
-  set("--accent", p.button_color || p.link_color);
-  set("--accent-2", p.link_color || p.button_color);
   // مرزها در پوسته‌ی روشن باید تیره باشند، نه سفیدِ کم‌رنگ — وگرنه
   // روی زمینه‌ی روشن اصلاً دیده نمی‌شوند و کارت‌ها در هم می‌روند
   set("--border", dark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.10)");
   set("--border-2", dark ? "rgba(255,255,255,.16)" : "rgba(0,0,0,.16)");
-  set("--accent-soft", dark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.04)");
 
-  // نوار بالای تلگرام هم هم‌رنگ شود، وگرنه یک خطِ رنگِ غریبه بالای
-  // صفحه می‌ماند
   try {
     w.setHeaderColor?.(p.secondary_bg_color || p.bg_color);
     w.setBackgroundColor?.(p.secondary_bg_color || p.bg_color);
@@ -109,8 +108,25 @@ async function api(path) {
   return j;
 }
 
-/* ── نوار مصرف — همان چیزی که در پنل نماینده جواب داد ── */
-function UseBar({ pct }) {
+/**
+ * حجم با واحدِ درست.
+ *
+ * چرا نه همیشه گیگابایت: اشتراکِ تستِ ۵۰ مگابایتی با گیگ می‌شود
+ * «۰٫۰ گیگ» — که یعنی هیچ. مشتری باید عددِ خودش را ببیند.
+ */
+function vol(bytes) {
+  const b = Number(bytes) || 0;
+  if (!b) return { n: "۰", u: "مگابایت" };
+  const mb = b / (1024 ** 2);
+  if (mb < 1024) return { n: faNum(mb < 10 ? mb.toFixed(1) : Math.round(mb)), u: "مگابایت" };
+  const gb = mb / 1024;
+  return { n: faNum(gb < 10 ? gb.toFixed(1) : Math.round(gb)), u: "گیگابایت" };
+}
+const volText = (b) => { const v = vol(b); return `${v.n} ${v.u}`; };
+
+/* ═══════════════ اجزای کوچک ═══════════════ */
+
+function Bar({ pct }) {
   if (pct === null || pct === undefined) return null;
   const col = pct >= 90 ? "var(--danger)" : pct >= 75 ? "var(--warn)" : "var(--ok)";
   return (
@@ -120,117 +136,273 @@ function UseBar({ pct }) {
   );
 }
 
-function SubCard({ s }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard?.writeText(s.subUrl);
-    setCopied(true);
-    buzz("ok");
-    setTimeout(() => setCopied(false), 1600);
-  };
-  const urgent = s.daysLeft !== null && s.daysLeft <= 7;
+function Tag({ tone, children }) {
+  return <span className={`mn-tag ${tone || ""}`}>{children}</span>;
+}
+
+/** خطِ وضعیت: منقضی / تست / چند ماهه */
+function SubTags({ s }) {
   return (
-    <div className="fx-card p-4 mb-3">
-      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-        <span className="text-[14px] font-semibold" style={{ color: "var(--text)" }}>
-          {s.plan || "اشتراک"}
-        </span>
-        <span className="fx-pill" style={{
-          background: s.active ? "rgba(52,211,153,.14)" : "rgba(255,255,255,.05)",
-          color: s.active ? "var(--ok)" : "var(--muted)",
-        }}>
-          {s.active ? "فعال" : "غیرفعال"}
-        </span>
-      </div>
-
-      <div className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
-        {faNum(s.usedGB)} از {s.gb === 0 ? "نامحدود" : `${faNum(s.gb)} گیگ`}
-        {s.usagePct !== null && (
-          <span className="text-[12px]" style={{ color: "var(--muted)" }}>
-            {" "}({faNum(s.usagePct)}٪)
-          </span>
-        )}
-      </div>
-      <UseBar pct={s.usagePct} />
-
-      <div className="text-[12px] mt-3 flex items-center gap-2 flex-wrap"
-        style={{ color: "var(--muted)" }}>
-        <span>انقضا: {s.expiryJalali || "—"}</span>
-        {urgent && (
-          <span className="fx-pill" style={{
-            background: s.daysLeft <= 0 ? "rgba(248,113,113,.14)" : "rgba(251,191,36,.14)",
-            color: s.daysLeft <= 0 ? "var(--danger)" : "var(--warn)",
-          }}>
-            {s.daysLeft <= 0 ? "منقضی" : `${faNum(s.daysLeft)} روز`}
-          </span>
-        )}
-      </div>
-
-      {s.subUrl && (
-        <button onClick={copy}
-          className="fx-btn-g w-full mt-3 py-2.5 text-[13px] flex items-center justify-center gap-1.5">
-          {/* آیکون از کپی به تیک تبدیل می‌شود و تیک *کشیده* می‌شود:
-              بازخوردی که بدون خواندنِ متن هم فهمیده می‌شود */}
-          {copied ? (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ok)"
-              strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-              <path className="fx-chk" d="m4 12 5.5 5.5L20 7" />
-            </svg>
-          ) : <Copy size={13} />}
-          {copied ? "کپی شد" : "کپی لینک اشتراک"}
-        </button>
-      )}
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {s.months ? <Tag>{faNum(s.months)} ماهه</Tag> : null}
+      {s.isTrial ? <Tag tone="warn">تست</Tag> : null}
+      {s.active
+        ? <Tag tone="ok"><i className="mn-dot" /> فعال</Tag>
+        : <Tag tone="bad"><i className="mn-dot" /> منقضی</Tag>}
     </div>
   );
 }
+
+/* ═══════════════ صفحه‌ی خانه ═══════════════ */
+
+function Balance({ me }) {
+  const [copied, setCopied] = useState(false);
+  const copyId = () => {
+    try { navigator.clipboard?.writeText(String(me?.tgId || "")); } catch { /* بی‌صدا */ }
+    setCopied(true); buzz("ok");
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="mn-card-bal">
+      <div className="mn-bal-top">
+        <span className="mn-bal-label">موجودی</span>
+        <span className="mn-chip" aria-hidden="true" />
+      </div>
+      <div className="mn-bal-amount">
+        <b>{faNum(me?.balance ?? 0)}</b>
+        <span>تومان</span>
+      </div>
+      <div className="mn-bal-foot">
+        {/* شناسه همان چیزی است که موقع پشتیبانی باید بگوید —
+            پس باید بشود یک‌ضرب کپی‌اش کرد */}
+        <button onClick={copyId} className="mn-bal-cell" title="کپی شناسه">
+          <span>شناسه</span>
+          {/* شناسه عدد نیست، شناسه است: `faNum` روی آن جداکننده‌ی
+              هزارگان می‌گذارد و «۱٬۲۷۸٬۱۰۹٬۷۸۷» چیزی است که
+              مشتری نمی‌تواند به پشتیبانی بگوید. */}
+          {/* `dir="ltr"` فقط وقتی که واقعاً شناسه است — «کپی شد»
+              فارسی است و داخل یک جعبه‌ی چپ‌به‌راست جابه‌جا می‌شود */}
+          {copied
+            ? <b>کپی شد</b>
+            : <b dir="ltr">{me?.tgId ? faDigits(me.tgId) : "—"}</b>}
+        </button>
+        <div className="mn-bal-cell end">
+          <span>صاحب حساب</span>
+          <b>{me?.name || "—"}</b>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SubRow({ s, onOpen }) {
+  return (
+    <button className="mn-row" onClick={() => { buzz("light"); onOpen(s); }}>
+      <span className={`mn-row-ico ${s.active ? "ok" : "bad"}`}>
+        <Layers size={16} />
+      </span>
+      <span className="mn-row-body">
+        <span className="mn-row-title">{s.plan || s.email || "اشتراک"}</span>
+        <span className="mn-row-sub">{s.email}</span>
+        <SubTags s={s} />
+        <span className="mn-row-vol">{volText(s.totalBytes)}</span>
+      </span>
+      <ChevronLeft size={16} className="mn-row-arrow" />
+    </button>
+  );
+}
+
+function HomeView({ me, subs, onOpen, onBuy }) {
+  const recent = (subs || []).slice(0, 3);
+  return (
+    <>
+      <Balance me={me} />
+
+      <div className="mn-sec">
+        <div className="mn-sec-head">
+          <div>
+            <h2>اشتراک‌های اخیر</h2>
+            <p>برای جزئیات و مدیریت، روی هر مورد بزنید</p>
+          </div>
+          {(subs || []).length > 3 && (
+            <button className="mn-link" onClick={onBuy}>
+              همه <ChevronLeft size={13} />
+            </button>
+          )}
+        </div>
+
+        {recent.length === 0 ? (
+          <EmptyState icon={Package} text="هنوز اشتراکی ندارید"
+            hint="با اولین خرید، اشتراکتان همین‌جا با حجم و تاریخ انقضا نشان داده می‌شود."
+            action={<button onClick={onBuy} className="fx-btn px-4 py-2 text-[13px]">
+              دیدن پلن‌ها</button>} />
+        ) : recent.map((s) => <SubRow key={s.id} s={s} onOpen={onOpen} />)}
+      </div>
+    </>
+  );
+}
+
+/* ═══════════════ جزئیات یک اشتراک ═══════════════ */
+
+function Cell({ label, value, unit, tone }) {
+  return (
+    <div className="mn-cell">
+      <span className="mn-cell-label">{label}</span>
+      <b className="mn-cell-value" style={tone ? { color: tone } : undefined}>
+        {value}{unit && <em>{unit}</em>}
+      </b>
+    </div>
+  );
+}
+
+function SubDetail({ s, onBack }) {
+  const [copied, setCopied] = useState("");
+  const hit = (what, text) => {
+    try { navigator.clipboard?.writeText(text || ""); } catch { /* بی‌صدا */ }
+    setCopied(what); buzz("ok");
+    setTimeout(() => setCopied(""), 1600);
+  };
+  const open = () => {
+    buzz("light");
+    const w = tg();
+    if (s.subUrl && w?.openLink) w.openLink(s.subUrl);
+    else if (s.subUrl) window.open(s.subUrl, "_blank", "noopener");
+  };
+  const used = vol(s.usedBytes);
+  const total = vol(s.totalBytes);
+  const remain = s.remainBytes === null || s.remainBytes === undefined
+    ? null : vol(s.remainBytes);
+
+  return (
+    <>
+      <button className="mn-back" onClick={() => { buzz("light"); onBack(); }}>
+        <ArrowLeft size={14} className="scale-x-[-1]" /> بازگشت
+      </button>
+
+      <div className="mn-hero">
+        <h2>{s.plan || s.email || "اشتراک"}</h2>
+        <p dir="ltr">{s.email}</p>
+        <SubTags s={s} />
+        <div className="mt-3"><Bar pct={s.usagePct} /></div>
+      </div>
+
+      <div className="mn-cells">
+        <Cell label="مصرف" value={used.n} unit={used.u} />
+        <Cell label="کل حجم" value={s.totalBytes ? total.n : "نامحدود"}
+          unit={s.totalBytes ? total.u : null} />
+        <Cell label="باقی‌مانده" value={remain ? remain.n : "نامحدود"}
+          unit={remain ? remain.u : null}
+          tone={s.usagePct >= 90 ? "var(--danger)" : undefined} />
+        <Cell label="انقضا" value={s.expiryJalali || "—"}
+          tone={s.daysLeft !== null && s.daysLeft <= 0 ? "var(--danger)"
+            : s.daysLeft !== null && s.daysLeft <= 7 ? "var(--warn)" : undefined} />
+      </div>
+
+      {s.daysLeft !== null && s.daysLeft !== undefined && (
+        <div className="mn-note">
+          {s.daysLeft > 0
+            ? <>‏{faNum(s.daysLeft)} روز تا پایان اشتراک باقی مانده.</>
+            : <>این اشتراک منقضی شده — برای اتصال دوباره، از ربات تمدید کنید.</>}
+        </div>
+      )}
+
+      <div className="mn-acts">
+        <button className="mn-act" onClick={() => hit("sub", s.subUrl)}>
+          {copied === "sub"
+            ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                stroke="var(--ok)" strokeWidth="2.6" strokeLinecap="round"
+                strokeLinejoin="round"><path className="fx-chk" d="m4 12 5.5 5.5L20 7" /></svg>
+            : <Copy size={15} />}
+          {copied === "sub" ? "کپی شد" : "کپی لینک"}
+        </button>
+        <button className="mn-act" onClick={open} disabled={!s.subUrl}>
+          <ExternalLink size={15} /> باز کردن
+        </button>
+      </div>
+
+      <div className="mn-hint">
+        همه‌ی این کارها — تمدید، تعویض لینک و حذف — از خودِ ربات هم
+        انجام می‌شوند. اگر این صفحه بالا نیامد، منوی ربات همیشه هست.
+      </div>
+    </>
+  );
+}
+
+/* ═══════════════ خرید ═══════════════ */
 
 function PlanCard({ p, onBuy }) {
   return (
-    <div className="fx-card p-4 mb-3">
-      <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
-        <span className="text-[14px] font-semibold" style={{ color: "var(--text)" }}>{p.name}</span>
-        {p.isTrial && (
-          <span className="fx-pill" style={{
-            background: "rgba(52,211,153,.14)", color: "var(--ok)" }}>رایگان</span>
-        )}
-      </div>
-      {p.desc && (
-        <div className="text-[12px] mb-2 leading-relaxed" style={{ color: "var(--muted)" }}>
-          {p.desc}
+    <div className="mn-plan">
+      <span className="mn-plan-strip" aria-hidden="true"><Shield size={15} /></span>
+      <div className="mn-plan-body">
+        <div className="mn-plan-title">
+          {p.gb === 0 ? "نامحدود" : `${faNum(p.gb)} گیگابایت`}
+          {" / "}{faNum(p.days)} روز
+          {p.isTrial && <Tag tone="ok">رایگان</Tag>}
         </div>
-      )}
-      <div className="flex items-center gap-3 text-[13px] mb-3 flex-wrap"
-        style={{ color: "var(--dim)" }}>
-        <span>{p.gb === 0 ? "نامحدود" : `${faNum(p.gb)} گیگ`}</span>
-        <span style={{ opacity: .4 }}>•</span>
-        <span>{faNum(p.days)} روز</span>
-        {p.devices > 0 && (
-          <>
-            <span style={{ opacity: .4 }}>•</span>
-            <span>{faNum(p.devices)} دستگاه</span>
-          </>
-        )}
+        {p.desc && <div className="mn-plan-desc">{p.desc}</div>}
+        <div className="mn-plan-meta">
+          {p.devices > 0 ? `${faNum(p.devices)} دستگاه` : "بدون سقف دستگاه"}
+        </div>
+        <div className="mn-plan-price">
+          {p.price ? faNum(p.price) : "۰"}<em>تومان</em>
+        </div>
       </div>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[16px] font-extrabold"
-          style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
-          {p.price ? faNum(p.price) : "۰"}
-          <span className="text-[12px] fx-fa-sub"> تومان</span>
-        </span>
-        <button onClick={() => onBuy(p)}
-          className="fx-btn px-4 py-2 text-[13px] flex items-center gap-1.5">
-          <ShoppingCart size={13} /> خرید
-        </button>
-      </div>
+      <button className="mn-plan-btn" onClick={() => onBuy(p)}>خرید</button>
     </div>
   );
 }
 
+function BuyView({ plans, onBuy }) {
+  // گروه‌بندی بر اساس مدت — فهرستِ بلندِ بی‌سر، چیزی به کسی
+  // نمی‌گوید؛ «۱ ماهه» و «۳ ماهه» تصمیم را ساده می‌کنند
+  const groups = {};
+  (plans || []).forEach((p) => {
+    const m = Math.max(1, Math.round((Number(p.days) || 30) / 30));
+    (groups[m] = groups[m] || []).push(p);
+  });
+  const keys = Object.keys(groups).map(Number).sort((a, b) => a - b);
+
+  if (!keys.length) {
+    return <EmptyState icon={ShoppingCart} text="فعلاً پلنی برای فروش نیست"
+      hint="به‌زودی پلن‌ها اضافه می‌شوند. از پشتیبانی هم می‌توانید بپرسید." />;
+  }
+
+  return (
+    <>
+      <div className="mn-sec-head mb-1">
+        <div>
+          <h2>خرید سرویس</h2>
+          <p>پلن مناسب خودتان را انتخاب کنید</p>
+        </div>
+      </div>
+      {keys.map((m) => (
+        <div key={m} className="mn-group">
+          <div className="mn-group-head">
+            <Zap size={14} /> {faNum(m)} ماهه
+            <span>{faNum(groups[m].length)} گزینه</span>
+          </div>
+          {groups[m].map((p) => <PlanCard key={p.id} p={p} onBuy={onBuy} />)}
+        </div>
+      ))}
+    </>
+  );
+}
+
+/* ═══════════════ اپ ═══════════════ */
+
+const TABS = [
+  { k: "home", l: "خانه", i: Home },
+  { k: "buy", l: "خرید اشتراک", i: ShoppingBag },
+  { k: "subs", l: "اشتراک‌ها", i: Layers },
+];
+
 export default function Mini() {
-  const [tab, setTab] = useState("subs");
+  const [tab, setTab] = useState("home");
   const [me, setMe] = useState(null);
   const [subs, setSubs] = useState(null);
   const [plans, setPlans] = useState(null);
+  const [detail, setDetail] = useState(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(true);
 
@@ -253,13 +425,24 @@ export default function Mini() {
       w.ready();
       w.expand();
       syncTheme();
-      // کاربر می‌تواند وسط کار پوسته‌ی تلگرام را عوض کند
       w.onEvent?.("themeChanged", syncTheme);
     }
     document.title = "اشتراک من";
     load();
     return () => { try { tg()?.offEvent?.("themeChanged", syncTheme); } catch { /* بی‌صدا */ } };
   }, [load]);
+
+  // دکمه‌ی بازگشتِ خودِ تلگرام، وقتی داخل جزئیات هستیم — همان
+  // چیزی که کاربر در هر مینی‌اپ دیگری انتظار دارد
+  useEffect(() => {
+    const w = tg();
+    const b = w?.BackButton;
+    if (!b) return;
+    const back = () => setDetail(null);
+    if (detail) { b.show?.(); b.onClick?.(back); }
+    else b.hide?.();
+    return () => { try { b.offClick?.(back); } catch { /* بی‌صدا */ } };
+  }, [detail]);
 
   // خرید در خودِ ربات انجام می‌شود.
   //
@@ -297,120 +480,78 @@ export default function Mini() {
     );
   }
 
+  const view = detail ? "detail" : tab;
+
   return (
-    <div className="min-h-screen" dir="rtl" style={{ background: "var(--bg)" }}>
-      <div className="max-w-xl mx-auto px-4 py-5">
-
-        <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-          <div>
-            <div className="text-[16px] font-bold" style={{ color: "var(--text)" }}>
-              {me?.brand || "اشتراک من"}
-            </div>
-            {me?.name && (
-              <div className="text-[13px]" style={{ color: "var(--muted)" }}>
-                {me.name}
-              </div>
-            )}
+    <div className="mn-app" dir="rtl">
+      {/* ── نوار برند ── */}
+      <header className="mn-top">
+        <div className="mn-brand">
+          <Avatar name={me?.name} id={me?.tgId} size={38} ring />
+          <div className="min-w-0">
+            <b>{me?.brand || "اشتراک من"}</b>
+            <span>{me?.name || "—"}</span>
           </div>
-          <button onClick={load} disabled={busy}
-            className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
-            {busy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-            تازه‌سازی
-          </button>
         </div>
+        <button className="mn-icon-btn" onClick={() => { buzz("light"); load(); }}
+          disabled={busy} title="تازه‌سازی" aria-label="تازه‌سازی">
+          <RefreshCw size={16} className={busy ? "animate-spin" : ""} />
+        </button>
+      </header>
 
-        {me && (
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div className="fx-card p-3.5">
-              <div className="text-[12px] mb-1 flex items-center gap-1.5"
-                style={{ color: "var(--muted)" }}>
-                <Wallet size={13} /> کیف پول
-              </div>
-              <div className="text-[17px] font-extrabold"
-                style={{ color: "var(--ok)", fontFamily: "var(--mono)" }}>
-                {faNum(me.balance)}
-                <span className="text-[11.5px] fx-fa-sub"> تومان</span>
-              </div>
-            </div>
-            <div className="fx-card p-3.5">
-              <div className="text-[12px] mb-1 flex items-center gap-1.5"
-                style={{ color: "var(--muted)" }}>
-                <Gift size={13} /> سکه
-              </div>
-              <div className="text-[17px] font-extrabold"
-                style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
-                {faNum(me.coins)}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* خطا باید بگوید چه چیزی نشد، و راه ربات را هم نشان بدهد —
-            وگرنه مشتری روی صفحه‌ی خالی می‌ماند و فکر می‌کند سرویس
-            خراب است */}
+      <main className="mn-body">
         {err && (
-          <div className="fx-card p-4 mb-4" style={{ borderColor: "rgba(248,113,113,.3)" }}>
-            <div className="text-[13px] mb-2" style={{ color: "var(--danger)" }}>{err}</div>
-            <div className="text-[12px]" style={{ color: "var(--muted)" }}>
-              همه‌ی این کارها از خودِ ربات هم انجام می‌شوند — پیام را ببندید
-              و از منوی ربات ادامه بدهید.
-            </div>
+          <div className="mn-err">
+            <b>{err}</b>
+            <span>همه‌ی این کارها از خودِ ربات هم انجام می‌شوند — پیام را
+              ببندید و از منوی ربات ادامه بدهید.</span>
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 mb-4">
-          {[["subs", "اشتراک‌های من", Package],
-            ["plans", "خرید اشتراک", ShoppingCart]].map(([k, label, Icon]) => (
-            <button key={k} onClick={() => { setTab(k); buzz("light"); }}
-              className="flex-1 py-2.5 rounded-[11px] text-[13px] flex items-center justify-center gap-1.5"
-              style={tab === k
-                ? { background: "var(--accent-2)", color: "#06090F", fontWeight: 600 }
-                : { color: "var(--dim)", border: "1px solid var(--border-2)" }}>
-              <Icon size={13} /> {label}
-            </button>
-          ))}
-        </div>
-
-        {busy && !subs && (
-          /* شکلِ همان کارتی که می‌آید — نه چرخنده. روی موبایل که
+        {busy && !subs ? (
+          /* شکلِ همان چیزی که می‌آید — نه چرخنده. روی موبایل که
              صفحه کوتاه است، پریدنِ چیدمان بیشتر به چشم می‌آید. */
           <div aria-busy="true">
+            <Skeleton h={150} className="mb-4" />
             {[0, 1].map((i) => (
               <div key={i} className="fx-card p-4 mb-3">
-                <div className="flex justify-between mb-3">
-                  <Skeleton w="38%" h={13} /><Skeleton w="52px" h={18} />
-                </div>
-                <Skeleton w="62%" h={11} />
-                <div className="mt-2.5"><Skeleton w="100%" h={6} /></div>
-                <div className="mt-3"><Skeleton w="44%" h={10} /></div>
-                <div className="mt-3"><Skeleton w="100%" h={36} /></div>
+                <Skeleton w="52%" h={13} />
+                <div className="mt-2.5"><Skeleton w="72%" h={10} /></div>
+                <div className="mt-3"><Skeleton w="100%" h={6} /></div>
               </div>
             ))}
           </div>
-        )}
-
-        {tab === "subs" && subs && (
-          subs.length === 0 ? (
+        ) : view === "detail" ? (
+          <SubDetail s={detail} onBack={() => setDetail(null)} />
+        ) : view === "buy" ? (
+          <BuyView plans={plans} onBuy={buy} />
+        ) : view === "subs" ? (
+          (subs || []).length === 0 ? (
             <EmptyState icon={Package} text="هنوز اشتراکی ندارید"
               hint="با اولین خرید، اشتراکتان همین‌جا با حجم و تاریخ انقضا نشان داده می‌شود."
-              action={<button onClick={() => setTab("plans")}
+              action={<button onClick={() => setTab("buy")}
                 className="fx-btn px-4 py-2 text-[13px]">دیدن پلن‌ها</button>} />
-          ) : subs.map((s) => <SubCard key={s.id} s={s} />)
+          ) : (subs || []).map((s) => (
+            <SubRow key={s.id} s={s} onOpen={setDetail} />
+          ))
+        ) : (
+          <HomeView me={me} subs={subs} onOpen={setDetail}
+            onBuy={() => setTab("buy")} />
         )}
+      </main>
 
-        {tab === "plans" && plans && (
-          plans.length === 0 ? (
-            <EmptyState icon={ShoppingCart} text="فعلاً پلنی برای فروش نیست"
-              hint="به‌زودی پلن‌ها اضافه می‌شوند. از پشتیبانی هم می‌توانید بپرسید." />
-          ) : plans.map((p) => <PlanCard key={p.id} p={p} onBuy={buy} />)
-        )}
-
-        <div className="text-[11.5px] text-center mt-5 leading-relaxed"
-          style={{ color: "var(--muted)" }}>
-          <ArrowLeft size={11} className="inline" />{" "}
-          همه‌ی این کارها از منوی خودِ ربات هم انجام می‌شوند
-        </div>
-      </div>
+      {/* ── نوار پایین ──
+          انگشتِ شست به پایینِ صفحه می‌رسد، نه به بالایش. */}
+      <nav className="mn-tabs">
+        {TABS.map((t) => (
+          <button key={t.k} className={`mn-tab ${tab === t.k && !detail ? "on" : ""}`}
+            onClick={() => { buzz("light"); setDetail(null); setTab(t.k); }}
+            aria-current={tab === t.k && !detail ? "page" : undefined}>
+            <t.i size={19} />
+            <span>{t.l}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }

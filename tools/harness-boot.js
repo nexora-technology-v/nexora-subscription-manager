@@ -278,7 +278,12 @@
   var P_CONFIGS = { total: 14, configs: mk(14, function (i) {
     var used = [12, 47, 2, 31, 8, 44, 19, 3, 27, 36, 15, 40, 6, 22][i];
     var gb = [50, 50, 100, 50, 30, 50, 100, 50, 30, 50, 100, 50, 30, 50][i];
-    return { email: "nexora_" + (8800 + i * 7) + "_1", gb: gb,
+    // نماینده می‌تواند برای مشتری‌اش اسم بگذارد و آن اسم خودِ email
+    // می‌شود — پس داده‌ی ساختگی هم باید هر دو شکل را داشته باشد،
+    // وگرنه هیچ‌وقت نمی‌بینیم فارسی چطور درمی‌آید.
+    var NAMED = { 1: "رضا مرادی", 4: "سمانه احمدی", 9: "خانم رستمی",
+                  11: "Ali Karimi" };
+    return { email: NAMED[i] || ("nexora_" + (8800 + i * 7) + "_1"), gb: gb,
              gbLabel: gb + " گیگ", used: used * 1024 * 1024 * 1024, usedGB: used,
              usagePct: Math.round(used * 100 / gb), devices: 1 + (i % 3),
              createdJalali: "۱۴۰۴/۰۵/" + (10 + (i % 18)),
@@ -294,6 +299,8 @@
                   expiringSoon: 7, neverExpires: 2, nearQuota: 6, overQuota: 2,
                   unlimitedQuota: 3, usedGB: 812.4, quotaGB: 4200, usagePct: 19.3,
                   thisMonth: { new: 11, renewals: 19 },
+                  series: { new:   [0,1,0,2,1,0,3,1,2,0,1,4,2,3],
+                            renew: [1,0,2,1,3,2,0,1,4,2,1,0,3,2] },
                   needsAttention: 14,
                   sales: { orders: 23, revenue: 5600000, pending: 2 } };
 
@@ -314,12 +321,22 @@
 
   /* ── مینی‌اپ مشتری ── */
   var M_ME = { name: "مریم کاظمی", brand: "نکسورا", balance: 240000, coins: 36,
+               tgId: 1278109787, username: "maryam_k",
                botUsername: "nexora_vpn_bot" };
-  var M_SUBS = { subs: mk(2, function (i) {
-    return { id: i + 1, plan: ["پلن یک‌ماهه", "پلن سه‌ماهه"][i],
-             gb: [50, 100][i], usedGB: [32, 8][i], usagePct: [64, 8][i],
-             active: true, expiryJalali: ["۱۴۰۴/۰۷/۱۲", "۱۴۰۴/۰۹/۰۳"][i],
-             daysLeft: [26, 78][i],
+  var GB = 1024 * 1024 * 1024;
+  var M_SUBS = { subs: mk(3, function (i) {
+    var tot = [50 * GB, 100 * GB, 50 * 1024 * 1024][i];
+    var use = [32 * GB, 8 * GB, 61.2 * 1024 * 1024][i];
+    return { id: i + 1, plan: ["پلن یک‌ماهه", "پلن سه‌ماهه", "اشتراک تست"][i],
+             email: "nexora_1278109787_" + (9605 + i),
+             gb: [50, 100, 0][i], usedGB: [32, 8, 0.06][i],
+             usagePct: [64, 8, 100][i],
+             totalBytes: tot, usedBytes: use,
+             remainBytes: Math.max(0, tot - use),
+             months: [1, 3, 2][i], isTrial: i === 2,
+             active: i !== 2,
+             expiryJalali: ["۱۴۰۴/۰۷/۱۲", "۱۴۰۴/۰۹/۰۳", "۱۴۰۵/۰۶/۲۶"][i],
+             daysLeft: [26, 78, -3][i],
              subUrl: "https://sub.example.com/s" + i };
   }) };
   var M_PLANS = { plans: mk(3, function (i) {

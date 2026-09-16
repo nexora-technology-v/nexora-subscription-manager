@@ -928,6 +928,47 @@ check("و هنوز هیچ پولی این‌جا حساب نمی‌شود",
       "price *" not in _MINI and "* months" not in _MINI,
       "خرید در خودِ ربات می‌ماند — قرار خودِ مالک")
 
+# ═══════════════════════════════════════════════════════════
+head("چهره‌ی کاربر · یک قاعده، دو جا")
+
+# `AVATAR_HUES` در پنل (React) و `NEXORA_AVATAR_HUES` در صفحه‌ی
+# اشتراک (HTML تک‌فایلی) عمداً تکراری‌اند: صفحه‌ی اشتراک را سرورِ
+# 3x-ui سرو می‌کند و به باندلِ ما دسترسی ندارد. پس طبق قاعده‌ی
+# مخزن، تستِ برابری می‌خواهد — وگرنه دقیقاً وقتی از هم جدا می‌شوند
+# که کسی یکی را عوض کند و همان مشتری در دو جا دو رنگ بگیرد.
+import re as _re
+
+_UI = ALL.get("ui/index.jsx", "")
+_SUBP = io.open(os.path.join(ROOT, "sub-page-index.html"),
+                encoding="utf-8").read()
+
+
+def _hues(text, name):
+    m = _re.search(name + r"\s*=\s*\[(.*?)\];", text, _re.S)
+    return _re.findall(r"#[0-9A-Fa-f]{6}", m.group(1)) if m else []
+
+
+_a = _hues(_UI, "AVATAR_HUES")
+_b = _hues(_SUBP, "NEXORA_AVATAR_HUES")
+check("پنل رنگ‌های چهره را دارد", len(_a) == 16, f"{len(_a)} رنگ")
+check("صفحه‌ی اشتراک هم همان‌ها را دارد", len(_b) == 16, f"{len(_b)} رنگ")
+check("و دو فهرست دقیقاً یکی‌اند", _a == _b,
+      "یک مشتری نباید در پنل بنفش باشد و در صفحه‌ی اشتراک سبز")
+
+# هشِ رنگ هم باید یکی باشد، نه فقط فهرست
+check("هشِ هر دو یک فرمول است",
+      "h = (h * 31 + key.charCodeAt(i)) >>> 0" in _UI
+      and "h = (h * 31 + label.charCodeAt(i)) >>> 0" in _SUBP,
+      "رنگ باید از نام بیاید، همیشه همان")
+
+# دنبالِ *صداشدن* بگرد، نه تعریفِ تابع: با `paintAvatar(` تنها،
+# برداشتنِ خطِ صدازدن هم سبز می‌ماند — یعنی دروازه‌ای که به اتاقِ
+# خالی نگاه می‌کند.
+check("صفحه‌ی اشتراک شبحِ خاکستری را کنار می‌گذارد",
+      "profile-initial" in _SUBP and "paintAvatar(username)" in _SUBP,
+      "آیکونِ یکسان برای همه، هیچ نمی‌گوید")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

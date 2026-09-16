@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { errText, faNum } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { EmptyState, Field, Msg, PageSkeleton, SectionHead, StatTile, StatusPill, Tabs } from "../../ui/index";
+import { Avatar, EmptyState, Field, Msg, PageSkeleton, SectionHead, StatTile, StatusPill, Tabs } from "../../ui/index";
 
 export const REJECT_REASONS = [
   "مبلغ واریزی با مبلغ سفارش مطابقت ندارد.",
@@ -150,6 +150,7 @@ export function BotOrdersSection({ password }) {
             )}
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 mb-1.5">
+                <Avatar name={o.first_name || o.username} id={o.tg_id} size={26} />
                 <span className="text-[14px] font-semibold text-white">{o.first_name || "بدون نام"}</span>
                 {o.username && <span className="text-[13px]" dir="ltr" style={{ color: "var(--muted)" }}>@{o.username}</span>}
                 <StatusPill s={o.status} />

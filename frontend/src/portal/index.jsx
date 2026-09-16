@@ -23,7 +23,7 @@ import { isoToJalaliLabel } from "../ui/jalali";
 // قاعده است و دو پیاده‌سازی از یک قاعده دیر یا زود از هم جدا
 // می‌شوند. این‌جا فقط همان چیزی گرفته می‌شود که ui/jalali هم هست —
 // ابزار عمومی، نه کدِ پنل مدیر.
-import { NumberInput, StatTile, usePager } from "../ui/index";
+import { Avatar, NumberInput, StatTile, usePager } from "../ui/index";
 
 const TOKEN_KEY = "nexora_portal_token";
 
@@ -1443,15 +1443,28 @@ function Dashboard({ token, onOut }) {
       <div className="max-w-6xl mx-auto px-4 py-6">
 
         <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-          <div>
-            <div className="text-[18px] font-bold text-white">
-              {me?.name || "پنل نمایندگی"}
-            </div>
-            {sum && (
-              <div className="text-[13px]" style={{ color: "var(--muted)" }}>
-                گروه {sum.label}
+          {/* تا امروز این‌جا فقط یک خط متن بود و پنل نماینده کنارِ
+              پنل مدیر «نصفه» به نظر می‌رسید. چهره و نشانِ گروه،
+              همان چیزی است که به صفحه صاحب می‌دهد. */}
+          <div className="flex items-center gap-3 min-w-0">
+            <Avatar name={me?.name} id={me?.id ?? me?.slug} size={42} ring />
+            <div className="min-w-0">
+              <div className="text-[18px] font-bold text-white truncate">
+                {me?.name || "پنل نمایندگی"}
               </div>
-            )}
+              <div className="text-[13px] flex items-center gap-2 flex-wrap"
+                style={{ color: "var(--muted)" }}>
+                {sum && <span>گروه {sum.label}</span>}
+                {me?.hasBot && me?.botUsername && (
+                  <>
+                    <span style={{ opacity: .4 }}>•</span>
+                    <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>
+                      @{me.botUsername}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
           {/* flex-wrap لازم است: پنج دکمه در یک خطِ نشکن، صفحه را روی
               موبایل ۴۶۳ پیکسل می‌کرد روی نمایشگر ۳۷۵ پیکسلی — یعنی نام
@@ -1541,7 +1554,7 @@ function Dashboard({ token, onOut }) {
         {stats && (
           <div className="fx-g4 grid grid-cols-4 gap-3 mb-3">
             <Stat icon={Users} label="کاربران فعال" value={faNum(stats.active)}
-              color="var(--ok)"
+              color="var(--ok)" spark={stats.series?.new} sparkColor="var(--ok)"
               hint={stats.inactive ? `${faNum(stats.inactive)} غیرفعال` : ""} />
             <Stat icon={Clock} label="رو به اتمام"
               value={faNum(stats.expiringSoon)}
@@ -1554,6 +1567,7 @@ function Dashboard({ token, onOut }) {
             <Stat icon={TrendingUp} label="این ماه"
               value={faNum(stats.thisMonth.new + stats.thisMonth.renewals)}
               color="var(--accent-2)"
+              spark={stats.series?.renew} sparkColor="var(--cy)"
               hint={`${faNum(stats.thisMonth.new)} تازه · `
                 + `${faNum(stats.thisMonth.renewals)} تمدید`} />
           </div>
@@ -1678,8 +1692,14 @@ function Dashboard({ token, onOut }) {
                           monoIf مونو را فقط به شناسه‌ی لاتین می‌دهد. */}
                       <td>
                         <button onClick={() => setDetail(c)}
+                          className="inline-flex items-center gap-2"
                           style={{ color: "var(--accent-2)", textAlign: "left" }}
                           title="دیدن اطلاعات و لینک">
+                          {/* چهره‌ی مشتری — فهرستِ صد ردیفِ هم‌شکل با
+                              شناسه‌های شبیه‌به‌هم، با رنگ قابل‌مرور
+                              می‌شود. رنگ از خودِ شناسه می‌آید، پس
+                              همیشه همان است. */}
+                          <Avatar name={c.email} id={c.email} size={26} />
                           <bdi style={{ fontFamily: monoIf(c.email) }}>{c.email}</bdi>
                         </button>
                       </td>

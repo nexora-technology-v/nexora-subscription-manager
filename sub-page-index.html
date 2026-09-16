@@ -181,6 +181,26 @@
             border-radius: 50%;
         }
 
+        /* چهره‌ی مشتری — همان قاعده‌ی `Avatar` در پنل: حرفِ اولِ نام
+           روی رنگی که از هشِ خودِ نام می‌آید، پس هر بار همان رنگ.
+           شبحِ خاکستریِ قبلی برای همه یکی بود و هیچ نمی‌گفت. */
+        .profile-initial {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 19px;
+            line-height: 1;
+            color: #06090F;
+            user-select: none;
+        }
+        .profile-initial.on { display: flex; }
+        .profile-initial.on + .default-avatar-svg,
+        .profile-img.has-initial .default-avatar-svg { display: none; }
+
         .online-status-text {
             font-size: 9px;
             font-weight: 700;
@@ -1807,6 +1827,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         <div class="profile-container">
             <div class="profile-img-wrapper">
                 <div class="profile-img" id="profile-img">
+                    <div class="profile-initial" id="profile-initial"></div>
                     <svg class="default-avatar-svg" id="default-avatar" viewBox="0 0 24 24">
                         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
                     </svg>
@@ -3084,10 +3105,36 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             return alert;                       // بحرانی
         }
 
+        // هشت رنگِ یکسان با `AVATAR_HUES` در frontend/src/ui/index.jsx.
+        // یک قاعده در دو جا — پس اگر آن‌جا عوض شد، این‌جا هم باید.
+        // تستِ ui-safety برابری‌شان را می‌سنجد.
+        var NEXORA_AVATAR_HUES = [
+            ["#2B7FD6", "#5AA9E6"], ["#2DD4BF", "#14B8A6"], ["#A78BFA", "#8B5CF6"],
+            ["#34D399", "#10B981"], ["#FBBF24", "#F59E0B"], ["#F87171", "#EF4444"],
+            ["#60A5FA", "#3B82F6"], ["#F472B6", "#EC4899"]
+        ];
+
+        function paintAvatar(name) {
+            const el = document.getElementById("profile-initial");
+            const box = document.getElementById("profile-img");
+            if (!el || !box) return;
+            const label = String(name || "").trim();
+            if (!label) { el.classList.remove("on"); box.classList.remove("has-initial"); return; }
+            const ch = Array.from(label)[0];
+            let h = 0;
+            for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) >>> 0;
+            const pair = NEXORA_AVATAR_HUES[h % NEXORA_AVATAR_HUES.length];
+            el.textContent = ch;
+            el.style.background = "linear-gradient(140deg, " + pair[0] + ", " + pair[1] + ")";
+            el.classList.add("on");
+            box.classList.add("has-initial");
+        }
+
         function renderPanelData() {
             const data = locales[currentLang] || locales.fa;
 
             const username = sanaeiClientData.username;
+            paintAvatar(username);
             const isOnline = isUserOnline();
             const usernameClass = isOnline ? 'username-text online' : 'username-text';
             document.getElementById("user-name").innerHTML = `
