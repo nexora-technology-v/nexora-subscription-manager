@@ -196,11 +196,9 @@ export function BillingPeriod({ password }) {
           {loading ? (
             <PageSkeleton />
           ) : !inv?.ready ? (
-            <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
-              <div className="text-[13px]" style={{ color: "var(--muted)" }}>
-                {inv?.error || "خطا در خواندن"}
-              </div>
-            </div>
+            <EmptyState icon={AlertTriangle} tone="var(--warn)"
+              text="فاکتور خوانده نشد"
+              hint={inv?.error || "دوباره تلاش کنید یا گروه دیگری را انتخاب کنید."} />
           ) : (
             <>
               {/* خلاصه */}
@@ -1348,7 +1346,7 @@ export function BillingUnavailable({ info, password }) {
   }
 
   return (
-    <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
+    <div className="fx-card fx-empty">
       <AlertTriangle size={24} style={{ color: "var(--warn)" }} className="mx-auto mb-3" />
       <div className="text-[14px] font-semibold text-white mb-2">
         دیتابیس ۳x-ui خوانده نشد

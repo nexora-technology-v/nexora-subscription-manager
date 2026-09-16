@@ -365,7 +365,7 @@ export function BotSection({ password, dirty }) {
     return (
       <div className="fx-anim">
         <SectionHead title="اتصال و تنظیمات ربات" desc="" />
-        <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
+        <div className="fx-card fx-empty">
           <AlertTriangle size={24} style={{ color: "var(--warn)" }} className="mx-auto mb-3" />
           <div className="text-[14px] font-semibold text-white mb-2">
             تنظیمات ربات خوانده نشد

@@ -225,6 +225,48 @@ for _cls in ("fx-card", "fx-kpi"):
           "position: relative" in _all or "position:relative" in _all,
           "شبه‌عنصرِ absolute بدون آن، از کارت بیرون می‌زند")
 
+
+
+# ═══════════════════════════════════════════════════════════
+head("حالت خالی · یک قاعده، یک جا")
+
+# بیست جا همان شکل را دستی ساخته بودند — کارتِ نقطه‌چین، آیکونِ
+# کم‌رنگ، یک جمله. یعنی بهترکردنِ کامپوننت مشترک هیچ‌کدامشان را عوض
+# نمی‌کرد. همان باگی که این مخزن هشت بار دیده: یک قاعده، چند جا.
+_hand = []
+for _n, _s in ALL.items():
+    if _n.endswith("ui/index.jsx"):
+        continue
+    for _m in re.finditer(r'className="fx-card p-\d+ text-center"[^>]*'
+                          r'borderStyle: "dashed"', _s):
+        _hand.append(f"{_n}:{_s[:_m.start()].count(chr(10)) + 1}")
+
+check("هیچ حالت خالیِ دست‌سازی نمانده", not _hand,
+      "، ".join(_hand[:4]) if _hand else "همه از EmptyState یا کلاس مشترک")
+
+check("کامپوننت حالت خالی وجود دارد", "export function EmptyState" in UI)
+check("و آیکونش داخل یک مربع می‌نشیند", "fx-empty-ico" in UI and ".fx-empty-ico" in CSS,
+      "آیکونِ تنهای کم‌رنگ شبیه «چیزی بارگذاری نشد» بود")
+check("و نبودنِ آیکون چیزی را نمی‌شکند", "Icon ? <Icon" in UI,
+      "وگرنه «Element type is invalid» و سقوط همان بخش")
+
+_users = [n for n, s in ALL.items() if "<EmptyState" in s]
+check("و واقعاً همه‌جا استفاده می‌شود", len(_users) >= 14, f"{len(_users)} فایل")
+
+
+head("چیدمان · کارتِ کوتاه تمام‌عرض نمی‌شود")
+
+# سه صفحه یک ستون از کارت‌های ۹۷۰ پیکسلی بودند که هرکدام یک کادر
+# سه‌خطی داشتند. اندازه‌گیری‌شده: متن‌های ربات ۲۳۲۴ پیکسل بلند.
+check("گریدِ دوستونیِ مساوی تعریف شده", ".fx-g2-even" in CSS)
+check("و روی موبایل یک‌ستونه می‌شود",
+      re.search(r"@media \(max-width: 900px\)[^}]*\{[^}]*\.fx-g2-even", CSS, re.S) is not None
+      or ".fx-g2-even { grid-template-columns: 1fr; }" in CSS)
+check("متن‌های ربات دو ستونه است", "fx-g2-even" in ALL.get("sections/bot/texts.jsx", ""))
+check("سوالات متداول هم", "fx-g2-even" in ALL.get("sections/subpage.jsx", ""))
+check("و سرورهای تانل گرید گرفته‌اند",
+      "minmax(300px,1fr)" in ALL.get("sections/tunnel.jsx", ""))
+
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R
 # ═══════════════════════════════════════════════════════════

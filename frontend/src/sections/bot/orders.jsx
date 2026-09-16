@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { errText, faNum } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { Field, Msg, PageSkeleton, SectionHead, StatTile, StatusPill, Tabs } from "../../ui/index";
+import { EmptyState, Field, Msg, PageSkeleton, SectionHead, StatTile, StatusPill, Tabs } from "../../ui/index";
 
 export const REJECT_REASONS = [
   "مبلغ واریزی با مبلغ سفارش مطابقت ندارد.",
@@ -125,12 +125,11 @@ export function BotOrdersSection({ password }) {
       {loading ? (
         <PageSkeleton />
       ) : orders.length === 0 ? (
-        <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>
-          <CreditCard size={26} style={{ color: "var(--muted)" }} className="mx-auto mb-3" />
-          <div className="text-[14px]" style={{ color: "var(--muted)" }}>
-            {filter === "awaiting" ? "رسیدی در انتظار تایید نیست" : "موردی یافت نشد"}
-          </div>
-        </div>
+        <EmptyState icon={CreditCard}
+          text={filter === "awaiting" ? "رسیدی در انتظار تایید نیست" : "موردی یافت نشد"}
+          hint={filter === "awaiting"
+            ? "هر رسیدی که مشتری بفرستد همین‌جا می‌آید — و از گروه تلگرام هم می‌شود تاییدش کرد."
+            : "فیلتر بالا را عوض کنید تا سفارش‌های دیگر را ببینید."} />
       ) : orders.map((o) => (
         <div key={o.id} className="fx-card p-4 mb-3">
           <div className="flex items-start justify-between gap-3 flex-wrap">

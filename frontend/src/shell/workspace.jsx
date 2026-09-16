@@ -15,7 +15,7 @@ export function ComingSoon({ title, desc, features }) {
   return (
     <div className="fx-anim">
       <SectionHead title={title} desc={desc} />
-      <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
+      <div className="fx-card fx-empty">
         <div className="fx-ico mx-auto mb-4" style={{ width: 52, height: 52, background: "rgba(251,191,36,.1)" }}>
           <Bot size={24} style={{ color: "var(--warn)" }} />
         </div>

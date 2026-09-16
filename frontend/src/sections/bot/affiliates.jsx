@@ -60,12 +60,9 @@ export function BotAffiliates({ password }) {
     return (
       <div className="fx-anim">
         <SectionHead title="همکاری در فروش" desc="" />
-        <div className="fx-card p-8 text-center" style={{ borderStyle: "dashed" }}>
-          <AlertTriangle size={24} style={{ color: "var(--warn)" }} className="mx-auto mb-3" />
-          <div className="text-[14px]" style={{ color: "var(--muted)" }}>
-            {data?.error || "دیتابیس ربات در دسترس نیست"}
-          </div>
-        </div>
+        <EmptyState icon={AlertTriangle} tone="var(--warn)"
+          text="دیتابیس ربات در دسترس نیست"
+          hint={data?.error || "همکاران فروش از همان دیتابیس خوانده می‌شوند؛ بقیه‌ی پنل سالم است."} />
       </div>
     );
   }
