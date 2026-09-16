@@ -13,9 +13,20 @@ __pycache__/
 *.pyc
 
 # Runtime data — never commit these
+#
+# مخزن عمومی است. bot.db از قبل این‌جا بود، ولی billing.db (نرخ‌ها،
+# پرداخت‌ها) و x-ui.db (ایمیل و کانفیگ مشتری‌ها) نبودند — و هر دو
+# دقیقاً کنارِ همان bot.db ساخته می‌شوند. هر کس پنل را در پوشه‌ی
+# مخزن اجرا کند، سه فایل درمی‌آید که دوتایش ردیابی‌نشده می‌ماند و یک
+# `git add -A` کافی است تا داده‌ی مشتری عمومی شود.
 data/auth.json
 data/bot.db
 data/bot.db-*
+data/billing.db
+data/billing.db-*
+data/x-ui.db
+data/x-ui.db-*
+data/usage-history.json
 data/*.backup*
 
 # Logs and temporary files

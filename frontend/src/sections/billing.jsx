@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { JalaliDate, isoToJalaliLabel } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
-import { errText, faNum } from "../lib/format";
+import { errText, faNum, monoIf } from "../lib/format";
 import { Field, InfoBox, Modal, Msg, SectionHead, Toggle } from "../ui/index";
 
 export function BillingPeriod({ password }) {
@@ -122,14 +122,14 @@ export function BillingPeriod({ password }) {
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <button onClick={() => move(-1)} className="fx-ico-btn shrink-0">
+                    <button title="دوره‌ی قبل" onClick={() => move(-1)} className="fx-ico-btn shrink-0">
                       <ChevronLeft size={14} />
                     </button>
                     <div className="flex-1 text-center py-2 rounded-xl text-[13px]"
                       style={{ background: "var(--surface-3)", color: "var(--dim)" }}>
                       {p ? `${p.startJalali} تا ${p.endJalali}` : "—"}
                     </div>
-                    <button onClick={() => move(1)} className="fx-ico-btn shrink-0"
+                    <button title="دوره‌ی بعد" onClick={() => move(1)} className="fx-ico-btn shrink-0"
                       style={{ transform: "rotate(180deg)" }}>
                       <ChevronLeft size={14} />
                     </button>
@@ -218,7 +218,7 @@ export function BillingPeriod({ password }) {
                   <span className="text-[24px] font-extrabold"
                     style={{ color: "var(--accent-2)",
                              fontFamily: "var(--mono)" }}>
-                    {faNum(t.due)} <span className="text-[13px]">تومان</span>
+                    {faNum(t.due)} <span className="text-[13px] fx-fa-sub">تومان</span>
                   </span>
                 </div>
 
@@ -243,7 +243,7 @@ export function BillingPeriod({ password }) {
                         </div>
                         <div className="text-[13px] mt-1.5" style={{ color: "var(--dim)",
                              fontFamily: "var(--mono)" }}>
-                          {faNum(amt)} تومان
+                          {faNum(amt)} <span className="fx-fa-sub">تومان</span>
                         </div>
                       </div>
                     ))}
@@ -262,7 +262,7 @@ export function BillingPeriod({ password }) {
                   <span className="text-white">مانده</span>
                   <span style={{ color: t.balance > 0 ? "var(--warn)" : "var(--ok)",
                                  fontFamily: "var(--mono)" }}>
-                    {faNum(t.balance)} تومان
+                    {faNum(t.balance)}<span className="fx-fa-sub"> تومان</span>
                   </span>
                 </div>
 
@@ -302,7 +302,9 @@ export function BillingPeriod({ password }) {
                         <span className="text-[14px] font-bold shrink-0"
                           style={{ color: x.price === null ? "var(--warn)" : col,
                                    fontFamily: "var(--mono)" }}>
-                          {x.price === null ? "بدون نرخ" : faNum(x.amount)}
+                          {x.price === null
+                            ? <span className="fx-fa-sub">بدون نرخ</span>
+                            : faNum(x.amount)}
                         </span>
                       </div>
                     ))}
@@ -475,7 +477,7 @@ export function BillingClients({ password }) {
           const on = status === label;
           const col = CLIENT_STATUS_COLOR[label];
           return (
-            <button key={label}
+            <button title="فیلتر این وضعیت" key={label}
               onClick={() => { setStatus(on ? "" : label); setPage(0); }}
               className="px-3 py-2 rounded-xl text-[13px] transition-all flex items-center gap-2"
               style={{
@@ -633,11 +635,14 @@ export function BillingClients({ password }) {
 
                     {/* کاربر */}
                     <td className="px-3 py-3">
-                      <div className="text-[14px] font-semibold" dir="ltr"
+                      {/* bdi و monoIf: نامِ کانفیگ را نماینده خودش در
+                          x-ui می‌نویسد و می‌تواند فارسی باشد. با
+                          dir="ltr" روی خودِ متن، بخشِ فارسی جابه‌جا
+                          نمایش داده می‌شد؛ و مونو هم گلیف فارسی ندارد. */}
+                      <div className="text-[14px] font-semibold"
                         style={{ color: c.enable ? "var(--text)" : "var(--muted)",
-                                 textAlign: "right",
-                                 fontFamily: "var(--mono)" }}>
-                        {c.email}
+                                 textAlign: "right" }}>
+                        <bdi style={{ fontFamily: monoIf(c.email) }}>{c.email}</bdi>
                       </div>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-[12px]" style={{ color: "var(--muted)" }}>
@@ -695,7 +700,7 @@ export function BillingClients({ password }) {
                       style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
                       {c.createdJalali || "—"}
                       {c.days && (
-                        <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>
+                        <div className="text-[12px] mt-0.5 fx-fa-sub" style={{ color: "var(--muted)" }}>
                           {faNum(Math.round(c.days))} روز
                         </div>
                       )}
@@ -913,7 +918,8 @@ export function ClientDetailModal({ client: c, onClose }) {
           <div className="flex justify-between text-[13px]">
             <span style={{ color: "var(--muted)" }}>نرخ ماهانه</span>
             <span style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
-              {c.price ? faNum(c.price) : "تعریف نشده"}
+              {c.price ? faNum(c.price)
+                       : <span className="fx-fa-sub">تعریف نشده</span>}
             </span>
           </div>
           {c.extraDevices > 0 && (
@@ -930,14 +936,16 @@ export function ClientDetailModal({ client: c, onClose }) {
             <span style={{ color: "var(--muted)" }}>ماه محاسبه‌شده</span>
             <span style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
               {faNum(c.months)}
-              {c.totalMonths > c.months && ` از ${faNum(c.totalMonths)}`}
+              {c.totalMonths > c.months && (
+                <span className="fx-fa-sub"> از {faNum(c.totalMonths)}</span>
+              )}
             </span>
           </div>
           <div className="flex justify-between text-[14px] font-bold mt-2 pt-2"
             style={{ borderTop: "1px solid var(--border)" }}>
             <span className="text-white">مبلغ کل</span>
             <span style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
-              {faNum(c.amount)} تومان
+              {faNum(c.amount)}<span className="fx-fa-sub"> تومان</span>
             </span>
           </div>
           {c.amountWhy && (
@@ -1197,7 +1205,7 @@ export function RateRow({ rate, onChange, onDelete }) {
           </div>
         </div>
 
-        <button onClick={onDelete} className="fx-ico-btn shrink-0" style={{ width: 36, height: 36 }}>
+        <button title="حذف" onClick={onDelete} className="fx-ico-btn shrink-0" style={{ width: 36, height: 36 }}>
           <Trash2 size={13} />
         </button>
       </div>
@@ -1502,7 +1510,12 @@ export function BillingDash({ password }) {
       {(data.needStart || []).length > 0 && <NeedStartBanner
         groups={data.needStart} password={password} onDone={reload} />}
 
-      <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))" }}>
+      {/* ۲۰۰ و نه ۱۶۰: با ۱۶۰ روی موبایل دو ستون جا می‌شد و هر کارت
+          ۱۳۲ پیکسل فضای داخلی داشت — که فقط تا عددِ ۸ رقمی کفاف
+          می‌داد. ۱۲۳ میلیون تومان ۹ رقم است و از کارت بیرون می‌زد.
+          با ۲۰۰، روی موبایل یک ستون می‌شود و تا عددِ میلیاردی هم جا
+          می‌گیرد؛ روی تبلت و دسکتاپ هنوز هر سه کنار هم‌اند. */}
+      <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))" }}>
         {[["کل بدهی دوره", due, "var(--accent-2)"],
           ["دریافت‌شده", paid, "var(--ok)"],
           ["مانده", due - paid, due - paid > 0 ? "var(--warn)" : "var(--ok)"]].map(([l, v, col], i) => (
@@ -1529,9 +1542,14 @@ export function BillingDash({ password }) {
               <div className="flex justify-between items-start gap-3 mb-2.5 flex-wrap">
                 <div>
                   <div className="text-[14px] font-semibold text-white">{g.label}</div>
-                  <div className="text-[12px] mt-1" dir="ltr"
-                    style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                    {g.name} · {g.configs} config · {g.months} months
+                  {/* کلیدِ گروه در bdi می‌نشیند، نه در یک div با dir="ltr".
+                      با ltr روی کلِ خط، نامِ فارسیِ گروه («بدون گروه»)
+                      جای خودش را با جداکننده‌ها عوض می‌کرد؛ و واحدها
+                      هم انگلیسی بودند در رابطی که همه‌جایش فارسی است.
+                      bdi فقط همان کلید را جدا نگه می‌دارد. */}
+                  <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+                    <bdi style={{ fontFamily: monoIf(g.name) }}>{g.name}</bdi>
+                    {" · "}{faNum(g.configs)} کانفیگ · {faNum(g.months)} ماه
                   </div>
                 </div>
                 <div className="text-left">
@@ -1659,8 +1677,9 @@ export function BillingGroups({ password }) {
               className="flex items-center justify-between gap-3 py-2 flex-wrap"
               style={{ borderTop: "1px solid var(--border)" }}>
               <div className="min-w-0">
-                <div className="text-[13px] text-white" dir="ltr"
-                  style={{ fontFamily: "var(--mono)" }}>{n.key}</div>
+                <div className="text-[13px] text-white">
+                  <bdi style={{ fontFamily: monoIf(n.key) }}>{n.key}</bdi>
+                </div>
                 <div className="text-[12px] mt-0.5" style={{ color: "var(--warn)" }}>
                   {faNum(n.configs)} کانفیگ · {n.why}
                 </div>
@@ -1688,9 +1707,13 @@ export function BillingGroups({ password }) {
                 </div>
                 <div>
                   <div className="text-[14px] font-semibold text-white">{d.label || g.name}</div>
-                  <div className="text-[12px] mt-1" dir="ltr"
-                    style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                    {g.name} · {g.configs} configs · {g.usedGB}GB used
+                  {/* همین خط در داشبورد هم بود و همان‌جا اصلاح شد — یک
+                      قاعده در دو جا. واحدها فارسی شدند و کلیدِ گروه در
+                      bdi نشست تا نامِ فارسی («بدون گروه») جای خودش را
+                      با جداکننده‌ها عوض نکند. */}
+                  <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+                    <bdi style={{ fontFamily: monoIf(g.name) }}>{g.name}</bdi>
+                    {" · "}{faNum(g.configs)} کانفیگ · {faNum(g.usedGB)} گیگ مصرف
                   </div>
                 </div>
               </div>
@@ -2092,7 +2115,9 @@ export function BillingInvoice({ password }) {
                         color: it.lineTotal == null ? "var(--warn)" : "var(--dim)",
                         fontFamily: "var(--mono)",
                       }}>
-                      {it.lineTotal == null ? "بدون نرخ" : faNum(it.lineTotal)}
+                      {it.lineTotal == null
+                        ? <span className="fx-fa-sub">بدون نرخ</span>
+                        : faNum(it.lineTotal)}
                     </span>
                   </div>
                 ))}
@@ -2179,7 +2204,7 @@ export function BillingPayments({ password }) {
                   <span className="text-[14px] font-bold" style={{ color: "var(--ok)", fontFamily: "var(--mono)" }}>
                     +{faNum(p.amount)}
                   </span>
-                  <button onClick={() => del(p.id)} className="fx-ico-btn" style={{ width: 28, height: 28 }}>
+                  <button title="حذف این پرداخت" onClick={() => del(p.id)} className="fx-ico-btn" style={{ width: 28, height: 28 }}>
                     <Trash2 size={12} />
                   </button>
                 </div>
@@ -2195,7 +2220,7 @@ export function BillingPayments({ password }) {
             onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <span className="text-[16px] font-bold text-white">ثبت پرداخت</span>
-              <button onClick={() => setAdd(false)} className="fx-ico-btn" style={{ width: 28, height: 28 }}>
+              <button title="انصراف" onClick={() => setAdd(false)} className="fx-ico-btn" style={{ width: 28, height: 28 }}>
                 <X size={14} />
               </button>
             </div>

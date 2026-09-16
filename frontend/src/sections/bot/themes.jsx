@@ -229,7 +229,7 @@ export function ThemesSection({ config, setConfig, password }) {
                   boxShadow: `0 1px 0 rgba(255,255,255,.1) inset, 0 0 0 1px ${pv.accent}44, 0 16px 32px -14px ${pv.accent}66`,
                 } : {}),
               }}>
-              <button onClick={() => setConfig({ ...config, palette: p.id })} className="w-full text-right">
+              <button title="انتخاب این قالب" onClick={() => setConfig({ ...config, palette: p.id })} className="w-full text-right">
                 <div className="rounded-xl mb-3 relative overflow-hidden" style={{
                   height: 44,
                   background: `linear-gradient(135deg,${pv.accent},${pv.accent2})`,
@@ -250,7 +250,7 @@ export function ThemesSection({ config, setConfig, password }) {
                 <div className="text-[11.5px] mt-0.5" style={{ color: "var(--muted)" }}>{p.fa}</div>
               </button>
               {p.builtin === false && (
-                <button onClick={() => setConfirmDel(p)} className="fx-ico-btn absolute" style={{ width: 24, height: 24, top: 6, left: 6 }}>
+                <button title="حذف این قالب" onClick={() => setConfirmDel(p)} className="fx-ico-btn absolute" style={{ width: 24, height: 24, top: 6, left: 6 }}>
                   <Trash2 size={11} />
                 </button>
               )}
@@ -326,7 +326,7 @@ export function AddPaletteModal({ password, onClose, onAdded }) {
               <PaletteIcon size={17} style={{ color: "var(--accent-2)" }} />
               <span className="text-[16px] font-bold text-white">پالت رنگی سفارشی</span>
             </div>
-            <button onClick={onClose} className="fx-ico-btn"><X size={16} /></button>
+            <button title="بستن" onClick={onClose} className="fx-ico-btn"><X size={16} /></button>
           </div>
         </div>
 

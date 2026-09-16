@@ -71,7 +71,7 @@ export function MetricCard({ m }) {
 
       {(m.why || m.hint) && (
         <>
-          <button onClick={() => setOpen(!open)}
+          <button title="راهنما" onClick={() => setOpen(!open)}
             className="text-[12px] mt-2.5 flex items-center gap-1"
             style={{ color: "var(--accent-2)" }}>
             <HelpCircle size={11} /> {open ? "بستن" : "چرا مهم است؟"}
@@ -1072,7 +1072,7 @@ export function MonitorSection({ password }) {
           <div className="text-[14px] font-semibold text-white flex items-center gap-2">
             <Package size={15} style={{ color: "var(--accent-2)" }} /> بسته‌ها و امنیت
           </div>
-          <button onClick={loadHeavy} disabled={heavyBusy}
+          <button title="تازه‌سازی" onClick={loadHeavy} disabled={heavyBusy}
             className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
             {heavyBusy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             {heavy ? "بررسی دوباره" : "بررسی کن"}

@@ -172,7 +172,7 @@ export function GithubCard({ password }) {
             placeholder="username/nexora"
             onKeyDown={(e) => e.key === "Enter" && dirty && save()}
             style={{ fontFamily: "var(--mono)" }} />
-          <button onClick={save} disabled={busy || !dirty}
+          <button title="ذخیره" onClick={save} disabled={busy || !dirty}
             className="fx-btn px-4 py-2.5 text-[14px] shrink-0 flex items-center gap-1.5"
             style={!dirty ? { opacity: 0.45, cursor: "not-allowed" } : {}}>
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}

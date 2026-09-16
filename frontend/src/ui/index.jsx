@@ -351,7 +351,7 @@ export function Modal({ title, onClose, children, footer, width = "440px" }) {
         <div className="nx-modal-head flex justify-between items-center px-5 py-4"
           style={{ borderBottom: "1px solid var(--border)" }}>
           <span className="text-[16px] font-bold text-white">{title}</span>
-          <button onClick={onClose} className="fx-ico-btn" style={{ width: 30, height: 30 }}>
+          <button title="بستن" onClick={onClose} className="fx-ico-btn" style={{ width: 30, height: 30 }}>
             <X size={15} />
           </button>
         </div>

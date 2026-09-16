@@ -173,7 +173,7 @@ export function BotOrdersSection({ password }) {
           <img src={`${API_URL}/api/admin/bot/receipt/${zoom}?pw=${encodeURIComponent(password)}`} alt="رسید"
             style={{ maxWidth: "92vw", maxHeight: "88vh", borderRadius: 14, objectFit: "contain" }}
             onClick={(e) => e.stopPropagation()} />
-          <button onClick={() => setZoom(null)}
+          <button title="بستن" onClick={() => setZoom(null)}
             className="absolute top-5 left-5 fx-ico-btn" style={{ width: 38, height: 38 }}>
             <X size={18} />
           </button>

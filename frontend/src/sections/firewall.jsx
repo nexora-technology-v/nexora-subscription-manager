@@ -188,7 +188,7 @@ export function FirewallSuggest({ password, onApplied }) {
         <div className="text-[14px] font-semibold text-white flex items-center gap-2">
           <Sparkles size={15} style={{ color: "var(--accent-2)" }} /> پیشنهاد قواعد
         </div>
-        <button onClick={() => setOpen(!open)} disabled={busy}
+        <button title="جستجو" onClick={() => setOpen(!open)} disabled={busy}
           className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
           {busy ? <Loader2 size={13} className="animate-spin" /> : <Search size={13} />}
           {open ? "بستن" : "سرور را بررسی کن"}
@@ -402,7 +402,7 @@ export function FirewallRules({ password }) {
             }}>
               {d.active ? "روشن" : "خاموش"}
             </span>
-            <button
+            <button title="روشن یا خاموش کردن"
               onClick={() => call("/api/admin/firewall/toggle", {
                 method: "POST",
                 body: JSON.stringify({ enable: !d.active, confirmSsh }),
@@ -549,7 +549,7 @@ export function FirewallRules({ password }) {
                       <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
                         {r.target}
                         {r.critical && (
-                          <span className="fx-pill mr-2" style={{ background: "rgba(251,191,36,.14)", color: "var(--warn)" }}>
+                          <span className="fx-pill fx-fa-sub mr-2" style={{ background: "rgba(251,191,36,.14)", color: "var(--warn)" }}>
                             حیاتی
                           </span>
                         )}
@@ -693,7 +693,7 @@ function BulkBlock({ password, onDone, setMsg }) {
             className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
             <Download size={13} /> خروجی فایل
           </a>
-          <button onClick={() => setOpen(!open)}
+          <button title="بارگذاری" onClick={() => setOpen(!open)}
             className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
             <Upload size={13} /> {open ? "بستن" : "ورود فهرست"}
           </button>

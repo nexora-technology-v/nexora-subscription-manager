@@ -130,7 +130,7 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive }
           const col = WS_COLOR[w.key] || "var(--accent-2)";
           return (
             <div key={w.key} className="mb-1">
-              <button onClick={() => onSwitch(w.key)}
+              <button title="باز کردن این بخش" onClick={() => onSwitch(w.key)}
                 className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right transition-all"
                 style={{
                   background: on ? `color-mix(in srgb, ${col} 10%, transparent)` : "transparent",
@@ -262,7 +262,7 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive }
               const on = workspace === w.key;
               const c2 = WS_COLOR[w.key] || "var(--accent-2)";
               return (
-                <button key={w.key}
+                <button title="رفتن به این بخش" key={w.key}
                   onClick={() => { onSwitch(w.key); setOpen(false); }}
                   className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-right transition-colors"
                   style={{ background: on ? `color-mix(in srgb, ${c2} 12%, transparent)` : "transparent" }}>

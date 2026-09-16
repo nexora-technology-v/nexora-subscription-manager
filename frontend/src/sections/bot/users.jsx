@@ -99,7 +99,7 @@ export function BotUsersSection({ password }) {
           <input placeholder="نام، یوزرنیم، آیدی عددی یا شماره تماس..." value={q}
             onChange={(e) => setQ(e.target.value)} />
           {q && (
-            <button onClick={() => setQ("")} className="shrink-0">
+            <button title="پاک‌کردن جستجو" onClick={() => setQ("")} className="shrink-0">
               <X size={13} style={{ color: "var(--muted)" }} />
             </button>
           )}
@@ -353,7 +353,7 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
                 <Send size={13} /> پیام
               </button>
             )}
-            <button onClick={onClose} className="fx-ico-btn"><X size={16} /></button>
+            <button title="بستن" onClick={onClose} className="fx-ico-btn"><X size={16} /></button>
           </div>
         </div>
 
@@ -440,7 +440,9 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
                           <span className="text-[13px]" style={{ color: "var(--dim)" }}>مصرف حجم</span>
                           <span className="text-[13px] font-bold"
                             style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
-                            {fmtBytes(used)} {total > 0 ? `/ ${fmtBytes(total)}` : "· نامحدود"}
+                            {fmtBytes(used)} {total > 0
+                              ? `/ ${fmtBytes(total)}`
+                              : <span className="fx-fa-sub">· نامحدود</span>}
                           </span>
                         </div>
 

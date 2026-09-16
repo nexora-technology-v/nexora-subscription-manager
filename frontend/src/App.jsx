@@ -202,7 +202,7 @@ export default function App() {
               <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>پنل مدیریت</div>
             </div>
           </div>
-          <button className="lg:hidden shrink-0" onClick={() => setOpen(false)} style={{ color: "var(--dim)" }}><X size={18} /></button>
+          <button title="بستن منو" className="lg:hidden shrink-0" onClick={() => setOpen(false)} style={{ color: "var(--dim)" }}><X size={18} /></button>
         </div>
 
         <WorkspaceSwitch mode={wsMode} workspace={workspace} onSwitch={switchWorkspace}
@@ -269,7 +269,7 @@ export default function App() {
                 <span className="fx-hide-m">لغو تغییرات</span>
               </button>
             )}
-            <button onClick={save} disabled={saving || !dirty} className="fx-desktop-save fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5 shrink-0">
+            <button title="ذخیره تغییرات" onClick={save} disabled={saving || !dirty} className="fx-desktop-save fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5 shrink-0">
               {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
               <span className="fx-hide-m">{saving ? "در حال ذخیره..." : "ذخیره تغییرات"}</span>
             </button>
@@ -331,7 +331,7 @@ export default function App() {
 
       <div className="fx-mobile-save">
         <div className="shrink-0"><StatusChip dirty={dirty} /></div>
-        <button onClick={save} disabled={saving || !dirty} className="fx-btn flex-1 flex items-center justify-center gap-2 py-3 text-[14px]">
+        <button title="ذخیره تغییرات" onClick={save} disabled={saving || !dirty} className="fx-btn flex-1 flex items-center justify-center gap-2 py-3 text-[14px]">
           {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
           {saving ? "در حال ذخیره..." : "ذخیره تغییرات"}
         </button>

@@ -32,6 +32,25 @@ const KIND_META = {
 const toman = (n) => `${faNum(Number(n || 0).toLocaleString("en-US")
   .replace(/,/g, "،"))} تومان`;
 
+/** همان عدد، ولی برای رندر در JSX. */
+const tomanNum = (n) => faNum(Number(n || 0).toLocaleString("en-US")
+  .replace(/,/g, "،"));
+
+/**
+ * مبلغ با واحدش، جایی که ظرف فونت مونو دارد.
+ *
+ * رشته‌ی toman() واحد را به خودِ عدد می‌چسباند. آن رشته وقتی داخل
+ * ظرفی با var(--mono) رندر شود، ارقام در JetBrains Mono می‌نشینند —
+ * که همان چیزی است که برای هم‌ترازیِ ستون لازم است — ولی «تومان» در
+ * آن فونت گلیف ندارد و به مونوی سیستم می‌افتد: اندازه‌گیری‌شده ۳۱٪
+ * پهن‌تر از قلمِ خودِ پنل، درست وسط یک عدد.
+ *
+ * این‌جا عدد در مونو می‌ماند و واحد به قلم اصلی برمی‌گردد.
+ */
+const Toman = ({ n }) => (
+  <>{tomanNum(n)}<span className="fx-fa-sub"> تومان</span></>
+);
+
 function useJson(path, password, deps = []) {
   const [d, setD] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -179,7 +198,7 @@ function ExpenseForm({ password, onDone, setMsg }) {
           {!fx ? "در حال گرفتن نرخ…"
             : fx.ok ? (
               <>
-                <span>نرخ {f.currency}: {toman(fx.toman)}</span>
+                <span>نرخ {f.currency}: <Toman n={fx.toman} /></span>
                 {fx.at && <span>· {fx.at}</span>}
                 {fx.stale && (
                   <span style={{ color: "var(--warn)" }}>
@@ -194,7 +213,7 @@ function ExpenseForm({ password, onDone, setMsg }) {
             )}
           {preview !== null && (
             <span style={{ color: "var(--accent-2)" }}>
-              ← معادل {toman(preview)}
+              ← معادل <Toman n={preview} />
             </span>
           )}
         </div>
@@ -272,7 +291,7 @@ export function BillingExpenses({ password }) {
           </div>
           <div className="text-[21px] font-bold"
             style={{ color: "var(--danger)", fontFamily: "var(--mono)" }}>
-            {toman(d.total)}
+            <Toman n={d.total} />
           </div>
         </div>
         <div className="fx-card p-4">
@@ -281,12 +300,12 @@ export function BillingExpenses({ password }) {
           </div>
           <div className="text-[21px] font-bold"
             style={{ color: "var(--warn)", fontFamily: "var(--mono)" }}>
-            {toman(d.monthlyRecurring)}
+            <Toman n={d.monthlyRecurring} />
           </div>
           <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
             این مبلغ را هر ماه باید دربیاورید
             {d.monthlyFromYearly > 0 && (
-              <> — شامل {toman(d.monthlyFromYearly)} از هزینه‌های سالانه</>
+              <> — شامل <Toman n={d.monthlyFromYearly} /> از هزینه‌های سالانه</>
             )}
           </div>
         </div>
@@ -296,7 +315,7 @@ export function BillingExpenses({ password }) {
           </div>
           <div className="text-[21px] font-bold"
             style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>
-            {faNum(d.trafficGB || 0)} <span className="text-[14px]">گیگ</span>
+            {faNum(d.trafficGB || 0)} <span className="text-[14px] fx-fa-sub">گیگ</span>
           </div>
         </div>
       </div>
@@ -320,7 +339,7 @@ export function BillingExpenses({ password }) {
               <span className="text-[13px]" style={{
                 fontFamily: "var(--mono)", color: "var(--dim)", width: 130,
                 textAlign: "left",
-              }}>{toman(v)}</span>
+              }}><Toman n={v} /></span>
             </div>
           );
         })}
@@ -369,21 +388,21 @@ export function BillingExpenses({ password }) {
                       <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
                         {e.amount} {e.currency}
                         {e.fx_rate && e.currency !== "IRT" ? (
-                          <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                          <div className="fx-fa-sub" style={{ fontSize: 11, color: "var(--muted)" }}>
                             نرخ {faNum(e.fx_rate)}
                             {e.fx_source === "manual" ? " (دستی)" : ""}
                           </div>
                         ) : null}
                       </td>
                       <td style={{ fontFamily: "var(--mono)" }}>
-                        {toman(e.amount_irt)}
+                        <Toman n={e.amount_irt} />
                       </td>
                       <td style={{ color: "var(--muted)", fontSize: 12 }}>
                         {e.recurring === "monthly" ? "ماهانه"
                           : e.recurring === "yearly" ? "سالانه" : "یک‌بار"}
                       </td>
                       <td>
-                        <button onClick={() => setDel(e)}
+                        <button title="حذف این هزینه" onClick={() => setDel(e)}
                           className="fx-btn-ghost px-2 py-1"
                           style={{ color: "var(--danger)" }}>
                           <Trash2 size={13} />
@@ -462,7 +481,7 @@ export function BillingLedger({ password }) {
             </div>
             <div className="text-[19px] font-bold"
               style={{ color, fontFamily: "var(--mono)" }}>
-              {toman(val)}
+              <Toman n={val} />
             </div>
             <div className="text-[11.5px] mt-1" style={{ color: "var(--muted)" }}>
               {hint}
@@ -488,7 +507,7 @@ export function BillingLedger({ password }) {
           </div>
           <div className="text-[19px] font-bold"
             style={{ color: "#34d399", fontFamily: "var(--mono)" }}>
-            {toman(d.botReceived)}
+            <Toman n={d.botReceived} />
           </div>
         </div>
       )}
@@ -508,7 +527,7 @@ export function BillingLedger({ password }) {
           </div>
           <div className="text-[19px] font-bold"
             style={{ color: "var(--danger)", fontFamily: "var(--mono)" }}>
-            −{toman(d.affiliatePaid)}
+            −<Toman n={d.affiliatePaid} />
           </div>
         </div>
       )}
@@ -516,7 +535,8 @@ export function BillingLedger({ password }) {
       {d.settledGap > 0 && (
         <div className="text-[12px] mb-4 leading-relaxed"
           style={{ color: "var(--muted)" }}>
-          {toman(d.settledGap)} تومان از صورت‌حساب‌شده در دوره‌هایی است که
+          {/* toman() خودش واحد را می‌چسباند — «تومان»ِ دوم اینجا اضافه بود */}
+          <Toman n={d.settledGap} /> از صورت‌حساب‌شده در دوره‌هایی است که
           تسویه‌شده علامت خورده‌اند، پس در «طلب شما» نمی‌آید.
         </div>
       )}
@@ -530,14 +550,14 @@ export function BillingLedger({ password }) {
             <div className="text-[28px] font-bold" style={{
               color: profit >= 0 ? "#34d399" : "var(--danger)",
               fontFamily: "var(--mono)",
-            }}>{toman(profit)}</div>
+            }}><Toman n={profit} /></div>
             {/* عددِ بی‌توضیح، مدیر را وامی‌دارد حدس بزند از کجا آمده.
                 وقتی ربات هم فروش دارد، سود از دو جا می‌آید. */}
             <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
               {d.botReceived > 0 ? (
                 <>
-                  ({toman(d.paid)} از واسطه‌ها + {toman(d.botReceived)} از ربات)
-                  {" "}منهای {toman(d.spent)} هزینه
+                  (<Toman n={d.paid} /> از واسطه‌ها + <Toman n={d.botReceived} /> از ربات)
+                  {" "}منهای <Toman n={d.spent} /> هزینه
                 </>
               ) : "دریافتی منهای هزینه — نه آنچه طلب دارید"}
             </div>
@@ -548,7 +568,7 @@ export function BillingLedger({ password }) {
             </div>
             <div className="text-[19px] font-bold" style={{
               color: "var(--accent-2)", fontFamily: "var(--mono)",
-            }}>{toman(d.profitIfAllPaid)}</div>
+            }}><Toman n={d.profitIfAllPaid} /></div>
           </div>
         </div>
       </div>
@@ -583,12 +603,12 @@ export function BillingLedger({ password }) {
                       )}
                     </td>
                     <td style={{ fontFamily: "var(--mono)" }}>{faNum(g.configs)}</td>
-                    <td style={{ fontFamily: "var(--mono)" }}>{toman(g.due)}</td>
+                    <td style={{ fontFamily: "var(--mono)" }}><Toman n={g.due} /></td>
                     <td style={{ fontFamily: "var(--mono)", color: "#34d399" }}>
-                      {toman(g.paid)}
+                      <Toman n={g.paid} />
                     </td>
                     <td style={{ fontFamily: "var(--mono)", color: "var(--warn)" }}>
-                      {toman(g.balance)}
+                      <Toman n={g.balance} />
                     </td>
                   </tr>
                 ))}
@@ -613,7 +633,8 @@ export function BillingLedger({ password }) {
               style={{ borderBottom: "1px solid var(--border)" }}>
               <span>{g.label}</span>
               <span style={{ fontFamily: "var(--mono)", color: "#34d399" }}>
-                {toman(Math.abs(g.balance))} اعتبار
+                <Toman n={Math.abs(g.balance)} />
+                <span className="fx-fa-sub"> اعتبار</span>
               </span>
             </div>
           ))}

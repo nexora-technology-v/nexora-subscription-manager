@@ -55,7 +55,7 @@ function NodeDiagnose({ nodeId, password, onFix }) {
           <Stethoscope size={15} style={{ color: "var(--accent-2)" }} />
           چرا گزارشی نمی‌آید؟
         </div>
-        <button onClick={() => setOpen(!open)} disabled={busy || !nodeId}
+        <button title="جستجو" onClick={() => setOpen(!open)} disabled={busy || !nodeId}
           className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
           {busy ? <Loader2 size={13} className="animate-spin" />
             : <Search size={13} />}

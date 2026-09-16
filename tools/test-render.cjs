@@ -111,7 +111,14 @@ for (const v of vars) {
 
 // ── ۴. فونت ──
 head("فونت");
-const bodyFont = w.getComputedStyle(d.body).fontFamily;
+// body حالا از متغیر می‌خواند، چون برگرداندنِ قلم از داخل سلول‌های
+// مونو به یک نامِ یک‌جا تعریف‌شده نیاز داشت. jsdom متغیر را باز
+// نمی‌کند، پس اگر مقدار var(--…) بود، خودِ متغیر را دنبال می‌کنیم —
+// وگرنه تست به «نامِ قلم عوض نشده باشد» تبدیل می‌شد، نه «قلم اعمال
+// شده باشد».
+let bodyFont = w.getComputedStyle(d.body).fontFamily;
+const varRef = /^var\((--[\w-]+)\)$/.exec(bodyFont.trim());
+if (varRef) bodyFont = root.getPropertyValue(varRef[1]).trim();
 chk("روی body اعمال شده", bodyFont.includes("IRANSansX"),
     bodyFont.slice(0, 52));
 chk("اعلان @font-face", (css.match(/@font-face/g) || []).length >= 2,

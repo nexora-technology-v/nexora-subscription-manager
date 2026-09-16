@@ -138,7 +138,7 @@ function Row({ t, groups, password, onSaved, setMsg }) {
             {on ? "پنل باز" : "پنل بسته"}
           </span>
         </div>
-        <button disabled={busy}
+        <button title="باز یا بستن پنل نماینده" disabled={busy}
           onClick={() => save({ enabled: !on },
             on ? "پنل بسته شد — نشست‌های بازش همان لحظه افتادند"
                : "پنل باز شد")}
@@ -213,7 +213,10 @@ function Row({ t, groups, password, onSaved, setMsg }) {
             لینکی که به نماینده می‌دهید
           </div>
           <div className="flex items-center gap-1.5">
-            <div dir="ltr" className="fx-input text-[13px] flex-1"
+            {/* روی موبایل لینک در کادر جا نمی‌شود و با ... بریده
+                می‌شود؛ title کاری می‌کند که کاملش دست‌کم با نگه‌داشتن
+                ماوس دیده شود. دکمه‌ی کپی هم کنارش هست. */}
+            <div dir="ltr" title={link} className="fx-input text-[13px] flex-1"
               style={{ fontFamily: "var(--mono)", overflow: "hidden",
                        textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {link}
@@ -525,7 +528,7 @@ export function PortalAdmin({ password }) {
       )}
 
       <div className="flex justify-between items-center gap-2 mb-3 flex-wrap">
-        <button onClick={() => setAdding((v) => !v)}
+        <button title="افزودن" onClick={() => setAdding((v) => !v)}
           className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5">
           <Plus size={14} /> {adding ? "بستن فرم" : "نماینده‌ی جدید"}
         </button>

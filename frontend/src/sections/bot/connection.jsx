@@ -212,7 +212,7 @@ export function ConnectionTest({ password, tenant }) {
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
-          <button onClick={run} disabled={busy || !tenant.panel_url}
+          <button title="تست اتصال" onClick={run} disabled={busy || !tenant.panel_url}
             className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5"
             style={!tenant.panel_url ? { opacity: 0.45, cursor: "not-allowed" } : {}}>
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
@@ -429,7 +429,7 @@ export function BotSection({ password, dirty }) {
             <input className="fx-input" dir="ltr" type={showTok ? "text" : "password"}
               value={t.bot_token || ""} onChange={(e) => up({ bot_token: e.target.value })}
               placeholder="123456:AAE..." style={{ fontFamily: "var(--mono)" }} />
-            <button onClick={() => setShowTok(!showTok)} className="fx-btn-g px-3 shrink-0">
+            <button title="نمایش یا پنهان‌کردن توکن" onClick={() => setShowTok(!showTok)} className="fx-btn-g px-3 shrink-0">
               <Eye size={14} />
             </button>
           </div>
@@ -550,7 +550,7 @@ export function BotSection({ password, dirty }) {
               <Toggle checked={cd.active !== false}
                 onChange={() => { const l = [...cards]; l[i] = { ...cd, active: !(cd.active !== false) }; upS({ cards: l }); }}
                 label="فعال" />
-              <button onClick={() => upS({ cards: cards.filter((_, x) => x !== i) })}
+              <button title="حذف این کارت" onClick={() => upS({ cards: cards.filter((_, x) => x !== i) })}
                 className="fx-ico-btn" style={{ width: 28, height: 28 }}><Trash2 size={13} /></button>
             </div>
             <Field label="شماره کارت">

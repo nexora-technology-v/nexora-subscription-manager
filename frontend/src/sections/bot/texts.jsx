@@ -284,7 +284,7 @@ export function BotPreviewSection() {
             {Object.entries(PREVIEW_FLOWS).map(([k, v]) => {
               const on = flow === k;
               return (
-                <button key={k} onClick={() => setFlow(k)}
+                <button title="انتخاب این مسیر" key={k} onClick={() => setFlow(k)}
                   className="flex items-center gap-3 px-4 py-3 rounded-xl text-right transition-all"
                   style={on
                     ? { background: "rgba(43,127,214,.14)", border: "1px solid rgba(43,127,214,.45)" }

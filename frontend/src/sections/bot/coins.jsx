@@ -124,7 +124,7 @@ export function BotCoinsSection({ password }) {
                   style={{ fontFamily: "var(--mono)" }} />
               </div>
             </div>
-            <button onClick={() => upS({ coin_tiers: tiers.filter((_, x) => x !== i) })}
+            <button title="حذف این پله" onClick={() => upS({ coin_tiers: tiers.filter((_, x) => x !== i) })}
               className="fx-ico-btn shrink-0" style={{ width: 28, height: 28 }}><Trash2 size={13} /></button>
           </div>
         ))}

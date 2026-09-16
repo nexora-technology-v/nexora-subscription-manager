@@ -49,7 +49,7 @@ export function OverviewSection({ config, stats, navigate, dirty }) {
     <div className="fx-anim">
       <div className="fx-g4 grid grid-cols-4 gap-4 mb-5">
         {cards.map((c) => (
-          <button key={c.key} onClick={() => navigate(c.key)} className="fx-card fx-card-i p-5 text-right">
+          <button title="رفتن به این بخش" key={c.key} onClick={() => navigate(c.key)} className="fx-card fx-card-i p-5 text-right">
             <div className="flex items-start justify-between mb-4">
               <div className="fx-ico" style={{ background: c.bg }}><c.icon size={17} style={{ color: c.color }} /></div>
               <ChevronLeft size={15} style={{ color: "#2A3444" }} />
@@ -148,7 +148,7 @@ export function OverviewSection({ config, stats, navigate, dirty }) {
             <h3 className="text-[14px] font-bold text-white mb-3.5">دسترسی سریع</h3>
             <div className="flex flex-col gap-2">
               {quickLinks.map((x, i) => (
-                <button key={i} onClick={() => navigate(x.k)} className="fx-btn-g flex items-center justify-between px-3 py-2.5 text-[13px] w-full">
+                <button title="رفتن به این بخش" key={i} onClick={() => navigate(x.k)} className="fx-btn-g flex items-center justify-between px-3 py-2.5 text-[13px] w-full">
                   <span className="flex items-center gap-2"><x.i size={14} /> {x.l}</span>
                   <ArrowUpRight size={13} />
                 </button>
@@ -249,12 +249,12 @@ export function AppsSection({ config, setConfig, requestDelete }) {
                     <div className="fx-ico" style={{ background: app.recommended ? "linear-gradient(135deg,#2B7FD6,#8FC1EE)" : "rgba(255,255,255,.05)" }}>
                       <Icon size={16} color={app.recommended ? "#06090F" : "#5A6880"} />
                     </div>
-                    <button onClick={() => setRec(i)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[10px] text-[13px] font-semibold transition-all"
+                    <button title="پیشنهادی کن" onClick={() => setRec(i)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-[10px] text-[13px] font-semibold transition-all"
                       style={app.recommended ? { color: "#06090F", background: "linear-gradient(135deg,#2B7FD6,#5AA9E6)" } : { color: "var(--muted)", background: "rgba(255,255,255,.05)" }}>
                       <Star size={11} fill={app.recommended ? "#06090F" : "none"} /> {app.recommended ? "پیشنهادی" : "انتخاب به‌عنوان پیشنهادی"}
                     </button>
                   </div>
-                  <button onClick={() => requestDelete({ type: "app", os: osTab, idx: i, name: app.name })} className="fx-ico-btn shrink-0"><Trash2 size={15} /></button>
+                  <button title="حذف این اپلیکیشن" onClick={() => requestDelete({ type: "app", os: osTab, idx: i, name: app.name })} className="fx-ico-btn shrink-0"><Trash2 size={15} /></button>
                 </div>
                 <div className="fx-g3 grid grid-cols-2 gap-3">
                   <Field label="نام اپ"><input className="fx-input" value={app.name} onChange={(e) => updateApp(i, { name: e.target.value })} /></Field>
@@ -316,7 +316,7 @@ export function VideosSection({ config, setConfig, requestDelete }) {
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 {v.telegramUrl && <a href={v.telegramUrl} target="_blank" rel="noreferrer" className="fx-ico-btn" style={{ color: "var(--accent-2)" }}><ExternalLink size={14} /></a>}
-                <button onClick={() => requestDelete({ type: "video", idx: i, name: v.title })} className="fx-ico-btn"><Trash2 size={15} /></button>
+                <button title="حذف این ویدیو" onClick={() => requestDelete({ type: "video", idx: i, name: v.title })} className="fx-ico-btn"><Trash2 size={15} /></button>
               </div>
             </div>
             <div className="fx-g3 grid grid-cols-2 gap-3">
@@ -357,7 +357,7 @@ export function FaqSection({ config, setConfig, requestDelete }) {
           <div key={i} className="fx-card p-4">
             <div className="flex items-start justify-between mb-2.5">
               <span className="fx-pill" style={{ background: "rgba(255,255,255,.04)", color: "var(--muted)" }}>سوال {i + 1}</span>
-              <button onClick={() => requestDelete({ type: "faq", lang, idx: i, name: item.q || "این سوال" })} className="fx-ico-btn"><Trash2 size={14} /></button>
+              <button title="حذف این سوال" onClick={() => requestDelete({ type: "faq", lang, idx: i, name: item.q || "این سوال" })} className="fx-ico-btn"><Trash2 size={14} /></button>
             </div>
             <Field label="متن سوال"><input className="fx-input" value={item.q} onChange={(e) => update(i, { q: e.target.value })} /></Field>
             <Field label="متن پاسخ"><textarea className="fx-input" value={item.a} onChange={(e) => update(i, { a: e.target.value })} rows={2} /></Field>
@@ -605,7 +605,7 @@ export function SettingsSection({ config, setConfig, password, onPasswordChanged
           {Object.entries(WS_MODES).map(([k, m]) => {
             const on = wsMode === k;
             return (
-              <button key={k} onClick={() => setWsMode(k)}
+              <button title="انتخاب این حالت" key={k} onClick={() => setWsMode(k)}
                 className="p-3.5 rounded-2xl text-right"
                 style={{
                   background: on ? "var(--accent-soft)" : "var(--surface-3)",
@@ -828,7 +828,7 @@ export function ResellersSection({ config, setConfig, requestDelete, password })
                 </button>
                 <div className="flex items-center gap-2 shrink-0">
                   <Toggle checked={r.enabled !== false} onChange={() => update(i, { enabled: !(r.enabled !== false) })} label="فعال" />
-                  <button onClick={() => requestDelete({ type: "reseller", idx: i, name: r.name })} className="fx-ico-btn"><Trash2 size={15} /></button>
+                  <button title="حذف این واسطه" onClick={() => requestDelete({ type: "reseller", idx: i, name: r.name })} className="fx-ico-btn"><Trash2 size={15} /></button>
                 </div>
               </div>
 
@@ -1183,7 +1183,7 @@ export function ChangePasswordCard({ password, onPasswordChanged }) {
         </div>
       )}
 
-      <button onClick={submit} disabled={busy || !current || !next || !confirm}
+      <button title="ثبت رمز" onClick={submit} disabled={busy || !current || !next || !confirm}
         className="fx-btn w-full py-3 text-[14px] flex items-center justify-center gap-2">
         {busy ? <Loader2 size={15} className="animate-spin" /> : <Key size={15} />}
         {busy ? "در حال تغییر..." : "تغییر رمز عبور"}

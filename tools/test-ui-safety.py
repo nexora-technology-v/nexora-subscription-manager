@@ -366,6 +366,244 @@ check("placeholder فارسی روی فیلد چپ‌به‌راست نماند�
       else "فارسی در label می‌نشیند، نه در placeholder")
 
 
+# ═══════════════════════════════════════════════════════════
+head("جهت و قلم · فارسی داخل ظرفِ چپ‌به‌راست یا مونو")
+
+# سه چیز اندازه‌گیری‌شده، نه حدس:
+#
+#   • dir="ltr" جای عدد و واحدش را عوض می‌کند. «۸۳ روز» روی صفحه
+#     «روز ۸۳» خوانده می‌شود.
+#   • JetBrains Mono هیچ گلیف فارسی ندارد، پس حرف‌های فارسی به مونوی
+#     سیستم می‌افتند: «اعتبار» ۷۱٪ پهن‌تر از قلمِ خودِ پنل، «تومان»
+#     ۳۱٪ — درست وسط یک عدد.
+#   • و ارقام فارسی باید در مونو بمانند، چون ستون‌های جدول با آن
+#     هم‌تراز می‌شوند (در مونو همه ۲۴٫۰۱ پیکسل، در قلم اصلی ۱۴٫۵ تا
+#     ۲۷٫۱). پس راه‌حل «فارسی را به زنجیره‌ی مونو اضافه کن» رد شد.
+#
+# این باگ در دو صفحه‌ی جدا پیدا شد — داشبورد حسابداری و «واسطه‌ها و
+# نرخ» — با یک متنِ تقریباً یکسان. همان الگویی که این مخزن هفت بار
+# دیده: یک قاعده، دو جا، اصلاح در یکی.
+#
+# راه فرار: کلاس fx-fa-sub (جهت و قلم را برمی‌گرداند) یا <bdi>.
+#
+# چیزی که این تست *نمی‌تواند* بگیرد: فارسیِ داده‌ای. `{g.name}` وقتی
+# نامِ گروه «بدون گروه» باشد همان مشکل را دارد، ولی در فایل هیچ حرف
+# فارسی‌ای دیده نمی‌شود. برای آن‌ها قرارداد این است که هر شناسه‌ای که
+# کاربر می‌نویسد (نام گروه، ایمیل کانفیگ) داخل <bdi> و با monoIf()
+# بنشیند — و همین تست، اگر کسی <bdi> را بردارد و کنارش متن فارسی
+# باشد، قرمز می‌شود.
+
+_FA_LETTER = re.compile(r"[\u0620-\u064A\u066E-\u06D3\u06EE\u06EF"
+                        r"\u06FA-\u06FF]")
+#: راه‌های اعلامِ «این‌جا حواسم بود»
+#  fx-fa-sub  → جهت و قلم را برمی‌گرداند
+#  <bdi       → متنِ دوجهته را جدا نگه می‌دارد
+#  monoIf(    → مونو را فقط به شناسه‌ی لاتین می‌دهد
+#  fx-ltr-ok  → چپ‌به‌راست عمدی است (نمودار جریان)
+_ESCAPE = ("fx-fa-sub", "<bdi", "monoIf(")
+_TAG_ESCAPE = ("fx-ltr-ok",)
+
+def _walk_jsx(src):
+    """
+    پشته‌ی تگ‌ها را می‌پیماید و هر متنِ فارسی را با ظرفش گزارش می‌کند.
+
+    چرا پشته و نه regex روی بدنه: دو <span> تودرتو هم‌نام‌اند، پس
+    «تا اولین </span>» بدنه را وسط می‌برد. و وقتی راه فرار را
+    «هرجای بدنه» گرفتم، شکستنِ عمدی نشان داد یک <bdi> در گوشه‌ی
+    بدنه، فارسیِ بیرونِ خودش را هم معاف می‌کند.
+
+    برمی‌گرداند: (شماره‌ی خط, توضیح ظرف) برای هر تخلف.
+    """
+    out, stack, i, n = [], [], 0, len(src)
+    while i < n:
+        lt = src.find("<", i)
+        if lt < 0:
+            lt = n
+        text = src[i:lt]
+        if text and _FA_LETTER.search(text):
+            # عمیق‌ترین ظرفی که جهت یا قلم را تحمیل می‌کند
+            hard = max((k for k, f in enumerate(stack) if f["hard"]),
+                       default=None)
+            safe = max((k for k, f in enumerate(stack) if f["safe"]),
+                       default=None)
+            if hard is not None and (safe is None or safe < hard):
+                out.append((src[:i].count(chr(10)) + 1, stack[hard]["desc"]))
+        i = lt
+        if i >= n:
+            break
+        if src.startswith("</", i):
+            gt = src.find(">", i)
+            if gt < 0:
+                break
+            if stack:
+                stack.pop()
+            i = gt + 1
+            continue
+        m = re.match(r"<([A-Za-z][\w.]*)", src[i:])
+        if not m:
+            i += 1
+            continue
+        # تا بستنِ تگِ باز، با شمردن آکولاد — صفت‌ها {{…}} دارند
+        j, depth = i + m.end(), 0
+        while j < n:
+            c = src[j]
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+            elif c == ">" and depth == 0:
+                break
+            j += 1
+        attrs = src[i + m.end():j]
+        self_close = attrs.rstrip().endswith("/")
+        tag = m.group(1)
+        hard = ('dir="ltr"' in attrs or "var(--mono)" in attrs) \
+            and not any(e in attrs for e in _TAG_ESCAPE)
+        safe = (tag == "bdi" or "fx-fa-sub" in attrs or "monoIf(" in attrs)
+        if not self_close:
+            stack.append({
+                "hard": hard, "safe": safe,
+                "desc": "<%s%s>" % (tag, re.sub(r"\s+", " ", attrs)[:44]),
+            })
+        i = j + 1
+    return out
+
+
+_bidi = []
+for _name, _src in ALL.items():
+    if not _name.endswith(".jsx"):
+        continue
+    # کامنت‌ها با تعداد خطِ برابر جایگزین می‌شوند، وگرنه شماره‌ی خطی
+    # که گزارش می‌شود با فایل نمی‌خواند و آدم را به جای اشتباه می‌برد
+    _flat = re.sub(r"\{/\*.*?\*/\}",
+                   lambda m: "\n" * m.group(0).count("\n"), _src, flags=re.S)
+    for _line, _desc in _walk_jsx(_flat):
+        _bidi.append("%s:%d %s" % (_name, _line, _desc))
+
+check("حرف فارسی داخل dir=ltr یا مونو نمانده", not _bidi,
+      "، ".join(_bidi[:6]) if _bidi
+      else "هر کدام یا fx-fa-sub دارند یا داخل bdi نشسته‌اند")
+
+# و خودِ راه فرار باید وجود داشته باشد، وگرنه تست بالا با حذف کلاس
+# هم سبز می‌ماند
+_css = ALL.get("index.css") or io.open(
+    os.path.join(SRC, "index.css"), encoding="utf-8").read()
+check("کلاس fx-fa-sub تعریف شده", ".fx-fa-sub" in _css
+      and "--sans" in _css, "جهت rtl و قلم اصلی را برمی‌گرداند")
+
+
+# ═══════════════════════════════════════════════════════════
+head("دکمه‌ی آیکونی · هر دکمه‌ای باید بگوید چه می‌کند")
+
+# دکمه‌ی بی‌متن و بی‌tooltip کاربر را به حدس‌زدن وامی‌دارد، و ۱۲ تا از
+# اینها دکمه‌ی «حذف» بودند. پنل ۳۳ دکمه را از قبل همین‌طور برچسب زده
+# بود؛ بقیه جا مانده بودند.
+
+_ICON = re.compile(r"<([A-Z][A-Za-z0-9]*)\s+size=")
+_nolabel = []
+for _name, _src in ALL.items():
+    if not _name.endswith(".jsx"):
+        continue
+    for _m in re.finditer(r"<button\b", _src):
+        _i, _depth = _m.end(), 0
+        while _i < len(_src):
+            _ch = _src[_i]
+            if _ch == "{":
+                _depth += 1
+            elif _ch == "}":
+                _depth -= 1
+            elif _ch == ">" and _depth == 0:
+                break
+            _i += 1
+        _open_tag = _src[_m.start():_i + 1]
+        _close = _src.find("</button>", _i)
+        _body = _src[_i + 1:_close] if _close > 0 else ""
+        _txt = re.sub(r"\{[^{}]*\}", "", re.sub(r"<[^>]*>", "", _body)).strip()
+        if _txt or not _ICON.search(_body):
+            continue
+        if "title=" in _open_tag or "aria-label" in _open_tag:
+            continue
+        _nolabel.append("%s:%d" % (_name, _src[:_m.start()].count(chr(10)) + 1))
+
+check("هر دکمه‌ی فقط‌آیکون برچسب دارد", not _nolabel,
+      "، ".join(_nolabel[:6]) if _nolabel
+      else "title یا aria-label روی همه هست")
+
+
+# ═══════════════════════════════════════════════════════════
+head("زبان · واحدِ انگلیسی در رابطی که فارسی است")
+
+# دو خط در دو صفحه‌ی جدا این شکلی بودند:
+#
+#     {g.name} · {g.configs} config · {g.months} months
+#
+# در حالی که سرستونِ همان جدول «ماه» می‌نوشت و جای دیگرِ همان فایل
+# «{faNum(it.months)} ماه». یعنی واژه‌ها فارسیِ خودشان را داشتند و
+# فقط این دو خط جا مانده بودند.
+#
+# فقط متنِ رندرشده شمرده می‌شود، نه کد: «config» ۱۲۶ بار در مخزن هست
+# و تقریباً همه‌اش نام متغیر یا مسیر API است.
+
+#: واژه‌هایی که معادل فارسی‌شان همین حالا جای دیگرِ پنل به کار می‌رود
+_EN_UNITS = re.compile(r"\b(configs?|months?|days?|used|renewals?)\b", re.I)
+
+_en = []
+for _name, _src in ALL.items():
+    if not _name.endswith(".jsx"):
+        continue
+    _flat = re.sub(r"\{/\*.*?\*/\}",
+                   lambda m: "\n" * m.group(0).count("\n"), _src, flags=re.S)
+    # متنِ بینِ تگ‌ها، بدونِ عبارت‌های {…}
+    for _m in re.finditer(r">([^<>]{1,200})<", _flat):
+        _txt = _m.group(1)
+        # آکولادهای تودرتو را لایه‌لایه برمی‌داریم؛ یک regex ساده
+        # `\{[^{}]*\}` از پسِ {a && (b ? c : d)} برنمی‌آید و تکه‌ای از
+        # کد را به‌عنوان «متن» تحویل می‌دهد
+        for _ in range(6):
+            _new = re.sub(r"\{[^{}]*\}", "", _txt)
+            if _new == _txt:
+                break
+            _txt = _new
+        # اگر هنوز نشانه‌ی کد دارد، این «متنِ نمایشی» نبوده
+        if re.search(r"[{}();=]|&&|=>", _txt):
+            continue
+        if not _EN_UNITS.search(_txt):
+            continue
+        _en.append("%s:%d — %s" % (
+            _name, _flat[:_m.start()].count(chr(10)) + 1,
+            re.sub(r"\s+", " ", _txt).strip()[:44]))
+
+check("واحدِ انگلیسی در متنِ نمایشی نمانده", not _en,
+      "، ".join(_en[:5]) if _en
+      else "«کانفیگ» و «ماه» و «مصرف» همه‌جا فارسی‌اند")
+
+
+# ═══════════════════════════════════════════════════════════
+head("اندازه‌ی قلم · کلاسی که نوشته می‌شود باید اثر کند")
+
+# `.fx-stat-num` در index.css اندازه و وزن را می‌گذاشت و دیرتر از
+# کلاس‌های تیلویند می‌آمد، پس با ویژگیِ برابر برنده می‌شد. نتیجه: سه
+# جا `fx-stat-num text-[21px] font-extrabold` نوشته شده بود و هیچ‌کدام
+# کار نمی‌کرد — ۳۲ پیکسل (و در موبایل ۲۸) رندر می‌شد و عددِ میلیونی از
+# کارت بیرون می‌زد. با :where ویژگی صفر می‌شود و هر اندازه‌ی صریحی در
+# JSX برنده است.
+check("اندازه‌ی fx-stat-num با :where قابل بازنویسی است",
+      ":where(.fx-stat-num)" in _css,
+      "وگرنه text-[..] کنارش بی‌اثر می‌شود")
+
+# قاعده‌ی واقعی: هیچ‌جا `.fx-stat-num` بدونِ :where نباید font-size
+# بگذارد — نه در قاعده‌ی اصلی، نه داخل مدیاکوئری. شمردنِ همه‌شان از
+# خواندنِ یک مدیاکوئریِ مشخص مطمئن‌تر است، چون فردا مدیاکوئریِ دیگری
+# اضافه می‌شود و تستِ نقطه‌ای آن را نمی‌بیند.
+_bare_size = []
+for _m in re.finditer(r"(:where\()?\.fx-stat-num\)?\s*\{([^}]*)\}", _css):
+    if "font-size" in _m.group(2) and not _m.group(1):
+        _bare_size.append(re.sub(r"\s+", " ", _m.group(2)).strip()[:40])
+check("هیچ قاعده‌ی fx-stat-num بدون :where اندازه نمی‌گذارد",
+      not _bare_size, "، ".join(_bare_size) if _bare_size
+      else "پیش‌فرض‌ها صفر-ویژگی‌اند و text-[..] بر آن‌ها غلبه می‌کند")
+
+
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

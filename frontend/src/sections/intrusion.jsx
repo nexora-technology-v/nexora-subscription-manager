@@ -328,7 +328,7 @@ export function FirewallIntrusion({ password }) {
                         <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
                           {a.ip}
                           {a.known && (
-                            <span className="fx-pill mr-2" style={{
+                            <span className="fx-pill fx-fa-sub mr-2" style={{
                               background: "rgba(251,191,36,.14)",
                               color: "var(--warn)",
                             }}>وصل به سرویس</span>

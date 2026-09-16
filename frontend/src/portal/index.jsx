@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
-import { errText, faNum } from "../lib/format";
+import { errText, faNum, monoIf } from "../lib/format";
 import { isoToJalaliLabel } from "../ui/jalali";
 // usePager از کتابخانه‌ی مشترک می‌آید، نه کپیِ محلی: صفحه‌بندی یک
 // قاعده است و دو پیاده‌سازی از یک قاعده دیر یا زود از هم جدا
@@ -1051,7 +1051,7 @@ function ConfigBox({ token, row, onClose, onRenew, onToggle }) {
                     </button>
                   </div>
 
-                  <button onClick={showQr} disabled={qrBusy}
+                  <button title="نمایش کد QR" onClick={showQr} disabled={qrBusy}
                     className="fx-btn-g w-full py-2.5 text-[13px] flex items-center
                                justify-center gap-1.5 mb-3">
                     {qrBusy ? <Loader2 size={13} className="animate-spin" />
@@ -1156,7 +1156,7 @@ function ConfigBox({ token, row, onClose, onRenew, onToggle }) {
                        justify-center gap-1.5">
             <RefreshCw size={13} /> تمدید
           </button>
-          <button onClick={() => { onToggle(row); onClose(); }}
+          <button title="روشن یا خاموش کردن کانفیگ" onClick={() => { onToggle(row); onClose(); }}
             className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
             <Power size={13}
               style={{ color: row.active ? "var(--muted)" : "var(--ok)" }} />
@@ -1280,7 +1280,11 @@ function Dashboard({ token, onOut }) {
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          {/* flex-wrap لازم است: پنج دکمه در یک خطِ نشکن، صفحه را روی
+              موبایل ۴۶۳ پیکسل می‌کرد روی نمایشگر ۳۷۵ پیکسلی — یعنی نام
+              نماینده بیرون از کادر و کارت‌ها نصفه. ردیفِ بیرونی
+              flex-wrap داشت و همین ردیفِ داخلی نداشت. */}
+          <div className="flex items-center gap-2 flex-wrap">
             <button onClick={() => setOrdersOpen(true)}
               className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
               <FileText size={13} /> سفارش‌ها
@@ -1496,11 +1500,14 @@ function Dashboard({ token, onOut }) {
                 <tbody>
                   {pageRows.map((c) => (
                     <tr key={c.email}>
-                      <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
+                      {/* نامِ کانفیگ را خودِ نماینده می‌نویسد و می‌تواند
+                          فارسی باشد؛ bdi جلوی جابه‌جا شدنش را می‌گیرد و
+                          monoIf مونو را فقط به شناسه‌ی لاتین می‌دهد. */}
+                      <td>
                         <button onClick={() => setDetail(c)}
                           style={{ color: "var(--accent-2)", textAlign: "left" }}
                           title="دیدن اطلاعات و لینک">
-                          {c.email}
+                          <bdi style={{ fontFamily: monoIf(c.email) }}>{c.email}</bdi>
                         </button>
                       </td>
                       <td>{c.gb === 0 ? "∞" : `${faNum(c.gb)} GB`}</td>
@@ -1614,6 +1621,11 @@ function Dashboard({ token, onOut }) {
 export default function Portal() {
   const slug = portalSlug();
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || "");
+
+  // عنوان تبْ از index.html می‌آمد و برای نماینده هم «مدیریت صفحه
+  // اشتراک» می‌نوشت — یعنی عنوانِ پنل مدیر، روی صفحه‌ای که اصلاً به
+  // آن دسترسی ندارد.
+  useEffect(() => { document.title = "پنل نمایندگی | Nexora"; }, []);
 
   const out = useCallback(() => {
     if (token) {

@@ -95,7 +95,7 @@ export function BotAffiliates({ password }) {
             <span className="text-[21px] font-extrabold"
               style={{ color: data.totalOwed > 0 ? "var(--warn)" : "var(--ok)",
                        fontFamily: "var(--mono)" }}>
-              {faNum(data.totalOwed)} <span className="text-[13px]">تومان</span>
+              {faNum(data.totalOwed)} <span className="text-[13px] fx-fa-sub">تومان</span>
             </span>
           </div>
 
@@ -112,7 +112,7 @@ export function BotAffiliates({ password }) {
               </span>
               <span className="text-[14px] font-bold"
                 style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
-                {faNum(data.resellerOwed)} <span className="text-[12px]">تومان</span>
+                {faNum(data.resellerOwed)} <span className="text-[12px] fx-fa-sub">تومان</span>
               </span>
             </div>
           )}
@@ -149,11 +149,16 @@ export function BotAffiliates({ password }) {
                   </span>
                 )}
               </div>
-              <div className="text-[12px] mt-1.5" dir="ltr"
-                style={{ color: "var(--muted)", fontFamily: "var(--mono)",
-                         textAlign: "right" }}>
-                aff_{a.code}
-                {a.tg_id ? ` · ${a.tg_id}` : " · بدون تلگرام"}
+              {/* «بدون تلگرام» از خطِ ltr/مونو بیرون کشیده شد: در آن
+                  جهت، فارسی جابه‌جا نمایش داده می‌شود و مونو هم گلیف
+                  فارسی ندارد. کد و شناسه‌ی تلگرام — که لاتین‌اند — همان
+                  ltr و مونو را نگه می‌دارند. */}
+              <div className="text-[12px] mt-1.5"
+                style={{ color: "var(--muted)", textAlign: "right" }}>
+                <bdi style={{ fontFamily: "var(--mono)" }}>
+                  aff_{a.code}{a.tg_id ? ` · ${a.tg_id}` : ""}
+                </bdi>
+                {!a.tg_id && " · بدون تلگرام"}
               </div>
               {a.note && (
                 <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
@@ -268,7 +273,7 @@ export function AffiliateForm({ password, affiliate, onClose, onDone }) {
   return (
     <Modal title={editing ? "ویرایش همکار" : "همکار جدید"} onClose={onClose} width="480px"
       footer={
-        <button onClick={submit} disabled={busy || !f.name.trim()}
+        <button title="ثبت" onClick={submit} disabled={busy || !f.name.trim()}
           className="fx-btn w-full py-3 text-[14px] flex items-center justify-center gap-2"
           style={!f.name.trim() ? { opacity: .45, cursor: "not-allowed" } : {}}>
           {busy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
@@ -367,7 +372,8 @@ export function AffiliatePayoutModal({ affiliate, password, onClose, onDone }) {
         <div className="flex justify-between text-[13px]">
           <span style={{ color: "var(--muted)" }}>مانده‌ی فعلی</span>
           <span style={{ color: "var(--warn)", fontFamily: "var(--mono)" }}>
-            {faNum(affiliate.balance)} تومان
+            {faNum(affiliate.balance)}
+            <span className="fx-fa-sub"> تومان</span>
           </span>
         </div>
       </div>

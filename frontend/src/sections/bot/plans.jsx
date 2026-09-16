@@ -84,7 +84,7 @@ export function BotPlansSection({ password }) {
             </div>
             <div className="flex items-center gap-2">
               <Toggle checked={p.is_active !== false} onChange={() => up(i, { is_active: !(p.is_active !== false) })} label="فعال" />
-              <button onClick={() => setPlans(plans.filter((_, x) => x !== i))} className="fx-ico-btn" style={{ width: 28, height: 28 }}>
+              <button title="حذف این پلن" onClick={() => setPlans(plans.filter((_, x) => x !== i))} className="fx-ico-btn" style={{ width: 28, height: 28 }}>
                 <Trash2 size={13} />
               </button>
             </div>

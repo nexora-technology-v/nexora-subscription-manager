@@ -131,7 +131,8 @@ export function TunnelOverview({ password }) {
                   {n.cpu_percent != null && <span>CPU {faNum(n.cpu_percent)}٪</span>}
                   {n.mem_percent != null && <span>RAM {faNum(n.mem_percent)}٪</span>}
                   <span style={{ color: n.online ? "var(--ok)" : "var(--muted)" }}>
-                    {n.running_count}/{n.tunnel_count} تانل
+                    {n.running_count}/{n.tunnel_count}
+                    <span className="fx-fa-sub"> تانل</span>
                   </span>
                 </div>
               </div>
@@ -442,7 +443,7 @@ export function AgentInstallModal({ data, onClose }) {
         </code>
       </div>
 
-      <button onClick={copy}
+      <button title="کپی" onClick={copy}
         className="fx-btn w-full py-2.5 text-[14px] flex items-center justify-center gap-2">
         {copied ? <><Check size={14} /> کپی شد</> : <><Copy size={14} /> کپی دستور</>}
       </button>
@@ -574,7 +575,7 @@ export function TunnelList({ password }) {
               <button onClick={() => setCfgFor(t)} className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
                 <FileText size={12} /> کانفیگ سرور خارج
               </button>
-              <button onClick={() => remove(t.id)} className="fx-ico-btn mr-auto" style={{ width: 30, height: 30 }}>
+              <button title="حذف این تانل" onClick={() => remove(t.id)} className="fx-ico-btn mr-auto" style={{ width: 30, height: 30 }}>
                 <Trash2 size={12} />
               </button>
             </div>
@@ -642,12 +643,16 @@ export function TunnelForm({ password, nodes, engines, onClose, onDone }) {
       <div className="rounded-xl p-4 mb-4"
         style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
 
-        <div className="flex items-center gap-2 mb-3 text-[13px] flex-wrap" dir="ltr"
-          style={{ fontFamily: "var(--mono)" }}>
+        {/* dir="ltr" عمدی است: فلش‌ها به راست می‌روند، پس ترتیبِ
+            مرحله‌ها هم باید از چپ شروع شود. ولی مونو از روی کلِ خط
+            برداشته شد و فقط روی خودِ فلش‌ها ماند — JetBrains Mono
+            گلیف فارسی ندارد و این سه برچسب را به مونوی سیستم
+            می‌انداخت، بسیار پهن‌تر از بقیه‌ی راهنما. */}
+        <div className="flex items-center gap-2 mb-3 text-[13px] flex-wrap fx-ltr-ok" dir="ltr">
           <span style={{ color: "var(--muted)" }}>مشتری</span>
-          <span style={{ color: "var(--accent-2)" }}>──►</span>
+          <span style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>──►</span>
           <span style={{ color: "var(--ok)", fontWeight: 700 }}>سرور ایران</span>
-          <span style={{ color: "var(--accent-2)" }}>──►</span>
+          <span style={{ color: "var(--accent-2)", fontFamily: "var(--mono)" }}>──►</span>
           <span style={{ color: "var(--dim)" }}>سرور خارج</span>
         </div>
 
@@ -786,7 +791,7 @@ export function TunnelForm({ password, nodes, engines, onClose, onDone }) {
                   color: "var(--text)", fontSize: 12.5, padding: "8px 10px",
                   textAlign: "center", fontFamily: "var(--mono)",
                 }} />
-              <button onClick={() => setPorts(ports.filter((_, x) => x !== i))}
+              <button title="حذف این پورت" onClick={() => setPorts(ports.filter((_, x) => x !== i))}
                 className="flex items-center justify-center transition-colors"
                 style={{
                   width: 28, height: 34, border: "none", cursor: "pointer",
@@ -1006,7 +1011,7 @@ export function TunnelMonitorModal({ tunnel, password, onClose }) {
             </div>
           )}
 
-          <button onClick={measure} disabled={busy || !tunnel.nodeOnline}
+          <button title="اندازه‌گیری" onClick={measure} disabled={busy || !tunnel.nodeOnline}
             className="fx-btn w-full py-3 text-[14px] flex items-center justify-center gap-2 mt-4"
             style={!tunnel.nodeOnline ? { opacity: 0.4, cursor: "not-allowed" } : {}}>
             {busy
@@ -1065,7 +1070,7 @@ export function TunnelConfigModal({ tunnel, password, onClose }) {
             style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
             {cfg.filename}
           </div>
-          <button onClick={copy}
+          <button title="کپی" onClick={copy}
             className="fx-btn w-full py-2.5 text-[14px] flex items-center justify-center gap-2">
             {copied ? <><Check size={14} /> کپی شد</> : <><Copy size={14} /> کپی کانفیگ</>}
           </button>

@@ -58,12 +58,20 @@
      پشتش یک زنجیره‌ی محلی هست که روی هر سیستمی وجود دارد. */
   --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", "Segoe UI Mono",
           "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* قلمِ اصلی، تا برگشتن از مونو یک‌جا تعریف شده باشد.
+     چرا لازم شد: چند سلولِ جدول dir="ltr" و مونو دارند (که برای
+     تاریخ و آی‌پی درست است) و یک زیرخطِ فارسی داخلشان می‌نشیند که
+     هر دو را به ارث می‌برد. برای برگرداندن باید نامِ قلم را دوباره
+     نوشت — و هر بار که جایی دوباره نوشته شود، روزی از اصلش جا
+     می‌ماند. */
+  --sans: "IRANSansX", "Vazirmatn", sans-serif;
 }
 
 * { -webkit-tap-highlight-color: transparent; }
 
 body {
-  font-family: "IRANSansX", "Vazirmatn", sans-serif;
+  font-family: var(--sans);
   background: var(--bg);
   color: var(--text);
   overscroll-behavior-y: none;
@@ -230,7 +238,32 @@ input, select, textarea, button, optgroup {
 .fx-card-hl { border-color: rgba(90,169,230,.4); }
 
 /* ===== آمار ===== */
-.fx-stat-num { font-family: var(--mono); font-size: 32px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
+/* اندازه و وزن داخل :where می‌آیند تا ویژگی‌شان صفر شود.
+   چرا: سه جا نوشته شده بود `fx-stat-num text-[21px] font-extrabold`
+   و هیچ‌کدام کار نمی‌کرد — این قاعده دیرتر از کلاس‌های تیلویند
+   می‌آید و با ویژگی برابر، برنده می‌شد. یعنی جایی که ۲۱ پیکسل
+   خواسته شده بود ۳۲ (و در موبایل ۲۸) رندر می‌شد و عددِ میلیونی از
+   کارت بیرون می‌زد. با :where هر اندازه‌ی صریحی در JSX برنده است و
+   جایی که چیزی نوشته نشده، همین پیش‌فرض می‌ماند. */
+:where(.fx-stat-num) { font-size: 32px; font-weight: 700; }
+.fx-stat-num { font-family: var(--mono); line-height: 1; letter-spacing: -1px; }
+
+/* متنِ فارسی داخل سلولی که dir="ltr" و مونو است.
+   آن سلول‌ها برای تاریخ شمسی، آی‌پی و مبلغ درست‌اند، ولی زیرخطِ
+   فارسی‌شان هر دو را به ارث می‌برد و دو چیز خراب می‌شود:
+
+     • ltr جای عدد و واحدش را عوض می‌کند. «۸۳ روز» روی صفحه
+       «روز ۸۳» خوانده می‌شود — اندازه‌گیری‌شده، نه حدس.
+     • JetBrains Mono هیچ گلیف فارسی ندارد، پس حرف‌ها به مونوی
+       سیستم می‌افتند و تا ۷۱٪ پهن‌تر از متنِ دور و برشان می‌شوند. */
+.fx-fa-sub { direction: rtl; font-family: var(--sans); }
+
+/* چپ‌به‌راستِ عمدی — جایی که خودِ چیدمان جهت دارد، مثل نمودار جریان
+   که فلش‌هایش به راست می‌روند. کلاس کاری نمی‌کند؛ فقط به تست
+   ui-safety می‌گوید این یکی تصمیم است، نه فراموشی. بدون آن، تنها
+   راهِ رد شدن از تست «استثنا در خودِ تست» بود — و استثنایی که در تست
+   بنشیند، فردا یک اشتباه واقعی را هم می‌پوشاند. */
+.fx-ltr-ok { }
 .fx-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; padding: 3px 7px; border-radius: 6px; }
 .fx-badge.up { background: rgba(52,211,153,.12); color: var(--ok); }
 .fx-badge.down { background: rgba(248,113,113,.12); color: var(--danger); }
@@ -564,7 +597,7 @@ code, kbd, samp, pre { overflow-wrap: anywhere; }
 
 @media (max-width: 639.98px) {
   .fx-g4 { grid-template-columns: 1fr !important; }
-  .fx-stat-num { font-size: 28px; }
+  :where(.fx-stat-num) { font-size: 28px; }
   .fx-search { display: none; }
 }
 
