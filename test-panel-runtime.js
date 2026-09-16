@@ -13,7 +13,35 @@
 const fs = require("fs");
 const path = require("path");
 
-const DIST = process.argv[2] || path.join(__dirname, "frontend", "dist");
+/*
+ * پیش‌فرض: بیلدِ تک‌فایلیِ مخصوصِ همین تست.
+ *
+ * `dist` واقعی تکه‌تکه است تا مشتریِ مینی‌اپ کلِ پنل مدیر را دانلود
+ * نکند، و تکه‌ها با `import` به هم وصل‌اند — چیزی که jsdom اجرا
+ * نمی‌کند. پس `dist-test` ساخته می‌شود که همان کد است در یک فایل.
+ *
+ * اگر نبود، خودش می‌سازدش: تستی که بگوید «اول یک دستور دیگر بزن»،
+ * روزی زده نمی‌شود.
+ */
+const SINGLE = path.join(__dirname, "frontend", "dist-test");
+let DIST = process.argv[2];
+if (!DIST) {
+  if (!fs.existsSync(path.join(SINGLE, "index.html"))) {
+    console.log("  ساختِ نسخه‌ی تک‌فایلی برای تست…");
+    const { spawnSync } = require("child_process");
+    const r = spawnSync("npx", ["vite", "build"], {
+      cwd: path.join(__dirname, "frontend"),
+      env: { ...process.env, NEXORA_SINGLE_BUNDLE: "1" },
+      shell: true, encoding: "utf8",
+    });
+    if (r.status !== 0) {
+      console.error("❌ ساختِ نسخه‌ی تست ناموفق بود");
+      console.error((r.stderr || r.stdout || "").slice(-400));
+      process.exit(1);
+    }
+  }
+  DIST = SINGLE;
+}
 
 function jsdomPath() {
   const candidates = [
