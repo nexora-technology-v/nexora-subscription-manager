@@ -12,7 +12,7 @@ import {
 
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import { EmptyState, Field, InfoBox, Msg, NumberInput, SectionHead } from "../ui/index";
+import { EmptyState, Field, InfoBox, Msg, NumberInput, SectionHead, StatTile } from "../ui/index";
 import { BotInboundsSection } from "./bot/inbounds";
 
 
@@ -501,12 +501,43 @@ export function PortalAdmin({ password }) {
   const { d: data, busy: loading, load: reload } =
     useJson("/api/admin/tenant/portal-list", password);
 
+  // از همان فهرستی که در دست است
+  const tenantList = (data?.tenants || []);
+  const openCount = tenantList.filter((t) => t.portalEnabled).length;
+  const unlimitedCount = tenantList.filter((t) => Number(t.credit) < 0).length;
+  const creditSum = tenantList.reduce(
+    (a, t) => a + Math.max(0, Number(t.credit) || 0), 0);
+  const noGroupCount = tenantList.filter((t) => !t.portalGroup).length;
+
   return (
     <>
       <SectionHead icon={Link2} title="پنل نمایندگی"
         desc="به هر نماینده یک لینک و رمز بدهید تا لازم نباشد پنل x-ui خودتان را در اختیارش بگذارید." />
 
       <Msg msg={msg} onClose={() => setMsg(null)} />
+
+      {/* وضعیت نماینده‌ها در یک نگاه.
+          «کدامشان پنلشان باز است» و «مجموع اعتبارِ دستشان چقدر است»
+          سؤال‌هایی بودند که باید با باز کردنِ تک‌تک ردیف‌ها جواب
+          می‌گرفتند. نماینده‌ی بی‌گروه هم باید دیده شود: کانفیگی که
+          می‌سازد به هیچ صورتحسابی نمی‌چسبد. */}
+      {tenantList.length > 0 && (
+        <div className="fx-g3 grid grid-cols-3 gap-3">
+          <StatTile label="نماینده" icon={Users} tone="var(--accent-2)"
+            value={faNum(tenantList.length)}
+            hint={`${faNum(openCount)} نفر پنلشان باز است`} />
+          <StatTile label="مجموع اعتبار" icon={Wallet} tone="var(--ok)"
+            value={faNum(creditSum)} unit="تومان" color="var(--ok)"
+            hint={unlimitedCount
+                  ? `${faNum(unlimitedCount)} نفر بدون سقف`
+                  : "اعتبارِ پیش‌پرداختِ دستشان"} />
+          <StatTile label="بدون گروه" icon={AlertTriangle}
+            tone={noGroupCount ? "var(--warn)" : "var(--ok)"}
+            value={faNum(noGroupCount)}
+            color={noGroupCount ? "var(--warn)" : "var(--ok)"}
+            hint={noGroupCount ? "کانفیگشان به صورتحساب نمی‌چسبد" : "همه گروه دارند"} />
+        </div>
+      )}
 
       <InfoBox>
         نماینده از لینک خودش فقط کانفیگ‌های گروه خودش را می‌بیند و می‌تواند

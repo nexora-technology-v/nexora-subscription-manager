@@ -11,7 +11,7 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, DollarSign, Loader2, Plus, RefreshCw, Server,
+  AlertTriangle, Clock, DollarSign, FileText, Loader2, Plus, RefreshCw, Server,
   Trash2, TrendingUp, Wallet,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
@@ -440,26 +440,21 @@ export function BillingLedger({ password }) {
           </button>
         )} />
 
-      <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
-        {[
-          ["صورت‌حساب‌شده", d.billed, "var(--accent-2)", "از روز اول تا امروز"],
-          ["دریافت‌شده", d.paid, "#34d399", "از واسطه‌ها"],
-          ["طلب شما", d.outstanding, "var(--warn)", "بدهیِ امروز"],
-          ["هزینه", d.spent, "var(--danger)", "سرور، حجم، دامنه"],
-        ].map(([label, val, color, hint]) => (
-          <div key={label} className="fx-card p-4">
-            <div className="text-[13px] mb-1" style={{ color: "var(--dim)" }}>
-              {label}
-            </div>
-            <div className="text-[19px] font-bold"
-              style={{ color, fontFamily: "var(--mono)" }}>
-              <Toman n={val} />
-            </div>
-            <div className="text-[11.5px] mt-1" style={{ color: "var(--muted)" }}>
-              {hint}
-            </div>
-          </div>
-        ))}
+      <div className="fx-g4 grid grid-cols-4 gap-3">
+        <StatTile label="صورت‌حساب‌شده" icon={FileText} tone="var(--accent-2)"
+          value={faNum(d.billed || 0)} unit="تومان" color="var(--accent-2)"
+          hint="از روز اول تا امروز" />
+        <StatTile label="دریافت‌شده" icon={Wallet} tone="var(--ok)"
+          value={faNum(d.paid || 0)} unit="تومان" color="var(--ok)"
+          hint={d.billed ? `${faNum(Math.round((d.paid || 0) * 100 / d.billed))}٪ از کل` : "از واسطه‌ها"} />
+        <StatTile label="طلب شما" icon={Clock}
+          tone={(d.outstanding || 0) > 0 ? "var(--warn)" : "var(--ok)"}
+          value={faNum(d.outstanding || 0)} unit="تومان"
+          color={(d.outstanding || 0) > 0 ? "var(--warn)" : "var(--ok)"}
+          hint={(d.outstanding || 0) > 0 ? "هنوز نرسیده" : "همه تسویه‌اند"} />
+        <StatTile label="هزینه" icon={TrendingUp} tone="var(--danger)"
+          value={faNum(d.spent || 0)} unit="تومان" color="var(--danger)"
+          hint="سرور، حجم، دامنه" />
       </div>
 
       {/* چهار کارت بالا با هم جمع نمی‌خورند وقتی دوره‌ای تسویه شده

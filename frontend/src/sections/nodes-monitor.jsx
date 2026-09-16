@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead } from "../ui/index";
+import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatTile } from "../ui/index";
 import { MetricCard, PortsCard, ConnectionsCard } from "./monitoring";
 
 /**
@@ -308,6 +308,9 @@ export function NodesMonitor({ password }) {
   // snapshot بخش‌ها را زیر sections می‌گذارد و سنجه‌ها را جدا
   const sec = (d && d.sections) || {};
   const node = nodes.find((n) => n.id === sel);
+  // از همان فهرستی که در دست است
+  const offline = nodes.filter((n) => n.online === false).length;
+  const withAgent = nodes.filter((n) => n.agent || n.hasAgent || n.online).length;
 
   return (
     <div className="fx-anim">
@@ -337,6 +340,25 @@ export function NodesMonitor({ password }) {
         )} />
 
       <Msg msg={msg} />
+
+      {/* وضعیت ناوگان، پیش از جزئیاتِ یک سرور.
+          انتخابگرِ بالا فقط یکی را نشان می‌دهد؛ این می‌گوید کدام‌ها
+          اصلاً جواب نمی‌دهند — همان چیزی که باید اول دیده شود. */}
+      {nodes.length > 0 && (
+        <div className="fx-g3 grid grid-cols-3 gap-3">
+          <StatTile label="سرورها" icon={Server} tone="var(--accent-2)"
+            value={faNum(nodes.length)}
+            hint={`${faNum(withAgent)} تا agent دارند`} />
+          <StatTile label="آنلاین" icon={Activity}
+            tone={offline ? "var(--warn)" : "var(--ok)"}
+            value={faNum(nodes.length - offline)}
+            color={offline ? "var(--warn)" : "var(--ok)"}
+            hint={offline ? `${faNum(offline)} سرور جواب نمی‌دهد` : "همه در دسترس‌اند"} />
+          <StatTile label="سرور انتخاب‌شده" icon={ShieldCheck} tone="var(--purple)"
+            value={node ? node.name : "—"}
+            hint={node?.role || "برای دیدن جزئیات از بالا انتخاب کنید"} />
+        </div>
+      )}
 
       {waiting && (
         <InfoBox>

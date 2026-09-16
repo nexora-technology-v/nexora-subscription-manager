@@ -222,7 +222,21 @@
     }),
   };
 
+
+  var PORTAL_LIST = {
+    ready: true,
+    groups: ["goroh-a", "goroh-b", "goroh-c"],
+    tenants: mk(4, function (i) {
+      return { id: i + 2, name: ["حسین", "مهدی", "سارا", "امیر"][i],
+               portalSlug: ["hossein", "mehdi", "sara", "amir"][i],
+               portalGroup: i === 3 ? "" : ["goroh-a", "goroh-b", "goroh-c"][i],
+               portalEnabled: i !== 2,
+               credit: [1200000, 4500000, -1, 0][i] };
+    }),
+  };
+
   function byPath(u) {
+    if (u.indexOf("/tenant/portal-list") >= 0) return PORTAL_LIST;
     if (u.indexOf("/billing/clients") >= 0) return CLIENTS;
     if (u.indexOf("/billing/invoice") >= 0) return INVOICE;
     if (u.indexOf("/firewall/intrusion") >= 0) return INTRUSION;

@@ -6,11 +6,11 @@
  */
 import React, { useState, useEffect } from "react";
 import {
-  AlertTriangle, CheckCircle2, Circle, Layers, Loader2, Network, RefreshCw, Save,
+  AlertTriangle, Check, CheckCircle2, Circle, Layers, Loader2, Network, RefreshCw, Save, Star,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errText, faNum } from "../../lib/format";
-import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatusChip } from "../../ui/index";
+import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatTile, StatusChip } from "../../ui/index";
 
 // سه حالت انتخاب اینباند. متن‌ها عمداً توضیحی‌اند تا مدیر
 // بدون خواندن مستندات بفهمد هرکدام چه اثری روی کانفیگ مشتری دارد.
@@ -156,6 +156,29 @@ export function BotInboundsSection({ password, tenant = null }) {
         } />
 
       <Msg msg={msg} />
+
+      {/* وضعیت اینباندها در یک نگاه — «اینباند تعریف نشده» یکی از
+          پرتکرارترین شکایت‌ها بود و جوابش همین سه عدد است */}
+      {d?.ready && inbounds.length > 0 && (
+        <div className="fx-g3 grid grid-cols-3 gap-3">
+          <StatTile label="اینباند فعال" icon={Layers}
+            tone={active.length ? "var(--ok)" : "var(--danger)"}
+            value={faNum(active.length)}
+            color={active.length ? "var(--ok)" : "var(--danger)"}
+            hint={inbounds.length - active.length > 0
+                  ? `${faNum(inbounds.length - active.length)} اینباند خاموش`
+                  : "همه‌ی اینباندها روشن‌اند"} />
+          <StatTile label="انتخاب‌شده برای ربات" icon={Check} tone="var(--accent-2)"
+            value={mode === "all" ? faNum(active.length) : faNum(sel.length)}
+            hint={mode === "all" ? "همه‌ی اینباندهای فعال" : "فقط انتخاب‌شده‌ها"} />
+          <StatTile label="پیش‌فرض" icon={Star}
+            tone={defInb ? "var(--accent-2)" : "var(--warn)"}
+            value={defInb ? (defInb.remark || `#${defInb.id}`) : "تعیین نشده"}
+            color={defInb ? "var(--text)" : "var(--warn)"}
+            hint={defInb ? "کانفیگ‌های تازه این‌جا ساخته می‌شوند"
+                         : "بدون آن، ساخت کانفیگ می‌خوابد"} />
+        </div>
+      )}
 
       {!d?.ready ? (
         <div className="fx-card p-5">

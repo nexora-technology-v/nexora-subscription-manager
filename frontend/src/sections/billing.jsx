@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, Check, CheckCircle2, ChevronLeft, Circle, Clock, Database, Download, FileText, Loader2, Plus as PlusIcon, RefreshCw, Save, Search, Send, ShieldCheck, Trash2, TrendingUp, Upload, Users, Wallet, X, XCircle,
+  AlertTriangle, Check, CheckCircle2, ChevronLeft, Circle, Clock, Database, Download, FileText, Layers, Loader2, Plus as PlusIcon, RefreshCw, Save, Search, Send, ShieldCheck, Trash2, TrendingUp, Upload, Users, Wallet, X, XCircle,
 } from "lucide-react";
 import { JalaliDate, isoToJalaliLabel } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
@@ -1670,6 +1670,13 @@ export function BillingGroups({ password }) {
   };
   const set = (g, patch) => setDraft({ ...draft, [g.name]: { ...get(g), ...patch } });
 
+  // از همان فهرست گروه‌ها — بدون درخواست تازه
+  const allGroups = data.groups || [];
+  const billedCount = allGroups.filter((g) => g.billed).length;
+  const directCount = allGroups.length - billedCount;
+  const noRateCount = allGroups.filter((g) =>
+    g.billed && !(g.rates || []).length && !g.perGb).length;
+
   const save = async (g) => {
     setSaving(g.name);
     try {
@@ -1687,6 +1694,25 @@ export function BillingGroups({ password }) {
     <div className="fx-anim">
       <SectionHead title="واسطه‌ها و نرخ"
         desc="گروه‌ها از ۳x-ui خوانده می‌شوند. برای هرکدام تعیین کنید واسطه است یا مشتری مستقیم." />
+
+      {/* «چند گروه واسطه است و چندتاشان هنوز نرخ ندارند» — سؤالی که
+          جوابش تا امروز فقط با باز کردنِ تک‌تک گروه‌ها پیدا می‌شد.
+          گروهِ بی‌نرخ بی‌صدا صفر حساب می‌شود، پس باید دیده شود. */}
+      {(data.groups || []).length > 0 && (
+        <div className="fx-g3 grid grid-cols-3 gap-3">
+          <StatTile label="گروه‌های پنل" icon={Users} tone="var(--accent-2)"
+            value={faNum((data.groups || []).length)}
+            hint={`${faNum(directCount)} تا مشتری مستقیم`} />
+          <StatTile label="واسطه" icon={Layers} tone="var(--ok)"
+            value={faNum(billedCount)} color="var(--ok)"
+            hint={billedCount ? "از این‌ها صورتحساب ساخته می‌شود" : "هنوز کسی علامت نخورده"} />
+          <StatTile label="بدون نرخ" icon={AlertTriangle}
+            tone={noRateCount ? "var(--warn)" : "var(--ok)"}
+            value={faNum(noRateCount)}
+            color={noRateCount ? "var(--warn)" : "var(--ok)"}
+            hint={noRateCount ? "تا نرخ نخورَد، صفر حساب می‌شود" : "همه نرخ دارند"} />
+        </div>
+      )}
 
       {/* گروه‌هایی که هیچ درآمدی از آن‌ها شمرده نمی‌شود.
           بدون این، تنها نشانه‌اش این بود که عدد کل از انتظار کمتر
