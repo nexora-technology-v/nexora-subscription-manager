@@ -1602,7 +1602,7 @@ function Dashboard({ token, onOut }) {
             </p>
           ) : (
             <div style={{ overflowX: "auto" }}>
-              <table className="fx-table">
+              <table className="fx-table fx-table-cards">
                 <thead>
                   <tr>
                     <th>نام کاربر</th><th>حجم</th><th>مصرف</th>
@@ -1622,26 +1622,49 @@ function Dashboard({ token, onOut }) {
                           <bdi style={{ fontFamily: monoIf(c.email) }}>{c.email}</bdi>
                         </button>
                       </td>
-                      <td>{c.gb === 0 ? "∞" : `${faNum(c.gb)} GB`}</td>
-                      <td>
-                        {faNum(c.usedGB)} GB
-                        {c.usagePct !== null && (
-                          <span className="text-[12px]"
-                            style={{ color: c.usagePct >= 90 ? "var(--warn)" : "var(--muted)" }}>
-                            {" "}({faNum(c.usagePct)}٪)
-                          </span>
-                        )}
+                      <td data-label="حجم">{c.gb === 0 ? "∞" : `${faNum(c.gb)} GB`}</td>
+                      <td data-label="مصرف">
+                        {/* عدد و نوار با هم: عدد برای وقتی دقت لازم
+                            است، نوار برای وقتی فقط باید نگاه کرد. */}
+                        <div style={{ minWidth: 92 }}>
+                          <div>
+                            {faNum(c.usedGB)} GB
+                            {c.usagePct !== null && (
+                              <span className="text-[12px]"
+                                style={{ color: c.usagePct >= 90 ? "var(--warn)" : "var(--muted)" }}>
+                                {" "}({faNum(c.usagePct)}٪)
+                              </span>
+                            )}
+                          </div>
+                          {c.usagePct !== null && (
+                            <div className="fx-usebar"
+                              title={`${faNum(c.usagePct)}٪ مصرف شده`}>
+                              <i style={{
+                                width: `${Math.min(100, Math.max(2, c.usagePct))}%`,
+                                background: c.usagePct >= 90 ? "var(--danger)"
+                                  : c.usagePct >= 75 ? "var(--warn)" : "var(--ok)",
+                              }} />
+                            </div>
+                          )}
+                        </div>
                       </td>
-                      <td>{c.devices ? faNum(c.devices) : "∞"}</td>
-                      <td>
-                        {c.expiryJalali || "—"}
+                      <td data-label="دستگاه">{c.devices ? faNum(c.devices) : "∞"}</td>
+                      <td data-label="انقضا">
+                        <span>{c.expiryJalali || "—"}</span>
                         {c.daysLeft !== null && c.daysLeft <= 7 && (
-                          <span className="text-[12px]" style={{ color: "var(--warn)" }}>
-                            {" "}{c.daysLeft < 0 ? "منقضی" : `${faNum(c.daysLeft)} روز`}
+                          <span className="fx-pill mr-2 text-[11.5px]"
+                            style={{
+                              background: c.daysLeft < 0 ? "rgba(248,113,113,.14)"
+                                                         : "rgba(251,191,36,.14)",
+                              color: c.daysLeft < 0 ? "var(--danger)" : "var(--warn)",
+                            }}>
+                            {c.daysLeft < 0 ? "منقضی"
+                              : c.daysLeft === 0 ? "امروز"
+                              : `${faNum(c.daysLeft)} روز`}
                           </span>
                         )}
                       </td>
-                      <td>
+                      <td data-label="وضعیت">
                         {c.active ? (
                           <span style={{ color: "var(--ok)" }}>
                             <Check size={12} className="inline" /> فعال
@@ -1651,7 +1674,7 @@ function Dashboard({ token, onOut }) {
                         )}
                       </td>
                       <td>
-                        <div className="flex items-center gap-1.5 justify-end">
+                        <div className="flex items-center gap-1.5 justify-end flex-wrap">
                           {/* لینک اشتراک — نماینده فقط موقع ساخت یک بار
                               می‌دیدش و بعد راهی برای پیدا کردنش نداشت. */}
                           {c.subUrl && (

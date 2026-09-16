@@ -287,6 +287,47 @@ input, select, textarea, button, optgroup {
 .fx-table tbody tr:hover td { border-color: rgba(90,169,230,.16); }
 .fx-table tbody tr:last-child td { border-bottom: none; }
 
+/* نوار مصرف — عدد تنها خوانده نمی‌شود.
+   نماینده هشتاد ردیف دارد و سوالش «کدامشان به سقف نزدیک است» است.
+   «۱۶۱٫۴ GB (۸۱٪)» را باید خواند و با سقف مقایسه کرد؛ نوار را فقط
+   باید دید. رنگ هم از روی همان درصد می‌آید تا نگاه سریع کافی باشد. */
+.fx-usebar {
+  height: 4px; border-radius: 999px; margin-top: 5px;
+  background: rgba(255, 255, 255, .07); overflow: hidden;
+}
+.fx-usebar > i { display: block; height: 100%; border-radius: 999px; }
+
+/* ═══ جدول روی موبایل ═══
+   هفت ستون در ۳۷۵ پیکسل یعنی اسکرول افقی، و اسکرول افقی یعنی
+   نماینده باید برای دیدن دکمه‌ی تمدید، جدول را بکشد. هر ردیف یک
+   کارت می‌شود و عنوانِ هر خانه از data-label می‌آید — پس نشانه‌گذاری
+   یکی می‌ماند و دو نسخه‌ی جدا نگهداری نمی‌شود. */
+@media (max-width: 720px) {
+  .fx-table-cards thead { display: none; }
+  .fx-table-cards, .fx-table-cards tbody, .fx-table-cards tr,
+  .fx-table-cards td { display: block; width: 100%; }
+  .fx-table-cards tr {
+    border: 1px solid var(--border); border-radius: 14px;
+    margin-bottom: 10px; padding: 4px 2px; background: var(--surface-2);
+  }
+  .fx-table-cards td {
+    border-bottom: none; padding: 7px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px;
+  }
+  .fx-table-cards td[data-label]::before {
+    content: attr(data-label);
+    color: var(--muted); font-size: 12px; flex-shrink: 0;
+  }
+  /* خانه‌ی نام و خانه‌ی دکمه‌ها عنوان نمی‌خواهند */
+  .fx-table-cards td:first-child {
+    font-weight: 600; padding-top: 11px;
+    border-bottom: 1px solid var(--border);
+  }
+  .fx-table-cards td:last-child { padding-bottom: 11px; }
+  .fx-table-cards .fx-usebar { flex: 1; margin-top: 0; }
+}
+
 .fx-pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; white-space: nowrap; }
 
 /* ===== دکمه ===== */
