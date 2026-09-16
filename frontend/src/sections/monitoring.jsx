@@ -14,11 +14,11 @@ import { usePolling } from "../lib/hooks";
 import { ConfirmModal, CountChip, EmptyState, Field, InfoBox, LongList, Msg, NumberInput, PageSkeleton, SectionHead, Segmented, Toggle } from "../ui/index";
 
 export const LEVEL_STYLE = {
-  ok: { c: "var(--ok)", bg: "rgba(52,211,153,.10)", bd: "rgba(52,211,153,.30)",
+  ok: { c: "var(--ok)", bg: "var(--ok-soft)", bd: "var(--ok-line)",
         label: "سالم", Icon: CheckCircle2 },
-  warn: { c: "var(--warn)", bg: "rgba(251,191,36,.10)", bd: "rgba(251,191,36,.30)",
+  warn: { c: "var(--warn)", bg: "var(--warn-soft)", bd: "var(--warn-line)",
           label: "هشدار", Icon: AlertTriangle },
-  crit: { c: "var(--danger)", bg: "rgba(248,113,113,.10)", bd: "rgba(248,113,113,.32)",
+  crit: { c: "var(--danger)", bg: "var(--danger-soft)", bd: "var(--danger-line)",
           label: "بحرانی", Icon: XCircle },
 };
 
@@ -31,7 +31,7 @@ export const HEAVY = "packages,security";
 export function Gauge({ pct, color }) {
   const v = Math.max(0, Math.min(100, Number(pct) || 0));
   return (
-    <div style={{ height: 6, borderRadius: 99, background: "rgba(255,255,255,.06)", overflow: "hidden" }}>
+    <div style={{ height: 6, borderRadius: 99, background: "var(--hair-2)", overflow: "hidden" }}>
       <div style={{ width: `${v}%`, height: "100%", background: color, borderRadius: 99,
                     transition: "width .4s ease" }} />
     </div>
@@ -76,7 +76,7 @@ export function MetricCard({ m }) {
           </button>
           {open && (
             <div className="mt-2 rounded-xl p-3 text-[12px] leading-relaxed"
-              style={{ background: "rgba(255,255,255,.02)", color: "var(--dim)" }}>
+              style={{ background: "var(--hair-1)", color: "var(--dim)" }}>
               {m.why}
               {m.hint && (
                 <div className="mt-2 pt-2" style={{ borderTop: "1px solid var(--border)" }}>
@@ -95,9 +95,9 @@ export function MetricCard({ m }) {
 }
 
 export const RISK_META = {
-  high: { c: "var(--danger)", t: "بالا", bg: "rgba(248,113,113,.10)" },
-  medium: { c: "var(--warn)", t: "متوسط", bg: "rgba(251,191,36,.10)" },
-  low: { c: "var(--ok)", t: "پایین", bg: "rgba(52,211,153,.10)" },
+  high: { c: "var(--danger)", t: "بالا", bg: "var(--danger-soft)" },
+  medium: { c: "var(--warn)", t: "متوسط", bg: "var(--warn-soft)" },
+  low: { c: "var(--ok)", t: "پایین", bg: "var(--ok-soft)" },
 };
 
 /**
@@ -265,8 +265,8 @@ export function ConnectionsCard({ conn, onBlock }) {
           می‌گوید کدام‌ها زیرساخت خودتان‌اند. */}
       {conn.tunnels?.length > 0 && (
         <div className="rounded-xl p-3.5 mb-3"
-          style={{ background: "rgba(167,139,250,.07)",
-                   border: "1px solid rgba(167,139,250,.22)" }}>
+          style={{ background: "var(--purple-soft)",
+                   border: "1px solid var(--purple-line)" }}>
           <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--purple)" }}>
             {faNum(conn.tunnels.length)} اتصال از تانل‌های خودتان
           </div>
@@ -287,7 +287,7 @@ export function ConnectionsCard({ conn, onBlock }) {
 
       {conn.heavy?.length > 0 && (
         <div className="rounded-xl p-3.5 mb-3"
-          style={{ background: "rgba(251,191,36,.07)", border: "1px solid rgba(251,191,36,.22)" }}>
+          style={{ background: "var(--warn-wash)", border: "1px solid var(--warn-fill)" }}>
           <div className="text-[13px] font-semibold mb-1.5" style={{ color: "var(--warn)" }}>
             {faNum(conn.heavy.length)} آی‌پی سهم غیرعادی دارد
           </div>
@@ -994,7 +994,7 @@ export function MonitorSection({ password }) {
                       <span className="text-[13px] truncate" dir="ltr"
                         style={{ color: bad ? "var(--danger)" : "var(--text)" }}>{sv.name}</span>
                       {sv.flapping && (
-                        <span className="fx-pill" style={{ background: "rgba(251,191,36,.12)", color: "var(--warn)" }}>
+                        <span className="fx-pill" style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>
                           ناپایدار
                         </span>
                       )}

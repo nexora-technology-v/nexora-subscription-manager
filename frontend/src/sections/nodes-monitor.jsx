@@ -73,9 +73,9 @@ function NodeDiagnose({ nodeId, password, onFix }) {
           {(d.steps || []).map((s, i) => (
             <div key={i} className="flex items-start gap-3 p-3 rounded-xl mb-2"
               style={{
-                background: s.ok ? "rgba(52,211,153,.06)" : "rgba(251,191,36,.06)",
-                border: `1px solid ${s.ok ? "rgba(52,211,153,.22)"
-                  : "rgba(251,191,36,.28)"}`,
+                background: s.ok ? "var(--ok-wash)" : "var(--warn-wash)",
+                border: `1px solid ${s.ok ? "var(--ok-fill)"
+                  : "var(--warn-line)"}`,
               }}>
               {s.ok
                 ? <CheckCircle2 size={16} className="shrink-0 mt-0.5"

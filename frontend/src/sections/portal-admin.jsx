@@ -133,7 +133,7 @@ function Row({ t, groups, password, onSaved, setMsg }) {
           <Avatar name={t.name} id={t.id ?? t.portalSlug} size={30} />
           <span className="text-[14px] font-semibold text-white">{t.name}</span>
           <span className="fx-pill" style={{
-            background: on ? "rgba(52,211,153,.14)" : "var(--surface-3)",
+            background: on ? "var(--ok-soft)" : "var(--surface-3)",
             color: on ? "var(--ok)" : "var(--muted)",
           }}>
             {on ? "پنل باز" : "پنل بسته"}
@@ -312,8 +312,8 @@ function Row({ t, groups, password, onSaved, setMsg }) {
           روی صفحه‌ی ورود بود — که هیچ ربطی به رمز نداشت. */}
       {(!t.portalGroup || !t.hasPass || !on) && (
         <div className="rounded-xl p-3 mt-3 text-[12px] leading-relaxed"
-          style={{ background: "rgba(251,191,36,.07)",
-                   border: "1px solid rgba(251,191,36,.22)",
+          style={{ background: "var(--warn-wash)",
+                   border: "1px solid var(--warn-fill)",
                    color: "var(--warn)" }}>
           <div className="font-semibold mb-1">برای اینکه بتواند وارد شود:</div>
           {!t.portalSlug && <div>• نشانی لینک را بنویسید و ثبت کنید</div>}
@@ -550,7 +550,7 @@ export function PortalAdmin({ password }) {
           یک منوی خالی می‌دید. */}
       {data?.groupsError && (
         <div className="fx-card p-4 mb-4 text-[13px]"
-          style={{ borderColor: "rgba(251,191,36,.3)", color: "var(--warn)" }}>
+          style={{ borderColor: "var(--warn-line)", color: "var(--warn)" }}>
           فهرست گروه‌های x-ui خوانده نشد: {data.groupsError}
           <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
             گروهِ ثبت‌شده‌ی هر نماینده سر جایش است؛ فقط نمی‌توانید از

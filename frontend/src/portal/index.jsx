@@ -81,9 +81,9 @@ function Login({ slug, onIn }) {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4" dir="rtl"
-      style={{ background: "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(43,127,214,.15), transparent), var(--bg)" }}>
+      style={{ background: "radial-gradient(ellipse 60% 50% at 50% 0%, var(--accent-soft), transparent), var(--bg)" }}>
       <div className="w-full max-w-sm rounded-2xl p-7"
-        style={{ background: "var(--surface)", border: "1px solid rgba(90,169,230,.25)" }}>
+        style={{ background: "var(--surface)", border: "1px solid var(--accent-halo)" }}>
         <div className="flex flex-col items-center text-center mb-6">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-[28px] mb-4"
             style={{ background: "linear-gradient(135deg,#2B7FD6,#8FC1EE)", color: "#06090F" }}>N</div>
@@ -171,7 +171,7 @@ function RenewBox({ token, row, plans, onDone, onClose }) {
     <div style={{
       position: "fixed", inset: 0, zIndex: 3000, display: "flex",
       alignItems: "center", justifyContent: "center", padding: 16,
-      background: "rgba(0,0,0,.6)",
+      background: "var(--scrim-3)",
     }} onClick={onClose}>
       <div className="fx-card p-5" style={{ width: 360, maxWidth: "100%" }}
         onClick={(e) => e.stopPropagation()}>
@@ -196,8 +196,8 @@ function RenewBox({ token, row, plans, onDone, onClose }) {
             <button key={m} onClick={() => setMonths(m)}
               className="px-3 py-2 rounded-lg text-[13px]"
               style={{
-                background: months === m ? "rgba(43,127,214,.18)" : "transparent",
-                border: `1px solid ${months === m ? "rgba(43,127,214,.45)" : "var(--border)"}`,
+                background: months === m ? "var(--accent-fill)" : "transparent",
+                border: `1px solid ${months === m ? "var(--accent-edge)" : "var(--border)"}`,
                 color: months === m ? "var(--accent-2)" : "var(--muted)",
               }}>
               {faNum(m)}
@@ -269,7 +269,7 @@ function DropBox({ token, config, onDone, onClose }) {
     <div style={{
       position: "fixed", inset: 0, zIndex: 3000, display: "flex",
       alignItems: "center", justifyContent: "center", padding: 16,
-      background: "rgba(0,0,0,.6)", overflowY: "auto",
+      background: "var(--scrim-3)", overflowY: "auto",
     }} onClick={onClose}>
       <div className="fx-card p-5" style={{ width: 380, maxWidth: "100%" }}
         onClick={(e) => e.stopPropagation()}>
@@ -284,8 +284,8 @@ function DropBox({ token, config, onDone, onClose }) {
 
         <div className="rounded-xl p-3 mb-3 text-[13px] leading-relaxed"
           style={{
-            background: fresh ? "rgba(52,211,153,.08)" : "rgba(251,191,36,.08)",
-            border: `1px solid ${fresh ? "rgba(52,211,153,.25)" : "rgba(251,191,36,.3)"}`,
+            background: fresh ? "var(--ok-wash)" : "var(--warn-wash)",
+            border: `1px solid ${fresh ? "var(--ok-fill)" : "var(--warn-line)"}`,
             color: "var(--dim)",
           }}>
           {fresh ? (
@@ -364,7 +364,7 @@ function NewBox({ token, plans, slug, onDone, onClose }) {
     <div style={{
       position: "fixed", inset: 0, zIndex: 3000, display: "flex",
       alignItems: "center", justifyContent: "center", padding: 16,
-      background: "rgba(0,0,0,.6)", overflowY: "auto",
+      background: "var(--scrim-3)", overflowY: "auto",
     }} onClick={onClose}>
       <div className="fx-card p-5" style={{ width: 380, maxWidth: "100%" }}
         onClick={(e) => e.stopPropagation()}>
@@ -379,8 +379,8 @@ function NewBox({ token, plans, slug, onDone, onClose }) {
         {made ? (
           <>
             <div className="rounded-xl p-3 mb-3"
-              style={{ background: "rgba(52,211,153,.08)",
-                       border: "1px solid rgba(52,211,153,.25)" }}>
+              style={{ background: "var(--ok-wash)",
+                       border: "1px solid var(--ok-fill)" }}>
               <div className="text-[13px] mb-2" style={{ color: "var(--ok)" }}>
                 ساخته شد
               </div>
@@ -396,8 +396,8 @@ function NewBox({ token, plans, slug, onDone, onClose }) {
                 پیام، نماینده فقط می‌دید که کانفیگش «گم شده». */}
             {made.groupWarning && (
               <div className="rounded-xl p-3 mb-3 text-[13px] leading-relaxed"
-                style={{ background: "rgba(251,191,36,.08)",
-                         border: "1px solid rgba(251,191,36,.3)",
+                style={{ background: "var(--warn-wash)",
+                         border: "1px solid var(--warn-line)",
                          color: "var(--warn)" }}>
                 {made.groupWarning}
               </div>
@@ -466,8 +466,8 @@ function NewBox({ token, plans, slug, onDone, onClose }) {
                 <button key={x.gb} onClick={() => setGb(x.gb)}
                   className="px-3 py-2 rounded-lg text-[13px]"
                   style={{
-                    background: gb === x.gb ? "rgba(43,127,214,.18)" : "transparent",
-                    border: `1px solid ${gb === x.gb ? "rgba(43,127,214,.45)" : "var(--border)"}`,
+                    background: gb === x.gb ? "var(--accent-fill)" : "transparent",
+                    border: `1px solid ${gb === x.gb ? "var(--accent-edge)" : "var(--border)"}`,
                     color: gb === x.gb ? "var(--accent-2)" : "var(--muted)",
                   }}>
                   {x.label}
@@ -491,8 +491,8 @@ function NewBox({ token, plans, slug, onDone, onClose }) {
                 <button key={d} onClick={() => setDays(d)}
                   className="px-3 py-2 rounded-lg text-[13px]"
                   style={{
-                    background: days === d ? "rgba(43,127,214,.18)" : "transparent",
-                    border: `1px solid ${days === d ? "rgba(43,127,214,.45)" : "var(--border)"}`,
+                    background: days === d ? "var(--accent-fill)" : "transparent",
+                    border: `1px solid ${days === d ? "var(--accent-edge)" : "var(--border)"}`,
                     color: days === d ? "var(--accent-2)" : "var(--muted)",
                   }}>
                   {faNum(d)}
@@ -635,7 +635,7 @@ function BotBox({ token, onClose, onNote }) {
     <div style={{
       position: "fixed", inset: 0, zIndex: 3000, display: "flex",
       alignItems: "center", justifyContent: "center", padding: 16,
-      background: "rgba(0,0,0,.6)", overflowY: "auto",
+      background: "var(--scrim-3)", overflowY: "auto",
     }} onClick={onClose}>
       <div className="fx-card p-5" style={{ width: 420, maxWidth: "100%" }}
         onClick={(e) => e.stopPropagation()}>
@@ -649,8 +649,8 @@ function BotBox({ token, onClose, onNote }) {
 
         {st?.hasBot ? (
           <div className="rounded-xl p-3 mb-4 flex items-center justify-between gap-2"
-            style={{ background: "rgba(52,211,153,.08)",
-                     border: "1px solid rgba(52,211,153,.25)" }}>
+            style={{ background: "var(--ok-wash)",
+                     border: "1px solid var(--ok-fill)" }}>
             <div>
               <div className="text-[13px]" style={{ color: "var(--ok)" }}>
                 وصل است
@@ -760,7 +760,7 @@ function PlansBox({ token, onClose, onNote }) {
     <div style={{
       position: "fixed", inset: 0, zIndex: 3000, display: "flex",
       alignItems: "flex-start", justifyContent: "center", padding: 16,
-      background: "rgba(0,0,0,.6)", overflowY: "auto",
+      background: "var(--scrim-3)", overflowY: "auto",
     }} onClick={onClose}>
       <div className="fx-card p-5" style={{ width: 620, maxWidth: "100%", marginTop: 24 }}
         onClick={(e) => e.stopPropagation()}>
@@ -781,8 +781,8 @@ function PlansBox({ token, onClose, onNote }) {
 
         {!hasBot && (
           <div className="rounded-xl p-3 mb-4 text-[12px]"
-            style={{ background: "rgba(251,191,36,.07)",
-                     border: "1px solid rgba(251,191,36,.22)",
+            style={{ background: "var(--warn-wash)",
+                     border: "1px solid var(--warn-fill)",
                      color: "var(--warn)" }}>
             هنوز رباتی وصل نکرده‌اید — این پلن‌ها جایی نمایش داده نمی‌شوند.
           </div>
@@ -927,7 +927,7 @@ function OrdersBox({ token, onClose, onNote }) {
     <div style={{
       position: "fixed", inset: 0, zIndex: 3000, display: "flex",
       alignItems: "flex-start", justifyContent: "center", padding: 16,
-      background: "rgba(0,0,0,.6)", overflowY: "auto",
+      background: "var(--scrim-3)", overflowY: "auto",
     }} onClick={onClose}>
       <div className="fx-card p-5" style={{ width: 640, maxWidth: "100%", marginTop: 24 }}
         onClick={(e) => e.stopPropagation()}>
@@ -946,8 +946,8 @@ function OrdersBox({ token, onClose, onNote }) {
             <button key={k} onClick={() => { setTab(k); setRows(null); }}
               className="px-3 py-2 rounded-lg text-[13px]"
               style={{
-                background: tab === k ? "rgba(43,127,214,.18)" : "transparent",
-                border: `1px solid ${tab === k ? "rgba(43,127,214,.45)" : "var(--border)"}`,
+                background: tab === k ? "var(--accent-fill)" : "transparent",
+                border: `1px solid ${tab === k ? "var(--accent-edge)" : "var(--border)"}`,
                 color: tab === k ? "var(--accent-2)" : "var(--muted)",
               }}>
               {lbl}
@@ -998,7 +998,7 @@ function OrdersBox({ token, onClose, onNote }) {
 
             {o.receiptText && (
               <div className="text-[12px] rounded-lg p-2 mb-2"
-                style={{ background: "rgba(0,0,0,.2)", color: "var(--dim)" }}>
+                style={{ background: "var(--scrim-1)", color: "var(--dim)" }}>
                 {o.receiptText}
               </div>
             )}
@@ -1067,7 +1067,7 @@ function OrdersBox({ token, onClose, onNote }) {
         <div style={{
           position: "fixed", inset: 0, zIndex: 3100, display: "flex",
           alignItems: "center", justifyContent: "center", padding: 16,
-          background: "rgba(0,0,0,.85)",
+          background: "var(--scrim-4)",
         }} onClick={(e) => { e.stopPropagation(); setShot(null); }}>
           <img src={shot} alt="رسید پرداخت"
             style={{ maxWidth: "100%", maxHeight: "90vh", borderRadius: 12 }} />
@@ -1139,7 +1139,7 @@ function ConfigBox({ token, row, onClose, onRenew, onToggle }) {
     <div style={{
       position: "fixed", inset: 0, zIndex: 3000, display: "flex",
       alignItems: "flex-start", justifyContent: "center", padding: 16,
-      background: "rgba(0,0,0,.62)", overflowY: "auto",
+      background: "var(--scrim-3)", overflowY: "auto",
     }} onClick={onClose}>
       <div className="fx-card" style={{
         width: 470, maxWidth: "100%", marginTop: 24, padding: 0,
@@ -1156,21 +1156,21 @@ function ConfigBox({ token, row, onClose, onRenew, onToggle }) {
               </div>
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                 <span className="fx-pill" style={{
-                  background: row.active ? "rgba(52,211,153,.14)" : "var(--surface-3)",
+                  background: row.active ? "var(--ok-soft)" : "var(--surface-3)",
                   color: row.active ? "var(--ok)" : "var(--muted)",
                 }}>
                   {row.active ? "فعال" : "غیرفعال"}
                 </span>
                 {expired && (
                   <span className="fx-pill" style={{
-                    background: "rgba(248,113,113,.14)", color: "var(--danger)" }}>
+                    background: "var(--danger-soft)", color: "var(--danger)" }}>
                     منقضی شده
                   </span>
                 )}
                 {!expired && row.daysLeft !== null && row.daysLeft !== undefined
                   && row.daysLeft <= 7 && (
                   <span className="fx-pill" style={{
-                    background: "rgba(251,191,36,.14)", color: "var(--warn)" }}>
+                    background: "var(--warn-soft)", color: "var(--warn)" }}>
                     {faNum(row.daysLeft)} روز مانده
                   </span>
                 )}
@@ -1252,8 +1252,8 @@ function ConfigBox({ token, row, onClose, onRenew, onToggle }) {
                 </>
               ) : (
                 <div className="rounded-xl p-3.5 text-[13px] leading-relaxed"
-                  style={{ background: "rgba(251,191,36,.07)",
-                           border: "1px solid rgba(251,191,36,.22)",
+                  style={{ background: "var(--warn-wash)",
+                           border: "1px solid var(--warn-fill)",
                            color: "var(--warn)" }}>
                   آدرس پایه‌ی اشتراک پیدا نشد. از پشتیبانی بخواهید سرویس
                   Subscription را در پنل روشن کند یا آدرس اشتراک را تنظیم کند.
@@ -1275,7 +1275,7 @@ function ConfigBox({ token, row, onClose, onRenew, onToggle }) {
               {bar !== null ? (
                 <>
                   <div style={{ height: 8, borderRadius: 99,
-                                background: "rgba(255,255,255,.06)",
+                                background: "var(--hair-2)",
                                 overflow: "hidden" }}>
                     <div style={{ width: `${bar}%`, height: "100%",
                                   background: barColor }} />
@@ -1498,7 +1498,7 @@ function Dashboard({ token, onOut }) {
 
         {note && (
           <div className="fx-card p-4 mb-4 flex items-start gap-2"
-            style={{ borderColor: "rgba(52,211,153,.3)" }}>
+            style={{ borderColor: "var(--ok-line)" }}>
             <Check size={15} style={{ color: "var(--ok)" }}
               className="shrink-0 mt-0.5" />
             <span className="text-[13px]" style={{ color: "var(--dim)" }}>{note}</span>
@@ -1507,7 +1507,7 @@ function Dashboard({ token, onOut }) {
 
         {err && (
           <div className="fx-card p-4 mb-4 flex items-start gap-2"
-            style={{ borderColor: "rgba(251,191,36,.3)" }}>
+            style={{ borderColor: "var(--warn-line)" }}>
             <AlertTriangle size={15} style={{ color: "var(--warn)" }}
               className="shrink-0 mt-0.5" />
             <span className="text-[13px]" style={{ color: "var(--dim)" }}>{err}</span>
@@ -1519,7 +1519,7 @@ function Dashboard({ token, onOut }) {
             می‌رود؛ «۶ تا تا یک هفته دیگر تمام می‌شوند» می‌گوید. */}
         {stats && stats.needsAttention > 0 && (
           <div className="fx-card p-4 mb-4"
-            style={{ borderColor: "rgba(251,191,36,.3)" }}>
+            style={{ borderColor: "var(--warn-line)" }}>
             <div className="flex items-center gap-2 mb-2">
               <AlertTriangle size={14} style={{ color: "var(--warn)" }} />
               <span className="text-[13px] font-semibold text-white">
@@ -1650,8 +1650,8 @@ function Dashboard({ token, onOut }) {
                 <button key={k} onClick={() => setFilter(k)}
                   className="px-3 py-1.5 rounded-lg text-[12.5px]"
                   style={{
-                    background: on ? "rgba(43,127,214,.18)" : "transparent",
-                    border: `1px solid ${on ? "rgba(43,127,214,.45)"
+                    background: on ? "var(--accent-fill)" : "transparent",
+                    border: `1px solid ${on ? "var(--accent-edge)"
                                             : "var(--border)"}`,
                     color: on ? "var(--accent-2)" : "var(--muted)",
                   }}>
@@ -1735,8 +1735,8 @@ function Dashboard({ token, onOut }) {
                         {c.daysLeft !== null && c.daysLeft <= 7 && (
                           <span className="fx-pill mr-2 text-[11.5px]"
                             style={{
-                              background: c.daysLeft < 0 ? "rgba(248,113,113,.14)"
-                                                         : "rgba(251,191,36,.14)",
+                              background: c.daysLeft < 0 ? "var(--danger-soft)"
+                                                         : "var(--warn-soft)",
                               color: c.daysLeft < 0 ? "var(--danger)" : "var(--warn)",
                             }}>
                             {c.daysLeft < 0 ? "منقضی"

@@ -488,7 +488,7 @@ export function BillingClients({ password }) {
           <button onClick={() => { setGroup(group === "بدون گروه" ? "" : "بدون گروه"); setPage(0); }}
             className="px-3 py-2 rounded-xl text-[13px] flex items-center gap-2"
             style={{
-              background: group === "بدون گروه" ? "rgba(255,255,255,.06)" : "var(--surface-3)",
+              background: group === "بدون گروه" ? "var(--hair-2)" : "var(--surface-3)",
               border: `1px solid ${group === "بدون گروه" ? "var(--border-2)" : "var(--border)"}`,
               color: "var(--muted)",
             }}>
@@ -621,7 +621,7 @@ export function BillingClients({ password }) {
                     className="cursor-pointer nx-row"
                     style={{
                       borderBottom: i < (data.clients || []).length - 1 ? "1px solid var(--border)" : "none",
-                      background: i % 2 ? "rgba(255,255,255,.015)" : "transparent",
+                      background: i % 2 ? "var(--hair-1)" : "transparent",
                     }}>
 
                     {/* کاربر */}
@@ -641,19 +641,19 @@ export function BillingClients({ password }) {
                         </span>
                         {c.limitIp > 0 && (
                           <span className="text-[12px] px-1.5 py-0.5 rounded"
-                            style={{ background: "rgba(255,255,255,.05)", color: "var(--muted)" }}>
+                            style={{ background: "var(--hair-2)", color: "var(--muted)" }}>
                             {faNum(c.limitIp)} دستگاه
                           </span>
                         )}
                         {c.resetCount > 0 && (
                           <span className="text-[12px] px-1.5 py-0.5 rounded"
-                            style={{ background: "rgba(167,139,250,.14)", color: "#A78BFA" }}>
+                            style={{ background: "var(--purple-soft)", color: "#A78BFA" }}>
                             {faNum(c.resetCount)} ریست
                           </span>
                         )}
                         {c.tgId > 0 && (
                           <span className="text-[12px] px-1.5 py-0.5 rounded flex items-center gap-1"
-                            style={{ background: "rgba(34,158,217,.14)", color: "#229ED9" }}>
+                            style={{ background: "var(--tg-brand-soft)", color: "var(--tg-brand)" }}>
                             <Send size={9} /> تلگرام
                           </span>
                         )}
@@ -737,7 +737,7 @@ export function BillingClients({ password }) {
                       {c.renewals ? (
                         <div>
                           <span className="px-2.5 py-1 rounded-lg text-[14px] font-bold inline-block"
-                            style={{ background: "rgba(43,127,214,.18)", color: "var(--accent-2)",
+                            style={{ background: "var(--accent-fill)", color: "var(--accent-2)",
                                      fontFamily: "var(--mono)" }}>
                             {faNum(c.renewals)}
                           </span>
@@ -764,7 +764,7 @@ export function BillingClients({ password }) {
                         </span>
                       </div>
                       <div style={{ height: 5, borderRadius: 99,
-                                    background: "rgba(255,255,255,.06)", overflow: "hidden" }}>
+                                    background: "var(--hair-2)", overflow: "hidden" }}>
                         <div style={{
                           width: c.usagePct === null ? "100%" : `${Math.min(100, c.usagePct)}%`,
                           height: "100%",
@@ -1048,8 +1048,8 @@ export function BillingSettings({ password }) {
 
         <div className="rounded-xl p-3 mb-4 flex items-start gap-2.5"
           style={{
-            background: info.readable ? "rgba(52,211,153,.08)" : "rgba(251,191,36,.08)",
-            border: `1px solid ${info.readable ? "rgba(52,211,153,.25)" : "rgba(251,191,36,.25)"}`,
+            background: info.readable ? "var(--ok-wash)" : "var(--warn-wash)",
+            border: `1px solid ${info.readable ? "var(--ok-fill)" : "var(--warn-fill)"}`,
           }}>
           {info.readable
             ? <CheckCircle2 size={15} style={{ color: "var(--ok)", flexShrink: 0, marginTop: 1 }} />
@@ -1081,7 +1081,7 @@ export function BillingSettings({ password }) {
                 className="w-full flex items-center justify-between gap-2 p-2.5 rounded-xl mb-1.5 text-right"
                 style={{
                   background: f.path === info.current ? "var(--accent-soft)" : "var(--surface-3)",
-                  border: `1px solid ${f.path === info.current ? "rgba(43,127,214,.4)" : "var(--border)"}`,
+                  border: `1px solid ${f.path === info.current ? "var(--accent-edge)" : "var(--border)"}`,
                 }}>
                 <span className="text-[13px] truncate" dir="ltr"
                   style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>{f.path}</span>
@@ -1169,8 +1169,8 @@ export function RateRow({ rate, onChange, onDelete }) {
             <button onClick={() => onChange({ gb: 0 })}
               className="px-3.5 py-2.5 rounded-[10px] text-[13px] font-semibold shrink-0"
               style={{
-                background: unlimited ? "rgba(167,139,250,.14)" : "transparent",
-                border: `1px solid ${unlimited ? "rgba(167,139,250,.4)" : "var(--border-2)"}`,
+                background: unlimited ? "var(--purple-soft)" : "transparent",
+                border: `1px solid ${unlimited ? "var(--purple-line)" : "var(--border-2)"}`,
                 color: unlimited ? "#A78BFA" : "var(--muted)",
               }}>
               نامحدود
@@ -1178,9 +1178,9 @@ export function RateRow({ rate, onChange, onDelete }) {
 
             <div className="flex-1 flex items-center gap-2 px-3 rounded-[10px]"
               style={{
-                background: unlimited ? "transparent" : "rgba(0,0,0,.28)",
+                background: unlimited ? "transparent" : "var(--scrim-1)",
                 border: "1px solid var(--border)",
-                boxShadow: unlimited ? "none" : "0 2px 8px rgba(0,0,0,.35) inset",
+                boxShadow: unlimited ? "none" : "0 2px 8px var(--scrim-2) inset",
                 opacity: unlimited ? 0.42 : 1,
               }}>
               <NumberInput min="1"
@@ -1211,8 +1211,8 @@ export function RateRow({ rate, onChange, onDelete }) {
 
         <div className="flex items-center gap-0.5 rounded-xl p-1"
           style={{
-            background: "rgba(0,0,0,.28)", border: "1px solid var(--border)",
-            boxShadow: "0 2px 8px rgba(0,0,0,.35) inset",
+            background: "var(--scrim-1)", border: "1px solid var(--border)",
+            boxShadow: "0 2px 8px var(--scrim-2) inset",
           }}>
           <button onClick={() => bump(-RATE_STEP)} className="nx-step">−</button>
           <NumberInput value={rate.price || ""}
@@ -1261,8 +1261,8 @@ export function RateRow({ rate, onChange, onDelete }) {
               <button key={q} onClick={() => onChange({ price: q })}
                 className="px-2.5 py-1 rounded-lg text-[12px]"
                 style={{
-                  background: on ? "rgba(43,127,214,.14)" : "transparent",
-                  border: `1px solid ${on ? "rgba(43,127,214,.4)" : "var(--border)"}`,
+                  background: on ? "var(--accent-soft)" : "transparent",
+                  border: `1px solid ${on ? "var(--accent-edge)" : "var(--border)"}`,
                   color: on ? "var(--accent-2)" : "var(--muted)",
                   fontFamily: "var(--mono)",
                 }}>{faNum(q / 1000)}k</button>
@@ -1332,7 +1332,7 @@ export function BillingUnavailable({ info, password }) {
               )}
               {s.hint && (
                 <div className="text-[13px] mt-2 px-2.5 py-1.5 rounded-lg break-all" dir="auto"
-                  style={{ color: "var(--warn)", background: "rgba(251,191,36,.08)" }}>
+                  style={{ color: "var(--warn)", background: "var(--warn-wash)" }}>
                   {s.hint}
                 </div>
               )}
@@ -1416,7 +1416,7 @@ function NeedStartBanner({ groups, password, onDone }) {
 
   return (
     <div className="fx-card p-5" style={{
-      border: "1px solid var(--warn)", background: "rgba(251,191,36,.05)",
+      border: "1px solid var(--warn)", background: "var(--warn-wash)",
     }}>
       <div className="flex items-center gap-2 mb-2" style={{ color: "var(--warn)" }}>
         <AlertTriangle size={16} />
@@ -1433,7 +1433,7 @@ function NeedStartBanner({ groups, password, onDone }) {
       <div className="flex gap-1.5 flex-wrap my-3">
         {groups.slice(0, 12).map((g) => (
           <span key={g} className="fx-pill" style={{
-            background: "rgba(255,255,255,.05)", color: "var(--muted)",
+            background: "var(--hair-2)", color: "var(--muted)",
           }}>{g}</span>
         ))}
       </div>
@@ -1588,7 +1588,7 @@ export function BillingDash({ password }) {
                   </div>
                 </div>
               </div>
-              <div className="h-[5px] rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.05)" }}>
+              <div className="h-[5px] rounded-full overflow-hidden" style={{ background: "var(--hair-2)" }}>
                 <div style={{
                   width: `${pct}%`, height: "100%", borderRadius: 99,
                   background: pct >= 100 ? "var(--ok)" : "linear-gradient(90deg,var(--accent),var(--accent-2))",
@@ -1712,7 +1712,7 @@ export function BillingGroups({ password }) {
           است — و هیچ‌جا نمی‌گفت چرا یا کدام گروه. */}
       {(data.needsSetup || []).length > 0 && (
         <div className="fx-card p-5 mb-4"
-          style={{ borderColor: "rgba(251,191,36,.3)" }}>
+          style={{ borderColor: "var(--warn-line)" }}>
           <div className="flex items-center gap-2 mb-1">
             <AlertTriangle size={15} style={{ color: "var(--warn)" }} />
             <span className="text-[14px] font-semibold text-white">
@@ -1754,7 +1754,7 @@ export function BillingGroups({ password }) {
             <div onClick={() => setOpen(isOpen ? null : g.name)}
               className="p-4 cursor-pointer flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-3">
-                <div className="fx-ico" style={{ background: d.billed ? "rgba(43,127,214,.12)" : "rgba(255,255,255,.04)" }}>
+                <div className="fx-ico" style={{ background: d.billed ? "var(--accent-soft)" : "var(--hair-1)" }}>
                   <Users size={16} style={{ color: d.billed ? "var(--accent-2)" : "var(--muted)" }} />
                 </div>
                 <div>
@@ -1808,7 +1808,7 @@ export function BillingGroups({ password }) {
                             className="flex-1 py-2.5 rounded-xl text-[13px] transition-all"
                             style={{
                               background: on ? "var(--accent-soft)" : "var(--surface-3)",
-                              border: `1px solid ${on ? "rgba(43,127,214,.4)" : "var(--border)"}`,
+                              border: `1px solid ${on ? "var(--accent-edge)" : "var(--border)"}`,
                               color: on ? "var(--accent-2)" : "var(--muted)",
                             }}>
                             {label}
@@ -1833,7 +1833,7 @@ export function BillingGroups({ password }) {
                                   className="px-2.5 py-2 rounded-lg text-[12px]"
                                   style={{
                                     background: d.perGb === q ? "var(--accent-soft)" : "transparent",
-                                    border: `1px solid ${d.perGb === q ? "rgba(43,127,214,.4)" : "var(--border)"}`,
+                                    border: `1px solid ${d.perGb === q ? "var(--accent-edge)" : "var(--border)"}`,
                                     color: d.perGb === q ? "var(--accent-2)" : "var(--muted)",
                                     fontFamily: "var(--mono)",
                                   }}>{faNum(q / 1000)}k</button>
@@ -1863,7 +1863,7 @@ export function BillingGroups({ password }) {
 
                     {(d.rates || []).length === 0 && (
                       <div className="rounded-xl p-4 text-center mb-3"
-                        style={{ background: "rgba(251,191,36,.06)", border: "1px dashed rgba(251,191,36,.3)" }}>
+                        style={{ background: "var(--warn-wash)", border: "1px dashed var(--warn-line)" }}>
                         <div className="text-[13px] mb-1" style={{ color: "var(--warn)" }}>هنوز نرخی تعریف نشده</div>
                         <div className="text-[12px]" style={{ color: "var(--muted)" }}>
                           بدون نرخ، این گروه صفر حساب می‌شود
@@ -1898,7 +1898,7 @@ export function BillingGroups({ password }) {
                               className="flex-1 py-2 rounded-xl text-[13px]"
                               style={{
                                 background: on ? "var(--accent-soft)" : "var(--surface-3)",
-                                border: `1px solid ${on ? "rgba(43,127,214,.4)" : "var(--border)"}`,
+                                border: `1px solid ${on ? "var(--accent-edge)" : "var(--border)"}`,
                                 color: on ? "var(--accent-2)" : "var(--muted)",
                               }}>{l}</button>
                           );

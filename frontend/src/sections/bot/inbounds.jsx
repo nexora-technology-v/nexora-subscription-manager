@@ -47,7 +47,7 @@ export function InboundRow({ inb, checked, onToggle }) {
           <span className="text-[14px] font-semibold text-white truncate">{inb.remark}</span>
           {!inb.enable && (
             <span className="text-[11px] px-1.5 py-0.5 rounded"
-              style={{ background: "rgba(248,113,113,.14)", color: "var(--danger)" }}>
+              style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>
               غیرفعال
             </span>
           )}
@@ -227,7 +227,7 @@ export function BotInboundsSection({ password, tenant = null }) {
                       </span>
                       {m.tag && (
                         <span className="text-[11px] px-1.5 py-0.5 rounded"
-                          style={{ background: "rgba(52,211,153,.14)", color: "var(--ok)" }}>
+                          style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
                           {m.tag}
                         </span>
                       )}
@@ -307,7 +307,7 @@ export function BotInboundsSection({ password, tenant = null }) {
                         <span className="text-[14px] font-semibold text-white truncate">{i.remark}</span>
                         {!i.enable && (
                           <span className="text-[11px] px-1.5 py-0.5 rounded"
-                            style={{ background: "rgba(248,113,113,.14)", color: "var(--danger)" }}>
+                            style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>
                             غیرفعال
                           </span>
                         )}

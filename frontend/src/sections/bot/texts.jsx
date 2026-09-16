@@ -139,7 +139,7 @@ export function BotTextsSection({ password }) {
               <div className="flex gap-1.5 flex-wrap">
                 {f.vars.map((v) => (
                   <code key={v} className="text-[11.5px] px-2 py-1 rounded-md"
-                    style={{ background: "rgba(43,127,214,.14)", color: "var(--accent-2)",
+                    style={{ background: "var(--accent-soft)", color: "var(--accent-2)",
                              fontFamily: "var(--mono)" }}>{v}</code>
                 ))}
               </div>
@@ -279,7 +279,7 @@ export function BotPreviewSection() {
       if (p.startsWith("<b>")) return <b key={i} style={{ color: "#fff" }}>{p.slice(3, -4)}</b>;
       if (p.startsWith("<i>")) return <i key={i} style={{ opacity: .72 }}>{p.slice(3, -4)}</i>;
       if (p.startsWith("<code>")) return <code key={i} style={{
-        background: "rgba(255,255,255,.09)", padding: "1px 5px", borderRadius: 4,
+        background: "var(--hair-2)", padding: "1px 5px", borderRadius: 4,
         fontFamily: "var(--mono)", fontSize: 9.5, color: "#8FC1EE" }}>{p.slice(6, -7)}</code>;
       return p;
     });
@@ -299,7 +299,7 @@ export function BotPreviewSection() {
                 <button title="انتخاب این مسیر" key={k} onClick={() => setFlow(k)}
                   className="flex items-center gap-3 px-4 py-3 rounded-xl text-right transition-all"
                   style={on
-                    ? { background: "rgba(43,127,214,.14)", border: "1px solid rgba(43,127,214,.45)" }
+                    ? { background: "var(--accent-soft)", border: "1px solid var(--accent-edge)" }
                     : { background: "var(--surface)", border: "1px solid var(--border)" }}>
                   {on ? <Check size={14} style={{ color: "var(--accent-2)" }} />
                       : <Circle size={7} fill="var(--muted)" strokeWidth={0} />}
@@ -321,18 +321,18 @@ export function BotPreviewSection() {
             <div style={{
               borderRadius: 28, padding: 9,
               background: "linear-gradient(160deg,#232B3C,#0C1119)",
-              border: "1px solid rgba(255,255,255,.13)",
-              boxShadow: "0 20px 52px rgba(0,0,0,.5)",
+              border: "1px solid var(--hair-3)",
+              boxShadow: "0 20px 52px var(--scrim-2)",
             }}>
               <div className="flex justify-center mb-1.5">
-                <div style={{ width: 46, height: 4, borderRadius: 99, background: "rgba(255,255,255,.18)" }} />
+                <div style={{ width: 46, height: 4, borderRadius: 99, background: "var(--hair-4)" }} />
               </div>
               <div style={{
                 background: "#0E1621", borderRadius: 21, padding: "12px 10px",
                 height: 420, overflowY: "auto", direction: "rtl",
               }}>
                 <div className="flex items-center gap-2 pb-2.5 mb-3"
-                  style={{ borderBottom: "1px solid rgba(255,255,255,.07)" }}>
+                  style={{ borderBottom: "1px solid var(--hair-2)" }}>
                   <div style={{
                     width: 26, height: 26, borderRadius: "50%",
                     background: "linear-gradient(135deg,var(--accent),var(--accent-2))",
@@ -373,7 +373,7 @@ export function BotPreviewSection() {
                                   flex: 1, borderRadius: 8, padding: "7px 5px",
                                   fontSize: 8.8, textAlign: "center", fontWeight: 600,
                                   background: m.contact && ri === 0 ? "#2F5C42" : "#1F2C3A",
-                                  border: `1px solid ${m.contact && ri === 0 ? "rgba(110,231,183,.35)" : "rgba(90,169,230,.22)"}`,
+                                  border: `1px solid ${m.contact && ri === 0 ? "var(--ok-line)" : "var(--accent-halo)"}`,
                                   color: m.contact && ri === 0 ? "#6EE7B7" : "#8FC1EE",
                                 }}>{b}</div>
                               ))}

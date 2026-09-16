@@ -240,7 +240,7 @@ export function TunnelNodes({ password }) {
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 min-w-0">
               <div className="fx-ico" style={{
-                background: n.online ? "rgba(52,211,153,.12)" : "rgba(255,255,255,.04)",
+                background: n.online ? "var(--ok-soft)" : "var(--hair-1)",
                 width: 38, height: 38,
               }}>
                 <Server size={17} style={{ color: n.online ? "var(--ok)" : "var(--muted)" }} />
@@ -250,7 +250,7 @@ export function TunnelNodes({ password }) {
                   {n.name}
                   <span className="text-[12px] px-2 py-0.5 rounded-full"
                     style={{
-                      background: n.online ? "rgba(52,211,153,.14)" : "rgba(255,255,255,.05)",
+                      background: n.online ? "var(--ok-soft)" : "var(--hair-2)",
                       color: n.online ? "var(--ok)" : "var(--muted)",
                     }}>
                     {n.online ? "آنلاین" : "آفلاین"}
@@ -292,7 +292,7 @@ export function TunnelNodes({ password }) {
                       fontFamily: "var(--mono)",
                     }}>{v == null ? "—" : `${faNum(v)}٪`}</span>
                   </div>
-                  <div style={{ height: 4, borderRadius: 99, background: "rgba(255,255,255,.06)", overflow: "hidden" }}>
+                  <div style={{ height: 4, borderRadius: 99, background: "var(--hair-2)", overflow: "hidden" }}>
                     <div style={{
                       width: `${Math.min(100, v || 0)}%`, height: "100%",
                       background: (v || 0) > 85 ? "var(--danger)" : (v || 0) > 65 ? "var(--warn)" : "var(--accent)",
@@ -382,7 +382,7 @@ export function NodeDiagnoseModal({ nodeId, password, onClose }) {
                 )}
                 {s.hint && (
                   <div className="text-[13px] mt-2 px-2.5 py-1.5 rounded-lg leading-relaxed"
-                    style={{ color: "var(--warn)", background: "rgba(251,191,36,.08)" }}>
+                    style={{ color: "var(--warn)", background: "var(--warn-wash)" }}>
                     {s.hint}
                   </div>
                 )}
@@ -542,7 +542,7 @@ export function TunnelList({ password }) {
 
             {t.last_error && (
               <div className="text-[12px] p-2.5 rounded-lg mb-3"
-                style={{ background: "rgba(248,113,113,.08)", color: "var(--danger)" }}>
+                style={{ background: "var(--danger-wash)", color: "var(--danger)" }}>
                 {t.last_error.slice(0, 160)}
               </div>
             )}
@@ -701,7 +701,7 @@ export function TunnelForm({ password, nodes, engines, onClose, onDone }) {
                   </span>
                   {e.recommended && (
                     <span className="text-[11px] px-1.5 py-0.5 rounded"
-                      style={{ background: "rgba(52,211,153,.14)", color: "var(--ok)" }}>
+                      style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
                       پیشنهادی
                     </span>
                   )}
@@ -787,7 +787,7 @@ export function TunnelForm({ password, nodes, engines, onClose, onDone }) {
                 className="flex items-center justify-center transition-colors"
                 style={{
                   width: 28, height: 34, border: "none", cursor: "pointer",
-                  background: "rgba(255,255,255,.03)", color: "var(--muted)",
+                  background: "var(--hair-1)", color: "var(--muted)",
                 }}
                 onMouseEnter={(e) => { e.currentTarget.style.color = "var(--danger)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.color = "var(--muted)"; }}>
@@ -818,7 +818,7 @@ export function TunnelForm({ password, nodes, engines, onClose, onDone }) {
                 className="px-2.5 py-1 rounded-lg text-[12px] transition-all"
                 style={{
                   background: has ? "var(--accent-soft)" : "transparent",
-                  border: `1px solid ${has ? "rgba(43,127,214,.4)" : "var(--border)"}`,
+                  border: `1px solid ${has ? "var(--accent-edge)" : "var(--border)"}`,
                   color: has ? "var(--accent-2)" : "var(--muted)",
                   fontFamily: "var(--mono)",
                   cursor: "pointer",
@@ -831,7 +831,7 @@ export function TunnelForm({ password, nodes, engines, onClose, onDone }) {
       </Field>
 
       {err && <div className="text-[13px] p-3 rounded-xl mt-3"
-        style={{ background: "rgba(248,113,113,.1)", color: "var(--danger)" }}>{err}</div>}
+        style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>{err}</div>}
 
     </Modal>
   );
@@ -902,7 +902,7 @@ export function TunnelMonitorModal({ tunnel, password, onClose }) {
         </span>
       </div>
       <div style={{ height: 5, borderRadius: 99,
-                    background: "rgba(255,255,255,.06)", overflow: "hidden" }}>
+                    background: "var(--hair-2)", overflow: "hidden" }}>
         <div style={{
           width: `${Math.min(100, ((value || 0) / max) * 100)}%`,
           height: "100%", background: color || "var(--accent)",
@@ -1132,8 +1132,8 @@ export function SystemHealth({ password }) {
         } />
 
       <div className="fx-card p-5 mb-4" style={{
-        borderColor: data?.level === "crit" ? "rgba(248,113,113,.4)"
-                   : data?.level === "warn" ? "rgba(251,191,36,.35)" : undefined }}>
+        borderColor: data?.level === "crit" ? "var(--danger-edge)"
+                   : data?.level === "warn" ? "var(--warn-line)" : undefined }}>
         <div className="flex items-center gap-3">
           <div style={{ width: 10, height: 10, borderRadius: "50%", background: worst,
                         boxShadow: `0 0 10px ${worst}`, flexShrink: 0 }} />
@@ -1166,9 +1166,9 @@ export function SystemHealth({ password }) {
               <div key={j} className="p-3.5 rounded-xl mb-2"
                 style={{
                   background: c.level === "crit"
-                    ? "rgba(248,113,113,.07)" : "rgba(251,191,36,.07)",
+                    ? "var(--danger-wash)" : "var(--warn-wash)",
                   border: `1px solid ${c.level === "crit"
-                    ? "rgba(248,113,113,.2)" : "rgba(251,191,36,.2)"}`,
+                    ? "var(--danger-fill)" : "var(--warn-fill)"}`,
                 }}>
                 <div className="flex justify-between items-baseline gap-3 flex-wrap">
                   <span className="text-[14px] font-semibold"

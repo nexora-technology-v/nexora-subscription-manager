@@ -51,10 +51,10 @@ export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
   const tone = running ? "var(--ok)" : ready ? "var(--warn)" : "var(--muted)";
 
   return (
-    <div className="fx-card p-4 mb-4" style={{ borderColor: `${running ? "rgba(52,211,153,.3)" : "rgba(251,191,36,.28)"}` }}>
+    <div className="fx-card p-4 mb-4" style={{ borderColor: `${running ? "var(--ok-line)" : "var(--warn-line)"}` }}>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="fx-ico" style={{ background: running ? "rgba(52,211,153,.12)" : "rgba(251,191,36,.12)" }}>
+          <div className="fx-ico" style={{ background: running ? "var(--ok-soft)" : "var(--warn-soft)" }}>
             <Bot size={16} style={{ color: tone }} />
           </div>
           <div>
@@ -74,13 +74,13 @@ export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
           {/* عددِ بی‌برچسب را خواننده «درآمد» می‌خواند. فروش شامل
               خریدِ از کیف پول هم هست، که پول تازه‌ای نیست. */}
           {ready && status.totalSales > 0 && (
-            <span className="fx-pill" style={{ background: "rgba(52,211,153,.1)", color: "var(--ok)" }}>
+            <span className="fx-pill" style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
               فروش {Number(status.totalSales).toLocaleString("fa-IR")} تومان
             </span>
           )}
           {ready && status.totalReceived > 0
             && status.totalReceived !== status.totalSales && (
-            <span className="fx-pill" style={{ background: "rgba(43,127,214,.1)", color: "var(--accent-2)" }}
+            <span className="fx-pill" style={{ background: "var(--accent-soft)", color: "var(--accent-2)" }}
               title="فقط پرداخت‌های کارتی — خرید از کیف پول پول تازه نیست">
               دریافتی {Number(status.totalReceived).toLocaleString("fa-IR")} تومان
             </span>
@@ -94,7 +94,7 @@ export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
               </button>
               <button onClick={() => act("stop")} disabled={!!busy}
                 className="px-3.5 py-2.5 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5"
-                style={{ background: "rgba(248,113,113,.12)", border: "1px solid rgba(248,113,113,.3)", color: "var(--danger)" }}>
+                style={{ background: "var(--danger-soft)", border: "1px solid var(--danger-line)", color: "var(--danger)" }}>
                 {busy === "stop" ? <Loader2 size={13} className="animate-spin" /> : <Power size={13} />}
                 خاموش
               </button>
@@ -111,7 +111,7 @@ export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
 
       {running && dirty && (
         <div className="mt-3 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap"
-          style={{ background: "rgba(251,191,36,.08)", border: "1px solid rgba(251,191,36,.28)" }}>
+          style={{ background: "var(--warn-wash)", border: "1px solid var(--warn-line)" }}>
           <div className="flex items-start gap-2.5">
             <RefreshCw size={15} style={{ color: "var(--warn)", flexShrink: 0, marginTop: 1 }} />
             <div>
@@ -134,14 +134,14 @@ export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
 
       {applied && (
         <div className="mt-3 rounded-xl p-2.5 text-[13px] flex items-center gap-2"
-          style={{ background: "rgba(52,211,153,.1)", border: "1px solid rgba(52,211,153,.25)", color: "var(--ok)" }}>
+          style={{ background: "var(--ok-soft)", border: "1px solid var(--ok-fill)", color: "var(--ok)" }}>
           <CheckCircle2 size={13} /> اعمال شد — ربات ظرف ۳۰ ثانیه همگام می‌شود
         </div>
       )}
 
       {err && (
         <div className="mt-3 rounded-xl p-2.5 text-[13px] flex items-center gap-2"
-          style={{ background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.25)", color: "var(--danger)" }}>
+          style={{ background: "var(--danger-soft)", border: "1px solid var(--danger-fill)", color: "var(--danger)" }}>
           <AlertTriangle size={13} /> {err}
         </div>
       )}
@@ -236,8 +236,8 @@ export function ConnectionTest({ password, tenant }) {
         <div className="mt-4">
           <div className="rounded-xl p-3 mb-3 flex items-center gap-2.5 text-[14px] font-semibold"
             style={{
-              background: result.ok ? "rgba(52,211,153,.1)" : "rgba(248,113,113,.1)",
-              border: `1px solid ${result.ok ? "rgba(52,211,153,.3)" : "rgba(248,113,113,.3)"}`,
+              background: result.ok ? "var(--ok-soft)" : "var(--danger-soft)",
+              border: `1px solid ${result.ok ? "var(--ok-line)" : "var(--danger-line)"}`,
               color: result.ok ? "var(--ok)" : "var(--danger)",
             }}>
             {result.ok ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
@@ -466,7 +466,7 @@ export function BotSection({ password, dirty }) {
               <Ico size={14} /> {l}
               {tag && authMode === k && (
                 <span className="text-[11px] px-1.5 py-0.5 rounded-full"
-                  style={{ background: "rgba(0,0,0,.18)" }}>{tag}</span>
+                  style={{ background: "var(--scrim-1)" }}>{tag}</span>
               )}
             </button>
           ))}

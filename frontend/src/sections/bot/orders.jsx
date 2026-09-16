@@ -143,7 +143,7 @@ export function BotOrdersSection({ password }) {
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   onError={(e) => { e.currentTarget.style.display = "none"; }} />
                 <span className="absolute bottom-1 left-1 right-1 py-0.5 rounded text-[10.5px] flex items-center justify-center gap-1"
-                  style={{ background: "rgba(0,0,0,.68)", color: "#fff" }}>
+                  style={{ background: "var(--scrim-3)", color: "#fff" }}>
                   <Search size={9} /> بزرگ‌نمایی
                 </span>
               </button>
@@ -179,7 +179,7 @@ export function BotOrdersSection({ password }) {
               <div className="flex gap-2 shrink-0">
                 <button onClick={() => act(o.id, "approve")} disabled={busy === o.id}
                   className="px-3.5 py-2.5 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5"
-                  style={{ background: "rgba(52,211,153,.14)", color: "var(--ok)", border: "1px solid rgba(52,211,153,.3)" }}>
+                  style={{ background: "var(--ok-soft)", color: "var(--ok)", border: "1px solid var(--ok-line)" }}>
                   {busy === o.id ? <Loader2 size={13} className="animate-spin" /> : <CheckCircle2 size={13} />} تایید
                 </button>
                 <button onClick={() => { setRejecting(o); setReason(""); }} disabled={busy === o.id}
@@ -195,7 +195,7 @@ export function BotOrdersSection({ password }) {
       {zoom && createPortal(
         <div onClick={() => setZoom(null)}
           className="fixed inset-0 z-[110] flex items-center justify-center p-6"
-          style={{ background: "rgba(3,6,12,.93)", cursor: "zoom-out" }}>
+          style={{ background: "var(--veil)", cursor: "zoom-out" }}>
           <img src={`${API_URL}/api/admin/bot/receipt/${zoom}?pw=${encodeURIComponent(password)}`} alt="رسید"
             style={{ maxWidth: "92vw", maxHeight: "88vh", borderRadius: 14, objectFit: "contain" }}
             onClick={(e) => e.stopPropagation()} />
@@ -207,11 +207,11 @@ export function BotOrdersSection({ password }) {
 
       {rejecting && createPortal(
         <div className="nx-modal-wrap fx-fade"
-          style={{ background: "rgba(3,6,12,.82)", backdropFilter: "blur(6px)" }}
+          style={{ background: "var(--veil)", backdropFilter: "blur(6px)" }}
           onClick={() => setRejecting(null)}>
           <div className="w-full max-w-md rounded-2xl fx-scale nx-modal flex flex-col"
             onClick={(e) => e.stopPropagation()}
-            style={{ background: "var(--surface)", border: "1px solid rgba(248,113,113,.3)" }}>
+            style={{ background: "var(--surface)", border: "1px solid var(--danger-line)" }}>
 
             <div className="p-5 shrink-0" style={{ borderBottom: "1px solid var(--border)" }}>
               <div className="flex items-center gap-2">
@@ -230,7 +230,7 @@ export function BotOrdersSection({ password }) {
                   <button key={ri} onClick={() => setReason(r)}
                     className="text-right p-2.5 rounded-xl text-[13px] transition-all"
                     style={reason === r
-                      ? { background: "rgba(248,113,113,.12)", border: "1px solid rgba(248,113,113,.35)", color: "var(--text)" }
+                      ? { background: "var(--danger-soft)", border: "1px solid var(--danger-line)", color: "var(--text)" }
                       : { background: "var(--surface-3)", border: "1px solid var(--border)", color: "var(--dim)" }}>
                     {r}
                   </button>

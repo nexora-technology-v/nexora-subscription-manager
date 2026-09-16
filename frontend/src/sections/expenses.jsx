@@ -565,7 +565,7 @@ export function BillingLedger({ password }) {
                       {g.label}
                       {g.unpriced > 0 && (
                         <span className="fx-pill mr-2" style={{
-                          background: "rgba(251,191,36,.14)", color: "var(--warn)",
+                          background: "var(--warn-soft)", color: "var(--warn)",
                         }}>{faNum(g.unpriced)} بدون نرخ</span>
                       )}
                     </td>

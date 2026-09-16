@@ -188,12 +188,12 @@ export function BotUsersSection({ password }) {
                       </span>
                     )}
                     {u.activeSubs > 0 && (
-                      <span className="fx-pill" style={{ background: "rgba(52,211,153,.12)", color: "var(--ok)" }}>
+                      <span className="fx-pill" style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
                         فعال
                       </span>
                     )}
                     {u.is_blocked === 1 && (
-                      <span className="fx-pill" style={{ background: "rgba(248,113,113,.12)", color: "var(--danger)" }}>
+                      <span className="fx-pill" style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>
                         مسدود
                       </span>
                     )}
@@ -345,11 +345,11 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
 
   return createPortal(
     <div className="nx-modal-wrap fx-fade"
-      style={{ background: "rgba(3,6,12,.84)", backdropFilter: "blur(6px)" }}
+      style={{ background: "var(--veil)", backdropFilter: "blur(6px)" }}
       onClick={onClose}>
       <div className="w-full max-w-2xl rounded-2xl fx-scale nx-modal flex flex-col"
         onClick={(e) => e.stopPropagation()}
-        style={{ background: "var(--surface)", border: "1px solid rgba(90,169,230,.3)" }}>
+        style={{ background: "var(--surface)", border: "1px solid var(--accent-halo)" }}>
 
         <div className="p-5 shrink-0 flex items-start justify-between gap-3"
           style={{ borderBottom: "1px solid var(--border)" }}>
@@ -364,7 +364,7 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
                 </span>
               )}
               {u.is_blocked === 1 && (
-                <span className="fx-pill" style={{ background: "rgba(248,113,113,.12)", color: "var(--danger)" }}>
+                <span className="fx-pill" style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>
                   مسدود
                 </span>
               )}
@@ -392,7 +392,7 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
 
           {err && (
             <div className="rounded-xl p-3 flex items-center gap-2 text-[13px]"
-              style={{ background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.3)", color: "var(--danger)" }}>
+              style={{ background: "var(--danger-soft)", border: "1px solid var(--danger-line)", color: "var(--danger)" }}>
               <AlertTriangle size={14} /> {err}
             </div>
           )}
@@ -448,7 +448,7 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
                         </span>
                       </div>
                       <span className="fx-pill" style={{
-                        background: s.is_active ? "rgba(52,211,153,.12)" : "rgba(255,255,255,.05)",
+                        background: s.is_active ? "var(--ok-soft)" : "var(--hair-2)",
                         color: s.is_active ? "var(--ok)" : "var(--muted)",
                       }}>
                         {s.is_active ? "فعال" : "غیرفعال"}
@@ -474,7 +474,7 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
 
                         {total > 0 && (
                           <div className="h-[8px] rounded-full overflow-hidden mb-3"
-                            style={{ background: "rgba(43,127,214,.12)" }}>
+                            style={{ background: "var(--accent-soft)" }}>
                             <div style={{
                               width: `${pct}%`, height: "100%", borderRadius: 99,
                               background: pct >= 85

@@ -16,7 +16,7 @@ export function ComingSoon({ title, desc, features }) {
     <div className="fx-anim">
       <SectionHead title={title} desc={desc} />
       <div className="fx-card fx-empty">
-        <div className="fx-ico mx-auto mb-4" style={{ width: 52, height: 52, background: "rgba(251,191,36,.1)" }}>
+        <div className="fx-ico mx-auto mb-4" style={{ width: 52, height: 52, background: "var(--warn-soft)" }}>
           <Bot size={24} style={{ color: "var(--warn)" }} />
         </div>
         <div className="text-[16px] font-bold text-white mb-2">در حال توسعه</div>
@@ -51,7 +51,7 @@ export function WsModePreview({ mode, active }) {
   const line = (w, on) => (
     <div style={{
       height: 4, width: w, borderRadius: 2,
-      background: on ? "var(--accent)" : "rgba(255,255,255,.13)",
+      background: on ? "var(--accent)" : "var(--hair-3)",
     }} />
   );
 
@@ -59,15 +59,15 @@ export function WsModePreview({ mode, active }) {
     <div className="rounded-xl p-2.5 flex gap-1.5"
       style={{
         height: 58,
-        background: active ? "rgba(0,0,0,.28)" : "rgba(0,0,0,.2)",
-        boxShadow: "0 2px 8px rgba(0,0,0,.35) inset",
+        background: active ? "var(--scrim-1)" : "var(--scrim-1)",
+        boxShadow: "0 2px 8px var(--scrim-2) inset",
       }}>
       {mode === "rail" && (
         <div className="flex flex-col gap-1 shrink-0">
           {[0, 1, 2].map((i) => (
             <div key={i} style={{
               width: 8, height: 8, borderRadius: 3,
-              background: i === 1 ? "var(--accent)" : "rgba(255,255,255,.13)",
+              background: i === 1 ? "var(--accent)" : "var(--hair-3)",
             }} />
           ))}
         </div>
@@ -77,7 +77,7 @@ export function WsModePreview({ mode, active }) {
         {mode === "dropdown" && (
           <>
             <div className="rounded-md flex items-center px-1.5"
-              style={{ height: 13, background: "rgba(255,255,255,.09)" }}>
+              style={{ height: 13, background: "var(--hair-2)" }}>
               {line(18, true)}
             </div>
             <div className="flex flex-col gap-1 pr-1">
@@ -90,7 +90,7 @@ export function WsModePreview({ mode, active }) {
           <>
             {line(24, true)}
             <div className="flex flex-col gap-1 pr-2"
-              style={{ borderRight: "1px solid rgba(43,127,214,.3)" }}>
+              style={{ borderRight: "1px solid var(--accent-line)" }}>
               {line(18, false)}{line(15, false)}
             </div>
             {line(22, false)}
@@ -166,7 +166,7 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive }
                         <span className="text-[13px] truncate">{it.label}</span>
                         {it.badge && (
                           <span className="text-[10.5px] px-1.5 py-0.5 rounded-full shrink-0"
-                            style={{ background: "rgba(255,255,255,.06)", color: "var(--muted)" }}>
+                            style={{ background: "var(--hair-2)", color: "var(--muted)" }}>
                             {it.badge}
                           </span>
                         )}
@@ -199,7 +199,7 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive }
                   background: on ? `color-mix(in srgb, ${col} 14%, transparent)` : "transparent",
                   border: `1px solid ${on ? `color-mix(in srgb, ${col} 28%, transparent)` : "var(--border)"}`,
                   boxShadow: on
-                    ? `0 1px 0 rgba(255,255,255,.08) inset, 0 6px 14px -6px color-mix(in srgb, ${col} 55%, transparent)`
+                    ? `0 1px 0 var(--hair-2) inset, 0 6px 14px -6px color-mix(in srgb, ${col} 55%, transparent)`
                     : "none",
                 }}>
                 <w.icon size={17} style={{ color: on ? col : "var(--muted)" }} />
@@ -210,7 +210,7 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive }
                   style={{
                     top: "calc(100% + 7px)", right: 0,
                     background: "var(--surface-2)", border: "1px solid var(--border-2)",
-                    boxShadow: "0 12px 28px -8px rgba(0,0,0,.7)",
+                    boxShadow: "0 12px 28px -8px var(--scrim-3)",
                   }}>
                   <div className="text-[13px] font-bold text-white">{w.label}</div>
                 </div>
@@ -230,13 +230,13 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive }
         className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-right"
         style={{
           background: "var(--surface-2)", border: "1px solid var(--border-2)",
-          boxShadow: "0 1px 0 rgba(255,255,255,.05) inset",
+          boxShadow: "0 1px 0 var(--hair-2) inset",
         }}>
         <div className="rounded-[10px] flex items-center justify-center shrink-0"
           style={{
             width: 30, height: 30,
             background: `color-mix(in srgb, ${col} 14%, transparent)`,
-            boxShadow: "0 1px 0 rgba(255,255,255,.1) inset",
+            boxShadow: "0 1px 0 var(--hair-3) inset",
           }}>
           <cur.icon size={15} style={{ color: col }} />
         </div>
@@ -257,7 +257,7 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive }
             style={{
               top: "calc(100% + 6px)",
               background: "var(--surface)", border: "1px solid var(--border-2)",
-              boxShadow: "0 18px 40px -12px rgba(0,0,0,.75)",
+              boxShadow: "0 18px 40px -12px var(--scrim-4)",
             }}>
             {spaces.map((w) => {
               const on = workspace === w.key;

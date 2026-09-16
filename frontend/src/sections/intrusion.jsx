@@ -350,7 +350,7 @@ export function FirewallIntrusion({ password }) {
                           {a.ip}
                           {a.known && (
                             <span className="fx-pill fx-fa-sub mr-2" style={{
-                              background: "rgba(251,191,36,.14)",
+                              background: "var(--warn-soft)",
                               color: "var(--warn)",
                             }}>وصل به سرویس</span>
                           )}

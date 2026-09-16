@@ -928,6 +928,54 @@ check("و هنوز هیچ پولی این‌جا حساب نمی‌شود",
       "price *" not in _MINI and "* months" not in _MINI,
       "خرید در خودِ ربات می‌ماند — قرار خودِ مالک")
 
+import re as _re
+
+# ═══════════════════════════════════════════════════════════
+head("رنگ · یک نام، یک مقدار")
+
+# چهار وضعیت پنل در ۳۲۸ جای JSX دستی نوشته شده بودند — رنگ هشدار
+# به‌تنهایی ۶۳ بار با ۱۷ آلفای متفاوت. `.05` و `.06` و `.07` و `.08`
+# را هیچ طراحی عمداً انتخاب نمی‌کند؛ ردِ پای کپی‌کردن‌اند. نتیجه این
+# بود که هیچ دو چیپِ «هشدار» دقیقاً یک رنگ نبودند.
+_RGBA = _re.compile(r"rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,")
+
+# این دو صفحه انتخابگرِ رنگ‌اند: آن‌جا مقدارِ واقعی *خودِ داده* است،
+# نه استایل. عمداً بیرون‌اند.
+_PICKERS = ("sections/bot/themes.jsx", "sections/subpage.jsx")
+
+_raw = []
+for _name, _src in ALL.items():
+    if _name.endswith(_PICKERS) or not _name.endswith(".jsx"):
+        continue
+    _n = len(_RGBA.findall(_src))
+    if _n:
+        _raw.append(f"{_name}:{_n}")
+
+check("هیچ rgba خامی در JSX نمانده", not _raw,
+      ", ".join(_raw[:4]) if _raw else "همه از توکن می‌آیند")
+
+# و خودِ توکن‌ها باید واقعاً تعریف شده باشند — var(--nope) بی‌صدا
+# شفاف می‌شود، که همان مسیر خرابِ بی‌صداست
+_CSS = io.open(os.path.join(ROOT, "frontend", "src", "index.css"),
+               encoding="utf-8").read()
+_defined = set(_re.findall(r"^\s*(--[a-z0-9-]+)\s*:", _CSS, _re.M))
+_used = set()
+for _name, _src in ALL.items():
+    if _name.endswith(".jsx"):
+        _used |= set(_re.findall(r"var\(\s*(--[a-z0-9-]+)\s*\)", _src))
+# توکن‌هایی که خودِ کامپوننت در لحظه می‌سازد (مثل --ring روی Avatar)
+_runtime = {"--ring", "--pct", "--w"}
+_ghost = sorted(_used - _defined - _runtime)
+check("هر var() که JSX می‌نویسد تعریف شده", not _ghost,
+      ", ".join(_ghost[:5]) if _ghost else f"{len(_used)} توکن")
+
+check("پله‌های معنایی کامل‌اند",
+      all(f"--{c}-{t}:" in _CSS
+          for c in ("ok", "warn", "danger")
+          for t in ("wash", "soft", "fill", "line", "edge")),
+      "wash · soft · fill · line · edge")
+
+
 # ═══════════════════════════════════════════════════════════
 head("چهره‌ی کاربر · یک قاعده، دو جا")
 
@@ -936,7 +984,6 @@ head("چهره‌ی کاربر · یک قاعده، دو جا")
 # 3x-ui سرو می‌کند و به باندلِ ما دسترسی ندارد. پس طبق قاعده‌ی
 # مخزن، تستِ برابری می‌خواهد — وگرنه دقیقاً وقتی از هم جدا می‌شوند
 # که کسی یکی را عوض کند و همان مشتری در دو جا دو رنگ بگیرد.
-import re as _re
 
 _UI = ALL.get("ui/index.jsx", "")
 _SUBP = io.open(os.path.join(ROOT, "sub-page-index.html"),

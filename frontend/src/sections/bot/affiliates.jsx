@@ -139,7 +139,7 @@ export function BotAffiliates({ password }) {
                 </span>
                 {!a.active && (
                   <span className="text-[12px] px-2 py-0.5 rounded-lg"
-                    style={{ background: "rgba(255,255,255,.05)", color: "var(--muted)" }}>
+                    style={{ background: "var(--hair-2)", color: "var(--muted)" }}>
                     غیرفعال
                   </span>
                 )}
@@ -294,7 +294,7 @@ export function AffiliateForm({ password, affiliate, onClose, onDone }) {
                 className="px-2.5 py-2 rounded-lg text-[12px]"
                 style={{
                   background: +f.percent === p ? "var(--accent-soft)" : "transparent",
-                  border: `1px solid ${+f.percent === p ? "rgba(43,127,214,.4)" : "var(--border)"}`,
+                  border: `1px solid ${+f.percent === p ? "var(--accent-edge)" : "var(--border)"}`,
                   color: +f.percent === p ? "var(--accent-2)" : "var(--muted)",
                   fontFamily: "var(--mono)",
                 }}>{faNum(p)}٪</button>
@@ -329,7 +329,7 @@ export function AffiliateForm({ password, affiliate, onClose, onDone }) {
 
       {err && (
         <div className="text-[13px] p-3 rounded-xl mt-3"
-          style={{ background: "rgba(248,113,113,.1)", color: "var(--danger)" }}>{err}</div>
+          style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>{err}</div>
       )}
     </Modal>
   );

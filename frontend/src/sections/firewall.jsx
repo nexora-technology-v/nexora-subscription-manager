@@ -159,18 +159,18 @@ export function FirewallSuggest({ password, onApplied }) {
             {x.process && (
               <span dir="ltr" className="text-[12px]" style={{ color: "var(--dim)" }}>{esc0(x.process)}</span>
             )}
-            <span className="fx-pill" style={{ background: "rgba(255,255,255,.04)", color: col }}>
+            <span className="fx-pill" style={{ background: "var(--hair-1)", color: col }}>
               {tone === "close" ? "ببند"
                 : tone === "unknown" ? "نامشخص" : "باز بماند"}
             </span>
             {x.tunnel && (
               <span className="fx-pill" style={{
-                background: "rgba(52,211,153,.14)", color: "var(--ok)",
+                background: "var(--ok-soft)", color: "var(--ok)",
               }}>تانل — نبندید</span>
             )}
             {x.critical && (
               <span className="fx-pill" style={{
-                background: "rgba(52,211,153,.14)", color: "var(--ok)",
+                background: "var(--ok-soft)", color: "var(--ok)",
               }}>حیاتی</span>
             )}
           </div>
@@ -221,7 +221,7 @@ export function FirewallSuggest({ password, onApplied }) {
                 </span>
                 {ephCount > 0 && (
                   <span className="text-[12px] px-2 py-[3px] rounded-md"
-                    style={{ color: "var(--muted)", background: "var(--chip)" }}
+                    style={{ color: "var(--muted)", background: "var(--hair-2)" }}
                     title="xray برای هر ترافیک خروجی یک سوکت موقت باز می‌کند. این‌ها سرویس نیستند و با هر ری‌استارت عدد تازه می‌گیرند، پس قاعده ساختن برایشان بی‌فایده است.">
                     {faNum(ephCount)} سوکت موقت xray نادیده گرفته شد
                   </span>
@@ -398,7 +398,7 @@ export function FirewallRules({ password }) {
         action={
           <div className="flex items-center gap-2">
             <span className="fx-pill" style={{
-              background: d.active ? "rgba(52,211,153,.14)" : "rgba(248,113,113,.14)",
+              background: d.active ? "var(--ok-soft)" : "var(--danger-soft)",
               color: d.active ? "var(--ok)" : "var(--danger)",
             }}>
               {d.active ? "روشن" : "خاموش"}
@@ -437,7 +437,7 @@ export function FirewallRules({ password }) {
       <FirewallSuggest password={password} onApplied={load} />
 
       {!d.active && (
-        <div className="fx-card p-5 mb-4" style={{ borderColor: "rgba(251,191,36,.3)" }}>
+        <div className="fx-card p-5 mb-4" style={{ borderColor: "var(--warn-line)" }}>
           <div className="text-[14px] font-semibold mb-2 flex items-center gap-2" style={{ color: "var(--warn)" }}>
             <AlertTriangle size={15} /> فایروال خاموش است
           </div>
@@ -567,7 +567,7 @@ export function FirewallRules({ password }) {
                       <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
                         {r.target}
                         {r.critical && (
-                          <span className="fx-pill fx-fa-sub mr-2" style={{ background: "rgba(251,191,36,.14)", color: "var(--warn)" }}>
+                          <span className="fx-pill fx-fa-sub mr-2" style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>
                             حیاتی
                           </span>
                         )}

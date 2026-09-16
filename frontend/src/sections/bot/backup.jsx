@@ -81,7 +81,7 @@ export function BotBackupSection({ password }) {
 
       <div className="fx-g2 grid grid-cols-2 gap-4 mb-4">
         <button onClick={download} disabled={!!busy} className="fx-card p-6 text-center">
-          <div className="fx-ico mx-auto mb-3" style={{ width: 44, height: 44, background: "rgba(43,127,214,.12)" }}>
+          <div className="fx-ico mx-auto mb-3" style={{ width: 44, height: 44, background: "var(--accent-soft)" }}>
             {busy === "dl" ? <Loader2 size={20} className="animate-spin" style={{ color: "var(--accent-2)" }} />
                            : <Download size={20} style={{ color: "var(--accent-2)" }} />}
           </div>
@@ -90,7 +90,7 @@ export function BotBackupSection({ password }) {
         </button>
 
         <label className="fx-card p-6 text-center cursor-pointer">
-          <div className="fx-ico mx-auto mb-3" style={{ width: 44, height: 44, background: "rgba(251,191,36,.12)" }}>
+          <div className="fx-ico mx-auto mb-3" style={{ width: 44, height: 44, background: "var(--warn-soft)" }}>
             {busy === "up" ? <Loader2 size={20} className="animate-spin" style={{ color: "var(--warn)" }} />
                            : <Upload size={20} style={{ color: "var(--warn)" }} />}
           </div>

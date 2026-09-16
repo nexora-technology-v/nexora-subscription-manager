@@ -95,7 +95,7 @@ export function Toggle({ checked, onChange, label }) {
   return (
     <button onClick={onChange} role="switch" aria-checked={checked} aria-label={label}
       className="w-12 h-[26px] rounded-full transition-all relative shrink-0"
-      style={{ background: checked ? "var(--accent)" : "rgba(255,255,255,0.1)" }}>
+      style={{ background: checked ? "var(--accent)" : "var(--hair-3)" }}>
       <span className="absolute top-[3px] w-5 h-5 rounded-full bg-white transition-all duration-200"
         style={{ [checked ? "right" : "left"]: "3px" }} />
     </button>
@@ -114,7 +114,7 @@ export function NumberStepper({ value, onChange, min = 0, max = 100, unit }) {
         <button className="fx-stepper-btn" onClick={() => onChange(clamp(value + 1))} disabled={value >= max} aria-label="زیاد کردن"><Plus size={16} /></button>
       </div>
       <input className="fx-range" type="range" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))}
-        style={{ background: `linear-gradient(to left, var(--accent) 0%, var(--accent) ${pct}%, rgba(255,255,255,.08) ${pct}%)` }} />
+        style={{ background: `linear-gradient(to left, var(--accent) 0%, var(--accent) ${pct}%, var(--hair-2) ${pct}%)` }} />
     </div>
   );
 }
@@ -214,8 +214,8 @@ export function StatusChip({ dirty }) {
 
 export function InfoBox({ children, tone = "info" }) {
   const t = tone === "warn"
-    ? { bg: "rgba(251,191,36,.06)", bd: "rgba(251,191,36,.25)", c: "var(--warn)", Icon: AlertTriangle }
-    : { bg: "rgba(43,127,214,.06)", bd: "rgba(43,127,214,.2)", c: "var(--accent-2)", Icon: Info };
+    ? { bg: "var(--warn-wash)", bd: "var(--warn-fill)", c: "var(--warn)", Icon: AlertTriangle }
+    : { bg: "var(--accent-wash)", bd: "var(--accent-fill)", c: "var(--accent-2)", Icon: Info };
   return (
     <div className="rounded-2xl p-4 flex items-start gap-3 my-4 last:mb-0"
       style={{ background: t.bg, border: `1px solid ${t.bd}` }}>
@@ -341,7 +341,7 @@ export function ConfirmModal({ title, desc, onConfirm, onCancel, confirmLabel = 
   useFocusTrap(box, onCancel);
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 fx-fade"
-      style={{ background: "rgba(3,6,12,.78)", backdropFilter: "blur(6px)" }} onClick={onCancel}>
+      style={{ background: "var(--veil)", backdropFilter: "blur(6px)" }} onClick={onCancel}>
       <div ref={box} role="dialog" aria-modal="true" aria-label={title}
         className="w-full max-w-sm rounded-2xl p-5 fx-scale" onClick={(e) => e.stopPropagation()}
         style={{ background: "var(--surface)", border: "1px solid var(--danger-line)",
@@ -376,7 +376,7 @@ export function Toast({ message, type }) {
     <div role="status" aria-live="polite"
       className="fx-toast fixed bottom-[92px] lg:bottom-6 left-1/2 z-[80] px-4 py-3 rounded-xl text-[14px] font-medium flex items-center gap-2 max-w-[90vw]"
       style={{
-        background: type === "error" ? "#3F1414" : "rgba(19,28,46,.92)",
+        background: type === "error" ? "var(--toast-err)" : "var(--toast-bg)",
         backdropFilter: "blur(20px)",
         border: `1px solid ${type === "error" ? "var(--danger)" : "var(--ok-line)"}`,
         color: type === "error" ? "#FCA5A5" : "var(--ok)",
@@ -416,8 +416,8 @@ export function LoginScreen({ onLogin }) {
   };
   return (
     <div className="min-h-screen w-full flex items-center justify-center px-4"
-      style={{ background: "radial-gradient(ellipse 60% 50% at 50% 0%, rgba(43,127,214,.15), transparent), var(--bg)" }} dir="rtl">
-      <div className="w-full max-w-sm rounded-2xl p-7 fx-anim" style={{ background: "var(--surface)", border: "1px solid rgba(90,169,230,.25)", boxShadow: "0 0 80px rgba(43,127,214,.18)" }}>
+      style={{ background: "radial-gradient(ellipse 60% 50% at 50% 0%, var(--accent-soft), transparent), var(--bg)" }} dir="rtl">
+      <div className="w-full max-w-sm rounded-2xl p-7 fx-anim" style={{ background: "var(--surface)", border: "1px solid var(--accent-halo)", boxShadow: "0 0 80px var(--accent-fill)" }}>
         <div className="flex flex-col items-center text-center mb-7">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-[28px] mb-4"
             style={{ background: "linear-gradient(135deg,#2B7FD6,#8FC1EE)", color: "#06090F" }}>N</div>
@@ -443,8 +443,8 @@ export function Msg({ msg }) {
   return (
     <div className="rounded-xl p-3 mt-3 mb-4 flex items-center gap-2 text-[13px]"
       style={{
-        background: err ? "rgba(248,113,113,.1)" : "rgba(52,211,153,.1)",
-        border: `1px solid ${err ? "rgba(248,113,113,.3)" : "rgba(52,211,153,.3)"}`,
+        background: err ? "var(--danger-soft)" : "var(--ok-soft)",
+        border: `1px solid ${err ? "var(--danger-line)" : "var(--ok-line)"}`,
         color: err ? "var(--danger)" : "var(--ok)",
       }}>
       {err ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} {msg.m}
@@ -454,13 +454,13 @@ export function Msg({ msg }) {
 
 export function StatusPill({ s }) {
   const map = {
-    awaiting: ["در انتظار", "var(--warn)", "rgba(251,191,36,.12)"],
-    review: ["بررسی", "var(--warn)", "rgba(251,191,36,.12)"],
-    approved: ["تاییدشده", "var(--ok)", "rgba(52,211,153,.12)"],
-    panel_approve: ["در صف ساخت", "var(--accent-2)", "rgba(43,127,214,.12)"],
-    rejected: ["ردشده", "var(--danger)", "rgba(248,113,113,.12)"],
+    awaiting: ["در انتظار", "var(--warn)", "var(--warn-soft)"],
+    review: ["بررسی", "var(--warn)", "var(--warn-soft)"],
+    approved: ["تاییدشده", "var(--ok)", "var(--ok-soft)"],
+    panel_approve: ["در صف ساخت", "var(--accent-2)", "var(--accent-soft)"],
+    rejected: ["ردشده", "var(--danger)", "var(--danger-soft)"],
   };
-  const [l, c, bg] = map[s] || [s, "var(--muted)", "rgba(255,255,255,.05)"];
+  const [l, c, bg] = map[s] || [s, "var(--muted)", "var(--hair-2)"];
   return <span className="fx-pill" style={{ background: bg, color: c }}>{l}</span>;
 }
 
@@ -550,7 +550,7 @@ export function StatTile({
       <div className="flex items-center gap-2">
         {Icon && (
           <span className="w-7 h-7 rounded-[8px] grid place-items-center shrink-0"
-            style={{ background: "rgba(255,255,255,.05)", color: tone || "var(--muted)" }}>
+            style={{ background: "var(--hair-2)", color: tone || "var(--muted)" }}>
             <Icon size={14} />
           </span>
         )}
@@ -680,7 +680,7 @@ export function Donut({ items, size = 124, center }) {
         {segs.map((s) => (
           <button key={s.i} className="flex items-center gap-2 px-2 py-1.5 rounded-[9px] text-[12px] w-full text-right"
             style={{ color: hi === s.i ? "var(--text)" : "var(--dim)",
-                     background: hi === s.i ? "rgba(255,255,255,.05)" : "transparent",
+                     background: hi === s.i ? "var(--hair-2)" : "transparent",
                      transition: "background var(--m-fast) linear, color var(--m-fast) linear" }}
             onMouseEnter={() => setHi(s.i)} onMouseLeave={() => setHi(null)}
             onFocus={() => setHi(s.i)} onBlur={() => setHi(null)}>
@@ -713,7 +713,7 @@ export function BarList({ items, color = "var(--accent)", format = (v) => faNum(
           style={{ gridTemplateColumns: "minmax(64px,96px) 1fr auto" }}>
           <span className="truncate" style={{ color: "var(--dim)" }}>{it.n}</span>
           <span className="h-2 rounded-full overflow-hidden"
-            style={{ background: "rgba(255,255,255,.06)" }}>
+            style={{ background: "var(--hair-2)" }}>
             <i className="fx-barfill block" style={{
               width: `${((it.v || 0) / mx) * 100}%`,
               background: it.c || color,
@@ -735,7 +735,7 @@ export function Modal({ title, onClose, children, footer, width = "440px" }) {
   useFocusTrap(box, onClose);
   return createPortal(
     <div className="nx-modal-wrap fx-fade"
-      style={{ background: "rgba(3,6,12,.82)", backdropFilter: "blur(6px)" }}
+      style={{ background: "var(--veil)", backdropFilter: "blur(6px)" }}
       onClick={onClose}>
       {/* سه بخش جدا: سر و ته ثابت، وسط اسکرول‌شونده.
           بدون این تقسیم، فرم‌های بلند از صفحه بیرون می‌زنند و
@@ -746,7 +746,7 @@ export function Modal({ title, onClose, children, footer, width = "440px" }) {
           background: "var(--surface)",
           border: "1px solid var(--border-2)",
           width: `min(${width}, 94vw)`,
-          boxShadow: "0 1px 0 rgba(255,255,255,.08) inset, 0 24px 60px -18px rgba(0,0,0,.75)",
+          boxShadow: "0 1px 0 var(--hair-2) inset, 0 24px 60px -18px var(--scrim-4)",
         }}>
 
         <div className="nx-modal-head flex justify-between items-center px-5 py-4"

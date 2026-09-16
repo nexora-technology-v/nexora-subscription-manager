@@ -106,7 +106,7 @@ export function BotStatsSection({ password }) {
                   </span>
                 </div>
                 <div className="h-[9px] rounded-full overflow-hidden"
-                  style={{ background: "rgba(255,255,255,.05)" }}>
+                  style={{ background: "var(--hair-2)" }}>
                   <div style={{
                     width: `${Math.max(s.pct, 1)}%`, height: "100%",
                     borderRadius: 99,

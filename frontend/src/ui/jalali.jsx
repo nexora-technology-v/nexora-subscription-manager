@@ -251,7 +251,7 @@ export function JalaliDate({ value, onChange, placeholder = "انتخاب تار
           zIndex: 3000, width: 280,
           maxHeight: Math.max(220, pos.maxHeight),
           overflowY: "auto",
-          boxShadow: "0 18px 44px -14px rgba(0,0,0,.7)",
+          boxShadow: "0 18px 44px -14px var(--scrim-3)",
         }}>
           <div className="flex items-center justify-between mb-2">
             <button type="button" onClick={() => step(-1)}

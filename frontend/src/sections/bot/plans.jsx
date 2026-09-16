@@ -98,7 +98,7 @@ export function BotPlansSection({ password }) {
         <div key={i} className="fx-card p-5 mb-3">
           <div className="flex items-center justify-between gap-2 mb-4">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="fx-ico" style={{ background: p.is_trial ? "rgba(52,211,153,.12)" : "rgba(43,127,214,.12)" }}>
+              <div className="fx-ico" style={{ background: p.is_trial ? "var(--ok-soft)" : "var(--accent-soft)" }}>
                 {p.is_trial ? <Gift size={15} style={{ color: "var(--ok)" }} /> : <Package size={15} style={{ color: "var(--accent-2)" }} />}
               </div>
               <span className="text-[14px] font-semibold text-white truncate">{p.name || "بدون نام"}</span>

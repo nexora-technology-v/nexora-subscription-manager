@@ -228,7 +228,7 @@ export default function App() {
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-[18px] shrink-0"
               style={{ background: "linear-gradient(140deg,#8FC1EE,#2B7FD6 62%,#2DD4BF)",
-                       color: "#06090F", boxShadow: "0 6px 18px -6px rgba(43,127,214,.7)" }}>N</div>
+                       color: "#06090F", boxShadow: "0 6px 18px -6px var(--accent-edge)" }}>N</div>
             <div className="min-w-0 fx-hide-c">
               <div className="text-[16px] font-bold text-white leading-none">NEXORA</div>
               <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>پنل مدیریت</div>
@@ -258,7 +258,7 @@ export default function App() {
                     <span className="flex-1 text-right fx-lbl">{n.label}</span>
                     {n.badge && (
                       <span className="text-[11px] px-1.5 py-0.5 rounded-full shrink-0 fx-hide-c"
-                        style={{ background: "rgba(251,191,36,.15)", color: "var(--warn)" }}>
+                        style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>
                         {n.badge}
                       </span>
                     )}
@@ -309,7 +309,7 @@ export default function App() {
               <span className="text-[13px] flex-1 text-right fx-hide-m"
                 style={{ color: "var(--muted)" }}>جستجو یا فرمان…</span>
               <kbd className="text-[10px] px-1.5 py-0.5 rounded shrink-0 fx-hide-m"
-                style={{ background: "rgba(255,255,255,.07)", border: "1px solid var(--border-2)",
+                style={{ background: "var(--hair-2)", border: "1px solid var(--border-2)",
                          color: "var(--dim)", fontFamily: "var(--mono)" }} dir="ltr">Ctrl K</kbd>
             </button>
             <button className="fx-btn-g w-9 h-9 grid place-items-center shrink-0 fx-hide-m"

@@ -88,8 +88,8 @@ function syncTheme() {
   set("--muted", p.hint_color || p.subtitle_text_color);
   // مرزها در پوسته‌ی روشن باید تیره باشند، نه سفیدِ کم‌رنگ — وگرنه
   // روی زمینه‌ی روشن اصلاً دیده نمی‌شوند و کارت‌ها در هم می‌روند
-  set("--border", dark ? "rgba(255,255,255,.10)" : "rgba(0,0,0,.10)");
-  set("--border-2", dark ? "rgba(255,255,255,.16)" : "rgba(0,0,0,.16)");
+  set("--border", dark ? "var(--hair-3)" : "var(--scrim-1)");
+  set("--border-2", dark ? "var(--hair-3)" : "var(--scrim-1)");
 
   try {
     w.setHeaderColor?.(p.secondary_bg_color || p.bg_color);

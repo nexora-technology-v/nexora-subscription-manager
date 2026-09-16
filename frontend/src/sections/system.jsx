@@ -81,7 +81,7 @@ export function RollbackCard({ password }) {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-[14px] font-semibold text-white">نسخه {s.version}</span>
-                  {s.hasBot && <span className="fx-pill" style={{ background: "rgba(43,127,214,.12)", color: "var(--accent-2)" }}>شامل ربات</span>}
+                  {s.hasBot && <span className="fx-pill" style={{ background: "var(--accent-soft)", color: "var(--accent-2)" }}>شامل ربات</span>}
                 </div>
                 <div className="text-[12px] mt-1" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
                   {s.createdAt?.replace("T", " ").slice(0, 16)} · {s.sizeMb} MB
@@ -184,8 +184,8 @@ export function GithubCard({ password }) {
       {msg && (
         <div className="rounded-xl p-3 mb-3 flex items-start gap-2 text-[13px] leading-relaxed"
           style={{
-            background: msg.t === "err" ? "rgba(248,113,113,.1)" : "rgba(52,211,153,.1)",
-            border: `1px solid ${msg.t === "err" ? "rgba(248,113,113,.3)" : "rgba(52,211,153,.3)"}`,
+            background: msg.t === "err" ? "var(--danger-soft)" : "var(--ok-soft)",
+            border: `1px solid ${msg.t === "err" ? "var(--danger-line)" : "var(--ok-line)"}`,
             color: msg.t === "err" ? "var(--danger)" : "var(--ok)",
           }}>
           {msg.t === "err" ? <AlertTriangle size={14} className="shrink-0 mt-0.5" />
@@ -338,10 +338,10 @@ export function UpdateCard({ password }) {
 
   return (
     <>
-      <div className="fx-card p-5 mb-4" style={hasUpdate ? { borderColor: "rgba(52,211,153,.4)", boxShadow: "0 0 24px rgba(52,211,153,.08)" } : {}}>
+      <div className="fx-card p-5 mb-4" style={hasUpdate ? { borderColor: "var(--ok-edge)", boxShadow: "0 0 24px var(--ok-wash)" } : {}}>
         <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="fx-ico" style={{ background: hasUpdate ? "rgba(52,211,153,.12)" : "rgba(43,127,214,.12)" }}>
+            <div className="fx-ico" style={{ background: hasUpdate ? "var(--ok-soft)" : "var(--accent-soft)" }}>
               <RefreshCw size={16} className={checking ? "animate-spin" : ""}
                 style={{ color: hasUpdate ? "var(--ok)" : "var(--accent-2)" }} />
             </div>
@@ -358,7 +358,7 @@ export function UpdateCard({ password }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="fx-pill" style={{ background: "rgba(255,255,255,.05)", color: "var(--muted)" }}>
+            <span className="fx-pill" style={{ background: "var(--hair-2)", color: "var(--muted)" }}>
               نسخه فعلی: {info?.currentVersion || "?"}
             </span>
             {!updating && (
@@ -372,7 +372,7 @@ export function UpdateCard({ password }) {
         {/* در حال به‌روزرسانی */}
         {updating && (
           <div className="rounded-xl p-4"
-            style={{ background: "var(--surface-3)", border: `1px solid ${stuck ? "rgba(251,191,36,.35)" : "rgba(90,169,230,.3)"}` }}>
+            style={{ background: "var(--surface-3)", border: `1px solid ${stuck ? "var(--warn-line)" : "var(--accent-halo)"}` }}>
             <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
               <div className="flex items-center gap-2">
                 {stuck
@@ -390,7 +390,7 @@ export function UpdateCard({ password }) {
 
             {stuck && (
               <div className="rounded-xl p-3 mb-3 text-[13px] leading-relaxed"
-                style={{ background: "rgba(251,191,36,.08)", border: "1px solid rgba(251,191,36,.25)", color: "var(--dim)" }}>
+                style={{ background: "var(--warn-wash)", border: "1px solid var(--warn-fill)", color: "var(--dim)" }}>
                 لاگی دریافت نمی‌شود. معمولاً یعنی به‌روزرسانی تمام شده و سرویس ری‌استارت شده،
                 ولی گاهی هم یعنی چیزی خطا داده. یکی از گزینه‌های زیر را انتخاب کنید.
               </div>
@@ -431,7 +431,7 @@ export function UpdateCard({ password }) {
         {/* نسخه جدید موجود است */}
         {!updating && hasUpdate && (
           <>
-            <div className="rounded-xl p-4 mb-3" style={{ background: "rgba(52,211,153,.06)", border: "1px solid rgba(52,211,153,.25)" }}>
+            <div className="rounded-xl p-4 mb-3" style={{ background: "var(--ok-wash)", border: "1px solid var(--ok-fill)" }}>
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle2 size={14} style={{ color: "var(--ok)" }} />
                 <span className="text-[14px] font-semibold" style={{ color: "var(--ok)" }}>
@@ -459,7 +459,7 @@ export function UpdateCard({ password }) {
 
         {/* آخرین نسخه */}
         {!updating && !hasUpdate && info?.configured && !info?.error && (
-          <div className="rounded-xl p-4 flex items-center gap-2.5" style={{ background: "rgba(52,211,153,.06)", border: "1px solid rgba(52,211,153,.2)" }}>
+          <div className="rounded-xl p-4 flex items-center gap-2.5" style={{ background: "var(--ok-wash)", border: "1px solid var(--ok-fill)" }}>
             <CheckCircle2 size={15} style={{ color: "var(--ok)" }} />
             <span className="text-[13px]" style={{ color: "var(--dim)" }}>
               شما آخرین نسخه ({info.currentVersion}) را دارید
@@ -486,7 +486,7 @@ export function UpdateCard({ password }) {
 
         {/* خطای اتصال */}
         {!updating && info?.error && (
-          <div className="rounded-xl p-4" style={{ background: "rgba(251,191,36,.06)", border: "1px solid rgba(251,191,36,.25)" }}>
+          <div className="rounded-xl p-4" style={{ background: "var(--warn-wash)", border: "1px solid var(--warn-fill)" }}>
             <div className="flex items-start gap-2.5">
               <AlertTriangle size={15} className="shrink-0 mt-0.5" style={{ color: "var(--warn)" }} />
               <div>
@@ -503,9 +503,9 @@ export function UpdateCard({ password }) {
 
       {confirmOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 fx-fade"
-          style={{ background: "rgba(3,6,12,.78)", backdropFilter: "blur(6px)" }} onClick={() => setConfirmOpen(false)}>
+          style={{ background: "var(--veil)", backdropFilter: "blur(6px)" }} onClick={() => setConfirmOpen(false)}>
           <div className="w-full max-w-sm rounded-2xl p-5 fx-scale" onClick={(e) => e.stopPropagation()}
-            style={{ background: "var(--surface)", border: "1px solid rgba(90,169,230,.35)" }}>
+            style={{ background: "var(--surface)", border: "1px solid var(--accent-line)" }}>
             <div className="flex items-center gap-2 mb-2.5" style={{ color: "var(--accent-2)" }}>
               <Download size={18} />
               <span className="text-[16px] font-semibold">به‌روزرسانی به {info?.latestVersion}؟</span>
@@ -514,7 +514,7 @@ export function UpdateCard({ password }) {
               سرویس برای چند دقیقه ری‌استارت می‌شود. صفحه‌ی اشتراک مشتریان در این مدت
               با تنظیمات فعلی به کار خود ادامه می‌دهد.
             </p>
-            <div className="rounded-lg p-3 mb-4" style={{ background: "rgba(52,211,153,.07)", border: "1px solid rgba(52,211,153,.2)" }}>
+            <div className="rounded-lg p-3 mb-4" style={{ background: "var(--ok-wash)", border: "1px solid var(--ok-fill)" }}>
               <div className="text-[13px] leading-relaxed" style={{ color: "var(--dim)" }}>
                 قبل از شروع، یک بک‌آپ خودکار از تنظیمات گرفته می‌شود.
               </div>
@@ -563,7 +563,7 @@ export function SystemSection({ password }) {
       {/* وضعیت */}
       <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
         <div className="fx-card p-4">
-          <div className="fx-ico mb-3" style={{ background: "rgba(43,127,214,.12)" }}>
+          <div className="fx-ico mb-3" style={{ background: "var(--accent-soft)" }}>
             <Server size={16} style={{ color: "var(--accent-2)" }} />
           </div>
           <div className="text-[18px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>
@@ -573,7 +573,7 @@ export function SystemSection({ password }) {
         </div>
 
         <div className="fx-card p-4">
-          <div className="fx-ico mb-3" style={{ background: sys?.template?.exists ? "rgba(52,211,153,.12)" : "rgba(248,113,113,.12)" }}>
+          <div className="fx-ico mb-3" style={{ background: sys?.template?.exists ? "var(--ok-soft)" : "var(--danger-soft)" }}>
             <HardDrive size={16} style={{ color: sys?.template?.exists ? "var(--ok)" : "var(--danger)" }} />
           </div>
           <div className="text-[16px] font-bold" style={{ color: sys?.template?.exists ? "var(--ok)" : "var(--danger)" }}>
@@ -588,7 +588,7 @@ export function SystemSection({ password }) {
         </div>
 
         <div className="fx-card p-4">
-          <div className="fx-ico mb-3" style={{ background: "rgba(167,139,250,.12)" }}>
+          <div className="fx-ico mb-3" style={{ background: "var(--purple-soft)" }}>
             <Smartphone size={16} style={{ color: "var(--purple)" }} />
           </div>
           <div className="text-[18px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>
@@ -598,7 +598,7 @@ export function SystemSection({ password }) {
         </div>
 
         <div className="fx-card p-4">
-          <div className="fx-ico mb-3" style={{ background: "rgba(251,191,36,.12)" }}>
+          <div className="fx-ico mb-3" style={{ background: "var(--warn-soft)" }}>
             <Users size={16} style={{ color: "var(--warn)" }} />
           </div>
           <div className="text-[18px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>
@@ -643,7 +643,7 @@ export function SystemSection({ password }) {
       {/* به‌روزرسانی */}
       {sys?.build?.stale && (
         <div className="fx-card p-4 mb-4 flex items-start gap-3"
-          style={{ background: "rgba(251,191,36,.08)", borderColor: "rgba(251,191,36,.35)" }}>
+          style={{ background: "var(--warn-wash)", borderColor: "var(--warn-line)" }}>
           <AlertTriangle size={17} style={{ color: "var(--warn)", flexShrink: 0, marginTop: 2 }} />
           <div className="flex-1">
             <div className="text-[14px] font-semibold text-white mb-1">
@@ -721,7 +721,7 @@ export function LivePreview({ dirty, onSave, saving }) {
 
       {dirty && (
         <div className="mb-4">
-          <div className="rounded-2xl p-4 flex items-start gap-3 flex-wrap" style={{ background: "rgba(251,191,36,.07)", border: "1px solid rgba(251,191,36,.28)" }}>
+          <div className="rounded-2xl p-4 flex items-start gap-3 flex-wrap" style={{ background: "var(--warn-wash)", border: "1px solid var(--warn-line)" }}>
             <AlertTriangle size={16} className="shrink-0 mt-0.5" style={{ color: "var(--warn)" }} />
             <div className="flex-1 min-w-[200px]">
               <div className="text-[14px] font-semibold mb-1" style={{ color: "var(--warn)" }}>تغییرات ذخیره‌نشده دارید</div>

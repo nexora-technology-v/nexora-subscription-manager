@@ -131,7 +131,7 @@ export function FirewallEnable({ password, onChanged }) {
       {armedUntil && left > 0 && (
         <div className="fx-card p-5" style={{
           border: "1px solid var(--warn)",
-          background: "rgba(251,191,36,.06)",
+          background: "var(--warn-wash)",
         }}>
           <div className="flex items-center gap-2 mb-2"
             style={{ color: "var(--warn)" }}>
@@ -241,7 +241,7 @@ export function FirewallEnable({ password, onChanged }) {
           <div className="flex gap-2 flex-wrap">
             {pre.covered.map((b) => (
               <span key={`${b.port}${b.proto}`} className="fx-pill"
-                style={{ background: "rgba(52,211,153,.10)", color: "var(--ok)" }}>
+                style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
                 {b.port}/{b.proto}
               </span>
             ))}
