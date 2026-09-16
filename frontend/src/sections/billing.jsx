@@ -453,22 +453,19 @@ export function BillingClients({ password }) {
         } />
 
       {/* آمار */}
-      <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
-        {[["کل کانفیگ", s.total, "var(--accent-2)", Users],
-          ["تمدید شده", s.renewed, "var(--ok)", RefreshCw, `${s.renewalRate}٪ نرخ تمدید`],
-          ["بدون تمدید", s.notRenewed, "var(--warn)", Clock, "فقط دوره اول"],
-          ["مصرف کل", `${faNum(s.usedGB)}`, "#A78BFA", TrendingUp, "گیگابایت"]
-        ].map(([l, v, col, I, sub], i) => (
-          <div key={i} className="fx-card fx-card-i p-4">
-            <div className="fx-ico mb-3" style={{ background: `color-mix(in srgb, ${col} 12%, transparent)` }}>
-              <I size={15} style={{ color: col }} />
-            </div>
-            <div className="fx-stat-num text-[21px] font-extrabold text-white leading-none"
-              style={{ fontFamily: "var(--mono)" }}>{faNum(v)}</div>
-            <div className="text-[12px] mt-1.5" style={{ color: "var(--dim)" }}>{l}</div>
-            {sub && <div className="text-[11.5px] mt-1" style={{ color: "var(--muted)" }}>{sub}</div>}
-          </div>
-        ))}
+      <div className="fx-g4 grid grid-cols-4 gap-3">
+        <StatTile label="کل کانفیگ" icon={Users} tone="var(--accent-2)"
+          value={faNum(s.total)}
+          hint={s.noGroup > 0 ? `${faNum(s.noGroup)} تا بدون گروه` : "همه گروه دارند"} />
+        <StatTile label="تمدید شده" icon={RefreshCw} tone="var(--ok)"
+          value={faNum(s.renewed)} color="var(--ok)"
+          hint={`${faNum(s.renewalRate)}٪ نرخ تمدید`} />
+        <StatTile label="بدون تمدید" icon={Clock} tone="var(--warn)"
+          value={faNum(s.notRenewed)} color="var(--warn)"
+          hint={s.unpriced > 0 ? `${faNum(s.unpriced)} کانفیگ بدون نرخ` : "فقط دوره‌ی اول"} />
+        <StatTile label="مصرف کل" icon={TrendingUp} tone="var(--purple)"
+          value={faNum(s.usedGB)} unit="گیگ" color="var(--purple)"
+          hint={s.newLast30 > 0 ? `${faNum(s.newLast30)} کانفیگ تازه در ۳۰ روز` : ""} />
       </div>
 
       {/* وضعیت‌ها — کلیک برای فیلتر */}

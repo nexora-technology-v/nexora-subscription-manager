@@ -9,11 +9,11 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, Download, RefreshCw, ShieldCheck,
+  AlertTriangle, Download, Lock, RefreshCw, ShieldAlert, ShieldCheck,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum } from "../lib/format";
-import { ConfirmModal, EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, usePager } from "../ui/index";
+import { ConfirmModal, EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatTile, usePager } from "../ui/index";
 import { MetricCard } from "./monitoring";
 
 export function FirewallIntrusion({ password }) {
@@ -144,6 +144,11 @@ export function FirewallIntrusion({ password }) {
     ["noise", "نویز", noise.length, "var(--muted)"],
   ];
 
+  // از همان داده‌ای که در دست است
+  const atk = (ssh.attempts || []);
+  const serious = atk.filter((a) => (Number(a.tries) || 0) > 10);
+  const alreadyBlocked = atk.filter((a) => a.blocked);
+
   return (
     <div className="fx-anim">
       <SectionHead title="تلاش برای نفوذ"
@@ -166,6 +171,26 @@ export function FirewallIntrusion({ password }) {
         )} />
 
       <Msg msg={msg} />
+
+      {/* در یک نگاه: چند آدرس در زده، چندتایشان جدی‌اند، و چندتا
+          از قبل بسته شده‌اند. پیش از این باید فهرست خوانده می‌شد. */}
+      {(ssh.attempts || []).length > 0 && (
+        <div className="fx-g3 grid grid-cols-3 gap-3">
+          <StatTile label="آدرس‌های مهاجم" icon={AlertTriangle} tone="var(--warn)"
+            value={faNum(atk.length)}
+            hint={`در ${faNum(hours)} ساعت گذشته`} />
+          <StatTile label="جدی" icon={ShieldAlert}
+            tone={serious.length ? "var(--danger)" : "var(--ok)"}
+            value={faNum(serious.length)}
+            color={serious.length ? "var(--danger)" : "var(--ok)"}
+            hint={serious.length ? "بیش از ۱۰ بار تلاش کرده‌اند" : "هیچ‌کدام پیگیر نبوده‌اند"} />
+          <StatTile label="از قبل بسته" icon={Lock} tone="var(--accent-2)"
+            value={faNum(alreadyBlocked.length)}
+            hint={atk.length - alreadyBlocked.length > 0
+                  ? `${faNum(atk.length - alreadyBlocked.length)} آدرس هنوز باز است`
+                  : "همه بسته شده‌اند"} />
+        </div>
+      )}
 
       {(ssh.attempts || []).length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">

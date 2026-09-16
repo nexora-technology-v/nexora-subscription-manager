@@ -124,11 +124,13 @@
     }),
   };
 
-  var INTRUSION = { ready: true, hours: 24, attempts: mk(8, function (i) {
+  var _ATT = mk(8, function (i) {
     return { ip: "203.0.113." + (10 + i), tries: 40 - i * 4,
              last: "2026-09-16 0" + (i % 9) + ":10", user: "root",
              known: i === 2, blocked: i < 2 };
-  }), blocked: 2, total: 184 };
+  });
+  var INTRUSION = { ready: true, hours: 24, ssh: { attempts: _ATT, total: 184 },
+                    attempts: _ATT, blocked: 2, total: 184 };
 
   var AFFILIATES = {
     ready: true, totalOwed: 3400000, totalPaid: 12600000, resellerOwed: 900000,

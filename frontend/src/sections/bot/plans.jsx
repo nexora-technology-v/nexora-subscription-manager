@@ -6,11 +6,11 @@
  */
 import React, { useState, useEffect } from "react";
 import {
-  Gift, Loader2, Package, Plus as PlusIcon, Save, Trash2,
+  Gift, Loader2, Package, Plus as PlusIcon, Save, Trash2, TrendingUp, Wallet,
 } from "lucide-react";
-import { errText } from "../../lib/format";
+import { errText, faNum } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { Field, Msg, NumberInput, PageSkeleton, SectionHead, Toggle } from "../../ui/index";
+import { Field, Msg, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../../ui/index";
 
 export function BotPlansSection({ password }) {
   const [plans, setPlans] = useState([]);
@@ -27,6 +27,13 @@ export function BotPlansSection({ password }) {
   };
   useEffect(() => { load(); }, [password]);
   useEffect(() => { if (msg) { const x = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(x); } }, [msg]);
+
+  // از همان فهرستی که در دست است
+  const paid = plans.filter((p) => !p.is_trial && Number(p.price) > 0);
+  const activeCount = plans.filter((p) => p.is_active).length;
+  const trialCount = plans.filter((p) => p.is_trial).length;
+  const minPrice = paid.length ? Math.min(...paid.map((p) => Number(p.price) || 0)) : 0;
+  const maxPrice = paid.length ? Math.max(...paid.map((p) => Number(p.price) || 0)) : 0;
 
   const up = (i, patch) => { const l = [...plans]; l[i] = { ...l[i], ...patch }; setPlans(l); };
   const add = () => setPlans([...plans, { name: "پلن جدید", gb: 30, days: 30, ip_limit: 1, price: 150000, is_active: true }]);
@@ -62,6 +69,25 @@ export function BotPlansSection({ password }) {
         } />
 
       <Msg msg={msg} />
+
+      {/* خلاصه‌ی همین فهرست — بدون درخواست تازه.
+          «چند پلن فعال است» و «ارزان‌ترین و گران‌ترین کدام‌اند»
+          سؤال‌هایی بودند که باید با شمردنِ کارت‌ها جواب می‌گرفتند. */}
+      {plans.length > 0 && (
+        <div className="fx-g3 grid grid-cols-3 gap-3">
+          <StatTile label="پلن فعال" icon={Package} tone="var(--accent-2)"
+            value={faNum(activeCount)}
+            hint={plans.length - activeCount > 0
+                  ? `${faNum(plans.length - activeCount)} پلن خاموش`
+                  : "همه‌ی پلن‌ها روشن‌اند"} />
+          <StatTile label="ارزان‌ترین" icon={Wallet} tone="var(--ok)"
+            value={faNum(minPrice)} unit="تومان" color="var(--ok)"
+            hint={trialCount ? `${faNum(trialCount)} پلن تست رایگان` : "بدون پلن تست"} />
+          <StatTile label="گران‌ترین" icon={TrendingUp} tone="var(--purple)"
+            value={faNum(maxPrice)} unit="تومان" color="var(--purple)"
+            hint="سقف فروش شما" />
+        </div>
+      )}
 
       {plans.length === 0 && (
         <div className="fx-card p-10 text-center" style={{ borderStyle: "dashed" }}>

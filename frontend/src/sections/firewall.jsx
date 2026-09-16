@@ -881,12 +881,33 @@ export function FirewallBlocked({ password }) {
   const viaHole = rows.filter((r) => r.via === "blackhole");
   const viaUfw = rows.filter((r) => r.via === "ufw");
 
+  // از همان فهرستی که در دست است
+  const blockedList = (d && d.blocked) || [];
+  const blackholeCount = blockedList.filter((b) =>
+    /blackhole|kernel|route/i.test(b.via || b.source || "")).length;
+
   return (
     <div className="fx-anim">
       <SectionHead title="آی‌پی‌های بسته‌شده"
         desc="آدرس‌هایی که از سرور کنار گذاشته شده‌اند — از هر دو راه." />
 
       <Msg msg={msg} />
+
+      {/* چند آدرس بسته شده و از کدام راه — پیش از این باید فهرست
+          شمرده می‌شد */}
+      <div className="fx-g3 grid grid-cols-3 gap-3">
+        <StatTile label="بسته‌شده" icon={XCircle}
+          tone={blockedList.length ? "var(--danger)" : "var(--muted)"}
+          value={faNum(blockedList.length)}
+          color={blockedList.length ? "var(--danger)" : "var(--text)"}
+          hint={blockedList.length ? "این آدرس‌ها به سرور نمی‌رسند" : "هیچ آدرسی بسته نیست"} />
+        <StatTile label="با کرنل" icon={ShieldCheck} tone="var(--accent-2)"
+          value={faNum(blackholeCount)}
+          hint="بدون نیاز به روشن‌بودن فایروال" />
+        <StatTile label="با قاعده‌ی فایروال" icon={Lock} tone="var(--warn)"
+          value={faNum(blockedList.length - blackholeCount)}
+          hint="از فهرست قواعد" />
+      </div>
 
       <div className="fx-card p-5">
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
