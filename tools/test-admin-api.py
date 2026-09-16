@@ -2337,9 +2337,117 @@ for _must in ("🛒 خرید اشتراک", "📊 اشتراک‌های من", "
     check("دکمه‌ی «%s» هنوز در منوی ربات هست" % _must.split(" ", 1)[-1],
           _must in _menu, "مینی‌اپ اضافه است، نه جایگزین")
 
-check("دکمه‌ی مینی‌اپ فقط با https ساخته می‌شود",
-      'app_url.lower().startswith("https://")' in _H,
+# آدرس مینی‌اپ باید خودش پیدا شود، نه اینکه منتظر بماند کسی پرش کند.
+#
+# تنظیمی که باید آدم انجامش بدهد، انجام نمی‌شود — و آن‌وقت قابلیتی
+# داریم که ساخته شده و هیچ‌کس نمی‌بیندش. همان چیزی که سر پنل
+# نمایندگی افتاد و سر اینباند پیش‌فرض.
+#
+# راهش این است: اولین باری که مدیر پنل را روی https باز می‌کند،
+# بک‌اند دامنه‌ی خودش را از هدر Host می‌بیند و آدرس را ثبت می‌کند.
+
+
+class _Req:
+    def __init__(self, **h):
+        self.headers = h
+
+
+def _stored_mini():
+    _c = _sq3.connect(str(AP.BOT_DB))
+    _c.row_factory = _sq3.Row
+    _r = _c.execute("SELECT settings FROM tenants WHERE parent_id IS NULL "
+                    "ORDER BY id LIMIT 1").fetchone()
+    _c.close()
+    try:
+        return json.loads(_r["settings"] or "{}").get("miniapp_url") or ""
+    except Exception:
+        return ""
+
+
+def _clear_mini():
+    _c = _sq3.connect(str(AP.BOT_DB))
+    _c.row_factory = _sq3.Row
+    _r = _c.execute("SELECT id, settings FROM tenants WHERE parent_id IS NULL "
+                    "ORDER BY id LIMIT 1").fetchone()
+    _st = json.loads(_r["settings"] or "{}")
+    _st.pop("miniapp_url", None)
+    _c.execute("UPDATE tenants SET settings=? WHERE id=?",
+               (json.dumps(_st, ensure_ascii=False), _r["id"]))
+    _c.commit()
+    _c.close()
+
+
+_clear_mini()
+AP._learn_panel_origin(_Req(host="panel.example.com",
+                            **{"x-forwarded-proto": "https"}))
+check("بازکردن پنل، آدرس مینی‌اپ را خودش ثبت می‌کند",
+      _stored_mini() == "https://panel.example.com/app",
+      _stored_mini() or "(هیچ) — قابلیتی که کسی نمی‌بیندش")
+
+_clear_mini()
+AP._learn_panel_origin(_Req(host="panel.example.com:8443",
+                            **{"x-forwarded-proto": "https"}))
+check("پورت هم نگه داشته می‌شود",
+      _stored_mini() == "https://panel.example.com:8443/app", _stored_mini())
+
+# هدر Host را فرستنده تعیین می‌کند. اگر بی‌شرط ثبتش کنیم، کسی
+# می‌تواند مینی‌اپِ مشتری‌ها را به صفحه‌ی خودش ببرد.
+for _h, _why in ((("http"), "بدون https"), ((""), "بدون هدر proto")):
+    _clear_mini()
+    AP._learn_panel_origin(_Req(host="panel.example.com",
+                                **({"x-forwarded-proto": _h} if _h else {})))
+    check("%s چیزی ثبت نمی‌کند" % _why, _stored_mini() == "",
+          "تلگرام هم http را رد می‌کند؛ ثبتش فقط مقدار مرده می‌سازد")
+
+_clear_mini()
+AP._learn_panel_origin(_Req(host="evil.com/x?a=b",
+                            **{"x-forwarded-proto": "https"}))
+check("هاستِ آلوده ثبت نمی‌شود", _stored_mini() == "",
+      "وگرنه مینی‌اپِ مشتری به صفحه‌ی دیگری می‌رفت")
+
+_clear_mini()
+_c9 = _sq3.connect(str(AP.BOT_DB))
+_c9.row_factory = _sq3.Row
+_r9 = _c9.execute("SELECT id, settings FROM tenants WHERE parent_id IS NULL "
+                  "ORDER BY id LIMIT 1").fetchone()
+_s9 = json.loads(_r9["settings"] or "{}")
+_s9["miniapp_url"] = "https://my.own.example.com/app"
+_c9.execute("UPDATE tenants SET settings=? WHERE id=?",
+            (json.dumps(_s9, ensure_ascii=False), _r9["id"]))
+_c9.commit()
+_c9.close()
+AP._learn_panel_origin(_Req(host="panel.example.com",
+                            **{"x-forwarded-proto": "https"}))
+check("و انتخابِ خودِ مالک را بازنویسی نمی‌کند",
+      _stored_mini() == "https://my.own.example.com/app", _stored_mini())
+
+# و واقعاً از مسیر API صدا زده می‌شود.
+#
+# تست‌های بالا تابع را مستقیم صدا می‌زنند، پس اگر فراخوانی از خودِ
+# نقطه‌ی API برداشته شود همه‌شان سبز می‌مانند — شکستنِ عمدی همین را
+# نشان داد.
+_cfg_fn = _APSRC[_APSRC.find("def get_admin_config("):]
+_cfg_fn = _cfg_fn[:_cfg_fn.find(chr(10) + "@app", 10)]
+check("و بازکردن پنل واقعاً صدایش می‌زند",
+      "_learn_panel_origin(request)" in _cfg_fn,
+      "وگرنه آدرس هیچ‌وقت ثبت نمی‌شود و دکمه ظاهر نمی‌شود")
+
+import bot.handlers as _BH                               # noqa: E402
+check("ربات همان تنظیم را می‌خواند",
+      _BH.miniapp_url(type("C", (), {"s": {"miniapp_url": "https://a.ir/app"}})())
+      == "https://a.ir/app")
+check("و آدرس http را رد می‌کند",
+      _BH.miniapp_url(type("C", (), {"s": {"miniapp_url": "http://a.ir"}})()) == "",
       "تلگرام با http خودِ پیام را رد می‌کند، نه فقط دکمه را")
+
+_RUN = io.open(os.path.join(str(ROOT), "bot", "run.py"), encoding="utf-8").read()
+check("ربات خودش دکمه‌ی کنار کادر تایپ را تنظیم می‌کند",
+      _re.search(r'setChatMenuButton"[^)]*"type":\s*"web_app"', _RUN, _re.S)
+      is not None and "_sync_menu_button" in _RUN,
+      "وگرنه مالک باید دستی به BotFather برود")
+check("و وقتی آدرسی نیست، دکمه‌ی قبلی را برمی‌دارد",
+      '"type": "commands"' in _RUN,
+      "وگرنه به صفحه‌ای اشاره می‌کند که دیگر بالا نمی‌آید")
 
 _TG = io.open(os.path.join(str(ROOT), "bot", "tg.py"), encoding="utf-8").read()
 check("و کیبورد هم آدرس نامعتبر را حذف می‌کند نه می‌فرستد",

@@ -113,6 +113,41 @@ def chat_id_of(update):
 #  حلقه‌ی هر مستاجر
 # ═══════════════════════════════════════════════════════════
 
+def _sync_menu_button(tenant, tg, name):
+    """
+    دکمه‌ی کنار کادر تایپ را خودِ ربات تنظیم می‌کند.
+
+    چرا این‌جا و نه با دست در BotFather: تنظیمی که باید آدم انجامش
+    بدهد، انجام نمی‌شود — و آن‌وقت قابلیتی داریم که ساخته شده و هیچ‌کس
+    نمی‌بیندش. همان چیزی که سر پنل نمایندگی افتاد.
+
+    هر بار که نخِ مستاجر بالا می‌آید یک‌بار صدا زده می‌شود، نه در هر
+    دور حلقه. اگر آدرس عوض شود، ریستارتِ بعدی جاش می‌اندازد.
+
+    شکستش نباید ربات را متوقف کند: دکمه‌ی منو راحتی است، نه شرطِ کار
+    کردن. همه‌ی کارها از منوی درون‌پیام هم در دسترس‌اند.
+    """
+    try:
+        url = handlers.miniapp_url(handlers.Ctx(tg, tenant))
+    except Exception:
+        log.debug("%s: ساختن آدرس مینی‌اپ ناموفق", name, exc_info=True)
+        return
+
+    try:
+        if url:
+            tg.call("setChatMenuButton", menu_button={
+                "type": "web_app", "text": "اپلیکیشن",
+                "web_app": {"url": url},
+            })
+            log.info("%s: دکمه‌ی مینی‌اپ روی %s تنظیم شد", name, url)
+        else:
+            # آدرسی نیست — دکمه‌ی قبلی باید برداشته شود، وگرنه به
+            # صفحه‌ای اشاره می‌کند که دیگر بالا نمی‌آید
+            tg.call("setChatMenuButton", menu_button={"type": "commands"})
+    except Exception as e:
+        log.warning("%s: تنظیم دکمه‌ی مینی‌اپ ناموفق: %s", name, str(e)[:120])
+
+
 def tenant_loop(tenant_id: int):
     """
     حلقه‌ی polling یک مستاجر.
@@ -163,6 +198,7 @@ def tenant_loop(tenant_id: int):
             # اضافه می‌کرد.
             if tg is None or tg.token != tenant["bot_token"]:
                 tg = Bot(tenant["bot_token"])
+                _sync_menu_button(tenant, tg, name)
 
             updates = tg.updates(offset=offset, timeout=25)
             backoff = 1

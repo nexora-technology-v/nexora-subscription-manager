@@ -641,9 +641,62 @@ def login(payload: dict):
     return {"ok": True}
 
 
+def _learn_panel_origin(request):
+    """
+    دامنه‌ی خودِ پنل را یک‌بار یاد می‌گیرد و آدرس مینی‌اپ را می‌سازد.
+
+    چرا این‌جا: مینی‌اپ از همان `frontend/dist` سرو می‌شود که پنل، و
+    nginx هم `try_files` دارد — پس `https://<دامنه‌ی پنل>/app` بدون
+    هیچ تنظیم تازه‌ای بالا می‌آید. تنها چیزی که کم بود، خودِ دامنه
+    بود؛ و این‌جا در هدر Host نشسته است.
+
+    چرا از مسیر مدیر و نه مسیر عمومی: هدر Host را فرستنده تعیین
+    می‌کند. روی یک مسیر عمومی، هر کسی می‌توانست دامنه‌ی دلخواهش را
+    ثبت کند و مینی‌اپِ مشتری‌ها را به صفحه‌ی خودش ببرد. این مسیر رمز
+    مدیر می‌خواهد، پس فقط مرورگرِ خودِ مالک به این‌جا می‌رسد.
+
+    یک‌بار نوشته می‌شود و بعد دست نمی‌خورد — تا اگر مالک آدرس دیگری
+    گذاشت، بازکردنِ دوباره‌ی پنل رویش ننویسد.
+    """
+    try:
+        host = (request.headers.get("host") or "").split(",")[0].strip()
+        proto = (request.headers.get("x-forwarded-proto") or "").strip().lower()
+        if not host or proto != "https":
+            # بدون https آدرسی نمی‌سازیم: تلگرام خودش ردش می‌کند و
+            # ثبت‌کردنش فقط یک مقدارِ مرده به جا می‌گذارد
+            return
+        if any(c in host for c in " /\\?#"):
+            return
+
+        con = _bot_rw()
+        try:
+            row = con.execute(
+                "SELECT id, settings FROM tenants WHERE parent_id IS NULL "
+                "ORDER BY id LIMIT 1").fetchone()
+            if not row:
+                return
+            try:
+                st = json.loads(row["settings"] or "{}")
+            except (json.JSONDecodeError, TypeError):
+                st = {}
+            if str(st.get("miniapp_url") or "").strip():
+                return                      # مالک خودش گذاشته — دست نمی‌زنیم
+            st["miniapp_url"] = f"https://{host}/app"
+            con.execute("UPDATE tenants SET settings=? WHERE id=?",
+                        (json.dumps(st, ensure_ascii=False), row["id"]))
+            con.commit()
+            log.info("آدرس مینی‌اپ ثبت شد: %s", st["miniapp_url"])
+        finally:
+            con.close()
+    except Exception:
+        # یادگرفتنِ دامنه راحتی است، نه شرطِ بازشدنِ پنل
+        log.debug("ثبت خودکار آدرس مینی‌اپ ناموفق", exc_info=True)
+
+
 @app.get("/api/admin/config")
-def get_admin_config(x_admin_password: str = Header(...)):
+def get_admin_config(request: Request, x_admin_password: str = Header(...)):
     check_auth(x_admin_password)
+    _learn_panel_origin(request)
     return load_config()
 
 
