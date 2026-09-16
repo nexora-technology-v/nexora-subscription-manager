@@ -17,6 +17,19 @@
     localStorage.setItem("nexora_workspace", "sub");
   } catch (e) { /* بی‌صدا */ }
 
+  /* کدام اپ؟  harness.html?as=portal  یا  ?as=mini
+   *
+   * هر سه اپ از روی `location.pathname` انتخاب می‌شوند و سرورِ
+   * پیش‌نمایش فایلی روی `/r/<نشانی>` ندارد. پس مسیر را همین‌جا —
+   * *پیش از* اجرای باندل — عوض می‌کنیم. `main.jsx` بعد از این
+   * اسکریپت اجرا می‌شود و همان مسیرِ تازه را می‌بیند.
+   */
+  try {
+    var as = new URLSearchParams(location.search).get("as");
+    if (as === "portal") history.replaceState({}, "", "/r/hossein");
+    else if (as === "mini") history.replaceState({}, "", "/app");
+  } catch (e) { /* بی‌صدا */ }
+
   var CONFIG = {
     brandName: "NEXORA",
     links: { channelUsername: "nexora_vpn", supportUsername: "nexora_sup" },
@@ -247,7 +260,88 @@
     }),
   };
 
+
+  /* ── پنل نماینده ──
+     مسیرش /r/<نشانی> است و توکنش از localStorage می‌آید، پس
+     همین‌جا یکی می‌گذاریم تا صفحه‌ی ورود رد شود و خودِ پنل
+     دیده شود. */
+  try { localStorage.setItem("nexora_portal_token", "harness-token"); } catch (e) { /* بی‌صدا */ }
+
+  var P_ME = { ok: true, id: 2, name: "حسین", slug: "hossein",
+               credit: 1200000, discount: 0, hasBot: true,
+               botUsername: "hossein_vpn_bot" };
+
+  var P_SUMMARY = { group: "goroh-a", label: "حسین", configs: 96, months: 104,
+                    renewals: 19, usedGB: 812.4, due: 12400000, paid: 9000000,
+                    balance: 3400000, credit: 1200000, prepaid: true };
+
+  var P_CONFIGS = { total: 14, configs: mk(14, function (i) {
+    var used = [12, 47, 2, 31, 8, 44, 19, 3, 27, 36, 15, 40, 6, 22][i];
+    var gb = [50, 50, 100, 50, 30, 50, 100, 50, 30, 50, 100, 50, 30, 50][i];
+    return { email: "nexora_" + (8800 + i * 7) + "_1", gb: gb,
+             gbLabel: gb + " گیگ", used: used * 1024 * 1024 * 1024, usedGB: used,
+             usagePct: Math.round(used * 100 / gb), devices: 1 + (i % 3),
+             createdJalali: "۱۴۰۴/۰۵/" + (10 + (i % 18)),
+             createdGregorian: "2026-08-" + (10 + (i % 18)),
+             expiryJalali: "۱۴۰۴/۰۷/" + (5 + (i % 20)),
+             expiryGregorian: "2026-10-" + (5 + (i % 20)),
+             daysLeft: [26, 3, 30, 12, 19, 44, -2, 8, 30, 1, 22, 15, 9, 33][i],
+             active: i !== 6, subId: "sub" + i,
+             subUrl: "https://sub.example.com/sub" + i, group: "goroh-a" };
+  }) };
+
+  var P_STATS = { total: 96, active: 84, inactive: 12, expired: 5,
+                  expiringSoon: 7, neverExpires: 2, nearQuota: 6, overQuota: 2,
+                  unlimitedQuota: 3, usedGB: 812.4, quotaGB: 4200, usagePct: 19.3,
+                  thisMonth: { new: 11, renewals: 19 },
+                  needsAttention: 14,
+                  sales: { orders: 23, revenue: 5600000, pending: 2 } };
+
+  var P_PLANS = { credit: 1200000, prepaid: true, perGb: 0,
+                  plans: [{ gb: 30, label: "۳۰ گیگ", price: 70000, perDevice: 15000 },
+                          { gb: 50, label: "۵۰ گیگ", price: 100000, perDevice: 20000 },
+                          { gb: 100, label: "۱۰۰ گیگ", price: 180000, perDevice: 30000 },
+                          { gb: 200, label: "۲۰۰ گیگ", price: 320000, perDevice: 40000 }] };
+
+  var P_ORDERS = { orders: mk(6, function (i) {
+    return { id: 700 + i, name: NAMES[i % 7], tg_id: 9000 + i,
+             plan: ["یک‌ماهه", "سه‌ماهه"][i % 2],
+             amount: [120000, 280000][i % 2],
+             status: ["pending", "approved", "rejected"][i % 3],
+             created_at: "2026-09-0" + ((i % 9) + 1) };
+  }), total: 6, truncated: false };
+
+
+  /* ── مینی‌اپ مشتری ── */
+  var M_ME = { name: "مریم کاظمی", brand: "نکسورا", balance: 240000, coins: 36,
+               botUsername: "nexora_vpn_bot" };
+  var M_SUBS = { subs: mk(2, function (i) {
+    return { id: i + 1, plan: ["پلن یک‌ماهه", "پلن سه‌ماهه"][i],
+             gb: [50, 100][i], usedGB: [32, 8][i], usagePct: [64, 8][i],
+             active: true, expiryJalali: ["۱۴۰۴/۰۷/۱۲", "۱۴۰۴/۰۹/۰۳"][i],
+             daysLeft: [26, 78][i],
+             subUrl: "https://sub.example.com/s" + i };
+  }) };
+  var M_PLANS = { plans: mk(3, function (i) {
+    return { id: i + 1, name: ["یک‌ماهه", "سه‌ماهه", "شش‌ماهه"][i],
+             desc: ["مناسب شروع", "پرفروش‌ترین", "به‌صرفه‌ترین"][i],
+             gb: [50, 100, 200][i], days: [30, 90, 180][i],
+             devices: [1, 2, 3][i], price: [120000, 280000, 480000][i],
+             isTrial: false };
+  }) };
+
   function byPath(u) {
+    if (u.indexOf("/mini/me") >= 0) return M_ME;
+    if (u.indexOf("/mini/subs") >= 0) return M_SUBS;
+    if (u.indexOf("/mini/plans") >= 0) return M_PLANS;
+    if (u.indexOf("/portal/me") >= 0) return P_ME;
+    if (u.indexOf("/portal/summary") >= 0) return P_SUMMARY;
+    if (u.indexOf("/portal/configs") >= 0) return P_CONFIGS;
+    if (u.indexOf("/portal/stats") >= 0) return P_STATS;
+    if (u.indexOf("/portal/plans") >= 0) return P_PLANS;
+    if (u.indexOf("/portal/orders") >= 0) return P_ORDERS;
+    if (u.indexOf("/portal/bot-plans") >= 0) return { plans: [] };
+    if (u.indexOf("/portal/bot") >= 0) return { hasBot: true, username: "hossein_vpn_bot" };
     if (u.indexOf("/bot/inbounds") >= 0) return INBOUNDS;
     if (u.indexOf("/tenant/portal-list") >= 0) return PORTAL_LIST;
     if (u.indexOf("/billing/clients") >= 0) return CLIENTS;

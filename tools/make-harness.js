@@ -11,7 +11,16 @@
  *     cd frontend && NEXORA_SINGLE_BUNDLE=1 npx vite build
  *     node tools/make-harness.js
  *     cd frontend && npx vite preview --outDir dist-test --port 5180
- *     → http://localhost:5180/harness.html
+ *
+ * و بعد، هر سه اپ از همین یک آدرس:
+ *
+ *     http://localhost:5180/harness.html             پنل مدیر
+ *     http://localhost:5180/harness.html?as=portal   پنل نماینده
+ *     http://localhost:5180/harness.html?as=mini     مینی‌اپ مشتری
+ *
+ * چرا `?as=` و نه آدرس واقعی: هر سه اپ از `location.pathname`
+ * انتخاب می‌شوند و سرورِ پیش‌نمایش فایلی روی `/r/<نشانی>` ندارد.
+ * اسکریپتِ داده مسیر را *پیش از* اجرای باندل عوض می‌کند.
  */
 const fs = require("fs");
 const path = require("path");
