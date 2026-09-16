@@ -23,7 +23,8 @@ import { isoToJalaliLabel } from "../ui/jalali";
 // قاعده است و دو پیاده‌سازی از یک قاعده دیر یا زود از هم جدا
 // می‌شوند. این‌جا فقط همان چیزی گرفته می‌شود که ui/jalali هم هست —
 // ابزار عمومی، نه کدِ پنل مدیر.
-import { Avatar, NumberInput, StatTile, usePager } from "../ui/index";
+import { Avatar, EmptyState, NumberInput, SkeletonCards, SkeletonTable,
+         StatTile, usePager } from "../ui/index";
 import { NexoraMark } from "../lib/mark.jsx";
 
 const TOKEN_KEY = "nexora_portal_token";
@@ -789,9 +790,10 @@ function PlansBox({ token, onClose, onNote }) {
         )}
 
         {!rows ? (
-          <p className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
-            در حال بارگذاری…
-          </p>
+          <SkeletonCards n={3} />
+        ) : !rows.length ? (
+          <EmptyState icon={Package} text="هنوز پلنی تعریف نکرده‌اید"
+            hint="پلن همان چیزی است که مشتری در ربات شما می‌بیند — حجم، مدت و قیمت." />
         ) : (
           <>
             {rows.map((r, i) => (
@@ -963,13 +965,13 @@ function OrdersBox({ token, onClose, onNote }) {
         )}
 
         {!rows ? (
-          <p className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
-            در حال بارگذاری…
-          </p>
+          <SkeletonCards n={3} />
         ) : !rows.length ? (
-          <p className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
-            {tab === "open" ? "سفارشی در انتظار نیست" : "چیزی این‌جا نیست"}
-          </p>
+          <EmptyState icon={FileText}
+            text={tab === "open" ? "سفارشی در انتظار نیست" : "چیزی این‌جا نیست"}
+            hint={tab === "open"
+              ? "هر رسیدی که مشتری در ربات شما بفرستد، همین‌جا برای تایید می‌آید."
+              : "سفارش‌های بسته‌شده این‌جا بایگانی می‌شوند."} />
         ) : pageOrders.map((o) => (
           <div key={o.id} className="rounded-xl p-3.5 mb-2.5"
             style={{ background: "var(--surface-3)",
@@ -1551,6 +1553,10 @@ function Dashboard({ token, onOut }) {
           </div>
         )}
 
+        {/* تا رسیدنِ آمار، شکلِ همان کارت‌ها — نه فضای خالی که بعد
+            ناگهان پر شود و بقیه‌ی صفحه را هل بدهد */}
+        {!stats && busy && <SkeletonCards n={4} />}
+
         {stats && (
           <div className="fx-g4 grid grid-cols-4 gap-3 mb-3">
             <Stat icon={Users} label="کاربران فعال" value={faNum(stats.active)}
@@ -1667,14 +1673,20 @@ function Dashboard({ token, onOut }) {
           </div>
 
           {!list ? (
-            <p className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
-              {busy ? "در حال بارگذاری…" : "چیزی برای نمایش نیست"}
-            </p>
+            <SkeletonTable rows={6} cols={7} />
           ) : !rows.length ? (
-            <p className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
-              {q || filter !== "all"
-                ? "با این فیلتر چیزی پیدا نشد" : "هنوز کانفیگی ندارید"}
-            </p>
+            q || filter !== "all" ? (
+              <EmptyState icon={Search} text="با این فیلتر چیزی پیدا نشد"
+                hint="فیلتر را «همه» کنید یا بخشی از نام کاربر را بنویسید."
+                action={<button className="fx-btn-g px-4 py-2 text-[13px]"
+                  onClick={() => { setQ(""); setFilter("all"); }}>
+                  برداشتن فیلتر</button>} />
+            ) : (
+              <EmptyState icon={Users} text="هنوز کانفیگی ندارید"
+                hint="با «کانفیگ تازه» اولین مشتری‌تان را بسازید — نامش را خودتان انتخاب می‌کنید."
+                action={<button className="fx-btn px-4 py-2 text-[13px]"
+                  onClick={() => setMaking(true)}>کانفیگ تازه</button>} />
+            )
           ) : (
             <div style={{ overflowX: "auto" }}>
               <table className="fx-table fx-table-cards">
