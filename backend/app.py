@@ -9738,6 +9738,92 @@ def mini_plans(tu: tuple = Depends(mini_user)):
     } for r in rows]}
 
 
+def _mini_ctx(t):
+    """
+    زمینه‌ی ربات این مستاجر — برای خرید از داخل مینی‌اپ.
+
+    همان چیزی که `_portal_bot_ctx` برای نماینده می‌سازد. بدون توکن
+    ربات نمی‌شود کانفیگ ساخت و به مشتری داد.
+    """
+    h = _bot_handlers()
+    row = _tenant_row(t["id"]) or t
+    if not row.get("bot_token"):
+        raise HTTPException(status_code=409,
+                            detail="ربات این فروشگاه تنظیم نشده")
+    return h, h.Ctx(h.Bot(row["bot_token"]), row)
+
+
+@app.post("/api/mini/buy")
+def mini_buy(payload: dict, tu: tuple = Depends(mini_user)):
+    """
+    خرید اشتراک از داخل مینی‌اپ، با کیف پول.
+
+    **هیچ منطق پولی این‌جا نیست.** این تابع فقط ورودی را می‌سنجد و
+    `handlers.wallet_purchase` را صدا می‌زند — همان هسته‌ای که خرید
+    از داخل ربات هم از آن رد می‌شود.
+
+    چرا این‌قدر صریح: این مسیرِ چهارمِ پول در این مخزن است. سه مسیر
+    قبلی (کارت، کیف پول، تمدید خودکار) هر کدام یک‌بار یک قاعده را
+    فراموش کردند و سه بار جدا پیدا شدند — یکی `approved` را پیش از
+    ساخت کانفیگ می‌نوشت، یکی بعدش هیچ‌وقت نمی‌نوشت، و یکی پاداشِ
+    معرف را نمی‌داد. اگر این‌جا دوباره نوشته شود، چهارمی هم همان
+    راه را می‌رود.
+    """
+    t, u = tu
+    pid = (payload or {}).get("planId")
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="پلن انتخاب نشده")
+
+    # پلن باید مالِ همین مستاجر و فعال باشد. بدون این شرط، فرستادنِ
+    # شناسه‌ی پلنِ نماینده‌ی دیگر کافی است تا با قیمتِ او خرید شود.
+    con = _bot_conn()
+    if not con:
+        raise HTTPException(status_code=503, detail="دیتابیس ربات در دسترس نیست")
+    try:
+        pl = con.execute(
+            "SELECT id, name, price, is_trial FROM plans "
+            "WHERE id=? AND tenant_id=? AND is_active=1", (pid, t["id"])).fetchone()
+    finally:
+        con.close()
+    if not pl:
+        raise HTTPException(status_code=404, detail="این پلن دیگر در دسترس نیست")
+
+    # تستِ رایگان مسیر خودش را دارد (یک‌بار برای هر کاربر، با پرچمِ
+    # `trial_used`). از این‌جا که بیاید، آن قاعده دور زده می‌شود.
+    if pl["is_trial"]:
+        raise HTTPException(
+            status_code=409,
+            detail="تست رایگان از خودِ ربات گرفته می‌شود")
+
+    h, ctx = _mini_ctx(t)
+    try:
+        r = h.wallet_purchase(ctx, u, pid)
+    except Exception as e:
+        log.exception("خرید مینی‌اپ ناموفق")
+        raise HTTPException(status_code=502, detail=f"خرید ناموفق: {str(e)[:140]}")
+
+    if r.get("ok"):
+        return {"ok": True, "spent": int(r["spent"]), "left": int(r["left"]),
+                "plan": pl["name"]}
+
+    why = r.get("why")
+    if why == "low_balance":
+        raise HTTPException(
+            status_code=402,
+            detail=f"موجودی کافی نیست — {int(r['short']):,} تومان کم دارید")
+    if why == "race":
+        raise HTTPException(
+            status_code=409,
+            detail="موجودی همین حالا تغییر کرد — دوباره امتحان کنید")
+    if why == "provision":
+        raise HTTPException(
+            status_code=502,
+            detail="ساخت اشتراک نشد و مبلغ کامل به کیف پولتان برگشت")
+    raise HTTPException(status_code=404, detail="این پلن دیگر در دسترس نیست")
+
+
 @app.post("/api/admin/tenant/{tid}/credit")
 def tenant_credit(tid: int, payload: dict, x_admin_password: str = Header(...)):
     """

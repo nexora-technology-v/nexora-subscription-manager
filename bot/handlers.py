@@ -571,23 +571,39 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins,
                [("✖️ لغو سفارش", f"cancel:{order['id']}")]]))
 
 
-def wallet_pay(ctx, user, chat_id, message_id, plan_id,
-               renew_sub_id=None):
-    """پرداخت مستقیم از کیف پول — بدون نیاز به تایید ادمین."""
+def wallet_purchase(ctx, user, plan_id, renew_sub_id=None):
+    """
+    خریدِ اشتراک از کیف پول — بدونِ هیچ پوسته‌ی تلگرامی.
+
+    برمی‌گرداند یک دیکشنری با کلیدِ `ok`. وقتی `ok` است:
+        {"ok": True, "order": <ردیف سفارش>, "plan": <پلن>,
+         "user": <کاربرِ تازه>, "sub": <نتیجه‌ی provision>,
+         "spent": <مبلغ>, "left": <موجودی بعد>}
+    وقتی نیست:
+        {"ok": False, "why": "<کلید>", "plan":…, "short":…, "left":…,
+         "detail": "<متن خطای ساخت>"}
+
+    چرا جدا از `wallet_pay`:
+        مینی‌اپ هم باید دقیقاً همین را انجام بدهد. اگر آن‌جا دوباره
+        نوشته شود، می‌شود مسیر چهارمِ پول در این مخزن — و سه مسیر
+        قبلی (کارت، کیف پول، تمدید خودکار) هر کدام یک‌بار یک قاعده
+        را فراموش کردند و سه بار جدا پیدا شدند: یکی `approved` را
+        پیش از ساخت می‌نوشت، یکی بعدش هیچ‌وقت نمی‌نوشت، و یکی پاداشِ
+        معرف را نمی‌داد.
+
+        پس این‌جا یک نسخه هست و هر دو مسیر صدایش می‌زنند. تستِ
+        `test_flow` با ast می‌سنجد که همین تابع هر دو پرداخت را
+        بدهد.
+    """
     p = ctx.db.get_plan(plan_id)
     if not p:
-        return _reply(ctx, chat_id, message_id,
-                      "این پلن دیگر در دسترس نیست.", back_kb("buy"))
+        return {"ok": False, "why": "no_plan"}
 
     fresh = ctx.db.get_user(user["tg_id"])
     if fresh["balance"] < p["price"]:
-        short = p["price"] - fresh["balance"]
-        return _reply(ctx, chat_id, message_id,
-                      "موجودی کیف پولتان برای این پلن کافی نیست.\n\n"
-                      f"موجودی: <b>{core.toman(fresh['balance'])}</b> تومان\n"
-                      f"کسری: <b>{core.toman(short)}</b> تومان\n\n"
-                      "می‌توانید کیف پول را شارژ کنید یا کارت‌به‌کارت بپردازید.",
-                      back_kb("buy"))
+        return {"ok": False, "why": "low_balance", "plan": p,
+                "short": p["price"] - fresh["balance"],
+                "left": fresh["balance"]}
 
     # کسر اول، سفارش بعد. اگر ترتیب برعکس باشد و کسر نگیرد، یک
     # سفارش بی‌پرداخت می‌ماند که هیچ‌کس بعداً نمی‌فهمد چه بوده.
@@ -600,76 +616,91 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
     if not paid:
         # بین خواندن موجودی و این لحظه، پول جای دیگری خرج شده —
         # مثلاً تمدید خودکار همین کاربر که در نخ دیگری می‌دود.
-        # این شاخه هرگز اجرا نشده بود: ستون reject_reason در جدول
-        # سفارش‌ها وجود ندارد، پس این دستور خطا می‌داد نه اینکه
-        # مسابقه را مدیریت کند. پنل برای همین کار admin_note دارد.
         ctx.db.close_order(order["id"], "rejected", "موجودی کیف پول کافی نبود")
+        return {"ok": False, "why": "race", "plan": p, "left": left}
+
+    ok, result = provision(ctx, order["id"])
+    if not ok:
+        # بستن و برگرداندن پول، با هم و یک بار.
+        ctx.db.close_order(order["id"], "rejected", "خطا در ساخت کانفیگ")
+        return {"ok": False, "why": "provision", "plan": p,
+                "detail": str(result)}
+
+    # حالا که کانفیگ ساخته شد، این یک فروشِ تمام‌شده است.
+    #
+    # بدون این خط سفارش pending می‌ماند و جاروکشِ سفارش‌های منقضی
+    # نیم‌ساعت بعد «منقضی»‌اش می‌کرد — فروشی که انجام شده و در هیچ
+    # آماری نیست.
+    ctx.db.close_order(order["id"], "approved")
+
+    # فروش با کیف پول هم فروش است — همکار باید سهمش را بگیرد
+    _pay_commission(ctx, fresh, order["id"], p["price"])
+
+    # و پاداش معرف هم همین‌طور. ربات گفته «هر دوستی که با لینک شما
+    # بیاید و خرید کند، N سکه به شما می‌رسد» — حرفی از روشِ پرداخت
+    # نیست. این پاداش زمانی فقط از مسیر کارت می‌آمد.
+    _reward_referrer(ctx, fresh, order["id"])
+
+    # گروه مدیریت باید این فروش را ببیند. هر رویدادِ پولیِ دیگر خودش
+    # را اعلام می‌کند؛ فقط خریدِ کیف‌پولی بی‌صدا بود.
+    ctx.notify_group(
+        f"👛 <b>خرید با کیف پول</b>\n"
+        f"کاربر: {esc(fresh.get('first_name') or fresh['tg_id'])} "
+        f"(<code>{fresh['tg_id']}</code>)\n"
+        f"پلن: {esc(p['name'])}"
+        + ("\nنوع: تمدید" if renew_sub_id else "")
+        + f"\nمبلغ: {core.toman(p['price'])} تومان")
+
+    return {"ok": True, "order": order, "plan": p, "user": fresh,
+            "sub": result, "spent": p["price"], "left": left}
+
+
+def wallet_pay(ctx, user, chat_id, message_id, plan_id,
+               renew_sub_id=None):
+    """
+    پرداخت مستقیم از کیف پول — پوسته‌ی تلگرامیِ `wallet_purchase`.
+
+    این‌جا فقط پیام ساخته می‌شود؛ هیچ پولی این‌جا جابه‌جا نمی‌شود.
+    """
+    r = wallet_purchase(ctx, user, plan_id, renew_sub_id=renew_sub_id)
+
+    if r["ok"]:
+        _reply(ctx, chat_id, message_id,
+               f"✅ <b>{core.toman(r['spent'])}</b> تومان از کیف پولتان کم شد.\n\n"
+               "اشتراک آماده است — همین پایین برایتان فرستادیم.", None)
+        return deliver(ctx, r["user"], r["sub"])
+
+    why = r["why"]
+    if why == "no_plan":
+        return _reply(ctx, chat_id, message_id,
+                      "این پلن دیگر در دسترس نیست.", back_kb("buy"))
+
+    if why == "low_balance":
+        return _reply(ctx, chat_id, message_id,
+                      "موجودی کیف پولتان برای این پلن کافی نیست.\n\n"
+                      f"موجودی: <b>{core.toman(r['left'])}</b> تومان\n"
+                      f"کسری: <b>{core.toman(r['short'])}</b> تومان\n\n"
+                      "می‌توانید کیف پول را شارژ کنید یا کارت‌به‌کارت بپردازید.",
+                      back_kb("buy"))
+
+    if why == "race":
         return _reply(ctx, chat_id, message_id,
                       "موجودی کیف پولتان کافی نیست.\n\n"
-                      f"موجودی: <b>{core.toman(left)}</b> تومان\n"
-                      f"لازم: <b>{core.toman(p['price'])}</b> تومان\n\n"
+                      f"موجودی: <b>{core.toman(r['left'])}</b> تومان\n"
+                      f"لازم: <b>{core.toman(r['plan']['price'])}</b> تومان\n\n"
                       "<blockquote>اگر همین الان خرید دیگری انجام داده‌اید یا "
                       "تمدید خودکارتان اجرا شده، ممکن است موجودی تغییر کرده "
                       "باشد.</blockquote>",
                       back_kb("buy"))
 
-    ok, result = provision(ctx, order["id"])
-    if ok:
-        # حالا که کانفیگ ساخته شد، این یک فروشِ تمام‌شده است.
-        #
-        # بدون این خط سفارش pending می‌ماند و جاروکشِ سفارش‌های
-        # منقضی نیم‌ساعت بعد «منقضی»‌اش می‌کرد — فروشی که انجام شده
-        # و در هیچ آماری نیست. همان قاعده‌ی مسیر کارت: تا کانفیگ
-        # نباشد approved نه، و به‌محض اینکه بود، approved.
-        ctx.db.close_order(order["id"], "approved")
+    return _reply(ctx, chat_id, message_id,
+                  "ساخت اشتراک به مشکل خورد و <b>مبلغ کامل به کیف پولتان برگشت</b>.\n\n"
+                  f"<i>{esc(r.get('detail') or '')}</i>\n\n"
+                  "<blockquote>چند دقیقه دیگر دوباره امتحان کنید — اگر باز هم "
+                  "نشد، پشتیبانی همین را می‌بیند و پیگیری می‌کند."
+                  "</blockquote>",
+                  back_kb())
 
-        # فروش با کیف پول هم فروش است — همکار باید سهمش را بگیرد
-        _pay_commission(ctx, fresh, order["id"], p["price"])
-
-        # و پاداش معرف هم همین‌طور.
-        #
-        # ربات به کاربر گفته «هر دوستی که با لینک شما بیاید و خرید
-        # کند، N سکه به شما می‌رسد» — حرفی از روشِ پرداخت نیست. ولی
-        # این پاداش فقط از مسیر تاییدِ کارت پرداخت می‌شد، پس دوستی
-        # که با کیف پول می‌خرید هیچ سکه‌ای به معرفش نمی‌رساند.
-        #
-        # پرداخت خودش یک‌بار برای هر دوست است و اتمی، پس صداکردنش از
-        # چند مسیر امن است.
-        _reward_referrer(ctx, fresh, order["id"])
-        _reply(ctx, chat_id, message_id,
-               f"✅ <b>{core.toman(p['price'])}</b> تومان از کیف پولتان کم شد.\n\n"
-               "اشتراک آماده است — همین پایین برایتان فرستادیم.", None)
-        deliver(ctx, fresh, result)
-
-        # گروه مدیریت باید این فروش را ببیند.
-        #
-        # هر رویدادِ پولیِ دیگر خودش را اعلام می‌کند: شارژ کیف پول،
-        # تمدید خودکار، و خریدِ کارتی که اصلاً با رسیدش به گروه
-        # می‌آید. فقط خریدِ کیف‌پولی بی‌صدا بود — و چون تاییدِ ادمین
-        # هم نمی‌خواهد، هیچ ردی در گروه نداشت. یعنی یک روشِ پرداختِ
-        # کامل که فروشش در لحظه دیده نمی‌شد.
-        ctx.notify_group(
-            f"👛 <b>خرید با کیف پول</b>\n"
-            f"کاربر: {esc(fresh.get('first_name') or fresh['tg_id'])} "
-            f"(<code>{fresh['tg_id']}</code>)\n"
-            f"پلن: {esc(p['name'])}"
-            + ("\nنوع: تمدید" if renew_sub_id else "")
-            + f"\nمبلغ: {core.toman(p['price'])} تومان")
-    else:
-        # بستن و برگرداندن پول، با هم و یک بار.
-        ctx.db.close_order(order["id"], "rejected", "خطا در ساخت کانفیگ")
-        _reply(ctx, chat_id, message_id,
-               "ساخت اشتراک به مشکل خورد و <b>مبلغ کامل به کیف پولتان برگشت</b>.\n\n"
-               f"<i>{esc(result)}</i>\n\n"
-               "<blockquote>چند دقیقه دیگر دوباره امتحان کنید — اگر باز هم "
-               "نشد، پشتیبانی همین را می‌بیند و پیگیری می‌کند."
-               "</blockquote>",
-               back_kb())
-
-
-# ═══════════════════════════════════════════════════════════
-#  دریافت رسید
-# ═══════════════════════════════════════════════════════════
 
 def handle_receipt(ctx, msg, user, state_data):
     order_id = state_data.get("order_id")

@@ -20,10 +20,11 @@
  * فرستاد و در هر اپِ موبایلی دیده‌ایم.
  */
 import React, { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
-  AlertTriangle, ArrowLeft, ChevronLeft, Copy, ExternalLink, Gift, Home,
-  Layers, Link2, Package, QrCode, RefreshCw, Shield, ShoppingBag,
-  ShoppingCart, Trash2, Wallet, Zap,
+  AlertTriangle, ArrowLeft, Check, ChevronLeft, Copy, ExternalLink, Gift,
+  Home, Layers, Link2, Loader2, Package, QrCode, RefreshCw, Shield,
+  ShoppingBag, ShoppingCart, Trash2, Wallet, Zap,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -98,10 +99,14 @@ function syncTheme() {
   return true;
 }
 
-async function api(path) {
+async function api(path, opt = {}) {
   const init = tg()?.initData || "";
+  const headers = { "X-Telegram-Init-Data": init };
+  if (opt.body) headers["Content-Type"] = "application/json";
   const res = await fetch(`${API_URL}${path}`, {
-    headers: { "X-Telegram-Init-Data": init },
+    method: opt.method || "GET",
+    headers,
+    body: opt.body ? JSON.stringify(opt.body) : undefined,
   });
   const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(errText(j.detail, "درخواست ناموفق بود"));
@@ -389,6 +394,91 @@ function BuyView({ plans, onBuy }) {
   );
 }
 
+/* ═══════════════ برگه‌ی پرداخت ═══════════════ */
+
+/**
+ * تاییدِ خرید، به شکلِ برگه‌ای که از پایین می‌آید.
+ *
+ * چرا برگه و نه صفحه‌ی تازه: خرید یک تصمیمِ کوتاه است و کاربر باید
+ * همان لحظه ببیند چقدر دارد و بعدش چقدر می‌ماند. رفتن به صفحه‌ی
+ * دیگر، این مقایسه را از جلوی چشمش برمی‌دارد.
+ */
+function PaySheet({ pay, me, onClose, onConfirm, onTopUp }) {
+  if (!pay) return null;
+  const p = pay.plan;
+  const bal = Number(me?.balance || 0);
+  const price = Number(p?.price || 0);
+  const after = bal - price;
+  const short = price - bal;
+  const busy = pay.state === "busy";
+
+  return createPortal(
+    <div className="mn-sheet-wrap" role="dialog" aria-modal="true">
+      <div className="mn-sheet-bg" onClick={busy ? undefined : onClose} />
+      <div className="mn-sheet">
+        <span className="mn-sheet-grip" aria-hidden="true" />
+
+        {pay.state === "done" ? (
+          <div className="mn-pay-done">
+            <span className="mn-pay-tick"><Check size={26} /></span>
+            <b>اشتراک ساخته شد</b>
+            <span>{p.gb === 0 ? "نامحدود" : `${faNum(p.gb)} گیگابایت`}
+              {" · "}{faNum(p.days)} روز</span>
+            <div className="mn-pay-left">
+              مانده‌ی کیف پول: <b>{faNum(pay.left ?? after)}</b> تومان
+            </div>
+            <button className="mn-pay-btn" onClick={onClose}>دیدن اشتراک‌ها</button>
+          </div>
+        ) : (
+          <>
+            <div className="mn-sheet-head">
+              <b>تایید خرید</b>
+              <span>{p.gb === 0 ? "نامحدود" : `${faNum(p.gb)} گیگابایت`}
+                {" / "}{faNum(p.days)} روز</span>
+            </div>
+
+            <div className="mn-pay-rows">
+              <div><span>مبلغ</span><b>{faNum(price)} تومان</b></div>
+              <div><span>موجودی کیف پول</span><b>{faNum(bal)} تومان</b></div>
+              <div className={after < 0 ? "bad" : "ok"}>
+                <span>{after < 0 ? "کسری" : "بعد از خرید"}</span>
+                <b>{faNum(Math.abs(after))} تومان</b>
+              </div>
+            </div>
+
+            {pay.state === "err" && (
+              <div className="mn-pay-err"><AlertTriangle size={14} />
+                <span>{pay.why}</span></div>
+            )}
+
+            {after < 0 ? (
+              <>
+                <div className="mn-pay-note">
+                  {faNum(short)} تومان کم دارید. شارژ کیف پول فعلاً در خودِ
+                  ربات انجام می‌شود.
+                </div>
+                <button className="mn-pay-btn" onClick={onTopUp}>
+                  <Wallet size={15} /> شارژ کیف پول
+                </button>
+              </>
+            ) : (
+              <button className="mn-pay-btn" onClick={onConfirm} disabled={busy}>
+                {busy ? <Loader2 size={15} className="animate-spin" />
+                      : <Wallet size={15} />}
+                {busy ? "در حال پرداخت…" : "پرداخت از کیف پول"}
+              </button>
+            )}
+
+            <button className="mn-pay-cancel" onClick={onClose} disabled={busy}>
+              انصراف
+            </button>
+          </>
+        )}
+      </div>
+    </div>,
+    document.body);
+}
+
 /* ═══════════════ اپ ═══════════════ */
 
 const TABS = [
@@ -405,6 +495,7 @@ export default function Mini() {
   const [detail, setDetail] = useState(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(true);
+  const [pay, setPay] = useState(null);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -444,23 +535,35 @@ export default function Mini() {
     return () => { try { b.offClick?.(back); } catch { /* بی‌صدا */ } };
   }, [detail]);
 
-  // خرید در خودِ ربات انجام می‌شود.
-  //
-  // مینی‌اپ فقط پلن را نشان می‌دهد و کاربر را به همان مسیری می‌برد
-  // که از قبل کار می‌کند. اگر خرید این‌جا پیاده می‌شد، قیمت و
-  // پورسانت و سکه در دو جا حساب می‌شدند — همان باگی که این مخزن
-  // بارها دیده.
-  const buy = (p) => {
+  // خرید همین‌جا انجام می‌شود، ولی هیچ محاسبه‌ای این‌جا نیست:
+  // `/api/mini/buy` مستقیم `handlers.wallet_purchase` را صدا می‌زند
+  // — همان هسته‌ای که خرید از داخل ربات هم از آن رد می‌شود. اگر
+  // این‌جا دوباره نوشته می‌شد، می‌شد مسیر چهارمِ پول در این مخزن.
+  const buy = (p) => { buzz("light"); setPay({ plan: p, state: "ask" }); };
+
+  const confirmPay = async () => {
+    if (!pay?.plan || pay.state === "busy") return;
+    setPay((x) => ({ ...x, state: "busy" }));
+    try {
+      const r = await api("/api/mini/buy", {
+        method: "POST", body: { planId: pay.plan.id },
+      });
+      buzz("ok");
+      setPay({ plan: pay.plan, state: "done", left: r.left });
+      // موجودی و فهرست اشتراک‌ها هر دو عوض شده‌اند
+      await load();
+    } catch (e) {
+      buzz("err");
+      setPay((x) => ({ ...x, state: "err", why: e.message }));
+    }
+  };
+
+  // شارژ کیف پول هنوز در ربات است — کارت‌به‌کارت و رسید آن‌جاست.
+  const topUp = () => {
     const w = tg();
     const u = me?.botUsername;
-    if (w && u) {
-      buzz("ok");
-      w.openTelegramLink(`https://t.me/${u}?start=plan_${p.id}`);
-      w.close();
-    } else {
-      buzz("err");
-      setErr("برای خرید به ربات برگردید و «خرید اشتراک» را بزنید");
-    }
+    if (w && u) { buzz("ok"); w.openTelegramLink(`https://t.me/${u}?start=wallet`); }
+    else setErr("برای شارژ کیف پول به ربات برگردید");
   };
 
   if (!tg()) {
@@ -552,6 +655,16 @@ export default function Mini() {
           </button>
         ))}
       </nav>
+
+      <PaySheet pay={pay} me={me}
+        onConfirm={confirmPay}
+        onTopUp={topUp}
+        onClose={() => {
+          // بعد از خریدِ موفق، جایی که کاربر می‌خواهد برود
+          // «اشتراک‌ها»ست — نه همان فهرست پلن‌ها که تازه از آن خرید
+          if (pay?.state === "done") setTab("subs");
+          setPay(null);
+        }} />
     </div>
   );
 }

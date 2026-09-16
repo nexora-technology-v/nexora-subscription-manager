@@ -351,7 +351,35 @@
              isTrial: false };
   }) };
 
-  function byPath(u) {
+  // خریدِ ساختگی — موجودی را واقعاً کم می‌کند و یک اشتراک اضافه
+  // می‌کند، وگرنه نمی‌شود دید بعد از خرید چه اتفاقی می‌افتد.
+  // کم‌آوردنِ موجودی هم باید قابلِ دیدن باشد، پس پلن گران‌تر از
+  // موجودی عمداً رد می‌شود.
+  function miniBuy(body) {
+    var pid = (body || {}).planId;
+    var pl = null;
+    M_PLANS.plans.forEach(function (x) { if (x.id === pid) pl = x; });
+    if (!pl) { var e = new Error("این پلن دیگر در دسترس نیست"); e.status = 404; throw e; }
+    if (M_ME.balance < pl.price) {
+      var e2 = new Error("موجودی کافی نیست — "
+        + (pl.price - M_ME.balance).toLocaleString("fa-IR") + " تومان کم دارید");
+      e2.status = 402; throw e2;
+    }
+    M_ME.balance -= pl.price;
+    M_SUBS.subs.unshift({
+      id: 900 + M_SUBS.subs.length, plan: pl.name,
+      email: "nexora_1278109787_" + (9700 + M_SUBS.subs.length),
+      active: true, isTrial: false, months: Math.round(pl.days / 30),
+      gb: pl.gb, usedGB: 0, usagePct: 0, daysLeft: pl.days,
+      usedBytes: 0, totalBytes: pl.gb * 1024 * 1024 * 1024,
+      remainBytes: pl.gb * 1024 * 1024 * 1024,
+      expiryJalali: "۱۴۰۵/۰۸/۱۲",
+      subUrl: "https://sub.example.com/new" });
+    return { ok: true, spent: pl.price, left: M_ME.balance, plan: pl.name };
+  }
+
+  function byPath(u, body) {
+    if (u.indexOf("/mini/buy") >= 0) return miniBuy(body);
     if (u.indexOf("/mini/me") >= 0) return M_ME;
     if (u.indexOf("/mini/subs") >= 0) return M_SUBS;
     if (u.indexOf("/mini/plans") >= 0) return M_PLANS;
@@ -400,9 +428,22 @@
   window.fetch = function (url, opt) {
     var u = String(url);
     if (u.indexOf("/api/") < 0 && realFetch) return realFetch(url, opt);
+    var body = null;
+    try { body = opt && opt.body ? JSON.parse(opt.body) : null; } catch (e) { body = null; }
+
+    // مسیرهای خطا هم باید دیده شوند. تا وقتی هارنس همیشه ۲۰۰
+    // برمی‌گرداند، «موجودی کافی نیست» هیچ‌وقت روی صفحه نمی‌آید و
+    // کسی نمی‌فهمد آن حالت چه شکلی است.
+    var data, status = 200;
+    try {
+      data = byPath(u, body);
+    } catch (e) {
+      status = e.status || 500;
+      data = { detail: e.message || "خطا" };
+    }
     return Promise.resolve({
-      ok: true, status: 200,
-      json: function () { return Promise.resolve(byPath(u)); },
+      ok: status < 400, status: status,
+      json: function () { return Promise.resolve(data); },
       text: function () { return Promise.resolve(""); },
     });
   };

@@ -961,11 +961,25 @@ def _calls_in(func_name):
     return set()
 
 
-for _path in ("wallet_pay", "approve_order", "auto_renew_subscription"):
+# `wallet_pay` دیگر خودش پول جابه‌جا نمی‌کند — پوسته‌ی تلگرامیِ
+# `wallet_purchase` است و مینی‌اپ هم همان هسته را صدا می‌زند. پس
+# اسکن باید روی جایی باشد که پول واقعاً حرکت می‌کند، نه روی پوسته.
+for _path in ("wallet_purchase", "approve_order", "auto_renew_subscription"):
     _c = _calls_in(_path)
     check(f"{_path} پورسانت همکار را می‌دهد", "_pay_commission" in _c)
     check(f"{_path} پاداش معرف را هم می‌دهد", "_reward_referrer" in _c,
           "یکی از این دو بدون دیگری یعنی یک وعده‌ی نگه‌داشته‌نشده")
+
+# و پوسته باید واقعاً از هسته رد شود، نه اینکه نسخه‌ی خودش را داشته
+# باشد. بدون این، کسی می‌تواند منطق را دوباره داخل wallet_pay
+# بنویسد و اسکنِ بالا همچنان سبز بماند — چون به wallet_purchase
+# نگاه می‌کند.
+_shell = _calls_in("wallet_pay")
+check("wallet_pay خودش پول جابه‌جا نمی‌کند",
+      "wallet_purchase" in _shell
+      and "spend_balance" not in _shell
+      and "create_order" not in _shell,
+      "پوسته فقط پیام می‌سازد؛ پول در هسته حرکت می‌کند")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1008,6 +1022,90 @@ _txt2 = " ".join(m.get("text") or "" for m in SENT
                  if m.get("to") == _nadmin)
 check("تمدیدِ کیف‌پولی هم اعلام می‌شود", bool(_txt2.strip()))
 check("و «تمدید» بودنش مشخص است", "تمدید" in _txt2, _txt2[:60] or "—")
+
+
+# ── هسته‌ی خرید، همان که مینی‌اپ هم صدایش می‌زند ──
+#
+# مسیر چهارمِ پول در این مخزن است. سه مسیر قبلی هر کدام یک‌بار یک
+# قاعده را فراموش کردند، پس این یکی باید رفتارش سنجیده شود نه فقط
+# ساختارش.
+section("خرید از مینی‌اپ — همان هسته، بدون پوسته")
+
+_mtg = 7788
+D.create_user(_mtg, None, "خریدارِ مینی‌اپ")
+_mu = D.get_user(_mtg)
+D.add_balance(_mu["id"], 500_000, "topup", "شارژ مینی‌اپ")
+
+_before = D.get_user(_mtg)["balance"]
+_r = H.wallet_purchase(H.Ctx(bot, tenant), D.get_user(_mtg), plan["id"])
+check("خرید از هسته موفق است", _r.get("ok"), str(_r.get("why") or "—"))
+
+_mo = D.q("SELECT * FROM orders WHERE tenant_id=? AND user_id=? "
+          "ORDER BY id DESC LIMIT 1", (tid, _mu["id"]), one=True)
+check("سفارش approved شد", _mo and _mo["status"] == "approved",
+      f"وضعیت: {_mo['status'] if _mo else '—'}")
+check("و کانفیگش هم ساخته شده", bool(_mo and _mo["sub_id"]),
+      "approved بدون sub_id یعنی همان باگی که سه بار پیدا شد")
+check("پول از کیف پول کم شد",
+      D.get_user(_mtg)["balance"] == _before - plan["price"],
+      f"{_before} → {D.get_user(_mtg)['balance']}")
+check("و از راه کیف پول ثبت شده", _mo and _mo["paid_from"] == "wallet",
+      str(_mo["paid_from"] if _mo else "—"))
+
+# موجودی کم: هیچ سفارشی نباید بماند و هیچ پولی نباید کم شود
+_ptg = 7789
+D.create_user(_ptg, None, "بی‌پول")
+_pu = D.get_user(_ptg)
+_pbal = D.get_user(_ptg)["balance"]
+_open_before = D.q("SELECT COUNT(*) n FROM orders WHERE tenant_id=? AND user_id=?",
+                   (tid, _pu["id"]), one=True)["n"]
+_r2 = H.wallet_purchase(H.Ctx(bot, tenant), D.get_user(_ptg), plan["id"])
+check("خرید بی‌پول رد می‌شود", not _r2.get("ok") and _r2.get("why") == "low_balance",
+      str(_r2.get("why") or "ok"))
+check("و کسری را می‌گوید", int(_r2.get("short") or 0) > 0,
+      f"{_r2.get('short')} تومان")
+_open_after = D.q("SELECT COUNT(*) n FROM orders WHERE tenant_id=? AND user_id=?",
+                  (tid, _pu["id"]), one=True)["n"]
+check("و هیچ سفارشی جا نمی‌گذارد", _open_after == _open_before,
+      f"{_open_before} → {_open_after}")
+check("و هیچ پولی کم نمی‌کند", D.get_user(_ptg)["balance"] == _pbal)
+
+# ── و مهم‌ترین حالت: ساخت کانفیگ شکست بخورد ──
+#
+# این همان باگی است که در این مخزن سه بار پیدا شد — `approved`
+# نوشته می‌شد و بعد ساخت شکست می‌خورد، پس پولِ برگشته «فروش» شمرده
+# می‌شد. تستِ مسیر موفق این را نمی‌گیرد: آن‌جا سفارش در هر دو حالت
+# approved تمام می‌شود و تفاوتی دیده نمی‌شود.
+_mbal = D.get_user(_mtg)["balance"]
+_keep = H.XUI.create_subscription
+
+
+def _fail_provision(self, *a, **k):
+    raise H.XUIError("پنل: inbound not found")
+
+
+H.XUI.create_subscription = _fail_provision
+try:
+    _r4 = H.wallet_purchase(H.Ctx(bot, tenant), D.get_user(_mtg), plan["id"])
+finally:
+    H.XUI.create_subscription = _keep
+
+check("ساختِ ناموفق، خرید را رد می‌کند",
+      not _r4.get("ok") and _r4.get("why") == "provision", str(_r4.get("why")))
+
+_fo = D.q("SELECT * FROM orders WHERE tenant_id=? AND user_id=? "
+          "ORDER BY id DESC LIMIT 1", (tid, _mu["id"]), one=True)
+check("و سفارش approved نمی‌ماند", _fo and _fo["status"] != "approved",
+      f"وضعیت: {_fo['status'] if _fo else '—'} — approved بدون کانفیگ یعنی "
+      "پولِ برگشته در آمار فروش می‌نشیند")
+check("و پول کامل برمی‌گردد", D.get_user(_mtg)["balance"] == _mbal,
+      f"{_mbal} → {D.get_user(_mtg)['balance']}")
+
+
+# پلنِ نبوده
+_r3 = H.wallet_purchase(H.Ctx(bot, tenant), D.get_user(_mtg), 999999)
+check("پلنِ ناموجود رد می‌شود",
+      not _r3.get("ok") and _r3.get("why") == "no_plan", str(_r3.get("why")))
 
 
 # و هیچ مسیر تازه‌ای نباید دوباره خام approved بنویسد.

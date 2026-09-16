@@ -1639,3 +1639,102 @@ html[dir="rtl"] .nx-bar > i { transform-origin: right center; }
   .nx-mark.go .nx-ring { stroke-dashoffset: 0; }
   .nx-bar > i { transform: scaleX(.4); }
 }
+
+/* ── برگه‌ی پرداختِ مینی‌اپ ──
+   از پایین می‌آید، چون انگشتِ شست آن‌جاست. از راه portal روی
+   document.body می‌رود: هر چیزی با position:fixed که داخل `.fx-anim`
+   باشد، در transform آن کلاس حبس می‌شود. */
+.mn-sheet-wrap {
+  position: fixed; inset: 0; z-index: 90;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.mn-sheet-bg {
+  position: absolute; inset: 0;
+  background: var(--scrim-3);
+  animation: mn-fade var(--m-fast) var(--sp-inout) both;
+}
+@keyframes mn-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.mn-sheet {
+  position: relative;
+  width: 100%; max-width: 480px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  padding: 10px 16px calc(18px + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--e-3);
+  animation: mn-rise .26s var(--sp-snappy) both;
+}
+@keyframes mn-rise {
+  from { transform: translateY(14px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.mn-sheet-grip {
+  display: block; width: 36px; height: 4px; border-radius: 99px;
+  background: var(--hair-3); margin: 0 auto 14px;
+}
+.mn-sheet-head { text-align: center; margin-bottom: 14px; }
+.mn-sheet-head b { display: block; font-size: 16px; color: var(--text); }
+.mn-sheet-head span { display: block; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+
+.mn-pay-rows { display: grid; gap: 1px; background: var(--border); border-radius: var(--r-m); overflow: hidden; }
+.mn-pay-rows > div {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 11px 13px; background: var(--surface-2);
+  font-size: 13px;
+}
+.mn-pay-rows > div > span { color: var(--muted); }
+.mn-pay-rows > div > b { color: var(--text); font-weight: 700; }
+.mn-pay-rows > div.ok  > b { color: var(--ok); }
+.mn-pay-rows > div.bad > b { color: var(--danger); }
+
+.mn-pay-note {
+  margin-top: 12px; font-size: 12.5px; line-height: 1.8;
+  color: var(--muted); text-align: center;
+}
+.mn-pay-err {
+  margin-top: 12px; display: flex; align-items: flex-start; gap: 7px;
+  font-size: 12.5px; line-height: 1.7; color: var(--danger);
+  background: var(--danger-wash); border: 1px solid var(--danger-line);
+  border-radius: var(--r-m); padding: 10px 12px;
+}
+.mn-pay-err svg { flex: none; margin-top: 2px; }
+
+.mn-pay-btn {
+  width: 100%; margin-top: 14px; padding: 13px;
+  border-radius: var(--r-m); border: 0;
+  background: linear-gradient(140deg, var(--accent), var(--cy));
+  color: #06090F; font-weight: 800; font-size: 14px;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: transform var(--m-fast) var(--sp-snappy);
+}
+.mn-pay-btn:active { transform: scale(.97); }
+.mn-pay-btn:disabled { opacity: .6; }
+
+.mn-pay-cancel {
+  width: 100%; margin-top: 8px; padding: 11px;
+  background: none; border: 0; color: var(--muted); font-size: 13px;
+}
+
+.mn-pay-done { text-align: center; padding: 6px 0 2px; }
+.mn-pay-tick {
+  width: 56px; height: 56px; border-radius: 50%;
+  display: grid; place-items: center; margin: 0 auto 12px;
+  background: var(--ok-soft); color: var(--ok);
+  border: 1px solid var(--ok-line);
+  animation: mn-tick .42s var(--sp-snappy) both;
+}
+@keyframes mn-tick {
+  from { transform: scale(.6); opacity: 0; }
+  to   { transform: scale(1);  opacity: 1; }
+}
+.mn-pay-done > b { display: block; font-size: 16px; color: var(--text); }
+.mn-pay-done > span { display: block; font-size: 12.5px; color: var(--muted); margin-top: 5px; }
+.mn-pay-left { margin-top: 12px; font-size: 13px; color: var(--muted); }
+.mn-pay-left b { color: var(--ok); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mn-sheet, .mn-sheet-bg, .mn-pay-tick { animation: none; }
+}
