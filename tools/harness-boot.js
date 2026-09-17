@@ -326,6 +326,20 @@
              subUrl: "https://sub.example.com/sub" + i, group: "goroh-a" };
   }) };
 
+  // پلن‌های ربات نماینده + سیاست حجم. حالت «پله‌ای» گذاشته شده تا
+  // در هارنس دیده شود که فیلدِ حجم بسته می‌شود.
+  var P_BOT_PLANS = {
+    ready: true, hasBot: true,
+    gbMode: "tiers", gbAllowed: [30, 50, 100, 200],
+    perGb: 0, gbCost: { "30": 90000, "50": 140000, "100": 250000, "200": 460000 },
+    plans: [
+      { id: 1, name: "یک‌ماهه", description: "مناسب شروع", gb: 50, days: 30,
+        ip_limit: 1, price: 180000, is_active: 1, is_trial: 0, sort_order: 0 },
+      { id: 2, name: "سه‌ماهه", description: "پرفروش", gb: 100, days: 90,
+        ip_limit: 2, price: 230000, is_active: 1, is_trial: 0, sort_order: 1 },
+    ],
+  };
+
   var P_STATS = { total: 96, active: 84, inactive: 12, expired: 5,
                   expiringSoon: 7, neverExpires: 2, nearQuota: 6, overQuota: 2,
                   unlimitedQuota: 3, usedGB: 812.4, quotaGB: 4200, usagePct: 19.3,
@@ -450,6 +464,7 @@
     if (u.indexOf("/portal/summary") >= 0) return P_SUMMARY;
     if (u.indexOf("/portal/configs") >= 0) return P_CONFIGS;
     if (u.indexOf("/portal/stats") >= 0) return P_STATS;
+    if (u.indexOf("/portal/bot-plans") >= 0) return P_BOT_PLANS;
     if (u.indexOf("/portal/plans") >= 0) return P_PLANS;
     if (u.indexOf("/portal/orders") >= 0) return P_ORDERS;
     if (u.indexOf("/portal/bot-plans") >= 0) return { plans: [] };

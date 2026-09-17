@@ -726,6 +726,8 @@ function BotBox({ token, onClose, onNote }) {
 function PlansBox({ token, onClose, onNote }) {
   const [rows, setRows] = useState(null);
   const [hasBot, setHasBot] = useState(false);
+  const [policy, setPolicy] = useState(
+    { mode: "open", allowed: [], perGb: 0, cost: {} });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
 
@@ -734,14 +736,21 @@ function PlansBox({ token, onClose, onNote }) {
       const j = await api("/api/portal/bot-plans", { token });
       setRows(j.plans || []);
       setHasBot(!!j.hasBot);
+      setPolicy({ mode: j.gbMode || "open", allowed: j.gbAllowed || [],
+                  perGb: j.perGb || 0, cost: j.gbCost || {} });
     } catch (e) { setErr(e.message); }
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
 
   const patch = (i, p) => setRows(rows.map((r, k) => (k === i ? { ...r, ...p } : r)));
+  // پلنِ تازه با اولین پله‌ی مجاز شروع می‌شود، نه با ۵۰ ثابت — وگرنه
+  // نماینده‌ای که پله‌ی ۵۰ ندارد، هر بار یک ردیفِ نامعتبر می‌گیرد.
   const add = () => setRows([...(rows || []), {
-    name: "", gb: 50, days: 30, ip_limit: 2, price: 0, is_active: true,
+    name: "",
+    gb: policy.mode === "tiers" && policy.allowed.length
+      ? policy.allowed[0] : 50,
+    days: 30, ip_limit: 2, price: 0, is_active: true,
   }]);
   const drop = (i) => setRows(rows.filter((_, k) => k !== i));
 
@@ -775,10 +784,34 @@ function PlansBox({ token, onClose, onNote }) {
           </button>
         </div>
 
-        <p className="text-[12px] mb-4 leading-relaxed" style={{ color: "var(--muted)" }}>
+        <p className="text-[12px] mb-3 leading-relaxed" style={{ color: "var(--muted)" }}>
           این قیمتی است که به مشتری خودتان می‌فروشید. آنچه بابت هر کانفیگ به
           ما می‌دهید جداست و از نرخ‌های گروه شما می‌آید.
         </p>
+
+        {/* چرا فیلدِ حجم بسته است — یا چرا نیست. سکوت این‌جا یعنی
+            نماینده فکر کند سیستم خراب است. */}
+        <div className="rounded-xl p-3 mb-4 text-[12px] leading-relaxed"
+          style={{
+            background: policy.mode === "open" ? "var(--warn-wash)" : "var(--accent-wash)",
+            border: `1px solid ${policy.mode === "open" ? "var(--warn-fill)" : "var(--accent-fill)"}`,
+            color: policy.mode === "open" ? "var(--warn)" : "var(--dim)",
+          }}>
+          {policy.mode === "tiers" && (
+            <>حجم‌های مجاز شما: <b>{policy.allowed
+              .map((g) => (g === 0 ? "نامحدود" : faNum(g))).join("، ")}</b>
+              {" — "}همان پله‌هایی که برایتان نرخ تعریف شده.</>
+          )}
+          {policy.mode === "volume" && (
+            <>نرخ شما حجمی است: هر گیگابایت <b>{faNum(policy.perGb)}</b> تومان.
+              {" "}پس هر حجمی می‌توانید تعریف کنید.</>
+          )}
+          {policy.mode === "open" && (
+            <>هنوز نرخی برای گروه شما ثبت نشده، پس فعلاً حجم آزاد است.
+              {" "}تا ثبت نشود، صورتحسابتان صفر حساب می‌شود — از پشتیبانی
+              بخواهید نرخ را وارد کند.</>
+          )}
+        </div>
 
         {!hasBot && (
           <div className="rounded-xl p-3 mb-4 text-[12px]"
@@ -817,8 +850,38 @@ function PlansBox({ token, onClose, onNote }) {
                   </button>
                 </div>
                 <div className="grid grid-cols-4 gap-2">
-                  {[["gb", "حجم (GB)"], ["days", "روز"],
-                    ["ip_limit", "کاربر"], ["price", "قیمت"]].map(([k, lbl]) => (
+                  {/* حجم از پله‌های مالک می‌آید، نه دلخواه.
+                      در حالت حجمی پله معنا ندارد و آزاد می‌ماند. */}
+                  <div>
+                    <label className="text-[11px] block mb-1"
+                      style={{ color: "var(--muted)" }}>حجم (GB)</label>
+                    {policy.mode === "tiers" ? (
+                      {/* بدون مونو: گزینه‌ها «نامحدود» و «خارج از نرخ»
+                          هم دارند و JetBrains Mono حرف فارسی ندارد،
+                          پس فقط به فونتِ دیگری می‌افتد. */}
+                      <select value={r.gb ?? 0}
+                        onChange={(e) => patch(i, { gb: Number(e.target.value) || 0 })}
+                        className="fx-input text-[13px] text-center w-full">
+                        {!policy.allowed.includes(Number(r.gb) || 0) && (
+                          <option value={r.gb ?? 0}>
+                            {faNum(r.gb ?? 0)} (خارج از نرخ)
+                          </option>
+                        )}
+                        {policy.allowed.map((g) => (
+                          <option key={g} value={g}>
+                            {g === 0 ? "نامحدود" : faNum(g)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <NumberInput min="0" value={r.gb ?? 0}
+                        onChange={(e) => patch(i, { gb: Number(e.target.value) || 0 })}
+                        className="fx-input text-[13px] text-center"
+                        style={{ fontFamily: "var(--mono)" }} />
+                    )}
+                  </div>
+                  {[["days", "روز"], ["ip_limit", "کاربر"],
+                    ["price", "قیمت"]].map(([k, lbl]) => (
                     <div key={k}>
                       <label className="text-[11px] block mb-1"
                         style={{ color: "var(--muted)" }}>{lbl}</label>
@@ -829,8 +892,24 @@ function PlansBox({ token, onClose, onNote }) {
                     </div>
                   ))}
                 </div>
-                <div className="text-[11px] mt-1.5" style={{ color: "var(--muted)" }}>
-                  حجم ۰ یعنی نامحدود · کاربر ۰ یعنی بدون محدودیت
+                <div className="text-[11px] mt-1.5 flex items-center gap-2 flex-wrap"
+                  style={{ color: "var(--muted)" }}>
+                  <span>حجم ۰ یعنی نامحدود · کاربر ۰ یعنی بدون محدودیت</span>
+                  {/* هزینه‌ی خودِ نماینده. بدون این، «زیر قیمت فروختم»
+                      فقط آخر ماه روی صورتحساب معلوم می‌شود. */}
+                  {(() => {
+                    const c = policy.mode === "volume"
+                      ? policy.perGb * (Number(r.gb) || 0)
+                      : Number(policy.cost[String(Number(r.gb) || 0)] || 0);
+                    if (!c) return null;
+                    const loss = Number(r.price) > 0 && Number(r.price) < c;
+                    return (
+                      <span style={{ color: loss ? "var(--danger)" : "var(--dim)" }}>
+                        · برای شما {faNum(c)} تومان
+                        {loss ? " — زیر قیمت" : ""}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             ))}

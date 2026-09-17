@@ -1324,8 +1324,12 @@ check("پلن نماینده‌ی دیگر دست‌نخورده ماند",
       "ذخیره‌ی یکی نباید پلن‌های دیگری را پاک کند")
 
 # فرستادن شناسه‌ی پلن نماینده‌ی دیگر نباید کاری بکند
+#
+# حجم باید یکی از پله‌های مجاز باشد، وگرنه قاعده‌ی تازه‌ی «حجم از
+# نرخِ مالک می‌آید» جلوترش را می‌گیرد و این تست دیگر آن چیزی را که
+# می‌خواهد نمی‌سنجد (جداییِ مستاجرها).
 AP.portal_bot_plans_save(
-    {"plans": [{"id": _oid, "name": "دزدیده", "gb": 1, "days": 1,
+    {"plans": [{"id": _oid, "name": "دزدیده", "gb": 50, "days": 1,
                 "price": 1}]}, _T3)
 _theirs2 = AP.portal_bot_plans(_other)
 check("شناسه‌ی پلن دیگری هم کاری نمی‌کند",
@@ -2478,6 +2482,72 @@ check("مینی‌اپ خودش پول جابه‌جا نمی‌کند", not _ow
 check("و خرید از همان هسته‌ی ربات می‌آید",
       "h.wallet_purchase(" in _bcode,
       "یک نسخه برای هر دو مسیر — وگرنه مسیر چهارمِ پول")
+
+
+# ═══════════════════════════════════════════════════════════
+head("پلن نماینده · حجم از نرخِ مالک می‌آید، نه از دلخواه")
+
+# سه حالتِ `_portal_gb_policy`، مستقیم — بدون دیتابیس حسابداری،
+# چون آن‌چه می‌سنجیم خودِ قاعده است نه خواندنش.
+_saved_rates = app._portal_rates
+
+
+def _rates_as(conf, rates):
+    app._portal_rates = lambda _t: (conf, rates)
+
+
+try:
+    _rates_as({"per_gb": 2500}, [])
+    _m, _a, _pg = app._portal_gb_policy({"id": 1})
+    check("نرخ حجمی یعنی هر حجمی مجاز است", _m == "volume" and _pg == 2500,
+          f"{_m} / {_pg}")
+
+    _rates_as({}, [{"gb": 30, "price": 90000}, {"gb": 100, "price": 250000},
+                   {"gb": 50, "price": 150000}])
+    _m, _a, _pg = app._portal_gb_policy({"id": 1})
+    check("پله‌ها مرتب و بی‌تکرار برمی‌گردند",
+          _m == "tiers" and _a == [30, 50, 100], f"{_m} / {_a}")
+
+    _rates_as({}, [])
+    _m, _a, _pg = app._portal_gb_policy({"id": 1})
+    check("بدون نرخ، حالت باز است و بسته نمی‌شود", _m == "open", _m)
+
+    # ── اعتبارسنجی باید در بکند باشد، نه فقط در رابط ──
+    _rates_as({}, [{"gb": 30, "price": 90000}, {"gb": 100, "price": 250000}])
+
+    def _save(gb):
+        return app.portal_bot_plans_save(
+            {"plans": [{"name": "پلن", "gb": gb, "days": 30,
+                        "ip_limit": 1, "price": 100000}]},
+            t={"id": tid, "portal_group": "g"})
+
+    try:
+        _save(70)
+        check("حجمِ خارج از پله رد می‌شود", False, "پذیرفته شد")
+    except app.HTTPException as _e:
+        check("حجمِ خارج از پله رد می‌شود", _e.status_code == 400,
+              str(_e.status_code))
+        # پیام باید *بگوید* چه چیزی مجاز است
+        check("و پله‌های مجاز را می‌گوید",
+              "30" in str(_e.detail) and "100" in str(_e.detail),
+              str(_e.detail)[:80])
+
+    # پله‌ی مجاز باید بگذرد
+    try:
+        _r = _save(100)
+        check("پله‌ی مجاز پذیرفته می‌شود", bool(_r), str(_r)[:60])
+    except app.HTTPException as _e:
+        check("پله‌ی مجاز پذیرفته می‌شود", False, str(_e.detail)[:80])
+
+    # در حالت حجمی هیچ حجمی رد نمی‌شود
+    _rates_as({"per_gb": 2500}, [])
+    try:
+        _r = _save(777)
+        check("در حالت حجمی، هر حجمی می‌گذرد", bool(_r), str(_r)[:60])
+    except app.HTTPException as _e:
+        check("در حالت حجمی، هر حجمی می‌گذرد", False, str(_e.detail)[:80])
+finally:
+    app._portal_rates = _saved_rates
 
 
 # ═══════════════════════════════════════════════════════════

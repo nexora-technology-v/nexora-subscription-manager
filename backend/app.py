@@ -10870,6 +10870,41 @@ def _portal_rates(t):
     return conf, (rates if isinstance(rates, list) else [])
 
 
+def _portal_gb_policy(t):
+    """
+    نماینده چه حجم‌هایی می‌تواند برای ربات خودش بفروشد؟
+
+    برمی‌گرداند: (mode, allowed, per_gb)
+        mode = "volume" | "tiers" | "open"
+
+    سه حالت، و هر سه از همان `group_config` می‌آیند که حسابداری از
+    رویش می‌خواند — هیچ نرخِ تازه‌ای این‌جا ساخته نمی‌شود:
+
+      volume  مالک نرخ حجمی گذاشته و به‌ازای مصرف حساب می‌کند، پس
+              پله معنا ندارد و هر حجمی مجاز است.
+      tiers   مالک پله تعریف کرده؛ فقط همان‌ها.
+      open    مالک هنوز هیچ نرخی نگذاشته. عمداً باز است — بستنش
+              یعنی نماینده‌ای که نرخش تعریف نشده اصلاً نتواند کار
+              کند. ولی رابط باید *بگوید* چرا باز است، وگرنه همان
+              مسیر خرابِ بی‌صداست.
+    """
+    conf, rates = _portal_rates(t)
+    per_gb = _price_per_gb(conf) or 0
+    if per_gb > 0:
+        return "volume", [], per_gb
+
+    allowed = []
+    for r in rates:
+        try:
+            allowed.append(max(0, int(r.get("gb", 0) or 0)))
+        except (TypeError, ValueError):
+            continue
+    allowed = sorted(set(allowed))
+    if allowed:
+        return "tiers", allowed, 0
+    return "open", [], 0
+
+
 def _credit_log(con, tid, amount, balance, note):
     """
     یک سطر در دفتر اعتبار. شکستش نباید کار اصلی را متوقف کند.
@@ -11754,18 +11789,39 @@ def portal_brand(payload: dict, t: dict = Depends(portal_tenant)):
 
 @app.get("/api/portal/bot-plans")
 def portal_bot_plans(t: dict = Depends(portal_tenant)):
-    """پلن‌هایی که ربات این نماینده می‌فروشد."""
+    """
+    پلن‌هایی که ربات این نماینده می‌فروشد — و اینکه چه حجم‌هایی
+    اجازه دارد.
+
+    `gbCost` هزینه‌ی هر پله برای خودِ نماینده است. بدون آن، نماینده
+    نمی‌داند دارد زیر قیمت می‌فروشد یا نه — و این چیزی است که
+    فقط یک‌بار، آخر ماه، روی صورتحساب معلوم می‌شود.
+    """
+    mode, allowed, per_gb = _portal_gb_policy(t)
+    _conf, _rates = _portal_rates(t)
+    cost = {}
+    for r in _rates:
+        try:
+            cost[str(int(r.get("gb", 0) or 0))] = int(r.get("price", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+
+    policy = {"gbMode": mode, "gbAllowed": allowed,
+              "perGb": per_gb, "gbCost": cost}
+
     con = _bot_conn()
     if not con:
-        return {"ready": False, "plans": []}
+        return dict({"ready": False, "plans": []}, **policy)
     try:
         rows = [dict(r) for r in con.execute(
             "SELECT id, name, description, gb, days, ip_limit, price, "
             "is_active, is_trial, sort_order FROM plans "
             "WHERE tenant_id=? ORDER BY sort_order, id", (t["id"],))]
-        return {"ready": True, "plans": rows, "hasBot": bool(t.get("bot_token"))}
+        return dict({"ready": True, "plans": rows,
+                     "hasBot": bool(t.get("bot_token"))}, **policy)
     except Exception as e:
-        return {"ready": False, "error": str(e)[:120], "plans": []}
+        return dict({"ready": False, "error": str(e)[:120], "plans": []},
+                    **policy)
     finally:
         con.close()
 
@@ -11786,6 +11842,12 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
     if len(plans) > 40:
         raise HTTPException(status_code=400, detail="حداکثر ۴۰ پلن")
 
+    # حجمِ مجاز از نرخ‌های مالک می‌آید، نه از دلخواهِ نماینده.
+    #
+    # این اعتبارسنجی **در بکند** است، نه فقط در رابط: رابط فقط
+    # راحتی است و کسی می‌تواند درخواست را مستقیم بفرستد.
+    mode, allowed, _per_gb = _portal_gb_policy(t)
+
     clean = []
     for i, p in enumerate(plans):
         if not isinstance(p, dict):
@@ -11802,6 +11864,16 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
         except (TypeError, ValueError):
             raise HTTPException(status_code=400,
                                 detail=f"عددهای پلن «{name}» نامعتبرند")
+
+        if mode == "tiers" and gb not in allowed:
+            # پله‌ها را *بگو*. «نامعتبر» بدون گفتنِ اینکه چه چیزی
+            # معتبر است، یعنی حدس‌زدن.
+            opts = "، ".join(("نامحدود" if g == 0 else str(g)) for g in allowed)
+            raise HTTPException(
+                status_code=400,
+                detail=f"حجم {gb} گیگ در نرخ‌های شما نیست — "
+                       f"یکی از این‌ها را بردارید: {opts}")
+
         clean.append({
             "id": p.get("id"), "name": name,
             "description": str(p.get("description") or "").strip()[:200],
