@@ -1487,11 +1487,16 @@ export default function Mini() {
       {/* ── نوار برند ── */}
       <header className="mn-top">
         <div className="mn-brand">
-          {/* لوگوی همین فروشگاه اگر آپلود شده، وگرنه چهره‌ی کاربر.
-              مینی‌اپِ هر نماینده باید مالِ خودش به نظر برسد. */}
-          {me?.logo
-            ? <img src={me.logo} alt={me.brand || ""} className="mn-logo" />
-            : <Avatar name={me?.name} id={me?.tgId} size={38} ring />}
+          {/* عکسِ خودِ کاربر، وگرنه لوگوی فروشگاه، وگرنه حرفِ اول.
+              این دایره کنارِ *نامِ کاربر* می‌نشیند، پس وقتی او عکس
+              گذاشته باید همان را نشان دهد — تا امروز `src` نداشت و
+              کاربر عکسش را در تنظیمات می‌دید ولی بالا نه.
+              نامِ فروشگاه همان بالا نوشته شده، پس برند گم نمی‌شود. */}
+          {me?.avatar
+            ? <Avatar name={me?.name} id={me?.tgId} size={38} src={me.avatar} ring />
+            : me?.logo
+              ? <img src={me.logo} alt={me.brand || ""} className="mn-logo" />
+              : <Avatar name={me?.name} id={me?.tgId} size={38} ring />}
           <div className="min-w-0">
             <b>{me?.brand || "اشتراک من"}</b>
             <span>{me?.name || "—"}</span>

@@ -165,8 +165,6 @@ PUBLIC = ("/api/public", "/api/sub", "/api/health", "/api/docs",
 KNOWN_ORPHANS = {
     "/api/admin/reset-defaults":
         "کل تنظیمات را بدون تأیید به پیش‌فرض برمی‌گرداند — بهتر است حذف شود",
-    "/api/admin/billing/overview":
-        "داکstring می‌گوید پایه‌ی صفحات حسابداری است ولی پنل صدایش نمی‌زند",
     "/api/admin/billing/payments/:p":
         "پنل پرداخت ثبت می‌کند ولی دکمه‌ی حذف ندارد",
     "/api/admin/health/local":

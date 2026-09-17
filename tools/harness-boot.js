@@ -607,6 +607,13 @@
         liveAvailable: true,
       };
     }
+    if (u.indexOf("/admin/billing/overview") >= 0) {
+      return { ready: true, groups: BILLING.groups.map(function (g) {
+        return { name: g.name, label: g.label, billed: g.billed,
+                 due: g.amount, paid: g.paid,
+                 balance: g.amount - g.paid, configs: g.configs };
+      }) };
+    }
     if (u.indexOf("/admin/config/history") >= 0) return {
       current: 7,
       versions: [

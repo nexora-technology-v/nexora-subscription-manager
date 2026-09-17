@@ -36,10 +36,91 @@ import { TemplateThumb } from "./bot/themes";
  * شمارنده‌های محتوا نرفتند؛ یک ردیفِ کوچک‌تر پایین‌تر شدند. آن‌ها
  * وضعیتِ صفحه‌اند، نه شاخصِ کسب‌وکار، و نباید با هم رقابت کنند.
  */
+/**
+ * صورتحساب نماینده‌ها — خلاصه‌ی داشبورد.
+ *
+ * چرا این‌جا: ستونِ کناری از کارتِ محتوا بلندتر بود و زیرش ۲۱۱
+ * پیکسل حفره می‌ماند. کش‌دادنِ کارتِ محتوا فقط همان حفره را به
+ * داخلِ کارت می‌برد؛ چیزی که جایش می‌نشیند باید *حرفی برای گفتن*
+ * داشته باشد.
+ *
+ * و `billing/overview` از قبل بود و هیچ صفحه‌ای صدایش نمی‌زد — در
+ * فهرستِ بدهی‌های تستِ درز هم ثبت شده بود.
+ *
+ * عنوان «بدهی» است نه «فروش»: این عدد چیزی است که نماینده باید
+ * بدهد، نه چیزی که فروخته. در این مخزن این دو را یک‌بار قاطی
+ * کرده‌ایم و عددی ساختند که درست به نظر می‌رسید.
+ */
+function BillingMini({ data, onGo }) {
+  if (data && data.ready === false) return null;
+  const groups = (data?.groups || [])
+    .filter((g) => g.billed !== false && (g.due || 0) > 0)
+    .sort((a, b) => (b.due || 0) - (a.due || 0))
+    .slice(0, 5);
+  const max = groups.reduce((m, g) => Math.max(m, g.due || 0), 0) || 1;
+
+  return (
+    <div className="fx-card p-5">
+      <div className="flex items-center justify-between gap-2 mb-4">
+        <div>
+          <h3 className="text-[14px] font-bold text-white">بدهی نماینده‌ها</h3>
+          <p className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
+            این دوره · تومان
+          </p>
+        </div>
+        <button onClick={onGo}
+          className="fx-btn-g px-3 py-1.5 text-[12.5px] flex items-center gap-1.5">
+          صورتحساب <ChevronLeft size={12} />
+        </button>
+      </div>
+
+      {!data ? (
+        <Skeleton h={120} />
+      ) : !groups.length ? (
+        <EmptyState icon={Layers} text="بدهی بازی نیست"
+          hint="هر نماینده‌ای که این دوره کانفیگ ساخته باشد، این‌جا با مبلغش می‌آید." />
+      ) : (
+        <div className="flex flex-col gap-2.5">
+          {groups.map((g) => (
+            <div key={g.name} className="flex items-center gap-3">
+              <span className="text-[13px] shrink-0" style={{ color: "var(--dim)", minWidth: 62 }}>
+                {g.label || g.name}
+              </span>
+              <span className="flex-1 h-2 rounded-full overflow-hidden"
+                style={{ background: "var(--hair-2)" }}>
+                <span className="block h-full rounded-full"
+                  style={{ width: `${Math.max(6, Math.round((g.due / max) * 100))}%`,
+                           background: "linear-gradient(90deg,var(--accent),var(--accent-2))" }} />
+              </span>
+              <b className="text-[12.5px] shrink-0 fx-stat-num"
+                style={{ color: "var(--text)" }}>{faNum(g.due)}</b>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function OverviewSection({ config, stats, navigate, dirty, password }) {
   const [rep, setRep] = useState(null);
+  /* صورتحسابِ نماینده‌ها.
+     این مسیر از قبل بود و هیچ صفحه‌ای صدایش نمی‌زد — در فهرستِ
+     «بدهی»های تستِ درز هم ثبت شده بود. حالا ستونِ خالیِ داشبورد را
+     با عددِ واقعی پر می‌کند، نه با بزرگ‌کردنِ یک کارتِ تمام‌شده. */
+  const [bill, setBill] = useState(null);
   const [days, setDays] = useState(30);
   const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`${API_URL}/api/admin/billing/overview`,
+      { headers: { "X-Admin-Password": password } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (alive) setBill(j); })
+      .catch(() => { if (alive) setBill({ ready: false }); });
+    return () => { alive = false; };
+  }, [password]);
 
   useEffect(() => {
     let alive = true;
@@ -204,7 +285,8 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
 
       {/* ── صفحه‌ی اشتراک: وضعیت محتوا ── */}
       <div className="fx-g2 grid gap-3">
-        <div className="fx-card fx-fill p-5">
+        <div className="flex flex-col gap-3 min-w-0">
+        <div className="fx-card p-5">
           <div className="flex items-center justify-between gap-2 mb-4">
             <div>
               <h3 className="text-[14px] font-bold text-white">محتوای صفحه‌ی اشتراک</h3>
@@ -213,7 +295,7 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
               </p>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2.5 fx-fill-body">
+          <div className="grid grid-cols-2 gap-2.5">
             {content.map((c) => (
               <button title="رفتن به این بخش" key={c.key} onClick={() => navigate(c.key)}
                 className="fx-card fx-card-i p-3.5 text-right">
@@ -229,6 +311,13 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* ── صورتحساب نماینده‌ها ──
+            ستونِ کناری از کارتِ محتوا بلندتر بود و زیرش حفره
+            می‌ماند. به‌جای کش‌دادنِ آن کارت — که فقط حفره را به
+            داخلش می‌برد — این‌جا عددِ واقعی می‌نشیند. */}
+        <BillingMini data={bill} onGo={() => navigate("bill-dash")} />
         </div>
 
         <div className="flex flex-col gap-3">
