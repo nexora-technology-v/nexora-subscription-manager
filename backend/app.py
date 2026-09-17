@@ -2206,6 +2206,45 @@ def brand_logo_get(x_admin_password: str = Header(...)):
             "logo": _logo_url(r["id"])}
 
 
+#: رسیدِ تصویری روی دیسکِ خودمان.
+#
+#  چرا: نسخه‌ی اول عکس را فقط به گروه مدیریت تلگرام آپلود می‌کرد و
+#  `file_id`ش را نگه می‌داشت. اگر گروه تنظیم نشده بود — یا آپلود
+#  شکست می‌خورد — `receipt_file` خالی می‌ماند در حالی که
+#  `receipt_type` هنوز "photo" بود. نتیجه: پنل ۴۰۴ می‌داد و
+#  **عکسِ رسید برای همیشه گم می‌شد**. مشتری پول داده و مدرکش نیست.
+#
+#  حالا دیسک منبعِ اصلی است و تلگرام فقط راهِ *دیدنِ سریع* در گروه.
+RECEIPT_DIR = Path(os.getenv("RECEIPT_DIR", str(CONFIG_PATH.parent / "receipts")))
+
+#: پیشوندی که می‌گوید این رسید روی دیسکِ ماست، نه در تلگرام.
+LOCAL_RECEIPT = "local:"
+
+
+def _receipt_save(order_id: int, blob: bytes):
+    """بایت‌های رسید را ذخیره کن و مقدارِ `receipt_file` را برگردان."""
+    ext, _ctype = _logo_kind(blob)
+    if not ext:
+        return None
+    RECEIPT_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"{int(order_id)}.{ext}"
+    (RECEIPT_DIR / name).write_bytes(blob)
+    return LOCAL_RECEIPT + name
+
+
+def _receipt_local(ref):
+    """اگر این ارجاع محلی است، فایلش را بده — وگرنه None."""
+    ref = str(ref or "")
+    if not ref.startswith(LOCAL_RECEIPT):
+        return None
+    name = ref[len(LOCAL_RECEIPT):]
+    # هیچ‌وقت مسیرِ آمده از بیرون را مستقیم به هم نچسبان
+    if "/" in name or "\\" in name or ".." in name:
+        return None
+    p = RECEIPT_DIR / name
+    return p if p.exists() else None
+
+
 @app.get("/api/public/logo/{tid}")
 def public_logo(tid: int):
     """
@@ -3911,6 +3950,18 @@ def bot_receipt(order_id: int, pw: str = "",
 
         if row["receipt_type"] != "photo" or not row["receipt_file"]:
             raise HTTPException(status_code=404, detail="این سفارش رسید تصویری ندارد")
+
+        # رسیدی که خودمان نگه داشته‌ایم — بدون رفتن به تلگرام.
+        # یک قاعده‌ی نمایش، دو منبع: دیسک برای رسیدهای مینی‌اپ،
+        # تلگرام برای رسیدهایی که در خودِ گفتگو آمده‌اند.
+        _lp = _receipt_local(row["receipt_file"])
+        if _lp:
+            _blob = _lp.read_bytes()
+            _e, _ct = _logo_kind(_blob)
+            if _ct:
+                return Response(content=_blob, media_type=_ct,
+                                headers={"Cache-Control": "private, max-age=60"})
+            raise HTTPException(status_code=404, detail="فایل رسید سالم نیست")
 
         t = con.execute("SELECT bot_token FROM tenants WHERE id=?",
                         (row["tenant_id"],)).fetchone()
@@ -10101,11 +10152,19 @@ def mini_receipt(oid: int, payload: dict, tu: tuple = Depends(mini_user)):
         raise HTTPException(status_code=400,
                             detail="عکس رسید یا متن پیامک بانک را بفرستید")
 
+    # **اول روی دیسک.**
+    #
+    # اگر این کار به تلگرام سپرده شود و گروه مدیریت تنظیم نشده باشد،
+    # `receipt_file` خالی می‌ماند و عکس برای همیشه گم می‌شود — مشتری
+    # پول داده و مدرکش نیست. تلگرام فقط راهِ دیدنِ سریع در گروه است.
+    local_ref = _receipt_save(oid, blob) if blob else None
+
     h, ctx = _mini_ctx(t)
     try:
         ok, why = h.receipt_submit(
             ctx, u, oid,
             "photo" if blob else "text",
+            rfile=local_ref,
             rtext=text or None, photo_bytes=blob)
     except Exception as e:
         log.exception("ثبت رسید مینی‌اپ ناموفق")
@@ -12088,6 +12147,14 @@ def portal_receipt(oid: int, t: dict = Depends(portal_tenant)):
     خودش دارد و دادنش به مرورگر یعنی لو دادن توکن.
     """
     o = _portal_order(t, oid)
+    _lp = _receipt_local(o.get("receipt_file"))
+    if _lp:
+        _blob = _lp.read_bytes()
+        _e, _ct = _logo_kind(_blob)
+        if _ct:
+            return Response(content=_blob, media_type=_ct,
+                            headers={"Cache-Control": "private, max-age=60"})
+
     if not o.get("receipt_file"):
         raise HTTPException(status_code=404, detail="این سفارش رسید عکسی ندارد")
     if not t.get("bot_token"):

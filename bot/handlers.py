@@ -792,7 +792,13 @@ def receipt_submit(ctx, user, order_id, rtype, rfile=None, rtext=None,
         except (TelegramError, KeyError, TypeError) as e:
             log.warning("آپلود رسید مینی‌اپ ناموفق: %s", e)
 
-    if uploaded:
+    # `rfile` اگر از قبل آمده، منبعِ اصلی است و جایش را نمی‌دهد.
+    #
+    # مینی‌اپ عکس را روی دیسکِ خودمان می‌گذارد و ارجاعِ `local:` را
+    # می‌فرستد. اگر این‌جا با `file_id` تلگرام جایگزین شود، همان
+    # وابستگی برمی‌گردد که باعث گم‌شدنِ رسید شده بود. `uploaded`
+    # فقط برای پیامِ گروه است.
+    if uploaded and not rfile:
         rfile = uploaded
 
     # شرطی، نه بی‌قید: بین بررسی مهلت بالا و همین لحظه، جاروکشِ

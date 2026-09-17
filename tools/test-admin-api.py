@@ -2551,6 +2551,82 @@ finally:
 
 
 # ═══════════════════════════════════════════════════════════
+head("رسیدِ تصویری · گم نشود، حتی بدون گروه تلگرام")
+
+import base64 as _b64r                                 # noqa: E402
+import tempfile as _tf2                                # noqa: E402
+app.RECEIPT_DIR = Path(_tf2.mkdtemp(prefix="nx-rcpt-"))
+
+# کوچک‌ترین PNG معتبر (۱×۱ شفاف)
+_PNG_R = _b64r.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+    "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+
+_ref = app._receipt_save(4242, _PNG_R)
+check("رسید روی دیسک ذخیره می‌شود", bool(_ref), str(_ref))
+check("و ارجاعش «محلی» علامت می‌خورد",
+      str(_ref).startswith("local:"), str(_ref))
+
+_p = app._receipt_local(_ref)
+check("و دوباره پیدا می‌شود", _p is not None and _p.exists(), str(_p))
+
+# چیزی که تصویر نیست، ذخیره نمی‌شود
+check("متن به‌جای تصویر رد می‌شود",
+      app._receipt_save(4243, b"not an image at all") is None)
+
+# ارجاعِ تلگرامی نباید به دیسک نگاه کند
+check("ارجاع تلگرامی محلی شمرده نمی‌شود",
+      app._receipt_local("BAADBAADrwADBREAAX") is None)
+
+# و مسیرِ آمده از بیرون نباید از پوشه بیرون بزند.
+#
+# فایلِ هدف را واقعاً می‌سازیم: بدون آن، `p.exists()` خودش False
+# می‌شود و تست *به دلیل اشتباه* سبز می‌ماند — یعنی برداشتنِ
+# نگهبان هم قرمزش نمی‌کند.
+_outside = app.RECEIPT_DIR.parent / "secret.png"
+_outside.write_bytes(_PNG_R)
+(app.RECEIPT_DIR / "sub").mkdir(exist_ok=True)
+(app.RECEIPT_DIR / "sub" / "b.png").write_bytes(_PNG_R)
+_EVIL = ["local:../secret.png", "local:sub/b.png"]
+_EVIL.append("local:.." + chr(92) + "secret.png")
+try:
+    for _evil in _EVIL:
+        check("مسیرِ خطرناک رد می‌شود (%s)" % _evil[6:22],
+              app._receipt_local(_evil) is None,
+              "فایلِ هدف واقعاً وجود دارد، پس این تست بی‌خود سبز نمی‌شود")
+finally:
+    try:
+        _outside.unlink()
+    except OSError:
+        pass
+
+# ── و مهم‌ترین چیز: `mini_receipt` باید *اول* روی دیسک بگذارد ──
+#
+# نسخه‌ی اول عکس را فقط به گروه مدیریت آپلود می‌کرد. بدون گروه،
+# `receipt_file` خالی می‌ماند در حالی که `receipt_type` هنوز "photo"
+# بود — پنل ۴۰۴ می‌داد و عکس برای همیشه گم می‌شد.
+_mr = _APSRC[_APSRC.find("def mini_receipt("):]
+_mr = _mr[:_mr.find("def _mini_own_order")]
+_mr_code = "\n".join(l for l in _mr.split("\n")
+                     if not l.strip().startswith("#"))
+check("mini_receipt اول روی دیسک می‌نویسد",
+      "_receipt_save(oid, blob)" in _mr_code,
+      "وگرنه بدون گروه تلگرام، عکس گم می‌شود")
+check("و همان ارجاع را به هسته می‌دهد",
+      "rfile=local_ref" in _mr_code,
+      "اگر ندهد، هسته فقط file_id تلگرام را ذخیره می‌کند")
+
+# و هسته نباید ارجاعِ محلی را با file_id عوض کند
+_H2 = io.open(os.path.join(str(ROOT), "bot", "handlers.py"),
+              encoding="utf-8").read()
+_rs = _H2[_H2.find("def receipt_submit("):]
+_rs = _rs[:_rs.find("def _receipt_caption")]
+check("هسته ارجاع محلی را جایگزین نمی‌کند",
+      "if uploaded and not rfile:" in _rs,
+      "وگرنه همان وابستگی برمی‌گردد که باعث گم‌شدن رسید شده بود")
+
+
+# ═══════════════════════════════════════════════════════════
 head("لوگوی برند · فقط تصویر، و فقط مالِ خودت")
 
 import base64 as _b64                                  # noqa: E402
