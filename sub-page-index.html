@@ -628,15 +628,23 @@
             background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.15), rgba(var(--accent-rgb), 0.05));
             border: 1px solid rgba(var(--accent-rgb), 0.25);
             border-radius: 18px;
-            padding: 16px;
+            padding: 14px 16px;
             margin-bottom: 16px;
+            /* یک ردیف، نه یک ستون.
+               ۱۴۲ پیکسل برای یک جمله و یک دکمه — متن وسط‌چین روی دو
+               خط و دکمه زیرش. کنارِ هم، نصفِ آن جا می‌گیرد و
+               هم‌شکلِ بقیه‌ی کارت‌های صفحه می‌شود. */
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
+            justify-content: space-between;
             gap: 14px;
             box-shadow: var(--box-shadow-light);
-            text-align: center;
+            text-align: start;
+            flex-wrap: wrap;
         }
+        .promo-card .promo-text { flex: 1; min-width: 150px; }
+        .promo-card .promo-buttons { flex: none; }
         .promo-card .promo-text {
             font-size: 16px;
             font-weight: 500;
@@ -2155,10 +2163,10 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         <!-- کارت تبلیغاتی (فقط تلگرام) -->
         <div class="promo-card" id="sec-promo" data-sec="promo">
             <div class="promo-text">
-                آیا نیاز به <span>خرید</span> یا <span>تمدید ساب</span> دارید؟<br>
+                آیا نیاز به <span>خرید</span> یا <span>تمدید ساب</span> دارید؟
                 با پشتیبانی تماس بگیرید.
             </div>
-            <div class="promo-buttons" style="justify-content: center;">
+            <div class="promo-buttons">
                 <a href="https://t.me/crm_nexoravpn" target="_blank" class="promo-btn telegram">
                     <i class="fa-brands fa-telegram"></i> تلگرام
                 </a>
