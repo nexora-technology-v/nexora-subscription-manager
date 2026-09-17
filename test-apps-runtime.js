@@ -105,7 +105,18 @@ async function boot(label, pathname, expect) {
     themeParams: {}, colorScheme: "dark",
   } };
   w.fetch = () => new Promise(() => {});          // هیچ‌وقت جواب نمی‌دهد
-  w.matchMedia = w.matchMedia || (() => ({ matches: false, addListener() {}, removeListener() {} }));
+  // صفحه‌ی ورودِ نکسورا یک کفِ زمانیِ ۱٫۹ ثانیه‌ای دارد که با
+  // `prefers-reduced-motion` برداشته می‌شود. این‌جا آن را روشن
+  // می‌کنیم تا خودِ اپ رندر شود.
+  //
+  // چرا لازم شد: بدونش، `boot` متنِ *صفحه‌ی ورود* را می‌دید و چون
+  // برچسبش «پنل نمایندگی» است، انتظارِ تست هم اتفاقی برآورده
+  // می‌شد — یعنی سبز، بدون اینکه اپ اصلاً بالا آمده باشد.
+  w.matchMedia = (q) => ({
+    matches: /prefers-reduced-motion/.test(String(q || "")),
+    addListener() {}, removeListener() {},
+    addEventListener() {}, removeEventListener() {},
+  });
   w.scrollTo = () => {};
   w.addEventListener("error", (e) => errors.push(String(e.error || e.message)));
   const origErr = w.console.error;
@@ -165,7 +176,11 @@ async function everyPage() {
   });
   const w = dom.window;
   w.localStorage.setItem("nexora_subpage_admin_pw", "t");
-  w.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
+  w.matchMedia = (q) => ({
+    matches: /prefers-reduced-motion/.test(String(q || "")),
+    addListener() {}, removeListener() {},
+    addEventListener() {}, removeEventListener() {},
+  });
   w.scrollTo = () => {};
   w.fetch = () => Promise.resolve({
     ok: true, status: 200,
@@ -249,9 +264,10 @@ async function everyPage() {
 
 
 (async () => {
-  await boot("پنل مدیر روی /", "/");
-  await boot("پنل نماینده روی /r/<نشانی>", "/r/hossein", "پنل نمایندگی");
-  await boot("مینی‌اپ روی /app", "/app");
+  // «NEXORA» در صفحه‌ی ورود هم هست؛ «رمز عبور» فقط در خودِ اپ.
+  await boot("پنل مدیر روی /", "/", "رمز عبور");
+  await boot("پنل نماینده روی /r/<نشانی>", "/r/hossein", "نشانی:");
+  await boot("مینی‌اپ روی /app", "/app", "اشتراک‌ها");
   await everyPage();
 
   console.log("\n" + "─".repeat(52));

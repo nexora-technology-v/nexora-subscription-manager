@@ -150,7 +150,9 @@
             position: relative;
             cursor: default;
             width: 54px;
-            height: 54px;
+            /* ارتفاع ثابت نه: چهره (۴۶) به‌اضافه‌ی خطِ «آفلاین» از ۵۴
+               بیشتر می‌شود و ستونِ فلکس، چهره را از ۴۶ به ۳۸ می‌فشرد —
+               و `border-radius: 50%` روی ۴۶×۳۸ یعنی بیضی. */
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -161,6 +163,8 @@
         .profile-img {
             width: 46px;
             height: 46px;
+            /* و خودش هم نباید کوتاه شود، هر چه کنارش بیاید */
+            flex: none;
             border-radius: 50%;
             background: var(--surface-alt);
             border: 2.5px solid var(--border);

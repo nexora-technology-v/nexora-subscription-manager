@@ -1738,3 +1738,84 @@ html[dir="rtl"] .nx-bar > i { transform-origin: right center; }
 @media (prefers-reduced-motion: reduce) {
   .mn-sheet, .mn-sheet-bg, .mn-pay-tick { animation: none; }
 }
+
+/* لوگوی آپلودشده — جای نشانِ نکسورا.
+   `contain` نه `cover`: لوگوی مشتری هر نسبتی می‌تواند داشته باشد و
+   بریدنش یعنی خراب‌کردنِ برندِ او. */
+.nx-logo {
+  display: block;
+  object-fit: contain;
+  border-radius: var(--r-m);
+}
+.nx-logo.go { animation: nx-pop .62s var(--sp-snappy) both; }
+@media (prefers-reduced-motion: reduce) { .nx-logo.go { animation: none; } }
+
+/* لوگوی فروشگاه در نوار بالای مینی‌اپ — هم‌اندازه‌ی چهره (۳۸) تا
+   ردیف نپرد، و `contain` تا لوگوی هیچ‌کس بریده نشود. */
+.mn-logo {
+  width: 38px; height: 38px; flex: none;
+  object-fit: contain;
+  border-radius: 11px;
+  background: var(--hair-1);
+}
+
+/* ── انتخابگر لوگو ── */
+.fx-logo-edit {
+  position: absolute; inset-inline-end: -3px; bottom: -3px;
+  width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent); color: #06090F;
+  border: 2px solid var(--bg);
+  opacity: 0; transform: scale(.8);
+  transition: opacity var(--m-fast) var(--sp-snappy),
+              transform var(--m-fast) var(--sp-snappy);
+}
+.group:hover .fx-logo-edit,
+.group:focus-within .fx-logo-edit { opacity: 1; transform: scale(1); }
+
+.fx-logo-drop {
+  position: absolute; inset-inline-start: -5px; top: -5px;
+  width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--danger); color: #fff;
+  border: 2px solid var(--bg);
+  opacity: 0; transform: scale(.8);
+  transition: opacity var(--m-fast) var(--sp-snappy),
+              transform var(--m-fast) var(--sp-snappy);
+}
+.group:hover .fx-logo-drop,
+.group:focus-within .fx-logo-drop { opacity: 1; transform: scale(1); }
+
+/* روی لمس، hover نداریم — پس همیشه دیده شوند */
+@media (hover: none) {
+  .fx-logo-edit, .fx-logo-drop { opacity: 1; transform: scale(1); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   پوسته‌ی روشنِ مینی‌اپ
+   ══════════════════════════════════════════════════════════
+   وقتی تلگرام روشن است، رنگ‌ها را از *خودمان* می‌گیریم نه از
+   تلگرام. خاکستریِ خنثای تلگرام هر مینی‌اپی را شبیه هم می‌کند؛
+   این‌ها همان آبیِ کم‌رنگِ برند را دارند.
+
+   `syncTheme` فقط همین صفت را می‌گذارد — رنگ جای CSS است. */
+:root[data-mn-scheme="light"] {
+  --bg: #EEF3FA;
+  --surface: #FFFFFF;
+  --surface-2: #F7FAFE;
+  --surface-3: #EAF1F9;
+  --text: #0B1420;
+  --dim: #41536B;
+  --muted: #5F7288;
+  --border: rgba(11, 20, 32, .12);
+  --border-2: rgba(11, 20, 32, .20);
+  --hair-1: rgba(11, 20, 32, .04);
+  --hair-2: rgba(11, 20, 32, .07);
+  --hair-3: rgba(11, 20, 32, .12);
+  --hair-4: rgba(11, 20, 32, .20);
+  /* سایه روی زمینه‌ی روشن باید نرم‌تر باشد، وگرنه کارت‌ها کثیف
+     به نظر می‌رسند */
+  --e-1: 0 1px 2px rgba(11, 20, 32, .06);
+  --e-2: 0 4px 14px -6px rgba(11, 20, 32, .14);
+  --e-3: 0 18px 40px -16px rgba(11, 20, 32, .22);
+}

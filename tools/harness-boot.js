@@ -25,9 +25,34 @@
    * اسکریپت اجرا می‌شود و همان مسیرِ تازه را می‌بیند.
    */
   try {
-    var as = new URLSearchParams(location.search).get("as");
+    var qs = new URLSearchParams(location.search);
+    var as = qs.get("as");
     if (as === "portal") history.replaceState({}, "", "/r/hossein");
     else if (as === "mini") history.replaceState({}, "", "/app");
+
+    /* پوسته‌ی تلگرام:  ?scheme=dark  یا  ?scheme=light
+     *
+     * بیرون از تلگرام، خودِ telegram-web-app.js همیشه «روشن»
+     * می‌گوید. پس پوسته‌ی تیره — که بیشترِ کاربرهای واقعی رویش
+     * هستند — هیچ‌وقت دیده نمی‌شد. */
+    var sc = qs.get("scheme");
+    if (sc && window.Telegram && window.Telegram.WebApp) {
+      /* `colorScheme` روی شیءِ SDK قابلِ بازتعریف نیست، پس
+         defineProperty بی‌صدا شکست می‌خورد. به‌جایش یک پوشش
+         می‌گذاریم که همه چیز را به اصلی می‌دهد جز همین یک خاصیت. */
+      var real = window.Telegram.WebApp;
+      window.Telegram = { WebApp: new Proxy(real, {
+        get: function (t, k) {
+          if (k === "colorScheme") return sc;
+          var v = t[k];
+          return typeof v === "function" ? v.bind(t) : v;
+        },
+      }) };
+      if (window.Telegram.WebApp.colorScheme !== sc) {
+        // مسیرِ خرابِ بی‌صدا ممنوع — اگر نگرفت، باید بدانیم
+        console.error("[harness] scheme=" + sc + " اعمال نشد");
+      }
+    }
   } catch (e) { /* بی‌صدا */ }
 
   var CONFIG = {
@@ -271,9 +296,11 @@
      دیده شود. */
   try { localStorage.setItem("nexora_portal_token", "harness-token"); } catch (e) { /* بی‌صدا */ }
 
+  var FAKE_LOGO = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiNGNTlFMEIiLz48dGV4dCB4PSIzMiIgeT0iNDIiIGZvbnQtc2l6ZT0iMzAiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iODAwIiBmaWxsPSIjMDYwOTBGIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5IPC90ZXh0Pjwvc3ZnPg==";
+
   var P_ME = { ok: true, id: 2, name: "حسین", slug: "hossein",
                credit: 1200000, discount: 0, hasBot: true,
-               botUsername: "hossein_vpn_bot" };
+               botUsername: "hossein_vpn_bot", logo: FAKE_LOGO };
 
   var P_SUMMARY = { group: "goroh-a", label: "حسین", configs: 96, months: 104,
                     renewals: 19, usedGB: 812.4, due: 12400000, paid: 9000000,
@@ -325,6 +352,7 @@
 
   /* ── مینی‌اپ مشتری ── */
   var M_ME = { name: "مریم کاظمی", brand: "نکسورا", balance: 240000, coins: 36,
+               logo: FAKE_LOGO,
                tgId: 1278109787, username: "maryam_k",
                botUsername: "nexora_vpn_bot" };
   var GB = 1024 * 1024 * 1024;

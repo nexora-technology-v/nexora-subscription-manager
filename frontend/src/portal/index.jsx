@@ -9,11 +9,11 @@
  * این‌جا اصلاً به آن کد دسترسی ندارد — نه به مسیرهایش، نه به
  * کامپوننت‌هایش.
  */
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  AlertTriangle, Bot, Check, Clock, Copy, Database, FileText, Link2, LogOut,
-  Loader2, Package, Plus, Power, QrCode, RefreshCw, Search, ShoppingCart,
-  Trash2, TrendingUp, Users, Wallet, X, XCircle,
+  AlertTriangle, Bot, Camera, Check, Clock, Copy, Database, FileText, Link2,
+  Loader2, LogOut, Package, Plus, Power, QrCode, RefreshCw, Search,
+  ShoppingCart, Trash2, TrendingUp, Users, Wallet, X, XCircle,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -1343,6 +1343,82 @@ function ConfigBox({ token, row, onClose, onRenew, onToggle }) {
 }
 
 
+/**
+ * لوگوی خودِ نماینده.
+ *
+ * چرا این‌جا و نه در تنظیمات: این تنها جایی است که نماینده *می‌بیند*
+ * لوگویش کجا می‌نشیند. تنظیماتی که اثرش جای دیگری است، پر نمی‌شود.
+ *
+ * فایل با base64 می‌رود، نه multipart — سرور `python-multipart`
+ * ندارد و افزودنش به هر سروری که آپدیت می‌شود، ریسکِ بی‌دلیل است.
+ */
+function LogoPick({ token, logo, name, onDone }) {
+  const ref = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const pick = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";                 // همان فایل دوباره هم انتخاب شود
+    if (!f) return;
+    setErr("");
+    if (f.size > 512 * 1024) {
+      setErr("حجم فایل بیشتر از ۵۱۲ کیلوبایت است");
+      return;
+    }
+    setBusy(true);
+    try {
+      const data = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result || ""));
+        r.onerror = () => rej(new Error("فایل خوانده نشد"));
+        r.readAsDataURL(f);
+      });
+      await api("/api/portal/logo", { token, method: "POST", body: { data } });
+      onDone();
+    } catch (e2) {
+      setErr(e2.message);
+    } finally { setBusy(false); }
+  };
+
+  const drop = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      await api("/api/portal/logo", { token, method: "DELETE" });
+      onDone();
+    } catch (e2) { setErr(e2.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="relative group">
+      <button onClick={() => ref.current?.click()} disabled={busy}
+        title="تغییر لوگو" className="block rounded-2xl"
+        style={{ lineHeight: 0 }}>
+        {logo
+          ? <img src={logo} alt={name || ""} className="nx-logo"
+              style={{ width: 42, height: 42 }} />
+          : <Avatar name={name} id={name} size={42} ring />}
+        <span className="fx-logo-edit">
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />}
+        </span>
+      </button>
+      <input ref={ref} type="file" accept="image/png,image/jpeg,image/webp"
+        onChange={pick} className="hidden" />
+      {logo && !busy && (
+        <button onClick={drop} className="fx-logo-drop" title="برداشتن لوگو">
+          <X size={11} />
+        </button>
+      )}
+      {err && (
+        <div className="absolute top-full mt-1 text-[11px] whitespace-nowrap z-10"
+          style={{ color: "var(--danger)" }}>{err}</div>
+      )}
+    </div>
+  );
+}
+
+
 function Dashboard({ token, onOut }) {
   const [me, setMe] = useState(null);
   const [sum, setSum] = useState(null);
@@ -1449,7 +1525,8 @@ function Dashboard({ token, onOut }) {
               پنل مدیر «نصفه» به نظر می‌رسید. چهره و نشانِ گروه،
               همان چیزی است که به صفحه صاحب می‌دهد. */}
           <div className="flex items-center gap-3 min-w-0">
-            <Avatar name={me?.name} id={me?.id ?? me?.slug} size={42} ring />
+            <LogoPick token={token} logo={me?.logo} name={me?.name}
+              onDone={load} />
             <div className="min-w-0">
               <div className="text-[18px] font-bold text-white truncate">
                 {me?.name || "پنل نمایندگی"}

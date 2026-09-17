@@ -10,8 +10,10 @@
  *   مشتری رندر شود. این‌جا اصلاً به آن کد دسترسی ندارد.
  *
  * و یک قاعده که نباید شکسته شود: **هیچ پولی این‌جا حساب نمی‌شود.**
- * قیمت از API می‌آید، خرید در خودِ ربات انجام می‌شود. مالک صریح گفت
- * حسابداری از این بحث جداست.
+ * قیمت از API می‌آید و خرید از `/api/mini/buy` رد می‌شود، که خودش
+ * `handlers.wallet_purchase` را صدا می‌زند — همان هسته‌ای که خرید از
+ * داخل ربات هم از آن می‌گذرد. یک نسخه، دو در. حسابداریِ نماینده هم
+ * اصلاً این‌جا نیست؛ قرارِ خودِ مالک.
  *
  * ── چیدمان ──
  *
@@ -62,39 +64,30 @@ function buzz(kind = "light") {
 }
 
 /**
- * رنگ‌ها را از خودِ تلگرام می‌گیرد.
+ * هماهنگی با تلگرام — ولی فقط تا جایی که باید.
  *
- * چرا: مینی‌اپ تنها جایی است که **مشتری نهایی** می‌بیند، و کنار
- * بقیه‌ی اپ‌های تلگرام قضاوت می‌شود.
+ * تلگرام تصمیم می‌گیرد **روشن یا تیره**؛ رنگ را نکسورا تصمیم
+ * می‌گیرد. قبلاً `--bg` و همه‌ی سطح‌ها مستقیم از `themeParams`
+ * برداشته می‌شدند و نتیجه‌اش خاکستریِ خنثیِ خودِ تلگرام بود — یعنی
+ * مینی‌اپ ما دقیقاً شبیه هر مینی‌اپ دیگری می‌شد و هیچ‌چیز از برند
+ * در آن نمی‌ماند.
  *
- * ولی رنگِ *برند* از تلگرام نمی‌آید: اکسنت همان سرمه‌ای-فیروزه‌ای
- * نکسورا می‌ماند، وگرنه اپ هویت خودش را ندارد. فقط زمینه و متن —
- * یعنی چیزهایی که باید با پوسته‌ی کاربر جور باشند — از تلگرام
- * می‌آیند.
+ * این‌جا فقط یک صفت روی ریشه گذاشته می‌شود؛ خودِ رنگ‌ها در
+ * `index.css` زیر `[data-mn-scheme="light"]` تعریف شده‌اند — رنگ
+ * جای CSS است، نه داخل JSX.
+ *
+ * تنها چیزی که به تلگرام *داده* می‌شود رنگِ نوار بالا و پس‌زمینه‌ی
+ * پنجره است، تا لبه‌ی اپ با محیطش یکی شود.
  */
 function syncTheme() {
   const w = tg();
-  const p = w?.themeParams;
-  if (!p || !p.bg_color) return false;
-  const dark = (w.colorScheme || "dark") === "dark";
-  const r = document.documentElement.style;
-  const set = (k, v) => v && r.setProperty(k, v);
-
-  set("--bg", p.secondary_bg_color || p.bg_color);
-  set("--surface", p.bg_color);
-  set("--surface-2", p.secondary_bg_color || p.bg_color);
-  set("--surface-3", p.secondary_bg_color || p.bg_color);
-  set("--text", p.text_color);
-  set("--dim", p.hint_color || p.subtitle_text_color);
-  set("--muted", p.hint_color || p.subtitle_text_color);
-  // مرزها در پوسته‌ی روشن باید تیره باشند، نه سفیدِ کم‌رنگ — وگرنه
-  // روی زمینه‌ی روشن اصلاً دیده نمی‌شوند و کارت‌ها در هم می‌روند
-  set("--border", dark ? "var(--hair-3)" : "var(--scrim-1)");
-  set("--border-2", dark ? "var(--hair-3)" : "var(--scrim-1)");
-
+  const dark = (w?.colorScheme || "dark") === "dark";
+  document.documentElement.dataset.mnScheme = dark ? "dark" : "light";
   try {
-    w.setHeaderColor?.(p.secondary_bg_color || p.bg_color);
-    w.setBackgroundColor?.(p.secondary_bg_color || p.bg_color);
+    const css = getComputedStyle(document.documentElement);
+    const bg = css.getPropertyValue("--bg").trim() || "#070A12";
+    w?.setHeaderColor?.(bg);
+    w?.setBackgroundColor?.(bg);
   } catch { /* نسخه‌ی قدیمی‌تر این متدها را ندارد */ }
   return true;
 }
@@ -590,7 +583,11 @@ export default function Mini() {
       {/* ── نوار برند ── */}
       <header className="mn-top">
         <div className="mn-brand">
-          <Avatar name={me?.name} id={me?.tgId} size={38} ring />
+          {/* لوگوی همین فروشگاه اگر آپلود شده، وگرنه چهره‌ی کاربر.
+              مینی‌اپِ هر نماینده باید مالِ خودش به نظر برسد. */}
+          {me?.logo
+            ? <img src={me.logo} alt={me.brand || ""} className="mn-logo" />
+            : <Avatar name={me?.name} id={me?.tgId} size={38} ring />}
           <div className="min-w-0">
             <b>{me?.brand || "اشتراک من"}</b>
             <span>{me?.name || "—"}</span>

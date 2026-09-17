@@ -4,10 +4,10 @@
  * این‌جا نشانی و رمز هر نماینده ساخته می‌شود و لینکش تحویل داده
  * می‌شود. تا وقتی این صفحه نبود، تنها راهش خط فرمان بود.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle, Check, Copy, History, Key, Link2, Loader2, Network, Plus,
-  Power, RefreshCw, Users, Wallet,
+  AlertTriangle, Camera, Check, Copy, History, Key, Link2, Loader2, Network,
+  Plus, Power, RefreshCw, Users, Wallet, X,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -39,6 +39,78 @@ function randomPass() {
   return Array.from(crypto.getRandomValues(new Uint32Array(16)))
     .map((n) => a[n % a.length]).join("");
 }
+
+/**
+ * لوگوی یک نماینده، از سمت مالک.
+ *
+ * همان قاعده‌ی پنل نماینده، فقط با احراز هویتِ مدیر. مالک لازم است
+ * بتواند خودش هم بگذارد: نماینده‌ای که هنوز وارد پنلش نشده، مشتری
+ * دارد.
+ */
+function TenantLogo({ tid, name, logo, password, onDone }) {
+  const ref = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const send = async (body, method) => {
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch(`${API_URL}/api/admin/tenant/${tid}/logo`, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Password": password || "",
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(j.detail, "آپلود نشد"));
+      onDone();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  const pick = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.size > 512 * 1024) { setErr("بیشتر از ۵۱۲ کیلوبایت"); return; }
+    const data = await new Promise((res, rej) => {
+      const rd = new FileReader();
+      rd.onload = () => res(String(rd.result || ""));
+      rd.onerror = () => rej(new Error("فایل خوانده نشد"));
+      rd.readAsDataURL(f);
+    }).catch((e2) => { setErr(e2.message); return null; });
+    if (data) send({ data }, "POST");
+  };
+
+  return (
+    <div className="relative group shrink-0">
+      <button onClick={() => ref.current?.click()} disabled={busy}
+        title="تغییر لوگو" style={{ lineHeight: 0 }}>
+        {logo
+          ? <img src={logo} alt={name || ""} className="nx-logo"
+              style={{ width: 30, height: 30 }} />
+          : <Avatar name={name} id={tid ?? name} size={30} />}
+        <span className="fx-logo-edit" style={{ width: 16, height: 16 }}>
+          {busy ? <Loader2 size={9} className="animate-spin" /> : <Camera size={9} />}
+        </span>
+      </button>
+      <input ref={ref} type="file" accept="image/png,image/jpeg,image/webp"
+        onChange={pick} className="hidden" />
+      {logo && !busy && (
+        <button onClick={() => send(null, "DELETE")} className="fx-logo-drop"
+          style={{ width: 15, height: 15 }} title="برداشتن لوگو">
+          <X size={9} />
+        </button>
+      )}
+      {err && (
+        <div className="absolute top-full mt-1 text-[10.5px] whitespace-nowrap z-10"
+          style={{ color: "var(--danger)" }}>{err}</div>
+      )}
+    </div>
+  );
+}
+
 
 function Row({ t, groups, password, onSaved, setMsg }) {
   const [slug, setSlug] = useState(t.portalSlug || "");
@@ -130,7 +202,8 @@ function Row({ t, groups, password, onSaved, setMsg }) {
     <div className="fx-card p-5 mb-3">
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-2">
-          <Avatar name={t.name} id={t.id ?? t.portalSlug} size={30} />
+          <TenantLogo tid={t.id} name={t.name} logo={t.logo}
+            password={password} onDone={onSaved} />
           <span className="text-[14px] font-semibold text-white">{t.name}</span>
           <span className="fx-pill" style={{
             background: on ? "var(--ok-soft)" : "var(--surface-3)",

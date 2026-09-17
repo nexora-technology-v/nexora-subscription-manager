@@ -2076,6 +2076,123 @@ def _bot_rw():
     return con
 
 
+#: لوگوی برند — مالک و هر نماینده یکی دارد.
+#
+#  چرا روی دیسک و نه در دیتابیس: این فایل را مرورگرِ مشتری مستقیم
+#  می‌خواهد (مینی‌اپ و صفحه‌ی اشتراک)، و ریختنِ چند صد کیلوبایت باینری
+#  در هر `SELECT * FROM tenants` یعنی کند‌کردنِ هر چیزی که مستاجر
+#  می‌خواند.
+LOGO_DIR = Path(os.getenv("LOGO_DIR", str(CONFIG_PATH.parent / "logos")))
+
+#: سقفِ حجم. بدون Pillow نمی‌شود تصویر را کوچک کرد، پس همین سقف تنها
+#  چیزی است که جلوی یک فایلِ ۲۰ مگابایتی را می‌گیرد.
+LOGO_MAX_BYTES = 512 * 1024
+
+#: فرمت‌های مجاز، با **بایت‌های اولِ فایل** — نه پسوند و نه
+#  `Content-Type`، که هر دو را فرستنده می‌نویسد.
+#
+#  SVG عمداً نیست: می‌تواند `<script>` داشته باشد و این فایل از
+#  دامنه‌ی خودِ ما سرو می‌شود، یعنی XSS روی پنل.
+def _logo_kind(blob: bytes):
+    """پسوند و نوعِ محتوا، یا (None, None) اگر تصویرِ مجاز نباشد."""
+    if blob[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png", "image/png"
+    if blob[:3] == b"\xff\xd8\xff":
+        return "jpg", "image/jpeg"
+    if blob[:4] == b"RIFF" and blob[8:12] == b"WEBP":
+        return "webp", "image/webp"
+    return None, None
+
+
+def _logo_path(tid: int):
+    """فایلِ لوگوی این مستاجر، اگر باشد."""
+    for ext in ("png", "jpg", "webp"):
+        p = LOGO_DIR / f"{int(tid)}.{ext}"
+        if p.exists():
+            return p
+    return None
+
+
+def _logo_url(tid) -> str:
+    """نشانیِ عمومیِ لوگو، یا رشته‌ی خالی. رابط از همین تصمیم می‌گیرد."""
+    try:
+        return f"/api/public/logo/{int(tid)}" if _logo_path(tid) else ""
+    except (TypeError, ValueError):
+        return ""
+
+
+def _logo_save(tid: int, payload: dict):
+    """
+    ذخیره‌ی لوگو از بدنه‌ی JSON با base64.
+
+    چرا base64 و نه multipart: `python-multipart` نصب نیست و افزودنِ
+    وابستگی به سروری که با `nexora-cli` به‌روز می‌شود ریسکِ بی‌دلیل
+    دارد. برای نیم‌مگابایت، base64 کاملاً بس است.
+    """
+    import base64
+    raw = str((payload or {}).get("data") or "")
+    if "," in raw[:80] and raw.lstrip().startswith("data:"):
+        raw = raw.split(",", 1)[1]          # data:image/png;base64,....
+    raw = raw.strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="فایلی فرستاده نشد")
+
+    # سقف را *قبل* از دیکد بسنج: رشته‌ی base64 حدود ۴/۳ برابرِ خودِ
+    # فایل است، پس بدونِ این شرط یک رشته‌ی چند مگابایتی دیکد می‌شود و
+    # تازه بعدش رد می‌شود.
+    if len(raw) > (LOGO_MAX_BYTES * 4) // 3 + 1024:
+        raise HTTPException(status_code=413,
+                            detail="حجم فایل بیشتر از ۵۱۲ کیلوبایت است")
+    try:
+        blob = base64.b64decode(raw, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="فایل خوانده نشد")
+
+    if len(blob) > LOGO_MAX_BYTES:
+        raise HTTPException(status_code=413,
+                            detail="حجم فایل بیشتر از ۵۱۲ کیلوبایت است")
+
+    ext, _ctype = _logo_kind(blob)
+    if not ext:
+        raise HTTPException(status_code=400,
+                            detail="فقط PNG، JPEG یا WebP — و فایل باید سالم باشد")
+
+    LOGO_DIR.mkdir(parents=True, exist_ok=True)
+    # پسوندِ قبلی ممکن است فرق کند، پس همه را پاک کن وگرنه دو فایل
+    # می‌مانند و `_logo_path` قدیمی را برمی‌دارد
+    _logo_clear(tid)
+    (LOGO_DIR / f"{int(tid)}.{ext}").write_bytes(blob)
+    return {"ok": True, "url": _logo_url(tid), "bytes": len(blob)}
+
+
+def _logo_clear(tid: int):
+    for ext in ("png", "jpg", "webp"):
+        p = LOGO_DIR / f"{int(tid)}.{ext}"
+        if p.exists():
+            try:
+                p.unlink()
+            except OSError:
+                log.debug("پاک‌کردن لوگو ناموفق", exc_info=True)
+
+
+@app.get("/api/public/logo/{tid}")
+def public_logo(tid: int):
+    """
+    لوگوی یک مستاجر — عمومی، چون مینی‌اپ و صفحه‌ی اشتراک بدون احراز
+    هویت بازش می‌کنند. چیزی جز بایت‌های تصویر در پاسخ نیست.
+    """
+    p = _logo_path(tid)
+    if not p:
+        raise HTTPException(status_code=404, detail="لوگویی ثبت نشده")
+    blob = p.read_bytes()
+    _ext, ctype = _logo_kind(blob)
+    if not ctype:
+        # فایلِ روی دیسک دیگر تصویر نیست — سرو نکن
+        raise HTTPException(status_code=404, detail="لوگویی ثبت نشده")
+    return Response(content=blob, media_type=ctype,
+                    headers={"Cache-Control": "public, max-age=300"})
+
+
 def _bot_dir():
     return Path(__file__).resolve().parent.parent / "bot"
 
@@ -9643,6 +9760,9 @@ def mini_me(tu: tuple = Depends(mini_user)):
         "support": st.get("support_username") or st.get("support") or "",
         "botUsername": t.get("bot_username") or "",
         "trialUsed": bool(u.get("trial_used")),
+        # لوگوی همین فروشگاه. خالی یعنی «نشان نکسورا» — رابط خودش
+        # تصمیم می‌گیرد، این‌جا حدس نمی‌زنیم.
+        "logo": _logo_url(t["id"]),
     }
 
 
@@ -9822,6 +9942,28 @@ def mini_buy(payload: dict, tu: tuple = Depends(mini_user)):
             status_code=502,
             detail="ساخت اشتراک نشد و مبلغ کامل به کیف پولتان برگشت")
     raise HTTPException(status_code=404, detail="این پلن دیگر در دسترس نیست")
+
+
+@app.post("/api/admin/tenant/{tid}/logo")
+def tenant_logo_set(tid: int, payload: dict, x_admin_password: str = Header(...)):
+    """
+    لوگوی یک مستاجر — مالک برای خودش یا برای هر نماینده.
+
+    مستاجر باید وجود داشته باشد، وگرنه فایل‌هایی روی دیسک می‌مانند که
+    هیچ‌کس صاحبشان نیست.
+    """
+    check_auth(x_admin_password)
+    if not _tenant_row(tid):
+        raise HTTPException(status_code=404, detail="این مستاجر پیدا نشد")
+    return _logo_save(tid, payload)
+
+
+@app.delete("/api/admin/tenant/{tid}/logo")
+def tenant_logo_clear(tid: int, x_admin_password: str = Header(...)):
+    """برداشتن لوگو — بعدش نشان نکسورا برمی‌گردد، نه قابِ خالی."""
+    check_auth(x_admin_password)
+    _logo_clear(tid)
+    return {"ok": True}
 
 
 @app.post("/api/admin/tenant/{tid}/credit")
@@ -10072,6 +10214,9 @@ def tenant_portal_list(x_admin_password: str = Header(...)):
                     "hasPass": bool(d.get("portal_pass")),
                     "credit": d.get("credit"),
                     "active": bool(d.get("is_active", 1)),
+                    # خالی یعنی «هنوز لوگو نگذاشته» — رابط خودش نشانِ
+                    # نکسورا را می‌گذارد
+                    "logo": _logo_url(d["id"]),
                 })
     except Exception as e:
         return {"ready": False, "error": str(e)[:140], "tenants": [],
@@ -11939,6 +12084,23 @@ def portal_stats(t: dict = Depends(portal_tenant)):
     }
 
 
+@app.post("/api/portal/logo")
+def portal_logo_set(payload: dict, t: dict = Depends(portal_tenant)):
+    """
+    لوگوی خودِ نماینده.
+
+    شناسه از نشستِ احراز‌شده می‌آید، نه از بدنه — وگرنه فرستادنِ
+    شناسه‌ی نماینده‌ی دیگر کافی بود تا لوگوی او عوض شود.
+    """
+    return _logo_save(t["id"], payload)
+
+
+@app.delete("/api/portal/logo")
+def portal_logo_clear(t: dict = Depends(portal_tenant)):
+    _logo_clear(t["id"])
+    return {"ok": True}
+
+
 @app.post("/api/portal/logout")
 def portal_logout(x_portal_token: str = Header(None)):
     _PORTAL_SESSIONS.pop(str(x_portal_token or ""), None)
@@ -11958,6 +12120,7 @@ def portal_me(t: dict = Depends(portal_tenant)):
         "discount": t.get("credit_discount") or 0,
         "hasBot": bool(t.get("bot_token")),
         "botUsername": t.get("bot_username") or "",
+        "logo": _logo_url(t["id"]),
     }
 
 

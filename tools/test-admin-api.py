@@ -2481,6 +2481,93 @@ check("و خرید از همان هسته‌ی ربات می‌آید",
 
 
 # ═══════════════════════════════════════════════════════════
+head("لوگوی برند · فقط تصویر، و فقط مالِ خودت")
+
+import base64 as _b64                                  # noqa: E402
+import tempfile as _tf                                 # noqa: E402
+
+app.LOGO_DIR = Path(_tf.mkdtemp(prefix="nx-logo-"))
+
+# کوچک‌ترین PNG معتبر (۱×۱ شفاف)
+_PNG = _b64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+    "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+_JPG = b"\xff\xd8\xff\xe0" + b"\x00" * 40
+_WEBP = b"RIFF" + b"\x00\x00\x00\x00" + b"WEBP" + b"\x00" * 30
+
+# SVG عمداً باید رد شود: می‌تواند <script> داشته باشد و از دامنه‌ی
+# خودِ ما سرو می‌شود — یعنی XSS روی پنل.
+_SVG = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+
+
+def _put(blob, tid=None, raw=None):
+    data = raw if raw is not None else _b64.b64encode(blob).decode()
+    return app.tenant_logo_set(tid if tid is not None else tid_root,
+                               {"data": data}, x_admin_password=PW)
+
+
+# مستاجرِ ریشه برای تست
+tid_root = tid
+
+for _name, _blob in (("PNG", _PNG), ("JPEG", _JPG), ("WebP", _WEBP)):
+    try:
+        _r = _put(_blob)
+        check(f"{_name} پذیرفته می‌شود", _r.get("ok"), str(_r))
+    except Exception as _e:
+        check(f"{_name} پذیرفته می‌شود", False, str(_e)[:80])
+
+for _name, _blob in (("SVG", _SVG), ("متن ساده", b"just text, not an image")):
+    try:
+        _put(_blob)
+        check(f"{_name} رد می‌شود", False, "پذیرفته شد — نباید")
+    except app.HTTPException as _e:
+        check(f"{_name} رد می‌شود", _e.status_code == 400, str(_e.status_code))
+
+# سقفِ حجم — و باید *قبل* از دیکد بگیرد
+try:
+    _put(None, raw="A" * (900 * 1024))
+    check("فایل بزرگ رد می‌شود", False, "پذیرفته شد")
+except app.HTTPException as _e:
+    check("فایل بزرگ رد می‌شود", _e.status_code == 413, str(_e.status_code))
+
+# فقط یک فایل باید بماند، نه سه‌تا با پسوندهای مختلف
+_put(_PNG)
+_files = sorted(p.name for p in app.LOGO_DIR.glob(f"{tid_root}.*"))
+check("فقط یک فایل برای هر مستاجر می‌ماند", len(_files) == 1, "، ".join(_files))
+
+# سرو
+_resp = app.public_logo(tid_root)
+check("لوگو سرو می‌شود", _resp.media_type == "image/png", str(_resp.media_type))
+check("و کش دارد", "max-age" in (_resp.headers.get("cache-control") or ""),
+      str(_resp.headers.get("cache-control")))
+
+# مستاجرِ نبوده
+try:
+    app.tenant_logo_set(999999, {"data": _b64.b64encode(_PNG).decode()},
+                        x_admin_password=PW)
+    check("مستاجرِ ناموجود رد می‌شود", False, "پذیرفته شد")
+except app.HTTPException as _e:
+    check("مستاجرِ ناموجود رد می‌شود", _e.status_code == 404, str(_e.status_code))
+
+# پاک‌کردن
+app.tenant_logo_clear(tid_root, x_admin_password=PW)
+check("بعد از پاک‌کردن، نشانی خالی است", app._logo_url(tid_root) == "",
+      app._logo_url(tid_root) or "خالی")
+try:
+    app.public_logo(tid_root)
+    check("و سرو هم ۴۰۴ می‌دهد", False, "هنوز سرو می‌شود")
+except app.HTTPException as _e:
+    check("و سرو هم ۴۰۴ می‌دهد", _e.status_code == 404, str(_e.status_code))
+
+# نماینده فقط مالِ خودش — شناسه از نشست می‌آید نه از بدنه
+_psrc = _APSRC[_APSRC.find("def portal_logo_set("):]
+_psrc = _psrc[:_psrc.find("@app.delete")]
+check("مسیر نماینده شناسه را از بدنه نمی‌گیرد",
+      '_logo_save(t["id"]' in _psrc and "payload.get(\"tid\")" not in _psrc,
+      "وگرنه فرستادنِ شناسه‌ی دیگری کافی است تا لوگوی او عوض شود")
+
+
+# ═══════════════════════════════════════════════════════════
 head("مینی‌اپ · ربات باید مسیر مستقل بماند")
 
 # مشتری‌های ما همان کسانی‌اند که اینترنتشان محدود است. اگر دامنه بالا

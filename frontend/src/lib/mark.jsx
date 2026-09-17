@@ -16,8 +16,30 @@ import React from "react";
    اشتباه می‌گیرد. */
 let _seq = 0;
 
-export function NexoraMark({ size = 96, animate = false, className = "" }) {
+/**
+ * نشان — یا لوگوی آپلودشده‌ی همان فروشگاه.
+ *
+ * `src` که بیاید، تصویرِ خودِ نماینده نشان داده می‌شود و نشانِ نکسورا
+ * کنار می‌رود. این همان چیزی است که مینی‌اپِ هر نماینده را مالِ خودش
+ * می‌کند.
+ *
+ * اگر تصویر بالا نیاید (پاک شده، شبکه قطع)، بی‌صدا به نشانِ نکسورا
+ * برمی‌گردد — نه قابِ خالیِ شکسته.
+ */
+export function NexoraMark({ size = 96, animate = false, src = "",
+                             alt = "", className = "" }) {
   const uid = React.useMemo(() => "nx" + (++_seq), []);
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => { setFailed(false); }, [src]);
+
+  if (src && !failed) {
+    return (
+      <img src={src} alt={alt || "لوگو"} width={size} height={size}
+        className={`nx-logo ${animate ? "go" : ""} ${className}`}
+        onError={() => setFailed(true)} />
+    );
+  }
+
   const gN = uid + "n";
   const gR = uid + "r";
 
@@ -68,11 +90,11 @@ export function NexoraMark({ size = 96, animate = false, className = "" }) {
  * `label` زیرِ نام می‌آید و می‌گوید کدام‌یک از سه اپ دارد بالا
  * می‌آید؛ صفحه‌ی یکسان برای هر سه، به کاربر هیچ نمی‌گوید.
  */
-export function Splash({ label = "" }) {
+export function Splash({ label = "", logo = "", name = "" }) {
   return (
     <div className="nx-splash" dir="rtl">
-      <NexoraMark size={104} animate />
-      <div className="nx-word">NEXORA</div>
+      <NexoraMark size={104} animate src={logo} alt={name} />
+      <div className="nx-word">{name || "NEXORA"}</div>
       {label ? <div className="nx-sub">{label}</div> : null}
       {/* نوارِ پیشرفت عمداً زمان‌بندی‌شده است، نه واقعی: پیشرفتِ
           دانلودِ یک تکه را نمی‌شود صادقانه اندازه گرفت. کارش فقط این
