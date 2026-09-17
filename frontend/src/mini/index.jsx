@@ -708,6 +708,28 @@ export default function Mini() {
 
   // دکمه‌ی بازگشتِ خودِ تلگرام، وقتی داخل جزئیات هستیم — همان
   // چیزی که کاربر در هر مینی‌اپ دیگری انتظار دارد
+  /* وقتی مشتری برمی‌گردد، تازه‌اش کن.
+     *
+     * رسید که فرستاده شد، مشتری می‌رود سراغ کار دیگری و بعد
+     * برمی‌گردد ببیند تایید شده یا نه. بدون این، همان صفحه‌ی کهنه را
+     * می‌بیند و فکر می‌کند هیچ اتفاقی نیفتاده — یعنی می‌رود از
+     * پشتیبانی می‌پرسد.
+     *
+     * با فاصله‌ی کمینه، وگرنه هر بار جابه‌جا شدن بین تب‌های تلگرام
+     * یک درخواست می‌زند. */
+  const lastLoad = useRef(0);
+  useEffect(() => {
+    const onBack = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastLoad.current < 8000) return;
+      lastLoad.current = now;
+      load();
+    };
+    document.addEventListener("visibilitychange", onBack);
+    return () => document.removeEventListener("visibilitychange", onBack);
+  }, [load]);
+
   useEffect(() => {
     const w = tg();
     const b = w?.BackButton;
