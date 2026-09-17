@@ -1108,6 +1108,58 @@ check("پلنِ ناموجود رد می‌شود",
       not _r3.get("ok") and _r3.get("why") == "no_plan", str(_r3.get("why")))
 
 
+# ── رسید هم یک هسته دارد ──
+#
+# مینی‌اپ هم رسید می‌گیرد. اگر آن‌جا دوباره نوشته شود، دو مسیرِ رسید
+# می‌شود و روزی یکی‌شان اعلانِ گروه را جا می‌اندازد — آن‌وقت مشتری
+# پول داده و هیچ‌کس خبر ندارد.
+section("رسید — یک هسته، دو در")
+
+_rshell = _calls_in("handle_receipt")
+check("handle_receipt خودش رسید را ثبت نمی‌کند",
+      "receipt_submit" in _rshell and "attach_receipt" not in _rshell,
+      "پوسته فقط پیام می‌سازد")
+
+_rcore = _calls_in("receipt_submit")
+check("هسته ادعای اتمی می‌زند", "attach_receipt" in _rcore,
+      "بدون ادعا، جاروکشِ مهلت و این مسیر هر دو یک سفارش را برمی‌دارند")
+check("و گروه مدیریت را خبر می‌کند",
+      "notify_group" in _rcore or "send_photo" in _rcore,
+      "رسیدی که کسی نبیند، پولی است که گم می‌شود")
+
+# رفتار: رسید روی سفارشِ باز می‌نشیند و وضعیت را awaiting می‌کند
+_rtg = 7790
+D.create_user(_rtg, None, "کارت‌به‌کارتی")
+_ru = D.get_user(_rtg)
+_ro = D.create_order(_ru["id"], plan["id"], plan["price"], plan["price"],
+                     paid_from="card")
+_ok, _why = H.receipt_submit(H.Ctx(bot, tenant), D.get_user(_rtg),
+                             _ro["id"], "text", rtext="واریز شد")
+check("رسید ثبت می‌شود", _ok, str(_why))
+check("و سفارش awaiting می‌شود",
+      D.get_order(_ro["id"])["status"] == "awaiting",
+      D.get_order(_ro["id"])["status"])
+
+# دو بار نه — سفارشی که awaiting است دیگر pending نیست
+_ok2, _why2 = H.receipt_submit(H.Ctx(bot, tenant), D.get_user(_rtg),
+                               _ro["id"], "text", rtext="دوباره")
+check("رسید دوم روی همان سفارش نمی‌نشیند",
+      not _ok2 and _why2 == "closed", str(_why2))
+
+# مهلتِ گذشته
+_ro2 = D.create_order(_ru["id"], plan["id"], plan["price"], plan["price"],
+                      paid_from="card")
+D.exec("UPDATE orders SET expires_at=? WHERE tenant_id=? AND id=?",
+       ("2020-01-01T00:00:00", tid, _ro2["id"]))
+_ok3, _why3 = H.receipt_submit(H.Ctx(bot, tenant), D.get_user(_rtg),
+                               _ro2["id"], "text", rtext="دیر")
+check("رسیدِ بعد از مهلت رد می‌شود",
+      not _ok3 and _why3 == "expired", str(_why3))
+check("و سفارش منقضی می‌شود",
+      D.get_order(_ro2["id"])["status"] == "expired",
+      D.get_order(_ro2["id"])["status"])
+
+
 # و هیچ مسیر تازه‌ای نباید دوباره خام approved بنویسد.
 #
 # این الگو سه بار پیدا شد: کیف پول، تمدید خودکار، و تست رایگان. هر

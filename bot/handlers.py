@@ -473,15 +473,25 @@ def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
     _reply(ctx, chat_id, message_id, "\n".join(lines), kb(rows))
 
 
-def checkout(ctx, user, chat_id, message_id, plan_id, use_coins,
-             renew_sub_id=None):
-    """ساخت سفارش و نمایش اطلاعات کارت."""
+def card_order(ctx, user, plan_id, use_coins=False, renew_sub_id=None):
+    """
+    ساختِ سفارشِ کارتی: قیمت، رزروِ سکه، و انتخابِ کارت.
+
+    برمی‌گرداند (ok, data). وقتی ok است:
+        {"order":…, "plan":…, "card":…, "price":…, "ttl":…}
+    وقتی نیست، `data` یکی از:
+        no_plan | no_card | {"why": "coins", "left":…, "need":…}
+
+    چرا جدا از `checkout`: مینی‌اپ هم سفارشِ کارتی می‌سازد. نسخه‌ی
+    اولِ مینی‌اپ همین را دوباره نوشته بود و **دو چیز را جا انداخت**:
+    تخفیفِ سکه (`core.price_order`) و مهلتِ قابل‌تنظیم
+    (`order_ttl_minutes`). یعنی مشتری‌ای که سکه داشت، از مینی‌اپ
+    قیمتِ کامل می‌داد. تستِ «مینی‌اپ خودش پول جابه‌جا نمی‌کند» همین
+    را گرفت.
+    """
     p = ctx.db.get_plan(plan_id)
     if not p:
-        return _reply(ctx, chat_id, message_id,
-                      "این پلن دیگر در دسترس نیست.\n\n"
-                      "از لیست، یکی از پلن‌های فعال را انتخاب کنید.",
-                      back_kb("buy"))
+        return False, "no_plan"
 
     cs = ctx.s.get("coins")
     pr = core.price_order(p["price"], coins=user["coins"], coin_cfg=cs,
@@ -489,10 +499,7 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins,
 
     card = core.pick_card(ctx.s.get("cards"))
     if not card:
-        return _reply(ctx, chat_id, message_id,
-                      "راه پرداخت هنوز فعال نشده است.\n\n"
-                      "یک پیام به پشتیبانی بدهید تا دستی برایتان انجام دهیم.",
-                      back_kb())
+        return False, "no_card"
 
     ttl = int(ctx.s.get("order_ttl_minutes") or 30)
     order = ctx.db.create_order(
@@ -507,9 +514,7 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins,
     # سکه همین حالا رزرو می‌شود، نه موقع تایید.
     #
     # اگر تا تایید صبر کنیم، مشتری می‌تواند چند سفارش با همان سکه‌ها
-    # بسازد — چون هنوز کم نشده‌اند — و همه را تایید بگیرد. رزروکردن
-    # این را ناممکن می‌کند و مسیر بازگشت سکه در «رد شدن» را هم درست
-    # می‌کند، که تا امروز سکه‌ی رایگان می‌داد.
+    # بسازد — چون هنوز کم نشده‌اند — و همه را تایید بگیرد.
     if pr["coins_used"]:
         took, left = ctx.db.spend_coins(
             user["id"], pr["coins_used"], "hold",
@@ -518,16 +523,44 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins,
             ctx.db.exec(
                 "UPDATE orders SET status='expired' WHERE tenant_id=? AND id=?",
                 (ctx.tid, order["id"]))
+            return False, {"why": "coins", "left": left,
+                           "need": pr["coins_used"]}
+
+    ctx.db.exec(
+        "UPDATE orders SET card_used=?, status='pending' WHERE tenant_id=? AND id=?",
+        (card.get("number"), ctx.tid, order["id"]))
+
+    return True, {"order": ctx.db.get_order(order["id"]), "plan": p,
+                  "card": card, "price": pr, "ttl": ttl}
+
+
+def checkout(ctx, user, chat_id, message_id, plan_id, use_coins,
+             renew_sub_id=None):
+    """ساخت سفارش و نمایش اطلاعات کارت — پوسته‌ی `card_order`."""
+    ok, r = card_order(ctx, user, plan_id, use_coins=use_coins,
+                       renew_sub_id=renew_sub_id)
+    if not ok:
+        if r == "no_plan":
             return _reply(ctx, chat_id, message_id,
-                          "سکه‌های شما برای این تخفیف کافی نیست.\n\n"
-                          f"موجودی: <b>{core.fa(left)}</b> سکه\n"
-                          f"لازم: <b>{core.fa(pr['coins_used'])}</b> سکه\n\n"
-                          "<blockquote>اگر همین الان سفارش دیگری ثبت "
-                          "کرده‌اید، سکه‌هایتان آن‌جا رزرو شده‌اند."
-                          "</blockquote>",
+                          "این پلن دیگر در دسترس نیست.\n\n"
+                          "از لیست، یکی از پلن‌های فعال را انتخاب کنید.",
                           back_kb("buy"))
-    ctx.db.exec("UPDATE orders SET card_used=?, status='pending' WHERE tenant_id=? AND id=?",
-                (card.get("number"), ctx.tid, order["id"]))
+        if r == "no_card":
+            return _reply(ctx, chat_id, message_id,
+                          "راه پرداخت هنوز فعال نشده است.\n\n"
+                          "یک پیام به پشتیبانی بدهید تا دستی برایتان انجام دهیم.",
+                          back_kb())
+        return _reply(ctx, chat_id, message_id,
+                      "سکه‌های شما برای این تخفیف کافی نیست.\n\n"
+                      f"موجودی: <b>{core.fa(r['left'])}</b> سکه\n"
+                      f"لازم: <b>{core.fa(r['need'])}</b> سکه\n\n"
+                      "<blockquote>اگر همین الان سفارش دیگری ثبت "
+                      "کرده‌اید، سکه‌هایتان آن‌جا رزرو شده‌اند."
+                      "</blockquote>",
+                      back_kb("buy"))
+
+    order, p, card, pr, ttl = (r["order"], r["plan"], r["card"],
+                               r["price"], r["ttl"])
     ctx.db.set_state(user["tg_id"], "await_receipt", {"order_id": order["id"]})
 
     holder = esc(card.get("holder") or "—")
@@ -702,34 +735,122 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
                   back_kb())
 
 
-def handle_receipt(ctx, msg, user, state_data):
-    order_id = state_data.get("order_id")
+def receipt_submit(ctx, user, order_id, rtype, rfile=None, rtext=None,
+                   photo_bytes=None):
+    """
+    ثبتِ رسیدِ یک سفارشِ کارتی، و خبردادن به گروه مدیریت.
+
+    برمی‌گرداند (ok, why). `why` یکی از:
+        closed   سفارش دیگر باز نیست
+        expired  مهلتش تمام شده
+        race     درست همین لحظه منقضی شد
+
+    چرا جدا از `handle_receipt`: مینی‌اپ هم باید دقیقاً همین را
+    انجام بدهد — همان قاعده‌ی مهلت، همان ادعای اتمی، همان اعلان با
+    دکمه‌های تایید و رد. اگر آن‌جا دوباره نوشته شود، دو مسیرِ رسید
+    می‌شود و روزی یکی‌شان اعلان را جا می‌اندازد؛ آن‌وقت مشتری پول
+    داده و هیچ‌کس خبر ندارد.
+
+    `photo_bytes` برای جایی است که عکس از تلگرام نیامده (مینی‌اپ):
+    همان‌جا به گروه آپلود می‌شود و `file_id`ش برمی‌گردد — پس پنل و
+    پنل نماینده بدون هیچ تغییری همان رسید را نشان می‌دهند.
+    """
     order = ctx.db.get_order(order_id)
+    if not order or order["status"] != "pending":
+        return False, "closed"
 
-    if not order or order["status"] not in ("pending",):
-        ctx.db.clear_state(user["tg_id"])
-        return ctx.bot.send(user["tg_id"],
-                            "این سفارش دیگر باز نیست — شاید قبلاً بررسی "
-                            "یا لغو شده باشد.\n\n"
-                            "وضعیتش را از «سفارش‌های من» ببینید.",
-                            keyboard=main_menu(ctx, user))
-
-    # بررسی مهلت
     if order.get("expires_at"):
         try:
             if datetime.fromisoformat(order["expires_at"]) < datetime.now():
-                ctx.db.exec("UPDATE orders SET status='expired' WHERE tenant_id=? AND id=?",
-                            (ctx.tid, order_id))
+                ctx.db.exec(
+                    "UPDATE orders SET status='expired' WHERE tenant_id=? AND id=?",
+                    (ctx.tid, order_id))
                 _release_coins(ctx, order_id)
-                ctx.db.clear_state(user["tg_id"])
-                return ctx.bot.send(user["tg_id"],
-                                    "⌛️ مهلت این سفارش تمام شد.\n\n"
-                                    "اگر واریز کرده‌اید نگران نباشید — "
-                                    "به پشتیبانی پیام بدهید تا دستی ثبت شود.\n"
-                                    "وگرنه از «خرید اشتراک» یک سفارش تازه بسازید.",
-                                    keyboard=main_menu(ctx, user))
+                return False, "expired"
         except ValueError:
             pass
+
+    t = DB.get_tenant(ctx.tid)
+    gid = t.get("admin_group_id")
+
+    # عکسی که از تلگرام نیامده باید اول آپلود شود تا `file_id` بگیرد.
+    #
+    # همین آپلود، خودش اعلانِ گروه هم هست — دو کار با یک درخواست. و
+    # مهم‌تر: بعدش رسیدِ مینی‌اپ دقیقاً مثل رسیدِ ربات ذخیره می‌شود،
+    # پس هیچ‌جای پایین‌دست لازم نیست بداند از کجا آمده.
+    uploaded = None
+    if photo_bytes and gid:
+        try:
+            topics = json.loads(t.get("topics") or "{}")
+            r = ctx.bot.send_photo_bytes(
+                gid, photo_bytes, filename=f"receipt-{order_id}.jpg",
+                caption=_receipt_caption(ctx, user, order, rtext))
+            ph = ((r or {}).get("result") or {}).get("photo") or []
+            if ph:
+                uploaded = ph[-1].get("file_id")
+            del topics                      # موضوع را send_photo_bytes ندارد
+        except (TelegramError, KeyError, TypeError) as e:
+            log.warning("آپلود رسید مینی‌اپ ناموفق: %s", e)
+
+    if uploaded:
+        rfile = uploaded
+
+    # شرطی، نه بی‌قید: بین بررسی مهلت بالا و همین لحظه، جاروکشِ
+    # زمان‌بند می‌تواند سفارش را منقضی کرده و سکه‌ها را پس داده باشد.
+    if not ctx.db.attach_receipt(order_id, rtype, rfile, rtext):
+        return False, "race"
+
+    # اگر عکس همین حالا آپلود شد، گروه خبردار شده — فقط دکمه‌ها را
+    # جدا می‌فرستیم. وگرنه اعلانِ کامل.
+    buttons = kb([[("✅ تایید", f"ap:{order_id}"), ("❌ رد", f"rj:{order_id}")]])
+    info = _receipt_caption(ctx, user, order, rtext)
+
+    if uploaded:
+        ctx.notify_group(f"سفارش #{order_id} — تصمیم شما؟",
+                         keyboard=buttons, topic="receipts")
+        return True, None
+
+    if gid and rtype == "photo" and rfile:
+        try:
+            topics = json.loads(t.get("topics") or "{}")
+            ctx.bot.send_photo(gid, rfile, caption=info, keyboard=buttons,
+                               topic_id=topics.get("receipts"))
+            return True, None
+        except TelegramError as e:
+            log.warning("ارسال عکس رسید ناموفق: %s", e)
+
+    ctx.notify_group(info, keyboard=buttons, topic="receipts")
+    return True, None
+
+
+def _receipt_caption(ctx, user, order, rtext):
+    """متنِ اعلانِ رسید — یک شکل، از هر مسیری که آمده باشد."""
+    plan = ctx.db.get_plan(order["plan_id"])
+    who = esc(user.get("first_name") or "بدون نام")
+    if user.get("username"):
+        who += f" · @{esc(user['username'])}"
+    info = (
+        f"🧾 <b>رسید جدید — سفارش #{order['id']}</b>\n\n"
+        f"{who}\n"
+        f"<code>{user['tg_id']}</code>\n\n"
+        f"{esc(plan['name']) if plan else '—'}\n"
+        f"<b>{core.toman(order['amount'])}</b> تومان"
+    )
+    if order["coins_used"]:
+        info += (f"\nبا {core.fa(order['coins_used'])} سکه · "
+                 f"{core.fa(order['discount_pct'])}٪ تخفیف")
+    if rtext:
+        info += f"\n\n<i>{esc(rtext[:400])}</i>"
+    return info
+
+
+def handle_receipt(ctx, msg, user, state_data):
+    """
+    رسیدی که مشتری در گفتگوی ربات فرستاده.
+
+    پوسته‌ی تلگرامیِ `receipt_submit` — این‌جا فقط پیام ساخته می‌شود.
+    """
+    order_id = state_data.get("order_id")
 
     rtype = rfile = rtext = None
     if msg.get("photo"):
@@ -744,65 +865,36 @@ def handle_receipt(ctx, msg, user, state_data):
                             "برای ثبت پرداخت، <b>عکس رسید</b> یا "
                             "<b>متن پیامک بانک</b> را بفرستید.")
 
-    # شرطی، نه بی‌قید: بین بررسی مهلت در بالا و همین لحظه، جاروکشِ
-    # زمان‌بند می‌تواند سفارش را منقضی کرده و سکه‌ها را پس داده باشد.
-    if not ctx.db.attach_receipt(order_id, rtype, rfile, rtext):
-        ctx.db.clear_state(user["tg_id"])
-        return ctx.bot.send(
-            user["tg_id"],
-            "⌛️ درست همین لحظه مهلت این سفارش تمام شد.\n\n"
-            "اگر واریز کرده‌اید نگران نباشید — رسیدتان را برای پشتیبانی "
-            "بفرستید تا دستی ثبت شود.\n"
-            "وگرنه از «خرید اشتراک» یک سفارش تازه بسازید.",
-            keyboard=main_menu(ctx, user))
-
+    ok, why = receipt_submit(ctx, user, order_id, rtype, rfile, rtext)
     ctx.db.clear_state(user["tg_id"])
 
-    plan = ctx.db.get_plan(order["plan_id"])
-    ctx.bot.send(
+    if ok:
+        return ctx.bot.send(user["tg_id"], _waiting_text(ctx, order_id),
+                            keyboard=_waiting_kb(ctx, order_id))
+
+    if why == "closed":
+        return ctx.bot.send(user["tg_id"],
+                            "این سفارش دیگر باز نیست — شاید قبلاً بررسی "
+                            "یا لغو شده باشد.\n\n"
+                            "وضعیتش را از «سفارش‌های من» ببینید.",
+                            keyboard=main_menu(ctx, user))
+
+    if why == "expired":
+        return ctx.bot.send(user["tg_id"],
+                            "⌛️ مهلت این سفارش تمام شد.\n\n"
+                            "اگر واریز کرده‌اید نگران نباشید — "
+                            "به پشتیبانی پیام بدهید تا دستی ثبت شود.\n"
+                            "وگرنه از «خرید اشتراک» یک سفارش تازه بسازید.",
+                            keyboard=main_menu(ctx, user))
+
+    return ctx.bot.send(
         user["tg_id"],
-        _waiting_text(ctx, order_id),
-        keyboard=_waiting_kb(ctx, order_id)
-    )
+        "⌛️ درست همین لحظه مهلت این سفارش تمام شد.\n\n"
+        "اگر واریز کرده‌اید نگران نباشید — رسیدتان را برای پشتیبانی "
+        "بفرستید تا دستی ثبت شود.\n"
+        "وگرنه از «خرید اشتراک» یک سفارش تازه بسازید.",
+        keyboard=main_menu(ctx, user))
 
-    # اعلان به گروه مدیریت
-    who = esc(user.get("first_name") or "بدون نام")
-    if user.get("username"):
-        who += f" · @{esc(user['username'])}"
-
-    info = (
-        f"🧾 <b>رسید جدید — سفارش #{order_id}</b>\n\n"
-        f"{who}\n"
-        f"<code>{user['tg_id']}</code>\n\n"
-        f"{esc(plan['name']) if plan else '—'}\n"
-        f"<b>{core.toman(order['amount'])}</b> تومان"
-    )
-    if order["coins_used"]:
-        info += (f"\nبا {core.fa(order['coins_used'])} سکه · "
-                 f"{core.fa(order['discount_pct'])}٪ تخفیف")
-    if rtext:
-        info += f"\n\n<i>{esc(rtext[:400])}</i>"
-
-    buttons = kb([
-        [("✅ تایید", f"ap:{order_id}"), ("❌ رد", f"rj:{order_id}")]
-    ])
-
-    t = DB.get_tenant(ctx.tid)
-    gid = t.get("admin_group_id")
-    if gid and rtype == "photo":
-        try:
-            topics = json.loads(t.get("topics") or "{}")
-            ctx.bot.send_photo(gid, rfile, caption=info, keyboard=buttons,
-                               topic_id=topics.get("receipts"))
-            return
-        except TelegramError as e:
-            log.warning("ارسال عکس رسید ناموفق: %s", e)
-    ctx.notify_group(info, keyboard=buttons, topic="receipts")
-
-
-# ═══════════════════════════════════════════════════════════
-#  تایید/رد سفارش و تحویل
-# ═══════════════════════════════════════════════════════════
 
 def _waiting_text(ctx, order_id):
     """

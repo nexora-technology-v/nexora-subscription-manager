@@ -21,12 +21,13 @@
  * پایینِ صفحه می‌رسد، نه به بالایش. همان الگویی که مالک نمونه‌اش را
  * فرستاد و در هر اپِ موبایلی دیده‌ایم.
  */
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, ArrowLeft, Check, ChevronLeft, Copy, ExternalLink, Gift,
-  Home, Layers, Link2, Loader2, Package, QrCode, RefreshCw, Shield,
-  ShoppingBag, ShoppingCart, Trash2, Wallet, Zap,
+  AlertTriangle, ArrowLeft, Check, ChevronLeft, Clock, Copy, CreditCard,
+  ExternalLink, Gift, Home, Image as ImageIcon, Layers, Link2, Loader2,
+  Package, QrCode, RefreshCw, Shield, ShoppingBag, ShoppingCart, Trash2,
+  Wallet, Zap,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -387,6 +388,40 @@ function BuyView({ plans, onBuy }) {
   );
 }
 
+/**
+ * سفارش‌هایی که هنوز تکلیفشان روشن نیست.
+ *
+ * چرا لازم است: مشتری رسید می‌فرستد و بعد… هیچ. بدون این، تنها راهِ
+ * فهمیدنِ اینکه رسیدش رسیده یا نه، پرسیدن از پشتیبانی است — همان
+ * مسیرِ خرابِ بی‌صدا، این بار روی پول.
+ */
+function PendingOrders({ orders }) {
+  const open = (orders || []).filter(
+    (o) => o.status === "pending" || o.status === "awaiting");
+  if (!open.length) return null;
+
+  return (
+    <div className="mn-pend">
+      {open.map((o) => (
+        <div key={o.id} className="mn-pend-row">
+          <span className={`mn-pend-ico ${o.status}`}>
+            {o.status === "awaiting" ? <Clock size={15} /> : <CreditCard size={15} />}
+          </span>
+          <span className="mn-pend-body">
+            <b>{o.plan || "سفارش"}</b>
+            <span>
+              {o.status === "awaiting"
+                ? "رسید فرستاده شده — در انتظار تایید"
+                : "منتظر رسید شماست"}
+            </span>
+          </span>
+          <span className="mn-pend-amt">{faNum(o.amount)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ═══════════════ برگه‌ی پرداخت ═══════════════ */
 
 /**
@@ -396,7 +431,9 @@ function BuyView({ plans, onBuy }) {
  * همان لحظه ببیند چقدر دارد و بعدش چقدر می‌ماند. رفتن به صفحه‌ی
  * دیگر، این مقایسه را از جلوی چشمش برمی‌دارد.
  */
-function PaySheet({ pay, me, onClose, onConfirm, onTopUp }) {
+function PaySheet({ pay, me, onClose, onConfirm, onTopUp,
+                   onCard, onReceipt }) {
+  const fileRef = useRef(null);
   if (!pay) return null;
   const p = pay.plan;
   const bal = Number(me?.balance || 0);
@@ -404,69 +441,172 @@ function PaySheet({ pay, me, onClose, onConfirm, onTopUp }) {
   const after = bal - price;
   const short = price - bal;
   const busy = pay.state === "busy";
+  const enough = after >= 0;
+
+  const pickFile = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.size > 3 * 1024 * 1024) { onReceipt({ err: "تصویر بیشتر از ۳ مگابایت است" }); return; }
+    const data = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(String(r.result || ""));
+      r.onerror = () => rej(new Error("فایل خوانده نشد"));
+      r.readAsDataURL(f);
+    }).catch(() => null);
+    if (data) onReceipt({ data });
+  };
+
+  const head = (
+    <div className="mn-sheet-head">
+      <b>{pay.step === "card" ? "واریز کارت‌به‌کارت" : "تایید خرید"}</b>
+      <span>{p.gb === 0 ? "نامحدود" : `${faNum(p.gb)} گیگابایت`}
+        {" / "}{faNum(p.days)} روز</span>
+    </div>
+  );
+
+  let body;
+
+  if (pay.state === "done") {
+    body = (
+      <div className="mn-pay-done">
+        <span className="mn-pay-tick"><Check size={26} /></span>
+        <b>اشتراک ساخته شد</b>
+        <span>{p.gb === 0 ? "نامحدود" : `${faNum(p.gb)} گیگابایت`}
+          {" · "}{faNum(p.days)} روز</span>
+        <div className="mn-pay-left">
+          مانده‌ی کیف پول: <b>{faNum(pay.left ?? after)}</b> تومان
+        </div>
+        <button className="mn-pay-btn" onClick={onClose}>دیدن اشتراک‌ها</button>
+      </div>
+    );
+  } else if (pay.state === "sent") {
+    // رسید رفت — ولی هنوز تایید نشده. این تفاوت باید روشن باشد،
+    // وگرنه مشتری فکر می‌کند اشتراکش آماده است و نیست.
+    body = (
+      <div className="mn-pay-done">
+        <span className="mn-pay-tick wait"><Clock size={24} /></span>
+        <b>رسید شما ثبت شد</b>
+        <span>به‌محض تایید، اشتراک ساخته می‌شود و همین‌جا می‌بینیدش.
+          معمولاً چند دقیقه طول می‌کشد.</span>
+        <button className="mn-pay-btn" onClick={onClose}>باشه</button>
+      </div>
+    );
+  } else if (pay.step === "card") {
+    const c = pay.card || {};
+    body = (
+      <>
+        {head}
+        <div className="mn-pay-rows">
+          <div><span>مبلغ</span><b>{faNum(price)} تومان</b></div>
+          {c.holder && <div><span>به نام</span><b>{c.holder}</b></div>}
+          {c.bank && <div><span>بانک</span><b>{c.bank}</b></div>}
+        </div>
+
+        <button className="mn-card-no" onClick={() => onCard.copy(c.number)}
+          title="کپی شماره کارت">
+          {/* شماره‌ی کارت عدد نیست، شماره است: `faNum` جداکننده‌ی
+              هزارگان می‌گذارد و «۶٬۰۳۷٬۹۹۱٬…» چیزی است که هیچ‌کس
+              نمی‌تواند در اپ بانک وارد کند. همان اشتباهی که یک‌بار
+              سرِ شناسه‌ی تلگرام رخ داد. */}
+          <span dir="ltr">{faDigits(String(c.number || "").replace(/\D/g, "")
+            .replace(/(\d{4})(?=\d)/g, "$1 "))}</span>
+          {pay.copied ? <Check size={15} /> : <Copy size={15} />}
+        </button>
+
+        <div className="mn-pay-note">
+          مبلغ را واریز کنید، بعد <b>عکس رسید</b> یا <b>متن پیامک بانک</b> را
+          بفرستید.
+        </div>
+
+        {pay.state === "err" && (
+          <div className="mn-pay-err"><AlertTriangle size={14} />
+            <span>{pay.why}</span></div>
+        )}
+
+        <textarea className="mn-receipt-text" rows={2} dir="auto"
+          placeholder="یا متن پیامک بانک را این‌جا بچسبانید…"
+          value={pay.text || ""}
+          onChange={(e) => onCard.setText(e.target.value)} />
+
+        <div className="mn-pay-two">
+          <button className="mn-pay-btn" disabled={busy}
+            onClick={() => fileRef.current?.click()}>
+            {busy ? <Loader2 size={15} className="animate-spin" />
+                  : <ImageIcon size={15} />}
+            عکس رسید
+          </button>
+          <button className="mn-pay-btn ghost" disabled={busy || !(pay.text || "").trim()}
+            onClick={() => onReceipt({ text: pay.text })}>
+            فرستادن متن
+          </button>
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden"
+          onChange={pickFile} />
+
+        <button className="mn-pay-cancel" onClick={onClose} disabled={busy}>
+          انصراف
+        </button>
+      </>
+    );
+  } else {
+    body = (
+      <>
+        {head}
+        <div className="mn-pay-rows">
+          <div><span>مبلغ</span><b>{faNum(price)} تومان</b></div>
+          <div><span>موجودی کیف پول</span><b>{faNum(bal)} تومان</b></div>
+          <div className={enough ? "ok" : "bad"}>
+            <span>{enough ? "بعد از خرید" : "کسری"}</span>
+            <b>{faNum(Math.abs(after))} تومان</b>
+          </div>
+        </div>
+
+        {pay.state === "err" && (
+          <div className="mn-pay-err"><AlertTriangle size={14} />
+            <span>{pay.why}</span></div>
+        )}
+
+        {/* کیف پول وقتی پول هست، وگرنه کارت. هر دو همیشه در دسترس‌اند
+            — مشتری‌ای که ترجیح می‌دهد کارت‌به‌کارت کند نباید مجبور
+            شود اول کیف پولش را شارژ کند. */}
+        {enough && (
+          <button className="mn-pay-btn" onClick={onConfirm} disabled={busy}>
+            {busy ? <Loader2 size={15} className="animate-spin" />
+                  : <Wallet size={15} />}
+            {busy ? "در حال پرداخت…" : "پرداخت از کیف پول"}
+          </button>
+        )}
+
+        <button className={`mn-pay-btn ${enough ? "ghost" : ""}`}
+          onClick={onCard.start} disabled={busy}>
+          <CreditCard size={15} /> کارت‌به‌کارت
+        </button>
+
+        {!enough && (
+          <>
+            <div className="mn-pay-note">
+              برای پرداخت از کیف پول {faNum(short)} تومان کم دارید.
+            </div>
+            <button className="mn-pay-btn ghost" onClick={onTopUp} disabled={busy}>
+              <Wallet size={15} /> شارژ کیف پول در ربات
+            </button>
+          </>
+        )}
+
+        <button className="mn-pay-cancel" onClick={onClose} disabled={busy}>
+          انصراف
+        </button>
+      </>
+    );
+  }
 
   return createPortal(
     <div className="mn-sheet-wrap" role="dialog" aria-modal="true">
       <div className="mn-sheet-bg" onClick={busy ? undefined : onClose} />
       <div className="mn-sheet">
         <span className="mn-sheet-grip" aria-hidden="true" />
-
-        {pay.state === "done" ? (
-          <div className="mn-pay-done">
-            <span className="mn-pay-tick"><Check size={26} /></span>
-            <b>اشتراک ساخته شد</b>
-            <span>{p.gb === 0 ? "نامحدود" : `${faNum(p.gb)} گیگابایت`}
-              {" · "}{faNum(p.days)} روز</span>
-            <div className="mn-pay-left">
-              مانده‌ی کیف پول: <b>{faNum(pay.left ?? after)}</b> تومان
-            </div>
-            <button className="mn-pay-btn" onClick={onClose}>دیدن اشتراک‌ها</button>
-          </div>
-        ) : (
-          <>
-            <div className="mn-sheet-head">
-              <b>تایید خرید</b>
-              <span>{p.gb === 0 ? "نامحدود" : `${faNum(p.gb)} گیگابایت`}
-                {" / "}{faNum(p.days)} روز</span>
-            </div>
-
-            <div className="mn-pay-rows">
-              <div><span>مبلغ</span><b>{faNum(price)} تومان</b></div>
-              <div><span>موجودی کیف پول</span><b>{faNum(bal)} تومان</b></div>
-              <div className={after < 0 ? "bad" : "ok"}>
-                <span>{after < 0 ? "کسری" : "بعد از خرید"}</span>
-                <b>{faNum(Math.abs(after))} تومان</b>
-              </div>
-            </div>
-
-            {pay.state === "err" && (
-              <div className="mn-pay-err"><AlertTriangle size={14} />
-                <span>{pay.why}</span></div>
-            )}
-
-            {after < 0 ? (
-              <>
-                <div className="mn-pay-note">
-                  {faNum(short)} تومان کم دارید. شارژ کیف پول فعلاً در خودِ
-                  ربات انجام می‌شود.
-                </div>
-                <button className="mn-pay-btn" onClick={onTopUp}>
-                  <Wallet size={15} /> شارژ کیف پول
-                </button>
-              </>
-            ) : (
-              <button className="mn-pay-btn" onClick={onConfirm} disabled={busy}>
-                {busy ? <Loader2 size={15} className="animate-spin" />
-                      : <Wallet size={15} />}
-                {busy ? "در حال پرداخت…" : "پرداخت از کیف پول"}
-              </button>
-            )}
-
-            <button className="mn-pay-cancel" onClick={onClose} disabled={busy}>
-              انصراف
-            </button>
-          </>
-        )}
+        {body}
       </div>
     </div>,
     document.body);
@@ -489,15 +629,19 @@ export default function Mini() {
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(true);
   const [pay, setPay] = useState(null);
+  const [orders, setOrders] = useState([]);
 
   const load = useCallback(async () => {
     setBusy(true);
     setErr("");
     try {
-      const [m, s, p] = await Promise.all([
+      const [m, s, p, o] = await Promise.all([
         api("/api/mini/me"), api("/api/mini/subs"), api("/api/mini/plans"),
+        // سفارش‌های باز نباید کلِ صفحه را بیندازند اگر نیامدند
+        api("/api/mini/orders").catch(() => ({ orders: [] })),
       ]);
       setMe(m); setSubs(s.subs || []); setPlans(p.plans || []);
+      setOrders(o.orders || []);
     } catch (e) {
       setErr(e.message);
     } finally { setBusy(false); }
@@ -551,12 +695,60 @@ export default function Mini() {
     }
   };
 
-  // شارژ کیف پول هنوز در ربات است — کارت‌به‌کارت و رسید آن‌جاست.
+  // شارژ کیف پول هنوز در ربات است — رسیدِ شارژ آن‌جا ثبت می‌شود.
   const topUp = () => {
     const w = tg();
     const u = me?.botUsername;
     if (w && u) { buzz("ok"); w.openTelegramLink(`https://t.me/${u}?start=wallet`); }
     else setErr("برای شارژ کیف پول به ربات برگردید");
+  };
+
+  /* ── کارت‌به‌کارت ──
+     سفارشِ `pending` ساخته می‌شود و شماره‌ی کارت می‌آید؛ تا رسید
+     نیاید هیچ چیزی تایید نمی‌شود. همان مسیرِ کارتیِ ربات، فقط بدون
+     رفتن به گفتگو. */
+  const card = {
+    start: async () => {
+      if (!pay?.plan) return;
+      setPay((x) => ({ ...x, state: "busy" }));
+      try {
+        const r = await api("/api/mini/order", {
+          method: "POST", body: { planId: pay.plan.id },
+        });
+        buzz("ok");
+        setPay((x) => ({ ...x, state: "ask", step: "card",
+                         orderId: r.orderId, card: r.card, text: "" }));
+      } catch (e) {
+        buzz("err");
+        setPay((x) => ({ ...x, state: "err", why: e.message }));
+      }
+    },
+    copy: (n) => {
+      try { navigator.clipboard?.writeText(String(n || "").replace(/\D/g, "")); }
+      catch { /* بی‌صدا */ }
+      buzz("ok");
+      setPay((x) => ({ ...x, copied: true }));
+      setTimeout(() => setPay((x) => (x ? { ...x, copied: false } : x)), 1600);
+    },
+    setText: (t) => setPay((x) => ({ ...x, text: t })),
+  };
+
+  const sendReceipt = async ({ data, text, err }) => {
+    if (err) { buzz("err"); setPay((x) => ({ ...x, state: "err", why: err })); return; }
+    if (!pay?.orderId) return;
+    setPay((x) => ({ ...x, state: "busy" }));
+    try {
+      await api(`/api/mini/order/${pay.orderId}/receipt`, {
+        method: "POST", body: data ? { data } : { text },
+      });
+      buzz("ok");
+      setPay((x) => ({ ...x, state: "sent" }));
+      // سفارش تازه در فهرست بیاید
+      load();
+    } catch (e) {
+      buzz("err");
+      setPay((x) => ({ ...x, state: "err", why: e.message }));
+    }
   };
 
   if (!tg()) {
@@ -635,8 +827,11 @@ export default function Mini() {
             <SubRow key={s.id} s={s} onOpen={setDetail} />
           ))
         ) : (
-          <HomeView me={me} subs={subs} onOpen={setDetail}
-            onBuy={() => setTab("buy")} />
+          <>
+            <PendingOrders orders={orders} />
+            <HomeView me={me} subs={subs} onOpen={setDetail}
+              onBuy={() => setTab("buy")} />
+          </>
         )}
       </main>
 
@@ -656,9 +851,14 @@ export default function Mini() {
       <PaySheet pay={pay} me={me}
         onConfirm={confirmPay}
         onTopUp={topUp}
+        onCard={card}
+        onReceipt={sendReceipt}
         onClose={() => {
           // بعد از خریدِ موفق، جایی که کاربر می‌خواهد برود
           // «اشتراک‌ها»ست — نه همان فهرست پلن‌ها که تازه از آن خرید
+          // فقط خریدِ تمام‌شده اشتراک ساخته؛ رسیدِ فرستاده‌شده هنوز
+          // منتظر تایید است و بردنِ کاربر به «اشتراک‌ها» یعنی نشان‌دادنِ
+          // فهرستی که چیزی تازه در آن نیست.
           if (pay?.state === "done") setTab("subs");
           setPay(null);
         }} />

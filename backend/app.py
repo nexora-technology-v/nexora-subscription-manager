@@ -2088,6 +2088,9 @@ LOGO_DIR = Path(os.getenv("LOGO_DIR", str(CONFIG_PATH.parent / "logos")))
 #  چیزی است که جلوی یک فایلِ ۲۰ مگابایتی را می‌گیرد.
 LOGO_MAX_BYTES = 512 * 1024
 
+#: رسید از دوربینِ گوشی می‌آید و بزرگ‌تر است؛ ولی بی‌سقف هم نه.
+RECEIPT_MAX_BYTES = 3 * 1024 * 1024
+
 #: فرمت‌های مجاز، با **بایت‌های اولِ فایل** — نه پسوند و نه
 #  `Content-Type`، که هر دو را فرستنده می‌نویسد.
 #
@@ -9942,6 +9945,206 @@ def mini_buy(payload: dict, tu: tuple = Depends(mini_user)):
             status_code=502,
             detail="ساخت اشتراک نشد و مبلغ کامل به کیف پولتان برگشت")
     raise HTTPException(status_code=404, detail="این پلن دیگر در دسترس نیست")
+
+
+def _mini_plan(t, payload):
+    """پلنِ همین مستاجر، فعال، و غیرِ تست — یا خطا."""
+    pid = (payload or {}).get("planId")
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="پلن انتخاب نشده")
+    con = _bot_conn()
+    if not con:
+        raise HTTPException(status_code=503, detail="دیتابیس ربات در دسترس نیست")
+    try:
+        pl = con.execute(
+            "SELECT id, name, price, gb, days, is_trial FROM plans "
+            "WHERE id=? AND tenant_id=? AND is_active=1",
+            (pid, t["id"])).fetchone()
+    finally:
+        con.close()
+    if not pl:
+        raise HTTPException(status_code=404, detail="این پلن دیگر در دسترس نیست")
+    if pl["is_trial"]:
+        # تست یک‌بار برای هر کاربر است و پرچمِ `trial_used` دارد.
+        # از این مسیر که بیاید، آن قاعده دور زده می‌شود.
+        raise HTTPException(status_code=409,
+                            detail="تست رایگان از خودِ ربات گرفته می‌شود")
+    return dict(pl)
+
+
+@app.post("/api/mini/order")
+def mini_order(payload: dict, tu: tuple = Depends(mini_user)):
+    """
+    سفارشِ کارت‌به‌کارت از داخل مینی‌اپ.
+
+    **هیچ منطقی این‌جا نیست**: `handlers.card_order` صدا زده می‌شود،
+    همان هسته‌ای که سفارشِ کارتیِ ربات هم از آن رد می‌شود — قیمت با
+    تخفیفِ سکه، رزروِ سکه، مهلتِ قابل‌تنظیم، و انتخابِ کارت.
+
+    نسخه‌ی اول این را دوباره نوشته بود و دو چیز را جا انداخت: تخفیفِ
+    سکه و `order_ttl_minutes`. یعنی مشتری‌ای که سکه داشت از مینی‌اپ
+    قیمتِ کامل می‌داد. تست همین را گرفت.
+    """
+    t, u = tu
+    pl = _mini_plan(t, payload)
+    h, ctx = _mini_ctx(t)
+
+    try:
+        ok, r = h.card_order(ctx, u, pl["id"],
+                             use_coins=bool((payload or {}).get("useCoins")))
+    except Exception as e:
+        log.exception("ساخت سفارش مینی‌اپ ناموفق")
+        raise HTTPException(status_code=502, detail=f"ساخت سفارش نشد: {str(e)[:140]}")
+
+    if not ok:
+        if r == "no_card":
+            raise HTTPException(
+                status_code=409,
+                detail="کارتی برای واریز تنظیم نشده — به پشتیبانی پیام بدهید")
+        if r == "no_plan":
+            raise HTTPException(status_code=404, detail="این پلن دیگر در دسترس نیست")
+        raise HTTPException(
+            status_code=409,
+            detail=f"سکه کافی نیست — {int(r.get('need') or 0)} سکه لازم است")
+
+    o, card, pr = r["order"], r["card"], r["price"]
+    return {
+        "ok": True,
+        "orderId": o["id"],
+        "amount": int(o["amount"] or 0),
+        "basePrice": int(o["base_amount"] or 0),
+        "coinsUsed": int(o["coins_used"] or 0),
+        "discountPct": int(pr.get("coin_discount") or 0),
+        "expiresAt": o.get("expires_at") or "",
+        "ttlMinutes": int(r["ttl"]),
+        "card": {"number": card.get("number") or "",
+                 "holder": card.get("holder") or card.get("name") or "",
+                 "bank": card.get("bank") or ""},
+        "plan": r["plan"]["name"],
+    }
+
+
+@app.post("/api/mini/order/{oid}/receipt")
+def mini_receipt(oid: int, payload: dict, tu: tuple = Depends(mini_user)):
+    """
+    رسیدِ یک سفارشِ کارتی — عکس یا متنِ پیامک بانک.
+
+    **هیچ منطقی این‌جا نیست**: `handlers.receipt_submit` صدا زده
+    می‌شود، همان هسته‌ای که رسیدِ داخلِ ربات هم از آن رد می‌شود —
+    همان قاعده‌ی مهلت، همان ادعای اتمی، همان اعلان با دکمه‌های تایید
+    و رد. دو مسیرِ رسید یعنی روزی یکی‌شان اعلان را جا می‌اندازد و
+    مشتری پول داده بدون اینکه کسی خبر داشته باشد.
+
+    عکس همین‌جا به گروه مدیریت آپلود می‌شود و `file_id`ش ذخیره —
+    پس پنل و پنل نماینده بدون هیچ تغییری همان رسید را نشان می‌دهند.
+    """
+    t, u = tu
+    o = _mini_own_order(t, u, oid)
+    if o["status"] != "pending":
+        raise HTTPException(status_code=409,
+                            detail="این سفارش دیگر منتظر رسید نیست")
+
+    p = payload or {}
+    text = str(p.get("text") or "").strip()[:2000]
+    blob = None
+    raw = str(p.get("data") or "")
+    if raw:
+        import base64
+        if raw.lstrip().startswith("data:") and "," in raw[:80]:
+            raw = raw.split(",", 1)[1]
+        raw = raw.strip()
+        if len(raw) > (RECEIPT_MAX_BYTES * 4) // 3 + 1024:
+            raise HTTPException(status_code=413,
+                                detail="حجم تصویر بیشتر از ۳ مگابایت است")
+        try:
+            blob = base64.b64decode(raw, validate=True)
+        except Exception:
+            raise HTTPException(status_code=400, detail="تصویر خوانده نشد")
+        if len(blob) > RECEIPT_MAX_BYTES:
+            raise HTTPException(status_code=413,
+                                detail="حجم تصویر بیشتر از ۳ مگابایت است")
+        if not _logo_kind(blob)[0]:
+            raise HTTPException(status_code=400,
+                                detail="فقط تصویر PNG، JPEG یا WebP")
+
+    if not blob and not text:
+        raise HTTPException(status_code=400,
+                            detail="عکس رسید یا متن پیامک بانک را بفرستید")
+
+    h, ctx = _mini_ctx(t)
+    try:
+        ok, why = h.receipt_submit(
+            ctx, u, oid,
+            "photo" if blob else "text",
+            rtext=text or None, photo_bytes=blob)
+    except Exception as e:
+        log.exception("ثبت رسید مینی‌اپ ناموفق")
+        raise HTTPException(status_code=502, detail=f"ثبت نشد: {str(e)[:140]}")
+
+    if ok:
+        return {"ok": True, "status": "awaiting"}
+    if why == "expired" or why == "race":
+        raise HTTPException(
+            status_code=410,
+            detail="مهلت این سفارش تمام شد — اگر واریز کرده‌اید به پشتیبانی "
+                   "پیام بدهید")
+    raise HTTPException(status_code=409, detail="این سفارش دیگر باز نیست")
+
+
+def _mini_own_order(t, u, oid):
+    """سفارشی که مالِ همین کاربرِ همین مستاجر است — یا ۴۰۴."""
+    con = _bot_conn()
+    if not con:
+        raise HTTPException(status_code=503, detail="دیتابیس ربات در دسترس نیست")
+    try:
+        r = con.execute(
+            "SELECT * FROM orders WHERE id=? AND tenant_id=? AND user_id=?",
+            (int(oid), t["id"], u["id"])).fetchone()
+    finally:
+        con.close()
+    if not r:
+        # همان «پیدا نشد» برای سفارشِ کسِ دیگر: وگرنه می‌شود فهمید چه
+        # شناسه‌هایی وجود دارند.
+        raise HTTPException(status_code=404, detail="سفارش پیدا نشد")
+    return dict(r)
+
+
+@app.get("/api/mini/orders")
+def mini_orders(tu: tuple = Depends(mini_user)):
+    """
+    سفارش‌های خودِ کاربر — تا بداند رسیدش به کجا رسید.
+
+    بدون این، مشتری رسید می‌فرستد و بعد هیچ نمی‌بیند؛ همان مسیرِ
+    خرابِ بی‌صدا.
+    """
+    t, u = tu
+    con = _bot_conn()
+    if not con:
+        return {"orders": []}
+    try:
+        rows = [dict(r) for r in con.execute(
+            """SELECT o.id, o.status, o.amount, o.created_at, o.expires_at,
+                      o.paid_from, o.admin_note, p.name AS plan_name
+                 FROM orders o
+            LEFT JOIN plans p ON p.id = o.plan_id
+                WHERE o.tenant_id=? AND o.user_id=?
+             ORDER BY o.id DESC LIMIT 20""", (t["id"], u["id"]))]
+    except Exception:
+        log.debug("خواندن سفارش‌های مینی‌اپ ناموفق", exc_info=True)
+        rows = []
+    finally:
+        con.close()
+    return {"orders": [{
+        "id": r["id"], "status": r["status"],
+        "amount": int(r["amount"] or 0),
+        "plan": r.get("plan_name") or "",
+        "paidFrom": r.get("paid_from") or "",
+        "createdAt": r.get("created_at") or "",
+        "expiresAt": r.get("expires_at") or "",
+        "note": r.get("admin_note") or "",
+    } for r in rows]}
 
 
 @app.post("/api/admin/tenant/{tid}/logo")

@@ -406,7 +406,42 @@
     return { ok: true, spent: pl.price, left: M_ME.balance, plan: pl.name };
   }
 
+  var M_ORDERS = { orders: [] };
+  var _oid = 4100;
+
+  // سفارشِ کارتی — و رسیدش. بدون این‌ها، مسیر کارت‌به‌کارت در هارنس
+  // دیده نمی‌شود و هیچ‌وقت معلوم نمی‌شود چه شکلی است.
+  function miniOrder(body) {
+    var pid = (body || {}).planId, pl = null;
+    M_PLANS.plans.forEach(function (x) { if (x.id === pid) pl = x; });
+    if (!pl) { var e = new Error("این پلن دیگر در دسترس نیست"); e.status = 404; throw e; }
+    _oid += 1;
+    M_ORDERS.orders.unshift({ id: _oid, status: "pending", amount: pl.price,
+                              plan: pl.name, paidFrom: "card",
+                              createdAt: "۱۴۰۵/۰۶/۲۷", expiresAt: "", note: "" });
+    return { ok: true, orderId: _oid, amount: pl.price, expiresAt: "",
+             plan: pl.name,
+             card: { number: "6037991234567890", holder: "حسین رضایی",
+                     bank: "بانک ملی" } };
+  }
+
+  function miniReceipt(u, body) {
+    var id = parseInt((u.match(/order\/(\d+)\/receipt/) || [])[1], 10);
+    var o = null;
+    M_ORDERS.orders.forEach(function (x) { if (x.id === id) o = x; });
+    if (!o) { var e = new Error("سفارش پیدا نشد"); e.status = 404; throw e; }
+    if (!(body || {}).data && !((body || {}).text || "").trim()) {
+      var e2 = new Error("عکس رسید یا متن پیامک بانک را بفرستید");
+      e2.status = 400; throw e2;
+    }
+    o.status = "awaiting";
+    return { ok: true, status: "awaiting" };
+  }
+
   function byPath(u, body) {
+    if (u.indexOf("/receipt") >= 0) return miniReceipt(u, body);
+    if (u.indexOf("/mini/orders") >= 0) return M_ORDERS;
+    if (u.indexOf("/mini/order") >= 0) return miniOrder(body);
     if (u.indexOf("/mini/buy") >= 0) return miniBuy(body);
     if (u.indexOf("/mini/me") >= 0) return M_ME;
     if (u.indexOf("/mini/subs") >= 0) return M_SUBS;

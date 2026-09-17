@@ -1819,3 +1819,67 @@ html[dir="rtl"] .nx-bar > i { transform-origin: right center; }
   --e-2: 0 4px 14px -6px rgba(11, 20, 32, .14);
   --e-3: 0 18px 40px -16px rgba(11, 20, 32, .22);
 }
+
+/* ── کارت‌به‌کارت در مینی‌اپ ── */
+.mn-card-no {
+  width: 100%; margin-top: 12px; padding: 13px;
+  border-radius: var(--r-m);
+  background: var(--surface-3); border: 1px dashed var(--border-2);
+  color: var(--text); font-family: var(--mono);
+  font-size: 17px; font-weight: 700; letter-spacing: .04em;
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  transition: border-color var(--m-fast) var(--sp-inout);
+}
+.mn-card-no:active { border-color: var(--accent); }
+
+.mn-receipt-text {
+  width: 100%; margin-top: 12px; padding: 11px 12px;
+  border-radius: var(--r-m);
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text); font-size: 13px; line-height: 1.8;
+  resize: none;
+}
+.mn-receipt-text::placeholder { color: var(--muted); }
+.mn-receipt-text:focus {
+  outline: none; border-color: var(--accent-line);
+}
+
+.mn-pay-two { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.mn-pay-two .mn-pay-btn { margin-top: 12px; }
+
+.mn-pay-btn.ghost {
+  background: var(--surface-3);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.mn-pay-tick.wait {
+  background: var(--warn-soft); color: var(--warn);
+  border-color: var(--warn-line);
+}
+
+/* ── سفارش‌های در انتظار، بالای خانه ── */
+.mn-pend { display: grid; gap: 9px; margin-bottom: 14px; }
+.mn-pend-row {
+  display: flex; align-items: center; gap: 11px;
+  padding: 12px 13px; border-radius: var(--r-m);
+  background: var(--surface-2); border: 1px solid var(--warn-line);
+}
+.mn-pend-ico {
+  width: 32px; height: 32px; border-radius: 10px; flex: none;
+  display: grid; place-items: center;
+  background: var(--warn-soft); color: var(--warn);
+}
+.mn-pend-ico.pending { background: var(--accent-soft); color: var(--accent-2); }
+.mn-pend-body { flex: 1; min-width: 0; }
+.mn-pend-body > b {
+  display: block; font-size: 13.5px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mn-pend-body > span {
+  display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px;
+}
+.mn-pend-amt {
+  flex: none; font-family: var(--mono); font-size: 13px;
+  font-weight: 700; color: var(--text);
+}
