@@ -29,12 +29,59 @@ ADMIN_PASSWORD = os.getenv("NEXORA_SUBPAGE_ADMIN_PASSWORD", "change-me")
 ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "*")
 
 
-def load_password():
+#: رمز به‌شکل هَش ذخیره می‌شود، نه متنِ ساده.
+#
+#  چرا: تا امروز `auth.json` خودِ رمز را داشت. هر کسی که آن فایل را
+#  می‌خواند — پشتیبانِ لو رفته، اسنپ‌شاتِ جابه‌جاشده، یک خطای مسیر —
+#  مستقیم به پنل، رمز x-ui، توکن ربات و داده‌ی همه‌ی مشتری‌ها
+#  می‌رسید. هَش این را به یک حدس‌زدنِ گران تبدیل می‌کند.
+#
+#  چرا PBKDF2 و نه یک هَشِ ساده: SHA سریع است و سرعت دقیقاً همان
+#  چیزی است که حدس‌زننده می‌خواهد.
+PW_SCHEME = "pbkdf2_sha256"
+PW_ITERS = 200_000
+
+
+def _pw_hash(pw: str, salt: bytes = None, iters: int = PW_ITERS) -> str:
+    import hashlib
+    salt = salt or os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", str(pw).encode("utf-8"), salt, iters)
+    return f"{PW_SCHEME}${iters}${salt.hex()}${dk.hex()}"
+
+
+def _pw_is_hash(v: str) -> bool:
+    return isinstance(v, str) and v.startswith(PW_SCHEME + "$")
+
+
+def _pw_check(given: str, stored: str) -> bool:
     """
-    رمز عبور فعلی را برمی‌گرداند.
-    اگر مدیر رمز را از داخل پنل عوض کرده باشد، از فایل auth.json خوانده می‌شود؛
-    در غیر این‌صورت از متغیر محیطی (که هنگام نصب تنظیم شده) استفاده می‌شود.
+    مقایسه‌ی زمان‌ثابت — چه ذخیره‌شده هَش باشد چه متنِ ساده.
+
+    متنِ ساده هنوز پذیرفته می‌شود چون نصب‌های قبلی همان را دارند و
+    ردکردنش یعنی قفل‌شدنِ مالک پشتِ پنلِ خودش. اولین ورودِ موفق
+    خودش ارتقا می‌دهد.
     """
+    import hashlib
+    g = str(given or "")
+    st = str(stored or "")
+    if not st:
+        return False
+    if _pw_is_hash(st):
+        try:
+            _, it, salt_hex, want = st.split("$", 3)
+            dk = hashlib.pbkdf2_hmac("sha256", g.encode("utf-8"),
+                                     bytes.fromhex(salt_hex), int(it))
+        except (ValueError, TypeError):
+            log.error("قالبِ رمزِ ذخیره‌شده خوانده نشد")
+            return False
+        return _hmac.compare_digest(dk.hex(), want)
+    # بایت مقایسه می‌شود، نه رشته: compare_digest روی رشته‌ی غیراسکی
+    # TypeError می‌دهد — یک رمز فارسی کل پنل را با ۵۰۰ می‌بست.
+    return _hmac.compare_digest(g.encode("utf-8"), st.encode("utf-8"))
+
+
+def _stored_password():
+    """مقدارِ خام (هَش یا متن) — فقط برای سنجیدن، نه برای پاس‌دادن."""
     if AUTH_PATH.exists():
         try:
             with open(AUTH_PATH, "r", encoding="utf-8") as f:
@@ -43,14 +90,55 @@ def load_password():
                 if pw:
                     return pw
         except (json.JSONDecodeError, OSError):
-            pass
+            log.warning("auth.json خوانده نشد؛ از متغیر محیطی", exc_info=True)
     return ADMIN_PASSWORD
+
+
+def verify_password(given: str) -> bool:
+    """
+    آیا این رمز درست است؟
+
+    و اگر ذخیره‌شده هنوز متنِ ساده بود، همین‌جا ارتقا می‌دهد — تا
+    مهاجرت بدون اینکه کسی کاری کند انجام شود.
+    """
+    stored = _stored_password()
+    if not _pw_check(given, stored):
+        return False
+    if not _pw_is_hash(stored):
+        try:
+            save_password(given)
+            log.info("رمز پنل به شکل هَش ذخیره شد")
+        except Exception:
+            # ارتقا نشد؛ ولی ورود درست بود و نباید بشکند
+            log.warning("ارتقای رمز به هَش ناموفق", exc_info=True)
+    return True
+
+
+#: نشانه‌ی فراخوانِ درونی.
+#
+#  یک مسیرِ نماینده، تابعِ صورتحسابِ مدیر را مستقیم صدا می‌زند و آن
+#  تابع `check_auth` دارد. تا امروز رمزِ ذخیره‌شده را پاس می‌داد —
+#  که با هَش‌شدن دیگر جواب نمی‌دهد. مقدارِ تصادفیِ هر اجرا یعنی
+#  حدس‌زدنی هم نیست، و چون از بیرون هیچ‌وقت برابرش نمی‌شود، راهِ
+#  دور زدن باز نمی‌کند.
+_INTERNAL_PW = "internal:" + secrets.token_urlsafe(32)
+
+
+def load_password():
+    """
+    مقدارِ ذخیره‌شده.
+
+    **برای مقایسه از `verify_password` استفاده کن، نه از این.** این
+    ممکن است هَش برگرداند و مقایسه‌ی مستقیم با آن همیشه غلط است.
+    """
+    return _stored_password()
 
 
 def save_password(new_password: str):
     AUTH_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(AUTH_PATH, "w", encoding="utf-8") as f:
-        json.dump({"password": new_password}, f, ensure_ascii=False, indent=2)
+        json.dump({"password": _pw_hash(new_password)}, f,
+                  ensure_ascii=False, indent=2)
     # محدود کردن دسترسی فایل به مالک (فقط روی سیستم‌های یونیکسی)
     try:
         os.chmod(AUTH_PATH, 0o600)
@@ -722,9 +810,9 @@ def check_auth(x_admin_password: str = Header(...)):
     # بایت مقایسه می‌کنیم، نه رشته: compare_digest روی رشته‌ی غیر
     # اسکی TypeError می‌دهد — یعنی یک رمز فارسی کل پنل را با خطای
     # ۵۰۰ می‌بست، نه فقط ورود را.
-    if not _hmac.compare_digest(
-            str(x_admin_password or "").encode("utf-8"),
-            str(load_password() or "").encode("utf-8")):
+    if x_admin_password == _INTERNAL_PW:
+        return True
+    if not verify_password(x_admin_password):
         rec = _auth_failed(ip)
         left = AUTH_MAX_FAILS - rec["n"]
         detail = "رمز عبور نادرست است"
@@ -1160,7 +1248,8 @@ def change_password(payload: dict, x_admin_password: str = Header(...)):
     current = payload.get("currentPassword", "")
     new = payload.get("newPassword", "")
 
-    if current != load_password():
+    # `!=` روی مقدارِ ذخیره‌شده کار نمی‌کند وقتی هَش است
+    if not _pw_check(current, _stored_password()):
         raise HTTPException(status_code=400, detail="رمز عبور فعلی نادرست است")
 
     if len(new) < 8:
@@ -11555,7 +11644,11 @@ def portal_summary(t: dict = Depends(portal_tenant)):
     """
     group = _portal_group(t)
     try:
-        inv = billing_invoice(group, x_admin_password=load_password())
+        # فراخوانِ درونی: این‌جا نماینده از `portal_tenant` رد شده و
+        # دسترسی‌اش سنجیده شده. پاس‌دادنِ مقدارِ ذخیره‌شده تا امروز
+        # کار می‌کرد چون متنِ ساده بود؛ حالا که هَش است، مقایسه‌ی
+        # آن با خودش همیشه غلط می‌شود. پس نشانه‌ی درونی می‌دهیم.
+        inv = billing_invoice(group, x_admin_password=_INTERNAL_PW)
     except HTTPException:
         raise
     except Exception as e:

@@ -84,7 +84,20 @@ import app                                            # noqa: E402
 app.BOT_DB = Path(TMP)
 # رمز واقعی سرور را نمی‌خوانیم؛ برای تست جایگزینش می‌کنیم
 PW = "testpw"
+# رمز واقعی سرور را نمی‌خوانیم؛ برای تست جایگزینش می‌کنیم.
+#
+# `_stored_password` درزِ درست است: `check_auth` از
+# `verify_password` می‌گذرد و آن از این می‌خواند. وصله‌زدن به
+# `load_password` بعد از هَش‌شدنِ رمز دیگر اثری نداشت — و ۴۰۱
+# گرفتنِ کلِ سوییت همان‌جا پیدایش کرد.
 app.load_password = lambda: PW
+# `_stored_password` را وصله نمی‌زنیم: آن‌وقت خودِ منطقِ رمز دور
+# زده می‌شود و هیچ‌وقت سنجیده نمی‌شود. از درزِ واقعی می‌رویم —
+# متغیر محیطی — و فایل رمز در پوشه‌ی موقت می‌نشیند، چون ارتقای
+# خودکار روی اولین ورودِ موفق می‌نویسد و مسیر پیش‌فرض بیرون از
+# مخزن است.
+app.ADMIN_PASSWORD = PW
+app.AUTH_PATH = Path(tempfile.mkdtemp(prefix="nx-auth-")) / "auth.json"
 
 head("فیلترهای کاربران")
 
@@ -270,6 +283,7 @@ _spec = _iu.spec_from_file_location(
 AP = _iu.module_from_spec(_spec)
 sys.modules["nxauth"] = AP
 _spec.loader.exec_module(AP)
+AP.AUTH_PATH = Path(tempfile.mkdtemp(prefix="nx-auth2-")) / "auth.json"
 
 
 def _try(pw):
@@ -282,6 +296,7 @@ def _try(pw):
 
 
 AP.load_password = lambda: "testpw"
+AP._stored_password = lambda: "testpw"
 AP._auth_fails.clear()
 code, _ = _try("testpw")
 check("رمز درست پذیرفته می‌شود", code == 200, str(code))
@@ -365,11 +380,13 @@ check("هدر بی‌معنا نادیده گرفته می‌شود",
 # رمز فارسی — همان چیزی که نزدیک بود کل پنل را با ۵۰۰ ببندد
 AP._auth_fails.clear()
 AP.load_password = lambda: "رمزفارسی۱۲۳"
+AP._stored_password = lambda: "رمزفارسی۱۲۳"
 check("رمز غیرانگلیسی کار می‌کند", _try("رمزفارسی۱۲۳")[0] == 200,
       "compare_digest روی رشته‌ی غیراسکی TypeError می‌دهد — باید بایت داد")
 check("و رمز فارسیِ غلط فقط ۴۰۱ است", _try("رمزدیگر")[0] == 401,
       "نه ۵۰۰ — خطای سرور یعنی پنل برای خودِ مدیر هم بسته می‌شود")
 AP.load_password = lambda: "testpw"
+AP._stored_password = lambda: "testpw"
 AP._auth_fails.clear()
 
 SRC = io.open(os.path.join(str(ROOT), "backend", "app.py"),
@@ -1136,6 +1153,7 @@ head("راه‌اندازی نماینده از پنل مدیر")
 #     بسته همان پیام رمز غلط را می‌دهد
 
 AP.load_password = lambda: "testpw"
+AP._stored_password = lambda: "testpw"
 AP._auth_fails.clear()
 
 _bd = _sq3.connect(str(AP.BOT_DB))
@@ -1218,6 +1236,7 @@ head("شارژ اعتبار نماینده")
 # شارژکردن نبود جز دست‌زدن به دیتابیس.
 
 AP.load_password = lambda: "testpw"
+AP._stored_password = lambda: "testpw"
 AP._auth_fails.clear()
 _bd = _sq3.connect(str(AP.BOT_DB))
 try:
@@ -2548,6 +2567,88 @@ try:
         check("در حالت حجمی، هر حجمی می‌گذرد", False, str(_e.detail)[:80])
 finally:
     app._portal_rates = _saved_rates
+
+
+# ═══════════════════════════════════════════════════════════
+head("رمز پنل · هَش، و بدون قفل‌شدنِ کسی")
+
+# چرا: `auth.json` خودِ رمز را داشت. هر کسی که آن فایل را می‌خواند
+# — پشتیبانِ لو رفته، اسنپ‌شاتِ جابه‌جاشده — مستقیم به پنل، رمز
+# x-ui، توکن ربات و داده‌ی همه‌ی مشتری‌ها می‌رسید.
+#
+# و خطرِ خودِ این تغییر، قفل‌شدنِ مالک پشتِ پنلِ خودش است. پس
+# بیشترِ این تست‌ها دقیقاً همان را می‌سنجند.
+
+import tempfile as _tfw                                   # noqa: E402
+import json as _jsw                                       # noqa: E402
+from pathlib import Path as _Pw                           # noqa: E402
+
+_pwdir = _Pw(_tfw.mkdtemp(prefix="nx-pw-"))
+_old_auth, _old_env = app.AUTH_PATH, app.ADMIN_PASSWORD
+try:
+    app.AUTH_PATH = _pwdir / "auth.json"
+    app.ADMIN_PASSWORD = "env-secret"
+
+    # ── نصبِ قدیمی، رمزِ متنِ ساده ──
+    app.AUTH_PATH.write_text(_jsw.dumps({"password": "old-plain"}), encoding="utf-8")
+    check("رمزِ متنِ سادهٔ قدیمی هنوز کار می‌کند", app.verify_password("old-plain"),
+          "ردکردنش یعنی قفل‌شدنِ هر نصبی که از قبل هست")
+    _body = app.AUTH_PATH.read_text(encoding="utf-8")
+    check("و همان ورود، فایل را ارتقا می‌دهد",
+          _jsw.loads(_body)["password"].startswith("pbkdf2_sha256$"))
+    check("و متنِ ساده دیگر روی دیسک نیست", "old-plain" not in _body,
+          "کلِ هدفِ این کار همین یک خط است")
+    check("و بعد از ارتقا هنوز همان رمز می‌خورد", app.verify_password("old-plain"))
+    check("رمزِ غلط رد می‌شود", not app.verify_password("nope"))
+
+    # ── تغییر رمز ──
+    app.save_password("a-new-password")
+    check("رمزِ تازه کار می‌کند", app.verify_password("a-new-password"))
+    check("و قبلی دیگر نه", not app.verify_password("old-plain"))
+    check("و ذخیره‌شده هَش است",
+          _jsw.loads(app.AUTH_PATH.read_text(encoding="utf-8"))["password"]
+          .startswith("pbkdf2_sha256$"))
+
+    # ── نصبِ تازه: فقط متغیر محیطی ──
+    app.AUTH_PATH.unlink()
+    check("رمزِ متغیر محیطی کار می‌کند", app.verify_password("env-secret"))
+
+    # ── رمز فارسی ──
+    #
+    # `compare_digest` روی رشته‌ی غیراسکی TypeError می‌دهد؛ یک‌بار
+    # همین کلِ پنل را با ۵۰۰ بست، نه فقط ورود را.
+    app.save_password("رمزِ فارسیِ من")
+    check("رمز فارسی کار می‌کند", app.verify_password("رمزِ فارسیِ من"))
+    check("و رمزِ فارسیِ غلط رد می‌شود", not app.verify_password("رمز دیگر"))
+
+    # ── فایلِ خراب نباید در را باز بگذارد ──
+    app.AUTH_PATH.write_text("{ خراب", encoding="utf-8")
+    check("فایلِ خراب، پنل را باز نمی‌گذارد", not app.verify_password("anything"),
+          "برگشت به متغیر محیطی، نه پذیرفتنِ هر چیزی")
+    check("ولی رمزِ محیطی هنوز کار می‌کند", app.verify_password("env-secret"))
+
+    # ── نشانه‌ی درونی ──
+    check("نشانه‌ی درونی قابلِ حدس نیست", len(app._INTERNAL_PW) > 40)
+    check("و پیشوندش به‌تنهایی در را باز نمی‌کند",
+          not app.verify_password("internal:"))
+finally:
+    app.AUTH_PATH, app.ADMIN_PASSWORD = _old_auth, _old_env
+
+# ── قواعدی که باید در کد بمانند ──
+check("ذخیره همیشه هَش می‌نویسد", "_pw_hash(new_password)" in _APSRC,
+      "اگر یک‌جا متنِ ساده بنویسد، همان یک نصب لو می‌رود")
+check("و PBKDF2 است نه هَشِ ساده", "pbkdf2_hmac" in _APSRC,
+      "SHAی خالی سریع است، و سرعت همان چیزی است که حدس‌زننده می‌خواهد")
+check("تعدادِ تکرار کم نیست", app.PW_ITERS >= 100_000, str(app.PW_ITERS))
+check("مقایسه زمان‌ثابت است", "compare_digest" in _APSRC)
+
+# هیچ‌جا نباید مقدارِ ذخیره‌شده را مستقیم با ورودی مقایسه کند
+check("مقایسه‌ی خام با load_password نمانده",
+      "!= load_password()" not in _APSRC and "== load_password()" not in _APSRC,
+      "با هَش‌شدن، مقایسه‌ی مستقیم همیشه غلط می‌شود")
+check("و رمزِ ذخیره‌شده به عنوان هدر پاس داده نمی‌شود",
+      "x_admin_password=load_password()" not in _APSRC,
+      "آن مسیر با هَش‌شدن بی‌صدا می‌شکست")
 
 
 # ═══════════════════════════════════════════════════════════
