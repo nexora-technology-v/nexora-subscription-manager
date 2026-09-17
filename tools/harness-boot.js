@@ -35,20 +35,37 @@
      * بیرون از تلگرام، خودِ telegram-web-app.js همیشه «روشن»
      * می‌گوید. پس پوسته‌ی تیره — که بیشترِ کاربرهای واقعی رویش
      * هستند — هیچ‌وقت دیده نمی‌شد. */
+    /* ناحیه‌ی امن:  ?insets=47,34  →  بالا ۴۷، پایین ۳۴
+     *
+     * بیرون از تلگرام هر دو صفرند، پس محتوایی که زیرِ ناچ یا نوارِ
+     * تلگرام می‌رود هیچ‌وقت دیده نمی‌شود — و این دقیقاً همان چیزی
+     * است که روی گوشیِ واقعیِ مشتری خراب است. */
+    var ins = qs.get("insets");
+    var scOrIns = qs.get("scheme") || ins;
+
     var sc = qs.get("scheme");
-    if (sc && window.Telegram && window.Telegram.WebApp) {
+    if (scOrIns && window.Telegram && window.Telegram.WebApp) {
       /* `colorScheme` روی شیءِ SDK قابلِ بازتعریف نیست، پس
          defineProperty بی‌صدا شکست می‌خورد. به‌جایش یک پوشش
          می‌گذاریم که همه چیز را به اصلی می‌دهد جز همین یک خاصیت. */
       var real = window.Telegram.WebApp;
+      var parts = (ins || "").split(",");
+      var saTop = parseInt(parts[0], 10) || 0;
+      var saBot = parseInt(parts[1], 10) || 0;
       window.Telegram = { WebApp: new Proxy(real, {
         get: function (t, k) {
-          if (k === "colorScheme") return sc;
+          if (sc && k === "colorScheme") return sc;
+          if (ins && k === "safeAreaInset") {
+            return { top: saTop, bottom: saBot, left: 0, right: 0 };
+          }
+          if (ins && k === "contentSafeAreaInset") {
+            return { top: 0, bottom: 0, left: 0, right: 0 };
+          }
           var v = t[k];
           return typeof v === "function" ? v.bind(t) : v;
         },
       }) };
-      if (window.Telegram.WebApp.colorScheme !== sc) {
+      if (sc && window.Telegram.WebApp.colorScheme !== sc) {
         // مسیرِ خرابِ بی‌صدا ممنوع — اگر نگرفت، باید بدانیم
         console.error("[harness] scheme=" + sc + " اعمال نشد");
       }

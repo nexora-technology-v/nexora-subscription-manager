@@ -80,6 +80,38 @@ function buzz(kind = "light") {
  * تنها چیزی که به تلگرام *داده* می‌شود رنگِ نوار بالا و پس‌زمینه‌ی
  * پنجره است، تا لبه‌ی اپ با محیطش یکی شود.
  */
+/**
+ * ناحیه‌ی امن — از خودِ تلگرام، نه از `env()`.
+ *
+ * `env(safe-area-inset-*)` را مرورگر از سیستم‌عامل می‌گیرد، ولی
+ * داخل WebViewِ تلگرام معمولاً صفر برمی‌گردد — و مهم‌تر، اصلاً
+ * چیزی از نوارِ خودِ تلگرام نمی‌داند. آن نوار روی محتوای ما
+ * می‌نشیند و `env()` هرگز خبردار نمی‌شود.
+ *
+ * تلگرام دو چیز می‌دهد:
+ *   safeAreaInset         ناچ و گوشه‌های دستگاه
+ *   contentSafeAreaInset  نوار و دکمه‌های خودِ تلگرام
+ *
+ * جمعشان می‌شود فضایی که محتوای ما نباید زیرش برود. اگر هیچ‌کدام
+ * نبود (نسخه‌ی قدیمی‌تر)، خاصیت برداشته می‌شود و CSS به `env()`
+ * برمی‌گردد.
+ */
+function syncSafeArea() {
+  const w = tg();
+  const r = document.documentElement.style;
+  const sa = w?.safeAreaInset || {};
+  const csa = w?.contentSafeAreaInset || {};
+  const put = (k, v) => {
+    const n = Number(v) || 0;
+    if (n > 0) r.setProperty(k, n + "px");
+    else r.removeProperty(k);     // برگشت به env() در CSS
+  };
+  put("--mn-sa-top", (Number(sa.top) || 0) + (Number(csa.top) || 0));
+  put("--mn-sa-bottom", (Number(sa.bottom) || 0) + (Number(csa.bottom) || 0));
+  put("--mn-sa-start", Math.max(Number(sa.left) || 0, Number(csa.left) || 0));
+  put("--mn-sa-end", Math.max(Number(sa.right) || 0, Number(csa.right) || 0));
+}
+
 function syncTheme() {
   const w = tg();
   const dark = (w?.colorScheme || "dark") === "dark";
@@ -653,11 +685,25 @@ export default function Mini() {
       w.ready();
       w.expand();
       syncTheme();
+      syncSafeArea();
       w.onEvent?.("themeChanged", syncTheme);
+      // ناحیه‌ی امن ثابت نیست: چرخاندنِ گوشی و بازشدنِ صفحه‌کلید
+      // عوضش می‌کنند
+      w.onEvent?.("safeAreaChanged", syncSafeArea);
+      w.onEvent?.("contentSafeAreaChanged", syncSafeArea);
+      w.onEvent?.("viewportChanged", syncSafeArea);
     }
     document.title = "اشتراک من";
     load();
-    return () => { try { tg()?.offEvent?.("themeChanged", syncTheme); } catch { /* بی‌صدا */ } };
+    return () => {
+      try {
+        const x = tg();
+        x?.offEvent?.("themeChanged", syncTheme);
+        x?.offEvent?.("safeAreaChanged", syncSafeArea);
+        x?.offEvent?.("contentSafeAreaChanged", syncSafeArea);
+        x?.offEvent?.("viewportChanged", syncSafeArea);
+      } catch { /* بی‌صدا */ }
+    };
   }, [load]);
 
   // دکمه‌ی بازگشتِ خودِ تلگرام، وقتی داخل جزئیات هستیم — همان
