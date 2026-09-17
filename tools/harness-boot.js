@@ -523,6 +523,44 @@
       M_ME.avatar = ""; return { ok: true, avatar: "" };
     }
     if (u.indexOf("/mini/profile") >= 0) return miniProfile(body);
+    /* پرونده‌ی کاربر.
+       بدون این مقک، پرونده با «بدون نام» و صفر باز می‌شد — یعنی
+       هارنس حالتی را نشان می‌داد که پنلِ واقعی تقریباً هیچ‌وقت
+       ندارد، و خوانایی‌اش اصلاً سنجیده نمی‌شد. */
+    if (u.indexOf("/admin/bot/subscriber/") >= 0) {
+      var stg = u.split("/subscriber/")[1].split("?")[0];
+      var idx = (parseInt(stg, 10) || 6000) % 7;
+      return {
+        user: { id: idx + 1, tg_id: parseInt(stg, 10) || 6001,
+                first_name: NAMES[idx], username: "user" + idx,
+                phone: "0912000" + (1000 + idx),
+                balance: 240000, coins: 12, is_blocked: 0,
+                created_at: "2026-08-02", ordersCount: 3, spent: 690000 },
+        subscriptions: [
+          { id: 1, email: "nexora_" + stg + "_1", plan_name: "سه‌ماهه ۱۰۰ گیگ",
+            gb: 100, usedGB: 41.3, usagePct: 41, status: "active",
+            expiryJalali: "1405/09/14", daysLeft: 58, limitIp: 2 },
+          { id: 2, email: "nexora_" + stg + "_2", plan_name: "یک‌ماهه",
+            gb: 30, usedGB: 30, usagePct: 100, status: "expired",
+            expiryJalali: "1405/06/01", daysLeft: -12, limitIp: 1 },
+        ],
+        orders: [
+          { id: 4101, plan_name: "سه‌ماهه ۱۰۰ گیگ", amount: 480000,
+            status: "approved", paid_from: "card", created_at: "2026-09-14 10:22" },
+          { id: 4088, plan_name: "یک‌ماهه", amount: 120000,
+            status: "approved", paid_from: "wallet", created_at: "2026-08-02 18:40" },
+          { id: 4075, plan_name: "یک‌ماهه", amount: 120000,
+            status: "rejected", paid_from: "card", created_at: "2026-07-29 12:05" },
+        ],
+        coinHistory: [
+          { at: "2026-09-14", delta: 8, why: "خرید" },
+          { at: "2026-08-02", delta: 4, why: "دعوت دوست" },
+        ],
+        live: { up: 4123456789, down: 38123456789, total: 107374182400,
+                expiryTime: 1789000000000 },
+        liveAvailable: true,
+      };
+    }
     if (u.indexOf("/admin/config/history") >= 0) return {
       current: 7,
       versions: [

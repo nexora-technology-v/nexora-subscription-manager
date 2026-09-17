@@ -2663,3 +2663,14 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
    با ۲۳۱ پیکسل خالی ته آن، و «روند فروش» ۴۳۶ با ۱۶۱ خالی — چون
    ستونِ کناری بلندتر بود و شبکه پیش‌فرض همه را کش می‌دهد. */
 .fx-g2 { align-items: start; }
+
+/* نوار تب همیشه یک ردیف است، نه فقط روی موبایل.
+   قاعده‌ی اسکرول تا امروز داخل مدیا-کوئریِ موبایل بود؛ روی دسکتاپ
+   نوارِ پرتب می‌توانست بشکند و هیچ‌کس نمی‌دیدش چون پنجره‌ی ما پهن
+   بود. */
+.fx-tabs {
+  flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.fx-tabs::-webkit-scrollbar { display: none; }
+.fx-tabs > button { flex-shrink: 0; white-space: nowrap; }

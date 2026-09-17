@@ -168,7 +168,14 @@ export function Tabs({ items, active, onChange, counts }) {
         return (
           <button key={t.key} onClick={() => onChange(t.key)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-[10px] text-[13px] font-medium transition-all"
-            style={on ? { color: "#06090F", background: "var(--accent-2)" } : { color: "var(--dim)", border: "1px solid var(--border-2)" }}>
+            /* بوردرِ شفاف روی حالتِ فعال هم هست.
+               بدون آن تبِ فعال یک پیکسل کوتاه‌تر می‌شد و کلِ نوار
+               موقع تعویض تب بالا و پایین می‌پرید — روی «سفارش‌ها»
+               اندازه‌گیری شد: فعال ۳۶ پیکسل، بقیه ۳۷. */
+            style={on
+              ? { color: "#06090F", background: "var(--accent-2)",
+                  border: "1px solid transparent" }
+              : { color: "var(--dim)", border: "1px solid var(--border-2)" }}>
             {t.icon && <t.icon size={13} />} {t.label}
             {counts && <span className="opacity-60 text-[13px]">({counts[t.key] ?? 0})</span>}
           </button>

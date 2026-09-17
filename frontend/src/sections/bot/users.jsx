@@ -11,6 +11,7 @@ import {
   AlertTriangle, Ban, ChevronLeft, Loader2, Package, RefreshCw, Search, Send, Users, Wallet, X,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
+import { isoToJalaliLabel } from "../../ui/jalali";
 import { daysLeft, errText, faNum, fmtBytes, fmtDate } from "../../lib/format";
 import { Avatar, EmptyState, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile, StatusPill } from "../../ui/index";
 
@@ -389,9 +390,16 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
                 </span>
               )}
             </div>
-            <div className="text-[12px] mt-1.5" dir="ltr"
-              style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
-              {u.tg_id}{u.phone ? ` · ${u.phone}` : ""}
+            {/* همان قاعده‌ی فهرست: شناسه و شماره باید خوانده شوند،
+                چون مالک با همین‌ها آدم را می‌شناسد و کپی می‌کند. */}
+            <div className="text-[12.5px] mt-1.5 flex items-center gap-2" dir="ltr">
+              <span className="fx-idnum" title="شناسه تلگرام">{u.tg_id}</span>
+              {u.phone && (
+                <>
+                  <span style={{ color: "var(--muted)", opacity: 0.4 }}>·</span>
+                  <span className="fx-idnum" title="شماره تماس">{u.phone}</span>
+                </>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -549,7 +557,13 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
                         </div>
                         <div className="text-[12px] mt-0.5"
                           style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                          #{o.id} · {String(o.created_at || "").slice(0, 10)}
+                          {/* این مسیر تاریخ را خام و میلادی می‌دهد
+                              (ردیفِ دیتابیس است، نه خروجیِ ساخته‌شده)،
+                              پس تبدیل این‌جا انجام می‌شود — وگرنه وسطِ
+                              یک پرونده‌ی کاملاً فارسی یک تاریخِ میلادی
+                              می‌نشیند. شناسه‌ی سفارش عمداً لاتین
+                              می‌ماند؛ آن را کپی می‌کنند. */}
+                          #{o.id} · {isoToJalaliLabel(o.created_at) || "—"}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
