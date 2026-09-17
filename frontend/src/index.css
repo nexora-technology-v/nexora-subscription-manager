@@ -1424,11 +1424,17 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .mn-dot { width: 5px; height: 5px; border-radius: 99px; background: currentColor; }
 
 /* ── جزئیات ── */
+/* هدفِ لمسی، نه فقط متن.
+   ۲۲ پیکسل بود؛ روی گوشی یعنی باید دقیق زد. حداقلِ متعارف حدود
+   ۴۰ است. فضای بصری‌اش با margin منفی جبران می‌شود تا چیدمان
+   جابه‌جا نشود. */
 .mn-back {
   display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
   color: var(--dim); background: none; border: none; font-family: inherit;
-  padding: 0 0 2px;
+  min-height: 40px; padding: 0 10px; margin: 0 -10px 2px;
+  border-radius: var(--r-m);
 }
+.mn-back:active { background: var(--hair-1); }
 .mn-hero {
   border-radius: var(--r-l); padding: 16px;
   background: linear-gradient(140deg, var(--surface-2), var(--surface));
@@ -2641,8 +2647,28 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
    والد را هم ستونی می‌کنیم تا فرزند بتواند `flex: 1` بگیرد. */
 .mn-body { display: flex; flex-direction: column; }
 .mn-view.chat { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+/* در تبِ گفتگو، اپ قدِ صفحه را می‌گیرد و بیرون نمی‌زند — وگرنه
+   لاگ کرانی ندارد که داخلش اسکرول بخورد و هر پیامِ تازه کلِ صفحه
+   را بلندتر می‌کند. */
+:root[data-mn-tab="chat"] .mn-app {
+  height: 100dvh; max-height: 100dvh; overflow: hidden;
+}
+:root[data-mn-tab="chat"] .mn-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+
 .mn-view.chat .mn-chat { flex: 1 1 auto; min-height: 0; }
-.mn-view.chat .mn-chat-log { flex: 1 1 auto; }
+
+/* گفتگو اسکرولِ خودش را دارد — مثل هر پیام‌رسانی.
+   تا امروز `overflow: visible` بود، پس با هر پیام **کلِ صفحه**
+   بلند می‌شد (اندازه‌گیری: ۷۸۰ → ۱۱۹۰ پیکسل) و بعد از فرستادن،
+   `scrollIntoView` کلِ صفحه را می‌لغزاند — سرصفحه می‌رفت بالا و
+   کاربر باید دستی برمی‌گشت.
+   `overscroll-behavior` هم جلوی کشیده‌شدنِ صفحه‌ی پشت را می‌گیرد
+   وقتی به ته گفتگو می‌رسی. */
+.mn-view.chat .mn-chat-log {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto; overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
 
 /* نوارِ چیپ — یک ردیف که افقی اسکرول می‌خورد.
    با `flex-wrap` یازده چیپ دو ردیف می‌شد و نوار را دو برابر
@@ -2721,3 +2747,17 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   font-family: var(--mono); margin-bottom: 11px;
 }
 .mn-invite-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+
+/* کارتی که باید قدِ ردیف را پر کند.
+   `align-items: start` جلوی کش‌آمدنِ همه را می‌گیرد — که درست است
+   برای کارتی که محتوایش تمام شده. ولی نمودار و شبکه‌ی کاشی‌ها
+   می‌توانند بزرگ‌تر شوند، و آن‌جا فضای خالی یعنی هدررفت.
+   اندازه‌گیری روی داشبورد: ۱۴۱ و ۲۱۱ پیکسل. */
+.fx-g2 > .fx-fill {
+  align-self: stretch;
+  display: flex; flex-direction: column;
+}
+.fx-g2 > .fx-fill > .fx-fill-body { flex: 1 1 auto; }
+/* آخرین فرزندِ کارتِ کش‌آمده فضای باقی‌مانده را می‌گیرد، وگرنه
+   حفره فقط از ته کارت به زیرِ آخرین عنصر منتقل می‌شود */
+.fx-g2 > .fx-fill > :last-child { flex: 1 1 auto; min-height: 0; }

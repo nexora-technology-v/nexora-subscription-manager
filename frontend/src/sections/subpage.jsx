@@ -127,8 +127,12 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
       )}
 
       {/* ── نمودار اصلی و ترکیب اشتراک‌ها ── */}
+      {/* ستونِ کناری بلندتر از نمودار بود و زیرِ نمودار ۱۴۱ پیکسل
+          فضای مرده می‌ماند. `fx-fill` یعنی این کارت تا قدِ ردیف کش
+          بیاید — و چون محتوایش نمودار است، آن فضا به خودِ نمودار
+          می‌رسد، نه به یک حفره. */}
       <div className="fx-g2 grid gap-3">
-        <div className="fx-card p-5">
+        <div className="fx-card fx-fill p-5">
           <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
             <div>
               <h2 className="text-[15px] font-bold text-white">روند فروش</h2>
@@ -200,7 +204,7 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
 
       {/* ── صفحه‌ی اشتراک: وضعیت محتوا ── */}
       <div className="fx-g2 grid gap-3">
-        <div className="fx-card p-5">
+        <div className="fx-card fx-fill p-5">
           <div className="flex items-center justify-between gap-2 mb-4">
             <div>
               <h3 className="text-[14px] font-bold text-white">محتوای صفحه‌ی اشتراک</h3>
@@ -209,7 +213,7 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
               </p>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-2 gap-2.5 fx-fill-body">
             {content.map((c) => (
               <button title="رفتن به این بخش" key={c.key} onClick={() => navigate(c.key)}
                 className="fx-card fx-card-i p-3.5 text-right">

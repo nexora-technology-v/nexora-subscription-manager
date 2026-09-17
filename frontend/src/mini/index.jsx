@@ -1178,6 +1178,16 @@ export default function Mini() {
     };
   }, [load]);
 
+  /* تبِ فعال روی ریشه.
+     CSS باید بداند کِی در گفتگوییم: فقط آن‌جا کلِ اپ قدِ ثابت
+     می‌گیرد تا لاگ خودش اسکرول بخورد. بقیه‌ی تب‌ها باید مثل یک
+     صفحه‌ی معمولی اسکرول شوند. */
+  useEffect(() => {
+    const de = document.documentElement;
+    de.dataset.mnTab = tab;
+    return () => { delete de.dataset.mnTab; };
+  }, [tab]);
+
   /* کیبوردِ گوشی.
    *
    * جعبه‌ی نوشتن `position: sticky; bottom: 0` است، یعنی به پایینِ
