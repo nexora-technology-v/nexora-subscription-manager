@@ -1161,6 +1161,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   overflow: hidden; text-overflow: ellipsis;
   margin-top: auto;
 }
+.fx-kpi-val.long { font-size: 19px; letter-spacing: -.02em; }
 .fx-kpi-val .u { font-size: 12px; font-weight: 500; color: var(--muted); }
 .fx-kpi-foot {
   display: flex; align-items: flex-end; justify-content: space-between;

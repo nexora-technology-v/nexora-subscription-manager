@@ -130,9 +130,9 @@ function Login({ slug, onIn }) {
  * `StatTile` از `ui/index` می‌آید که ابزارِ عمومی است، نه کدِ پنل
  * مدیر — همان مرزی که این فایل از اول داشته.
  */
-function Stat({ icon, label, value, hint, color, spark, sparkColor }) {
+function Stat({ icon, label, value, unit, hint, color, spark, sparkColor }) {
   return (
-    <StatTile icon={icon} label={label} value={value} hint={hint}
+    <StatTile icon={icon} label={label} value={value} unit={unit} hint={hint}
       color={color || "var(--text)"} tone={color || "var(--accent-2)"}
       spark={spark} sparkColor={sparkColor} />
   );
@@ -1744,14 +1744,17 @@ function Dashboard({ token, onOut }) {
             <Stat icon={Package} label="نامحدود"
               value={stats ? faNum(stats.unlimitedQuota) : "—"}
               hint="بدون سقف حجم" />
+            {/* «تومان» واحد است نه بخشی از عدد: با فونت و اندازه‌ی
+                عدد، رشته ۲۲۵ پیکسل می‌شد در کارتی که ۲۰۴ جا دارد و
+                انتهایش بی‌صدا بریده می‌شد. */}
             {sum.prepaid ? (
               <Stat icon={Wallet} label="اعتبار باقی‌مانده"
-                value={`${faNum(sum.credit)} تومان`}
+                value={faNum(sum.credit)} unit="تومان"
                 color={sum.credit > 0 ? "var(--ok)" : "var(--danger)"}
                 hint={sum.credit > 0 ? "" : "اعتبار تمام شده"} />
             ) : (
               <Stat icon={Wallet} label="مانده‌ی بدهی"
-                value={`${faNum(sum.balance)} تومان`}
+                value={faNum(sum.balance)} unit="تومان"
                 color={sum.balance > 0 ? "var(--warn)" : "var(--ok)"}
                 hint={`از ${faNum(sum.due)} تومان`} />
             )}
@@ -1763,14 +1766,14 @@ function Dashboard({ token, onOut }) {
         {stats?.sales?.hasBot && (
           <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
             <Stat icon={ShoppingCart} label="فروش این ماه"
-              value={`${faNum(stats.sales.monthSold)} تومان`}
+              value={faNum(stats.sales.monthSold)} unit="تومان"
               color="var(--accent-2)"
               hint={`${faNum(stats.sales.monthOrders)} سفارش`} />
             <Stat icon={TrendingUp} label="فروش کل"
-              value={`${faNum(stats.sales.sold)} تومان`}
+              value={faNum(stats.sales.sold)} unit="تومان"
               hint={`${faNum(stats.sales.orders)} سفارش`} />
             <Stat icon={Wallet} label="دریافتی کارت‌به‌کارت"
-              value={`${faNum(stats.sales.received)} تومان`}
+              value={faNum(stats.sales.received)} unit="تومان"
               hint="خرید با کیف پول پول تازه نیست" />
             <Stat icon={FileText} label="در انتظار بررسی"
               value={faNum(stats.sales.pending)}
