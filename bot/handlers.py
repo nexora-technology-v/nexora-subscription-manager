@@ -372,6 +372,49 @@ def welcome_text(ctx, user):
 #  /start و ثبت‌نام + رفرال
 # ═══════════════════════════════════════════════════════════
 
+#: پیلودهایی که مینی‌اپ در `?start=` می‌فرستد.
+#
+#  اینها «کد معرف» نیستند و نباید به‌عنوان کد معرف خوانده شوند.
+#  کد معرف شش حرفِ بزرگ از همان الفباست، پس `WALLET` می‌تواند
+#  روزی کدِ واقعیِ کسی باشد — و آن‌وقت هر کسی که از مینی‌اپ روی
+#  «شارژ» بزند، بی‌صدا زیرمجموعه‌ی آن نفر می‌شود.
+DEEP_WORDS = ("wallet", "buy", "subs", "support")
+
+
+def _deep_link(ctx, user, chat_id, arg):
+    """
+    مقصدِ مستقیم از مینی‌اپ. True یعنی خودش جواب داد.
+
+    چرا لازم شد: مینی‌اپ دکمه‌هایی داشت که به `?start=wallet`
+    می‌رفتند، ولی `/start` این مقدار را فقط به‌عنوان کد معرف
+    می‌خواند و چون کد معتبری نبود بی‌صدا دورش می‌ریخت. نتیجه این
+    بود که دکمه «کار می‌کرد» — ربات باز می‌شد — ولی کاربر در منوی
+    اصلی رها می‌شد و باید خودش دنبال کیف پول می‌گشت.
+    """
+    arg = (arg or "").strip()
+    if not arg:
+        return False
+    if arg == "wallet":
+        show_wallet(ctx, user, chat_id, None)
+        return True
+    if arg == "buy":
+        show_plans(ctx, user, chat_id)
+        return True
+    if arg == "subs":
+        show_subs(ctx, user, chat_id, None)
+        return True
+    if arg.startswith("renew_"):
+        try:
+            sid = int(arg[6:])
+        except ValueError:
+            return False
+        # مالکیت را خودِ show_renew می‌سنجد (WHERE user_id=?)، پس
+        # شناسه‌ی دست‌کاری‌شده به «این اشتراک پیدا نشد» می‌رسد
+        show_renew(ctx, user, chat_id, None, sid)
+        return True
+    return False
+
+
 def cmd_start(ctx, msg, args=None):
     """
     نمایش منوی اصلی.
@@ -385,6 +428,15 @@ def cmd_start(ctx, msg, args=None):
     user = _get_or_create(ctx, tg, args)
 
     ctx.db.clear_state(tg["id"])
+
+    # اگر از مینی‌اپ آمده و مقصد مشخصی خواسته، همان‌جا ببرش
+    try:
+        if _deep_link(ctx, user, tg["id"], args):
+            return
+    except Exception:
+        # مقصد خراب بود؛ منوی اصلی بهتر از هیچ است — ولی بی‌صدا نه
+        log.warning("دیپ‌لینک %r کار نکرد", args, exc_info=True)
+
     ctx.bot.send(tg["id"], welcome_text(ctx, user), keyboard=main_menu(ctx, user))
 
 
@@ -2955,7 +3007,7 @@ def _get_or_create(ctx, tg_user, ref=None):
         # قرار نبود وجود داشته باشد.
         if affiliate and affiliate.get("tg_id") == tg_user["id"]:
             affiliate = None
-    elif arg:
+    elif arg and arg not in DEEP_WORDS and not arg.startswith("renew_"):
         inviter = ctx.db.get_user_by_ref(arg)
         # کاربر نمی‌تواند خودش را دعوت کند
         if inviter and inviter["tg_id"] != tg_user["id"]:

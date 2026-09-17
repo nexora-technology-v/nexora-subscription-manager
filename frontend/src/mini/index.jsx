@@ -286,7 +286,7 @@ function Cell({ label, value, unit, tone }) {
   );
 }
 
-function SubDetail({ s, onBack }) {
+function SubDetail({ s, onBack, onRenew }) {
   const [copied, setCopied] = useState("");
   const hit = (what, text) => {
     try { navigator.clipboard?.writeText(text || ""); } catch { /* بی‌صدا */ }
@@ -330,12 +330,23 @@ function SubDetail({ s, onBack }) {
       </div>
 
       {s.daysLeft !== null && s.daysLeft !== undefined && (
-        <div className="mn-note">
+        <div className={`mn-note ${s.daysLeft <= 0 ? "bad" : s.daysLeft <= 7 ? "warn" : ""}`}>
           {s.daysLeft > 0
             ? <>‏{faNum(s.daysLeft)} روز تا پایان اشتراک باقی مانده.</>
-            : <>این اشتراک منقضی شده — برای اتصال دوباره، از ربات تمدید کنید.</>}
+            : <>این اشتراک منقضی شده — تا تمدید نشود وصل نمی‌شوید.</>}
         </div>
       )}
+
+      {/* تمدید.
+
+          تا امروز فقط یک جمله بود: «از ربات تمدید کنید» — یعنی
+          کاربر باید خودش ربات را باز می‌کرد، منو را می‌گشت، و بین
+          چند اشتراک همان یکی را پیدا می‌کرد. حالا دکمه مستقیم به
+          همین اشتراک در ربات می‌رود. */}
+      <button className="mn-renew" onClick={() => onRenew?.(s)}>
+        <RefreshCw size={15} />
+        {s.daysLeft !== null && s.daysLeft <= 0 ? "تمدید و فعال‌سازی" : "تمدید اشتراک"}
+      </button>
 
       <div className="mn-acts">
         <button className="mn-act" onClick={() => hit("sub", s.subUrl)}>
@@ -352,8 +363,7 @@ function SubDetail({ s, onBack }) {
       </div>
 
       <div className="mn-hint">
-        همه‌ی این کارها — تمدید، تعویض لینک و حذف — از خودِ ربات هم
-        انجام می‌شوند. اگر این صفحه بالا نیامد، منوی ربات همیشه هست.
+        تعویض لینک و حذف اشتراک از منوی خودِ ربات انجام می‌شوند.
       </div>
     </>
   );
@@ -987,8 +997,19 @@ export default function Mini() {
       lastLoad.current = now;
       load();
     };
+    /* سه رویداد، نه یکی.
+       داخل WebViewِ تلگرام برگشتن به مینی‌اپ همیشه
+       `visibilitychange` نمی‌دهد — گاهی فقط `focus` می‌آید. و وقتی
+       اینترنت قطع و وصل می‌شود هیچ‌کدام نمی‌آیند، پس کاربر با
+       صفحه‌ی کهنه می‌ماند تا تیکِ بعدی. */
     document.addEventListener("visibilitychange", onBack);
-    return () => document.removeEventListener("visibilitychange", onBack);
+    window.addEventListener("focus", onBack);
+    window.addEventListener("online", onBack);
+    return () => {
+      document.removeEventListener("visibilitychange", onBack);
+      window.removeEventListener("focus", onBack);
+      window.removeEventListener("online", onBack);
+    };
   }, [load]);
 
   /* هر بیست ثانیه فقط شمارنده‌ها.
@@ -1029,10 +1050,16 @@ export default function Mini() {
         }
       } catch { /* شبکه قطع بود — دفعه‌ی بعد */ }
     };
-    const id = setInterval(beat, 20000);
+    /* داخل گفتگو تندتر.
+
+       بیست ثانیه برای شمارنده‌ها خوب است، ولی وقتی کاربر *در حالِ
+       چت‌کردن* است یعنی تا بیست ثانیه جوابِ پشتیبانی را نمی‌بیند —
+       که در یک گفتگو خیلی طولانی است. بیرون از چت همان بیست
+       می‌ماند تا روی اینترنت موبایل گران نشود. */
+    const id = setInterval(beat, tab === "chat" ? 6000 : 20000);
     beat();
     return () => { alive = false; clearInterval(id); };
-  }, [load]);
+  }, [load, tab]);
 
   const saveProfile = async (body) => {
     await api("/api/mini/profile", { method: "POST", body });
@@ -1106,13 +1133,29 @@ export default function Mini() {
     }
   };
 
-  // شارژ کیف پول هنوز در ربات است — رسیدِ شارژ آن‌جا ثبت می‌شود.
-  const topUp = () => {
+  /**
+   * بازکردنِ ربات روی یک مقصدِ مشخص.
+   *
+   * چرا یک تابع: سه دکمه (شارژ، تمدید، پشتیبانی) همین کار را
+   * می‌کردند و هر کدام جدا نوشته شده بودند. و مهم‌تر — همه‌شان وقتی
+   * `botUsername` خالی بود بی‌صدا هیچ کاری نمی‌کردند.
+   */
+  const toBot = (payload, why) => {
+    const u = (me?.botUsername || "").replace(/^@/, "");
+    if (!u) { buzz("err"); setErr(why || "ربات این فروشگاه هنوز تنظیم نشده"); return; }
+    const url = `https://t.me/${u}?start=${encodeURIComponent(payload)}`;
     const w = tg();
-    const u = me?.botUsername;
-    if (w && u) { buzz("ok"); w.openTelegramLink(`https://t.me/${u}?start=wallet`); }
-    else setErr("برای شارژ کیف پول به ربات برگردید");
+    buzz("ok");
+    if (w?.openTelegramLink) w.openTelegramLink(url);
+    else window.open(url, "_blank", "noopener");
   };
+
+  // شارژ کیف پول هنوز در ربات است — رسیدِ شارژ آن‌جا ثبت می‌شود.
+  const topUp = () => toBot("wallet", "برای شارژ کیف پول به ربات برگردید");
+
+  // تمدید هم در ربات است، ولی مستقیم روی همین اشتراک باز می‌شود
+  const renew = (s) => toBot(s?.id ? `renew_${s.id}` : "subs",
+                             "برای تمدید به ربات برگردید");
 
   /* ── کارت‌به‌کارت ──
      سفارشِ `pending` ساخته می‌شود و شماره‌ی کارت می‌آید؛ تا رسید
@@ -1232,7 +1275,7 @@ export default function Mini() {
             ))}
           </div>
         ) : view === "detail" ? (
-          <SubDetail s={detail} onBack={() => setDetail(null)} />
+          <SubDetail s={detail} onBack={() => setDetail(null)} onRenew={renew} />
         ) : view === "buy" ? (
           <BuyView plans={plans} onBuy={buy} />
         ) : view === "me" ? (

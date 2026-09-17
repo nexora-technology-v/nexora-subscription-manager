@@ -38,6 +38,7 @@ import { LivePreview, SystemSection } from "./sections/system";
 import { SystemHealth, TunnelEvents, TunnelList, TunnelNodes, TunnelOverview } from "./sections/tunnel";
 import { WorkspaceSwitch } from "./shell/workspace";
 import { CommandPalette, ConfirmModal, ErrorBoundary, LoginScreen, NavAlert, NavIndicator, StatusChip, Toast } from "./ui/index";
+import { AlertBell } from "./shell/alertbell";
 
 
 const ALL_NAV = Object.values(WORKSPACES).flatMap((w) => w.groups.flatMap((g) => g.items));
@@ -85,12 +86,29 @@ export default function App() {
           { headers: { "X-Admin-Password": password } });
         if (!r.ok) return;
         const j = await r.json();
-        if (alive) setAlerts({ receipts: j.receipts || 0, messages: j.messages || 0 });
+        // کلِ پاسخ نگه داشته می‌شود: نشانِ کنارِ منو فقط شمار
+        // می‌خواهد، ولی زنگ به نام و ساعت هم نیاز دارد
+        if (alive) setAlerts({
+          receipts: j.receipts || 0, messages: j.messages || 0,
+          items: j.items || [], oldestMin: j.oldestMin || 0,
+        });
       } catch { /* شبکه قطع بود — دفعه‌ی بعد */ }
     };
     const id = setInterval(beat, 25000);
     beat();
-    return () => { alive = false; clearInterval(id); };
+
+    // برگشتن به تب باید فوری تازه کند، نه اینکه تا تیکِ بعدی صبر
+    // کند. مالک تب را عوض می‌کند، رسیدی می‌آید، برمی‌گردد — و تا
+    // ۲۵ ثانیه پنل هنوز می‌گوید چیزی نیست.
+    const wake = () => { if (document.visibilityState === "visible") beat(); };
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
+    return () => {
+      alive = false;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
+    };
   }, [password]);
 
 
@@ -349,6 +367,16 @@ export default function App() {
                 style={{ background: "var(--hair-2)", border: "1px solid var(--border-2)",
                          color: "var(--dim)", fontFamily: "var(--mono)" }} dir="ltr">Ctrl K</kbd>
             </button>
+            {/* پریدن به همان صفحه — و حالتِ کاری هم باید عوض شود،
+                وگرنه افکتِ نگهبان فوراً برمی‌گرداندش به صفحه‌ی اولِ
+                حالتِ فعلی و دکمه «کار نمی‌کند» */}
+            <AlertBell data={alerts} onGo={(key) => {
+              const ws = Object.keys(WORKSPACES).find((w) =>
+                WORKSPACES[w].groups.some((g) => g.items.some((i) => i.key === key)));
+              if (ws && ws !== workspace) setWorkspace(ws);
+              setActive(key);
+              setOpen(false);
+            }} />
             <button className="fx-btn-g w-9 h-9 grid place-items-center shrink-0 fx-hide-m"
               onClick={() => setCalm((v) => !v)}
               title={calm ? "حرکت: کم — برای روشن‌کردن بزنید" : "حرکت: روشن — برای کم‌کردن بزنید"}

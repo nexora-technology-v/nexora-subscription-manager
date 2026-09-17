@@ -922,6 +922,58 @@ check("تا رسیدنِ تکه، صفحه سفید نمی‌ماند", "Suspens
 
 
 # ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════
+head("دارایی‌ها · هیچ‌چیز از CDN بیرونی نیاید")
+
+# چرا این دروازه: آیکون‌ها از `cdnjs`، قلم‌ها از `fonts.googleapis`
+# و `jsdelivr`، و پرچم‌ها از `flagcdn` می‌آمدند. هیچ‌کدام در ایران
+# بالا نمی‌آیند — و چون روی مرورگرِ خودمان (با VPN) درست دیده
+# می‌شدند، خرابی هیچ‌وقت پیدا نمی‌شد. مشتری ۴۸ آیکونِ نامرئی
+# می‌دید و ما یک صفحه‌ی سالم.
+#
+# لینکِ قابل کلیک (دانلود برنامه، تلگرام) استثناست: آن را کاربر
+# باز می‌کند، مرورگر موقع رندر نمی‌خواهدش.
+_CDN = ("fonts.googleapis.com", "fonts.gstatic.com", "cdnjs.cloudflare.com",
+        "cdn.jsdelivr.net", "flagcdn.com", "unpkg.com", "use.fontawesome.com")
+
+import re as _re_cdn                                    # noqa: E402
+
+def _asset_hits(text):
+    """فقط جایی که مرورگر خودش چیزی را *می‌کشد*، نه لینکِ کلیک‌کردنی."""
+    out = []
+    for pat in (r'<link[^>]+href="([^"]+)"',
+                r'<script[^>]+src="([^"]+)"',
+                r'@import\s+url\([\'"]?([^\'")]+)',
+                r'url\(\s*[\'"]?(https?://[^\'")]+)'):
+        for m in _re_cdn.finditer(pat, text, _re_cdn.I):
+            u = m.group(1)
+            if any(d in u for d in _CDN):
+                out.append(u[:60])
+    return out
+
+for _name, _txt in (("پنل", io.open("frontend/index.html", encoding="utf-8").read()),
+                    ("صفحه اشتراک", io.open("sub-page-index.html", encoding="utf-8").read())):
+    _h = _asset_hits(_txt)
+    check(f"{_name} دارایی‌اش را از بیرون نمی‌گیرد", not _h,
+          "؛ ".join(_h[:3]) or "در ایران بالا نمی‌آید و بی‌صدا خالی می‌ماند")
+
+# آیکون‌های صفحه‌ی اشتراک باید واقعاً جاسازی شده باشند — نه فقط
+# لینکِ CDN برداشته شده باشد، که یعنی هیچ آیکونی
+_SUB = io.open("sub-page-index.html", encoding="utf-8").read()
+check("آیکون‌های صفحه اشتراک جاسازی‌اند",
+      'id="nexora-icons"' in _SUB and "mask-image:url(\"data:image/svg+xml" in _SUB,
+      "برداشتنِ لینک بدون جاسازی یعنی هیچ آیکونی")
+
+# و هر آیکونی که در صفحه به کار رفته باید قاعده‌ی خودش را داشته باشد،
+# وگرنه همان یکی نامرئی می‌ماند و بقیه سالم‌اند — که سخت‌تر هم دیده
+# می‌شود
+_used = set(_re_cdn.findall(r"fa-(?:solid|brands|regular) (fa-[a-z0-9-]+)", _SUB))
+_styled = set(_re_cdn.findall(r"\.(fa-[a-z0-9-]+)\{-webkit-mask-image", _SUB))
+_miss = sorted(_used - _styled)
+check("و هر آیکونی که به کار رفته تصویر دارد", not _miss,
+      "بی‌تصویر: " + "، ".join(_miss[:5]) if _miss else "")
+
+
 head("مینی‌اپ · باید شبیه خودِ تلگرام باشد")
 
 _MINI = ALL.get("mini/index.jsx", "")

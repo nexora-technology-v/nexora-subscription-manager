@@ -2282,28 +2282,98 @@ def admin_inbox_send(payload: dict, x_admin_password: str = Header(...)):
 @app.get("/api/admin/bot/alerts")
 def admin_alerts(x_admin_password: str = Header(...)):
     """
-    چیزهایی که همین حالا کارِ مالک را می‌خواهند.
+    چیزهایی که همین حالا کارِ مالک را می‌خواهند — با نام و ساعت.
 
-    چرا لازم شد: رسید می‌آمد و مالک نمی‌فهمید — تا وقتی اتفاقی
-    صفحه‌ی سفارش‌ها را باز کند. حالا پنل هر چند ثانیه همین را
-    می‌پرسد و نشان می‌گذارد.
+    چرا فقط شمار کافی نبود: «۲ رسید» می‌گفت چند تا، ولی نمی‌گفت
+    *کی* فرستاده و *چقدر* منتظر مانده. مالک باید صفحه‌ی سفارش‌ها را
+    باز می‌کرد تا بفهمد کدامش دو ساعت است که معطل است. و همان دو
+    ساعت، همان چیزی است که مشتری از آن ناراضی می‌شود.
+
+    ترتیب از قدیمی‌ترین است، نه تازه‌ترین: چیزی که بیشتر منتظر
+    مانده بالاتر می‌آید، چون همان است که دارد دیر می‌شود.
+
+    و فیلترِ مستاجر: تا امروز نبود، پس رسیدِ مشتریِ *نماینده* هم به
+    مالک هشدار می‌داد — کاری که اصلاً مالِ او نیست و نماینده خودش
+    باید جوابش را بدهد.
     """
     check_auth(x_admin_password)
     con = _bot_conn()
+    empty = {"receipts": 0, "messages": 0, "items": [], "oldestMin": 0,
+             "ready": False}
     if not con:
-        return {"receipts": 0, "messages": 0, "ready": False}
+        return empty
     try:
+        root = _root_tenant_row()
+        tid = root["id"] if root else None
+        if tid is None:
+            return empty
+
+        # «چند دقیقه منتظر» را خودِ اسکیوال حساب کند — تبدیلِ رشته‌ی
+        # زمان در پایتون یعنی یک جای دیگر که منطقه‌ی زمانی را اشتباه
+        # بفهمد
         rc = con.execute(
-            "SELECT COUNT(*) n FROM orders WHERE status='awaiting'").fetchone()["n"]
+            "SELECT o.id, o.amount, o.created_at, o.receipt_type, "
+            "       u.id uid, u.first_name, u.username, u.tg_id, "
+            "       p.name plan, "
+            "       CAST((julianday('now') - julianday(o.created_at)) * 1440 AS INTEGER) mins "
+            "  FROM orders o "
+            "  JOIN users u ON u.id = o.user_id "
+            "  LEFT JOIN plans p ON p.id = o.plan_id "
+            " WHERE o.tenant_id = ? AND o.status = 'awaiting' "
+            " ORDER BY o.created_at ASC LIMIT 30", (tid,)).fetchall()
+
         ms = con.execute(
-            "SELECT COUNT(*) n FROM chat_messages "
-            "WHERE sender='user' AND read_at IS NULL").fetchone()["n"]
+            "SELECT m.user_id uid, u.first_name, u.username, u.tg_id, "
+            "       MIN(m.created_at) at, COUNT(*) n, "
+            "       CAST((julianday('now') - julianday(MIN(m.created_at))) * 1440 AS INTEGER) mins "
+            "  FROM chat_messages m "
+            "  JOIN users u ON u.id = m.user_id "
+            " WHERE m.tenant_id = ? AND m.sender = 'user' AND m.read_at IS NULL "
+            " GROUP BY m.user_id ORDER BY at ASC LIMIT 30", (tid,)).fetchall()
+
+        # آخرین متنِ هر گفتگو، تا مالک بدون بازکردن بداند موضوع چیست
+        last = {}
+        for r in ms:
+            row = con.execute(
+                "SELECT body FROM chat_messages WHERE tenant_id=? AND user_id=? "
+                "AND sender='user' ORDER BY id DESC LIMIT 1",
+                (tid, r["uid"])).fetchone()
+            last[r["uid"]] = (row["body"] if row else "") or ""
     except Exception:
         log.debug("خواندن هشدارها ناموفق", exc_info=True)
-        return {"receipts": 0, "messages": 0, "ready": False}
+        return empty
     finally:
         con.close()
-    return {"receipts": int(rc or 0), "messages": int(ms or 0), "ready": True}
+
+    def who(r):
+        return (r["first_name"] or "").strip() or \
+               ("@" + r["username"] if r["username"] else "") or \
+               f"#{r['tg_id']}"
+
+    items = []
+    for r in rc:
+        items.append({
+            "kind": "receipt", "id": int(r["id"]), "userId": int(r["uid"]),
+            "name": who(r), "amount": int(r["amount"] or 0),
+            "plan": r["plan"] or "", "at": r["created_at"],
+            "waitedMin": max(0, int(r["mins"] or 0)),
+            "hasPhoto": (r["receipt_type"] or "") == "photo",
+        })
+    for r in ms:
+        items.append({
+            "kind": "message", "id": int(r["uid"]), "userId": int(r["uid"]),
+            "name": who(r), "count": int(r["n"] or 0),
+            "body": (last.get(r["uid"], "") or "")[:90],
+            "at": r["at"], "waitedMin": max(0, int(r["mins"] or 0)),
+        })
+
+    items.sort(key=lambda x: -x["waitedMin"])
+    return {
+        "receipts": len(rc), "messages": sum(int(r["n"] or 0) for r in ms),
+        "items": items,
+        "oldestMin": items[0]["waitedMin"] if items else 0,
+        "ready": True,
+    }
 
 
 @app.get("/api/admin/brand/logo")
@@ -10033,6 +10103,46 @@ def mini_user(x_telegram_init_data: str = Header(None)):
     raise HTTPException(status_code=401, detail=why)
 
 
+def _bot_username(t):
+    """
+    نام کاربری ربات — و اگر نبود، یک‌بار از تلگرام بپرس و نگه دار.
+
+    چرا لازم شد: همه‌ی دکمه‌های «برو به ربات» در مینی‌اپ (شارژ کیف
+    پول، تمدید، پشتیبانی) لینکِ `t.me/<username>` می‌سازند. این ستون
+    فقط وقتی پر می‌شود که توکن از خودِ پنل ثبت شده باشد؛ اگر با
+    نصب‌کننده یا CLI تنظیم شده باشد خالی می‌ماند و همه‌ی آن دکمه‌ها
+    بی‌صدا بن‌بست می‌شوند — کاربر می‌زند و هیچ اتفاقی نمی‌افتد.
+
+    یک‌بار می‌پرسیم و در همان ستون می‌نشیند، پس دفعه‌ی بعد رایگان
+    است.
+    """
+    u = (t.get("bot_username") or "").strip().lstrip("@")
+    if u:
+        return u
+    tok = t.get("bot_token")
+    if not tok:
+        return ""
+    try:
+        ok, who = _tg_get_me(tok)
+    except Exception:
+        log.warning("getMe برای پرکردن bot_username نشد", exc_info=True)
+        return ""
+    if not ok or not who:
+        return ""
+    who = str(who).lstrip("@")
+    try:
+        con = _bot_rw()
+        try:
+            con.execute("UPDATE tenants SET bot_username=? WHERE id=?", (who, t["id"]))
+            con.commit()
+        finally:
+            con.close()
+    except Exception:
+        # نتوانستیم نگه داریم؛ ولی همین حالا جواب را داریم
+        log.warning("ذخیره‌ی bot_username نشد", exc_info=True)
+    return who
+
+
 @app.get("/api/mini/me")
 def mini_me(tu: tuple = Depends(mini_user)):
     """کیستم، چقدر پول و سکه دارم، و برندِ این ربات چیست."""
@@ -10052,7 +10162,7 @@ def mini_me(tu: tuple = Depends(mini_user)):
         "coins": int(u.get("coins") or 0),
         "brand": st.get("brand") or t.get("name") or "",
         "support": st.get("support_username") or st.get("support") or "",
-        "botUsername": t.get("bot_username") or "",
+        "botUsername": _bot_username(t),
         "trialUsed": bool(u.get("trial_used")),
         # لوگوی همین فروشگاه. خالی یعنی «نشان نکسورا» — رابط خودش
         # تصمیم می‌گیرد، این‌جا حدس نمی‌زنیم.

@@ -523,7 +523,19 @@
       M_ME.avatar = ""; return { ok: true, avatar: "" };
     }
     if (u.indexOf("/mini/profile") >= 0) return miniProfile(body);
-    if (u.indexOf("/admin/bot/alerts") >= 0) return { receipts: 3, messages: 2, ready: true };
+    if (u.indexOf("/admin/bot/alerts") >= 0) return {
+      receipts: 3, messages: 2, ready: true, oldestMin: 214,
+      items: [
+        { kind: "receipt", id: 4101, userId: 1, name: "مریم کاظمی", amount: 250000,
+          plan: "سه ماهه ۱۰۰ گیگ", at: "2026-09-17 08:02", waitedMin: 214, hasPhoto: true },
+        { kind: "message", id: 1, userId: 1, name: "مریم کاظمی", count: 2,
+          body: "ممنون، دوباره واریز کردم", at: "2026-09-17 09:40", waitedMin: 96 },
+        { kind: "receipt", id: 4103, userId: 2, name: "علی رضایی", amount: 120000,
+          plan: "یک ماهه", at: "2026-09-17 10:55", waitedMin: 41, hasPhoto: false },
+        { kind: "receipt", id: 4104, userId: 3, name: "سارا نیک‌پور", amount: 480000,
+          plan: "شش ماهه", at: "2026-09-17 11:30", waitedMin: 6, hasPhoto: true },
+      ],
+    };
     if (u.indexOf("/admin/bot/inbox/send") >= 0) return { ok: true };
     if (u.indexOf("/admin/bot/inbox") >= 0) {
       return u.indexOf("user_id=") >= 0 ? A_THREAD : A_INBOX;

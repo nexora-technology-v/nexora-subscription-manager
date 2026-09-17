@@ -2551,6 +2551,80 @@ finally:
 
 
 # ═══════════════════════════════════════════════════════════
+head("هشدارها · فقط مالِ خودِ مالک")
+
+# چرا این تست: کوئریِ هشدارها هیچ `tenant_id` نداشت، پس رسیدِ
+# مشتریِ *نماینده* هم به مالک هشدار می‌داد — کاری که اصلاً مالِ او
+# نیست و نماینده خودش باید جوابش را بدهد. همان دامِ
+# «FROM … بدون شرط» که در این مخزن پنج بار پیدا شد.
+_ASRC = _APSRC[_APSRC.find("def admin_alerts("):]
+_ASRC = _ASRC[:_ASRC.find("\n@app.")]
+check("هشدارها به مستاجرِ ریشه محدودند", "_root_tenant_row()" in _ASRC,
+      "وگرنه رسیدِ نماینده هم به مالک هشدار می‌دهد")
+check("و کوئری‌ها شرطِ مستاجر دارند",
+      _ASRC.count("tenant_id = ?") >= 2 or _ASRC.count("tenant_id=?") >= 2,
+      "شمارشِ بدون شرط، عددِ کسِ دیگری را نشان می‌دهد")
+
+# «چقدر منتظر مانده» همان چیزی است که دیرشدن را نشان می‌دهد؛ بدون
+# آن، فهرست فقط می‌گوید چند تا، نه کدام دارد دیر می‌شود
+check("چقدر منتظر مانده را برمی‌گرداند", '"waitedMin"' in _ASRC)
+check("و قدیمی‌ترین اول می‌آید", 'key=lambda x: -x["waitedMin"]' in _ASRC,
+      "تازه‌ترین اول یعنی آنکه دیر شده ته فهرست گم می‌شود")
+check("و نامِ فرستنده هم می‌آید", '"name": who(r)' in _ASRC,
+      "«۲ رسید» نمی‌گوید کیست")
+
+
+# ═══════════════════════════════════════════════════════════
+head("پروفایلِ مشتری · واقعاً می‌نشیند")
+
+# چرا رفت‌وبرگشتِ کامل و نه فقط خواندنِ کد: مالک گزارش داد که
+# پروفایل ذخیره نمی‌شود. هر لایه جدا درست بود؛ تنها چیزی که
+# می‌توانست جواب بدهد، نوشتن و بعد *خواندنِ دوباره* بود.
+import tempfile as _tfp                                  # noqa: E402
+import sqlite3 as _sq3                                   # noqa: E402
+from pathlib import Path as _Pp                          # noqa: E402
+
+_pdb = _Pp(_tfp.mkdtemp(prefix="nx-prof-")) / "bot.db"
+_old_db = app.BOT_DB
+try:
+    import sys as _sys
+    _sys.path.insert(0, ".")
+    from bot import db as _BD
+    _c = _sq3.connect(str(_pdb))
+    _c.executescript(_BD.SCHEMA)
+    _c.execute("INSERT OR IGNORE INTO tenants (id, name) VALUES (1,'owner')")
+    _c.execute("INSERT INTO users (tenant_id, tg_id, first_name) VALUES (1, 555, 'Ali')")
+    _c.commit()
+    _uid = _c.execute("SELECT id FROM users WHERE tg_id=555").fetchone()[0]
+
+    app.BOT_DB = _pdb
+    _t = {"id": 1, "name": "x"}
+    _u = {"id": _uid, "first_name": "Ali", "phone": ""}
+    _out = app.mini_profile_save({"name": "علی رضایی", "phone": "09058676388"}, (_t, _u))
+    check("ذخیره پاسخِ موفق می‌دهد", _out.get("ok") is True, str(_out)[:60])
+
+    _row = _c.execute("SELECT first_name, phone FROM users WHERE id=?", (_uid,)).fetchone()
+    check("و نام واقعاً در دیتابیس نشست", _row[0] == "علی رضایی", str(_row[0]))
+    check("و شماره هم نشست", _row[1] == "09058676388", str(_row[1]))
+
+    # نامِ خالی نباید نامِ قبلی را پاک کند
+    app.mini_profile_save({"name": "", "phone": ""}, (_t, _u))
+    _row2 = _c.execute("SELECT first_name, phone FROM users WHERE id=?", (_uid,)).fetchone()
+    check("و ارسالِ خالی، چیزی را پاک نمی‌کند",
+          _row2[0] == "علی رضایی" and _row2[1] == "09058676388", str(_row2))
+
+    # شماره‌ی بی‌ربط باید رد شود، نه اینکه ستون را خراب کند
+    try:
+        app.mini_profile_save({"name": "", "phone": "سلام!!"}, (_t, _u))
+        check("شماره‌ی بی‌ربط رد می‌شود", False, "پذیرفته شد")
+    except app.HTTPException as _e:
+        check("شماره‌ی بی‌ربط رد می‌شود", _e.status_code == 400, str(_e.status_code))
+    _c.close()
+finally:
+    app.BOT_DB = _old_db
+
+
+# ═══════════════════════════════════════════════════════════
 head("عکس پروفایل · نامِ فایل خودش کلید است")
 
 import base64 as _b64a                                 # noqa: E402

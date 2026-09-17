@@ -52,11 +52,12 @@
   --side-w: 236px;
 
   /* فونت اعداد و کدها.
-     JetBrains Mono از گوگل می‌آید و در ایران معمولاً بالا نمی‌آید؛
-     تا قبل از این، هر جای پنل که عدد یا کد داشت به مونواسپیس
-     پیش‌فرض سیستم می‌افتاد و با بقیه‌ی پنل جور درنمی‌آمد. حالا
-     پشتش یک زنجیره‌ی محلی هست که روی هر سیستمی وجود دارد. */
-  --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", "Segoe UI Mono",
+     هیچ قلمی از شبکه نمی‌آید. JetBrains Mono از گوگل می‌آمد و در
+     ایران بالا نمی‌آید، پس پنل با VPN و بی‌VPN دو شکل داشت. و چون
+     آن قلم گلیفِ فارسی ندارد، عددِ فارسی هیچ‌وقت از آن استفاده
+     نمی‌کرد. این زنجیره فقط قلم‌هایی را نام می‌برد که روی خودِ
+     سیستم هستند — پس همه یک چیز می‌بینند. */
+  --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono",
           "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
   /* قلمِ اصلی، تا برگشتن از مونو یک‌جا تعریف شده باشد.
@@ -1461,6 +1462,25 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   background: rgba(255,255,255,.03); border: 1px solid var(--border);
   border-radius: var(--r-m); padding: 11px 13px;
 }
+/* حال‌وروزِ اشتراک را خودِ کادر هم بگوید، نه فقط متنش. منقضی‌شدن
+   مهم‌ترین خبرِ این صفحه است و نباید هم‌رنگِ یک یادداشتِ معمولی
+   باشد. */
+.mn-note.warn { background: var(--warn-wash); border-color: var(--warn-line); color: var(--warn); }
+.mn-note.bad  { background: var(--danger-wash); border-color: var(--danger-line); color: var(--danger); }
+
+/* تمدید — کارِ اصلیِ این صفحه وقتی اشتراک رو به پایان است، پس
+   دکمه‌اش باید از «کپی لینک» پررنگ‌تر باشد. */
+.mn-renew {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; font-family: inherit; font-size: 13.5px; font-weight: 700;
+  color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border: none; border-radius: var(--r-m); padding: 13px 14px;
+  box-shadow: 0 6px 18px var(--accent-wash);
+  transition: transform var(--m-fast) var(--sp-snappy), filter var(--m-fast) linear;
+}
+.mn-renew:active { transform: scale(.98); }
+.mn-renew:hover { filter: brightness(1.06); }
+
 .mn-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .mn-act {
   display: flex; align-items: center; justify-content: center; gap: 7px;
@@ -2165,9 +2185,19 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   grid-template-columns: 300px 1fr;
   gap: 12px;
   /* قدِ ثابت تا هر دو ستون با هم اسکرول نخورند و سرصفحه‌ی گفتگو
-     سر جایش بماند */
-  height: calc(100dvh - 210px);
-  min-height: 420px;
+     سر جایش بماند.
+
+     ۲۳۷ = فاصله‌ی بالای شبکه (۱۸۹) + پدینگِ پایینِ صفحه (۴۸).
+     با ۲۱۰ اندازه‌گیری‌شده ۶ پیکسل از لبه بیرون می‌زد و کلِ صفحه
+     ۴۴ پیکسل اسکرول می‌خورد — روی نمایشگرِ کوتاه یعنی جعبه‌ی
+     نوشتن زیر لبه می‌رفت و باید اسکرول می‌کردی تا جواب بدهی.
+
+     و کف، چون روی پنجره‌ی خیلی کوتاه calc به عددی می‌رسد که
+     گفتگو در آن فقط یک حباب جا می‌دهد. */
+  height: calc(100dvh - 237px);
+  /* کفِ قبلی ۴۲۰ بود و روی پنجره‌ی ۶۰۳ پیکسلی ۱۸۹+۴۲۰=۶۰۹ می‌شد —
+     یعنی از لبه بیرون می‌زد و کلِ صفحه اسکرول می‌خورد. */
+  min-height: 340px;
 }
 
 /* ── ستونِ گفتگوها ── */
@@ -2419,3 +2449,96 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .mn-row-kv > span { color: var(--muted); }
 .mn-row-kv > b { color: var(--text); display: flex; align-items: center; }
 .mn-row-kv.act > b { color: var(--accent-2); }
+
+/* ═══════════════ زنگِ اعلان ═══════════════
+   «چه کسی منتظرِ من است، و از کِی». نشانِ کنارِ منو فقط شمار
+   می‌داد؛ این می‌گوید کی و چقدر معطل شده. */
+
+.fx-bell {
+  position: relative; width: 36px; height: 36px; flex-shrink: 0;
+  display: grid; place-items: center; border-radius: var(--r-m);
+  background: var(--hair-1); border: 1px solid var(--border-2);
+  color: var(--dim); transition: color var(--m-fast) linear,
+                                 border-color var(--m-fast) linear;
+}
+.fx-bell:hover { color: var(--text); border-color: var(--border-2); }
+.fx-bell.on { color: var(--accent); border-color: var(--accent-line); }
+.fx-bell.on.warn { color: var(--warn); border-color: var(--warn-line); }
+.fx-bell.on.bad  { color: var(--danger); border-color: var(--danger-line); }
+/* وقتی چیزی خیلی معطل مانده، نباید هم‌شکلِ حالت عادی باشد */
+.fx-bell.on.bad::after {
+  content: ""; position: absolute; inset: -3px; border-radius: inherit;
+  border: 1px solid var(--danger-line); opacity: 0; animation: fx-bell-ring 2.4s infinite;
+}
+@keyframes fx-bell-ring {
+  0%   { opacity: .8; transform: scale(1); }
+  70%  { opacity: 0;  transform: scale(1.18); }
+  100% { opacity: 0;  transform: scale(1.18); }
+}
+
+.fx-bell-dot {
+  position: absolute; top: -5px; left: -5px; min-width: 17px; height: 17px;
+  padding: 0 4px; border-radius: 9px; display: grid; place-items: center;
+  font-size: 9.5px; font-weight: 800; color: #fff; background: var(--danger);
+  border: 2px solid var(--surface); line-height: 1;
+}
+
+.fx-bell-pop {
+  position: fixed; z-index: 90; width: min(360px, calc(100vw - 24px));
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  border-radius: var(--r-l); box-shadow: var(--e-3);
+  overflow: hidden; animation: fx-pop-in var(--m-base) var(--sp-snappy);
+}
+@keyframes fx-pop-in {
+  from { opacity: 0; transform: translateY(-6px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+.fx-bell-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+}
+.fx-bell-head b { font-size: 13.5px; color: var(--text); }
+.fx-bell-head span { font-size: 11.5px; color: var(--muted); }
+.fx-bell-head span.warn { color: var(--warn); }
+.fx-bell-head span.bad  { color: var(--danger); }
+
+.fx-bell-rows { max-height: min(60vh, 420px); overflow-y: auto; }
+
+.fx-bell-row {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%;
+  padding: 11px 14px; text-align: right; font-family: inherit;
+  border-bottom: 1px solid var(--border);
+  transition: background var(--m-fast) linear;
+}
+.fx-bell-row:last-child { border-bottom: none; }
+.fx-bell-row:hover { background: var(--hair-1); }
+
+.fx-bell-ic {
+  width: 28px; height: 28px; flex-shrink: 0; border-radius: 9px;
+  display: grid; place-items: center;
+}
+.fx-bell-ic.receipt { background: var(--accent-soft); color: var(--accent); }
+.fx-bell-ic.message { background: var(--ok-soft); color: var(--ok); }
+
+.fx-bell-body { min-width: 0; flex: 1; display: block; }
+.fx-bell-top {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+}
+.fx-bell-top b {
+  font-size: 13px; color: var(--text); font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fx-bell-top i { font-style: normal; font-size: 11px; color: var(--muted); flex-shrink: 0; }
+.fx-bell-top i.warn { color: var(--warn); }
+.fx-bell-top i.bad  { color: var(--danger); }
+.fx-bell-sub {
+  display: block; margin-top: 2px; font-size: 12px; color: var(--dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.fx-bell-empty {
+  padding: 30px 18px; text-align: center; color: var(--muted);
+}
+.fx-bell-empty p { font-size: 13px; color: var(--dim); margin-top: 9px; }
+.fx-bell-empty span { font-size: 11.5px; display: block; margin-top: 4px; }

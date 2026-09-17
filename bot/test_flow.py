@@ -509,6 +509,52 @@ H.dispatch(tenant, bot, up_cb(555, "renew:99999"))
 check("اشتراک ناموجود خطای تمیز می‌دهد",
       SENT and "پیدا نشد" in SENT[-1]["text"], SENT[-1]["text"][:40] if SENT else "—")
 
+# ═══════════════ دیپ‌لینک مینی‌اپ ═══════════════
+section("دیپ‌لینک مینی‌اپ")
+
+# مینی‌اپ دکمه‌هایی داشت که به `?start=wallet` می‌رفتند، ولی /start
+# این مقدار را فقط «کد معرف» می‌خواند و چون کد معتبری نبود بی‌صدا
+# دورش می‌ریخت. یعنی دکمه ربات را باز می‌کرد ولی کاربر در منوی
+# اصلی رها می‌شد.
+SENT.clear()
+H.dispatch(tenant, bot, up_msg(555, "/start wallet"))
+check("start=wallet به کیف پول می‌رود",
+      SENT and "کیف پول" in SENT[-1]["text"],
+      SENT[-1]["text"][:60] if SENT else "—")
+
+SENT.clear()
+H.dispatch(tenant, bot, up_msg(555, "/start buy"))
+check("start=buy به خرید می‌رود",
+      SENT and ("خرید اشتراک" in SENT[-1]["text"] or "پلن" in SENT[-1]["text"]),
+      SENT[-1]["text"][:60] if SENT else "—")
+
+SENT.clear()
+H.dispatch(tenant, bot, up_msg(555, f"/start renew_{mysub['id']}"))
+check("start=renew_<id> روی همان اشتراک باز می‌شود",
+      SENT and "مبلغ تمدید" in SENT[-1]["text"],
+      SENT[-1]["text"][:60] if SENT else "—")
+
+# شناسه‌ی دست‌کاری‌شده نباید اشتراکِ کسِ دیگری را نشان دهد
+SENT.clear()
+H.dispatch(tenant, bot, up_msg(555, "/start renew_99999"))
+check("شناسه‌ی جعلی به اشتراک کسی نمی‌رسد",
+      SENT and "پیدا نشد" in SENT[-1]["text"],
+      SENT[-1]["text"][:40] if SENT else "—")
+
+# پیلودِ ناشناس نباید کاربر را گم کند — منوی اصلی، نه سکوت
+SENT.clear()
+H.dispatch(tenant, bot, up_msg(555, "/start چیزخاصی"))
+check("پیلود ناشناس به منوی اصلی می‌رسد", len(SENT) > 0, f"{len(SENT)} پیام")
+
+# و کلمه‌های رزرو نباید کد معرف خوانده شوند: کد معرف شش حرف بزرگ
+# از همان الفباست، پس WALLET می‌تواند روزی کدِ واقعیِ کسی باشد — و
+# آن‌وقت هر کسی که روی «شارژ» بزند بی‌صدا زیرمجموعه‌اش می‌شود.
+check("wallet جزو کلمه‌های رزرو است", "wallet" in H.DEEP_WORDS)
+check("و کد معرف فقط وقتی خوانده می‌شود که رزرو نباشد",
+      "DEEP_WORDS" in io.open("bot/handlers.py", encoding="utf-8").read()
+      .split("def _get_or_create")[1].split("def ")[0],
+      "وگرنه برخوردِ کد، معرف را اشتباه می‌بندد")
+
 # ═══════════════ پاسخ به تیکت ═══════════════
 section("پاسخ به تیکت")
 
