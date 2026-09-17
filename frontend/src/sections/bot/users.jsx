@@ -128,15 +128,29 @@ export function BotUsersSection({ password }) {
           )}
         </div>
 
-        <div className="flex flex-wrap gap-1.5 mb-3">
+        {/* یک ردیف، نه دو تا.
+            اندازه‌گیری: یازده چیپ روی دو ردیف می‌رفت و ۷۳ پیکسل
+            ارتفاع می‌گرفت — با شش چیپِ مرتب‌سازی یعنی ۱۷ دکمه در
+            یک نوار.
+
+            و فیلتری که هیچ نتیجه‌ای ندارد نشان داده نمی‌شود: دکمه‌ای
+            که می‌دانیم صفر برمی‌گرداند فقط جا اشغال می‌کند. فیلترِ
+            انتخاب‌شده همیشه می‌ماند، وگرنه با صفرشدن نتیجه از زیر
+            دست کاربر ناپدید می‌شود و راه برگشتی نمی‌ماند. */}
+        <div className="fx-chips mb-3">
           {USER_FILTERS.map((f) => {
             const on = filter === f.key;
             const n = d.counts[f.key];
+            if (!on && n === 0) return null;
             return (
               <button key={f.key} onClick={() => pick(f.key)}
-                className="px-2.5 py-1.5 rounded-[9px] text-[13px] transition-all"
+                className="px-2.5 py-1.5 rounded-[9px] text-[13px] transition-all shrink-0"
+                /* بوردرِ شفاف روی حالتِ انتخاب‌شده هم هست: بدون آن
+                   چیپ دو پیکسل کوتاه‌تر می‌شد و کلِ ردیف موقع
+                   انتخاب یک پیکسل بالا و پایین می‌پرید. */
                 style={on
-                  ? { background: "var(--accent-2)", color: "#06090F", fontWeight: 600 }
+                  ? { background: "var(--accent-2)", color: "#06090F",
+                      fontWeight: 600, border: "1px solid transparent" }
                   : { color: "var(--dim)", border: "1px solid var(--border-2)" }}>
                 {f.label}
                 {n !== undefined && (
@@ -179,7 +193,7 @@ export function BotUsersSection({ password }) {
                   <Avatar name={u.first_name || u.username} id={u.tg_id} size={38} />
                   <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[14px] font-semibold text-white">
+                    <span className="text-[15px] font-bold text-white truncate">
                       {u.first_name || "بدون نام"}
                     </span>
                     {u.username && (
@@ -198,13 +212,19 @@ export function BotUsersSection({ password }) {
                       </span>
                     )}
                   </div>
-                  <div className="text-[12px] mt-1 flex items-center gap-2 flex-wrap"
+                  {/* شناسه و شماره روشن‌تر از بقیه‌ی خط‌اند.
+                      اینها همان چیزی هستند که مالک با آن آدم را
+                      می‌شناسد و موقع پشتیبانی کپی می‌کند؛ با
+                      ۱۲ پیکسل و کم‌رنگ‌ترین رنگ، خوانده نمی‌شدند.
+                      `tabular-nums` هم ستون را در فهرستِ بلند
+                      هم‌تراز نگه می‌دارد. */}
+                  <div className="text-[12.5px] mt-1 flex items-center gap-2 flex-wrap"
                     style={{ color: "var(--muted)" }}>
-                    <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{u.tg_id}</span>
+                    <span dir="ltr" className="fx-idnum" title="شناسه تلگرام">{u.tg_id}</span>
                     {u.phone && (
                       <>
                         <span style={{ opacity: 0.4 }}>•</span>
-                        <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{u.phone}</span>
+                        <span dir="ltr" className="fx-idnum" title="شماره تماس">{u.phone}</span>
                       </>
                     )}
                     {u.ordersCount > 0 && (

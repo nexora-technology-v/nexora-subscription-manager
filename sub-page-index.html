@@ -3424,18 +3424,31 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             const label = String(name || "").trim();
             if (!label) { el.classList.remove("on"); box.classList.remove("has-initial"); return; }
             const ch = Array.from(label)[0];
-            let h = 0;
-            for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) >>> 0;
-            const pair = NEXORA_AVATAR_HUES[h % NEXORA_AVATAR_HUES.length];
             el.textContent = ch;
+
+            /* رنگ از قالبِ همین فروشگاه می‌آید، نه از هشِ نام.
+               قبلاً هر مشتری یک رنگِ تصادفی می‌گرفت — که یعنی روی
+               صفحه‌ای که نماینده رنگش را خودش انتخاب کرده، یک دایره‌ی
+               بنفش یا نارنجیِ بی‌ربط می‌نشست. حالا همان `--accent`
+               است که بقیه‌ی صفحه از آن رنگ گرفته.
+
+               اگر به هر دلیل خالی بود، هشِ قبلی جایگزین می‌شود تا
+               دایره بی‌رنگ نماند. */
+            let tone = getComputedStyle(document.documentElement)
+                .getPropertyValue("--accent").trim();
+            if (!tone) {
+                let h = 0;
+                for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) >>> 0;
+                tone = NEXORA_AVATAR_HUES[h % NEXORA_AVATAR_HUES.length][0];
+            }
             // تهِ‌رنگِ همان رنگ روی سطح، و خودِ حرف با رنگِ سیر.
             // `color-mix` روی همه‌ی مرورگرهای امروزی هست؛ اگر نبود،
             // زمینه همان `--surface-alt` می‌ماند که از CSS آمده.
             el.style.background =
-                "color-mix(in srgb, " + pair[0] + " 18%, var(--surface-alt))";
+                "color-mix(in srgb, " + tone + " 18%, var(--surface-alt))";
             el.style.borderColor =
-                "color-mix(in srgb, " + pair[0] + " 45%, transparent)";
-            el.style.color = pair[0];
+                "color-mix(in srgb, " + tone + " 45%, transparent)";
+            el.style.color = tone;
             el.classList.add("on");
             box.classList.add("has-initial");
         }

@@ -2024,9 +2024,9 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 
 .mn-msg {
   max-width: 82%;
-  padding: 10px 12px;
+  padding: 6px 11px 5px;
   border-radius: 14px;
-  font-size: 13px; line-height: 1.85;
+  font-size: 13px; line-height: 1.62;
   white-space: pre-wrap; word-break: break-word;
   position: relative;
 }
@@ -2058,11 +2058,24 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .mn-msg.sys { flex-wrap: wrap; }
 .mn-msg.sys .mn-msg-body { flex: 1 1 auto; min-width: 0; }
 .mn-msg.sys .mn-msg-at { flex: 1 0 100%; text-align: start; }
-.mn-msg-body { display: block; }
+/* درون‌خطی، تا ساعتِ شناور بتواند ته همان خط بنشیند.
+   با `block` شناور بعد از کلِ بلوک می‌افتاد و حباب یک خط
+   بلندتر می‌شد. */
+.mn-msg-body { display: inline; }
+/* خبرِ خودکار چندخطی است و آن‌جا بلوک درست‌تر است */
+.mn-msg.sys .mn-msg-body { display: block; }
+/* ساعت ته همان خط، نه خطِ جدا — حباب را کوتاه‌تر می‌کند */
 .mn-msg-at {
-  display: block; font-size: 10px; opacity: .6; margin-top: 4px;
+  float: inline-end;
+  display: inline-flex; align-items: center;
+  font-size: 10px; opacity: .6;
+  margin-inline-start: 8px;
+  transform: translateY(4px);
   font-family: var(--mono);
+  white-space: nowrap;
 }
+/* خبرِ خودکار چندخطی است؛ آن‌جا شناورکردن ساعت متن را می‌شکند */
+.mn-msg.sys .mn-msg-at { float: none; display: block; transform: none; margin-top: 4px; }
 
 .mn-chat-bar {
   position: sticky; bottom: 0;
@@ -2299,12 +2312,17 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 
 /* حباب‌ها */
+/* حبابِ جمع‌وجور.
+   اندازه‌گیری: یک خطِ کوتاه ۶۰ پیکسل ارتفاع می‌گرفت، چون ساعت خطِ
+   جدا می‌گرفت و line-height هم ۱٫۸۵ بود. حالا ساعت ته همان خط
+   شناور می‌شود — همان کاری که تلگرام می‌کند — و یک‌خطی حدود
+   ۳۴ پیکسل می‌شود. */
 .fx-bub {
   position: relative;
   max-width: 68%;
-  padding: 8px 12px 6px;
-  border-radius: 14px;
-  font-size: 13px; line-height: 1.85;
+  padding: 6px 10px 5px;
+  border-radius: 13px;
+  font-size: 13px; line-height: 1.62;
   white-space: pre-wrap; word-break: break-word;
 }
 /* پیامِ پشت‌سرهمِ یک نفر فاصله‌ی کمتری می‌گیرد — گروه می‌شود */
@@ -2331,12 +2349,19 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 .fx-bub-ico { flex: none; margin-top: 4px; color: var(--accent-2); }
 .fx-bub-text { flex: 1 1 auto; min-width: 0; }
+/* ساعت ته خط شناور می‌شود و متن دورش می‌پیچد.
+   `inline-end` است نه `left`، چون این حباب در متنِ راست‌به‌چپ
+   می‌نشیند و `left` همیشه همان سمتِ درست نیست. */
 .fx-bub-meta {
-  display: flex; align-items: center; gap: 3px; justify-content: flex-end;
+  float: inline-end;
+  display: inline-flex; align-items: center; gap: 3px;
   font-size: 10px; font-family: var(--mono);
-  opacity: .62; margin-top: 2px;
+  opacity: .6;
+  margin-inline-start: 8px;
+  /* کمی پایین‌تر از خطِ متن می‌نشیند تا با حروف هم‌تراز نباشد */
+  transform: translateY(4px);
 }
-.fx-bub.system .fx-bub-meta { flex: 1 0 100%; justify-content: flex-start; }
+.fx-bub.system .fx-bub-meta { float: none; display: flex; transform: none; margin-top: 3px; }
 
 /* برو پایین */
 .fx-chat-down {
@@ -2593,3 +2618,48 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
    فضای پایینِ گفتگو باز می‌شود و خودِ جعبه با scrollIntoView در
    دید می‌آید — که روی هر مرورگری یک‌جور کار می‌کند. */
 :root[data-mn-kb="1"] .mn-chat { padding-bottom: var(--mn-kb); }
+
+/* گفتگو قدِ صفحه را پر می‌کند.
+   بدون این، `.mn-view` و `.mn-chat` هر دو `flex: 0 1 auto` بودند و
+   فقط به اندازه‌ی محتوا کش می‌آمدند: جعبه‌ی نوشتن وسطِ صفحه
+   می‌ماند و بینِ آن و نوارِ تب ۱۸۶ پیکسل فضای مرده می‌افتاد. */
+/* `min-height: 100%` جواب نداد: ارتفاعِ `.mn-body` از فلکس می‌آید
+   و خودِ `height`اش `auto` است، پس درصدِ فرزند رویش حل نمی‌شود.
+   والد را هم ستونی می‌کنیم تا فرزند بتواند `flex: 1` بگیرد. */
+.mn-body { display: flex; flex-direction: column; }
+.mn-view.chat { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.mn-view.chat .mn-chat { flex: 1 1 auto; min-height: 0; }
+.mn-view.chat .mn-chat-log { flex: 1 1 auto; }
+
+/* نوارِ چیپ — یک ردیف که افقی اسکرول می‌خورد.
+   با `flex-wrap` یازده چیپ دو ردیف می‌شد و نوار را دو برابر
+   می‌کرد؛ روی صفحه‌ی باریک‌تر سه ردیف. */
+.fx-chips {
+  display: flex; gap: 6px; align-items: center;
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: none; -ms-overflow-style: none;
+  /* لبه‌ها محو می‌شوند تا معلوم باشد ادامه دارد */
+  -webkit-mask-image: linear-gradient(to left, transparent 0, #000 14px,
+                                      #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to left, transparent 0, #000 14px,
+                              #000 calc(100% - 14px), transparent 100%);
+  padding-inline: 2px;
+}
+.fx-chips::-webkit-scrollbar { display: none; }
+.fx-chips > * { flex: none; }
+
+/* شناسه و شماره — چیزی که مالک با آن آدم را می‌شناسد.
+   با ۱۲ پیکسل و رنگِ کم‌رنگِ بقیه‌ی خط عملاً خوانده نمی‌شدند. */
+.fx-idnum {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text); opacity: .78;
+  letter-spacing: -.01em;
+  user-select: all;          /* یک کلیک، کلِ عدد انتخاب می‌شود */
+}
+
+/* کارت به قدِ محتوایش، نه به قدِ بلندترین همسایه.
+   اندازه‌گیری روی داشبورد: «محتوای صفحه‌ی اشتراک» ۵۳۴ پیکسل بود
+   با ۲۳۱ پیکسل خالی ته آن، و «روند فروش» ۴۳۶ با ۱۶۱ خالی — چون
+   ستونِ کناری بلندتر بود و شبکه پیش‌فرض همه را کش می‌دهد. */
+.fx-g2 { align-items: start; }
