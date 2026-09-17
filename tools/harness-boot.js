@@ -29,6 +29,7 @@
     var as = qs.get("as");
     if (as === "portal") history.replaceState({}, "", "/r/hossein");
     else if (as === "mini") history.replaceState({}, "", "/app");
+    else if (as === "aff") history.replaceState({}, "", "/aff");
 
     /* پوسته‌ی تلگرام:  ?scheme=dark  یا  ?scheme=light
      *
@@ -386,6 +387,7 @@
                logo: FAKE_LOGO,
                support: "nexora_support", channel: "nexora_vpn",
                phone: "", avatar: "",
+               refCode: "NX7K2M", refCount: 3,
                tgId: 1278109787, username: "maryam_k",
                botUsername: "nexora_vpn_bot" };
   var GB = 1024 * 1024 * 1024;
@@ -517,6 +519,35 @@
   }
 
   function byPath(u, body) {
+    if (u.indexOf("/aff/login") >= 0) {
+      var ac = String((body || {}).code || "").toUpperCase();
+      if (ac !== "AFF1") { var ae2 = new Error("کد یا رمز نادرست است"); ae2.status = 401; throw ae2; }
+      return { token: "afftoken", name: "رضا مرادی", code: "AFF1", percent: 10 };
+    }
+    if (u.indexOf("/aff/logout") >= 0) return { ok: true };
+    if (u.indexOf("/aff/summary") >= 0) {
+      return {
+        name: "رضا مرادی", code: "AFF1", percent: 10,
+        earned: 480000, paid: 300000, balance: 180000,
+        users: [
+          { id: 1, first_name: "مریم کاظمی", username: "maryam", tg_id: 6001,
+            created_at: "2026-08-02", orders: 3, spent: 900000 },
+          { id: 2, first_name: "علی رضایی", username: "ali", tg_id: 6002,
+            created_at: "2026-08-19", orders: 1, spent: 150000 },
+        ],
+        commissions: [
+          { id: 3, order_id: 4101, order_amount: 480000, percent: 10,
+            commission: 48000, status: "pending", created_at: "2026-09-14",
+            first_name: "مریم کاظمی" },
+          { id: 2, order_id: 4088, order_amount: 300000, percent: 10,
+            commission: 30000, status: "paid", created_at: "2026-08-19",
+            first_name: "علی رضایی" },
+        ],
+        payouts: [
+          { id: 1, amount: 300000, note: "کارت‌به‌کارت", paid_at: "2026-09-01" },
+        ],
+      };
+    }
     if (u.indexOf("/mini/topup/options") >= 0) {
       return { min: 10000, max: 50000000,
                presets: [100000, 200000, 500000, 1000000],

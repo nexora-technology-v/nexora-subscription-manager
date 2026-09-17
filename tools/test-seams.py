@@ -554,6 +554,14 @@ KNOWN_PUBLIC |= {p for p, _n in _routes if p.startswith("/api/portal/")}
 # بالا آن را «عمومی» می‌بیند. تستِ اختصاصیِ پایین سختگیرانه‌تر است.
 KNOWN_PUBLIC |= {p for p, _n in _routes if p.startswith("/api/mini/")}
 
+# ── پنل همکار فروش ──
+#
+# مثل نماینده، یک سطحِ جدا: رمزِ مدیر را نمی‌گیرند و از
+# `aff_session` رد می‌شوند. ورود و خروج طبیعتاً نشست ندارند —
+# ورود که نمی‌تواند نشست بخواهد، و خروج فقط توکنِ خودش را پاک
+# می‌کند.
+KNOWN_PUBLIC |= {p for p, _n in _routes if p.startswith("/api/aff/")}
+
 # ── هر مسیر نماینده باید به مستاجر خودش محدود باشد ──
 #
 # همان کاری که بالاتر برای check_auth روی مسیرهای مدیر انجام شد.
@@ -577,6 +585,16 @@ _mini_open = [p for p, n in _mini if "mini_user" not in _ast.unparse(n)]
 check("هر مسیر مینی‌اپ امضای تلگرام را می‌سنجد", not _mini_open,
       "، ".join(_mini_open) if _mini_open
       else f"{len(_mini)} مسیر، همه پشت mini_user")
+
+# هر مسیر `/api/aff/*` جز ورود و خروج باید از `aff_session` رد شود.
+# بدون این، فردا مسیری اضافه می‌شود که دادهٔ همکارِ دیگر را می‌دهد و
+# چون «عمومی» است هیچ دروازه‌ای هم نمی‌گیردش.
+_aff = [(p, n) for p, n in _routes if p.startswith("/api/aff")]
+_aff_open = [p for p, n in _aff
+             if "aff_session" not in _ast.unparse(n)
+             and not p.endswith("/login") and not p.endswith("/logout")]
+check("هر مسیر همکار از aff_session رد می‌شود", not _aff_open,
+      "، ".join(_aff_open) or f"{len(_aff)} مسیر بررسی شد")
 
 _new_public = [p for p in _public if p not in KNOWN_PUBLIC]
 check("مسیر عمومی تازه‌ای بی‌خبر اضافه نشده", not _new_public,

@@ -2701,3 +2701,23 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .mn-amt.on { border-color: var(--accent); background: var(--accent-wash); }
 .mn-amt:active { transform: scale(.98); }
 .mn-head-busy { color: var(--muted); }
+
+/* نشانِ ورودِ پنل همکار */
+.fx-aff-badge {
+  width: 46px; height: 46px; margin: 0 auto; border-radius: 15px;
+  display: grid; place-items: center;
+  background: var(--warn-soft); color: var(--warn);
+  border: 1px solid var(--warn-line);
+}
+
+/* دعوتِ دوست */
+.mn-invite {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--r-l); padding: 13px;
+}
+.mn-invite-code {
+  display: block; text-align: center; font-size: 19px; font-weight: 800;
+  letter-spacing: .18em; color: var(--accent-2);
+  font-family: var(--mono); margin-bottom: 11px;
+}
+.mn-invite-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }

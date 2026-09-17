@@ -1855,6 +1855,54 @@ def bot_affiliate_del(aid: int, x_admin_password: str = Header(...)):
         con.close()
 
 
+def _affiliate_balance(con, aid):
+    """
+    مانده‌ی همکار: هر چه درآورده، منهای هر چه گرفته.
+
+    دفترِ پرداخت‌ها حقیقت است، نه ستونِ `status`. چون پرداخت می‌تواند
+    جزئی باشد (۶۰ هزار بابتِ ۸۰ هزار بدهی) و با علامت‌زدنِ
+    سفارش‌به‌سفارش اصلاً قابل بیان نیست.
+    """
+    earned = con.execute(
+        "SELECT COALESCE(SUM(commission),0) FROM affiliate_commissions "
+        "WHERE affiliate_id=? AND status != 'cancelled'", (aid,)).fetchone()[0]
+    paid = con.execute(
+        "SELECT COALESCE(SUM(amount),0) FROM affiliate_payouts "
+        "WHERE affiliate_id=?", (aid,)).fetchone()[0]
+    return int(earned or 0) - int(paid or 0)
+
+
+def _settle_commissions(con, aid):
+    """
+    وضعیتِ هر پورسانت را از روی دفترِ پرداخت‌ها دوباره بساز.
+
+    چرا دوباره‌سازی و نه علامت‌زدنِ تدریجی: نسخه‌ی قبلی از مبلغِ
+    همین پرداخت کم می‌کرد و وقتی به پورسانتی می‌رسید که از باقی‌مانده
+    بزرگ‌تر بود، `break` می‌زد و **باقی‌مانده را دور می‌ریخت**. یعنی
+    پرداختِ ۶۰ هزار بابتِ پورسانت‌های ۵۰ و ۳۰ هزار، آن ۱۰ هزارِ
+    اضافه را هیچ‌جا حساب نمی‌کرد و وضعیت‌ها با واقعیت جور درنمی‌آمد.
+
+    این نسخه از مجموعِ کلِ پرداخت‌ها شروع می‌کند، پس چند بار اجرا
+    شدنش هم همان جواب را می‌دهد.
+
+    و `cancelled` دست نمی‌خورد: آن یعنی «این پورسانت اصلاً بدهی
+    نیست»، نه «پرداخت نشده».
+    """
+    paid_total = int(con.execute(
+        "SELECT COALESCE(SUM(amount),0) FROM affiliate_payouts "
+        "WHERE affiliate_id=?", (aid,)).fetchone()[0] or 0)
+
+    running = 0
+    for cid, amt in con.execute(
+            "SELECT id, commission FROM affiliate_commissions "
+            "WHERE affiliate_id=? AND status != 'cancelled' ORDER BY id",
+            (aid,)).fetchall():
+        running += int(amt or 0)
+        want = "paid" if running <= paid_total else "pending"
+        con.execute("UPDATE affiliate_commissions SET status=? "
+                    "WHERE id=? AND status != ?", (want, cid, want))
+
+
 @app.post("/api/admin/bot/affiliate/{aid}/payout")
 def bot_affiliate_payout(aid: int, payload: dict,
                          x_admin_password: str = Header(...)):
@@ -1883,21 +1931,195 @@ def bot_affiliate_payout(aid: int, payload: dict,
             "INSERT INTO affiliate_payouts (tenant_id, affiliate_id, amount, note) "
             "VALUES (?,?,?,?)",
             (tid[0], aid, amount, (payload.get("note") or "").strip()[:200]))
-        # پورسانت‌های قدیمی‌تر را تا سقف مبلغ، پرداخت‌شده علامت می‌زنیم
-        remaining = amount
-        for r in con.execute(
-                "SELECT id, commission FROM affiliate_commissions "
-                "WHERE affiliate_id=? AND status='pending' ORDER BY id",
-                (aid,)).fetchall():
-            if remaining < r[1]:
-                break
-            con.execute("UPDATE affiliate_commissions SET status='paid' WHERE id=?",
-                        (r[0],))
-            remaining -= r[1]
+        _settle_commissions(con, aid)
         con.commit()
-        return {"ok": True}
+        return {"ok": True, "balance": _affiliate_balance(con, aid)}
     finally:
         con.close()
+
+
+# ═══════════════════════════════════════════════════════════
+#  پنل همکار فروش
+#
+#  برگه‌اش: docs/specs/2026-09-17-affiliate-portal.md
+#
+#  همکار هیچ چیزی را عوض نمی‌کند — نه پرداخت ثبت می‌کند، نه درصد.
+#  فقط می‌خواند. و هر عددی که می‌بیند از همان عبارتی می‌آید که پنلِ
+#  مالک به کار می‌برد؛ دو نسخه یعنی روزی دو عدد و یک بحث.
+# ═══════════════════════════════════════════════════════════
+
+#: نشست‌های همکار — مثل نشست نماینده، در حافظه
+_AFF_SESSIONS = {}
+AFF_SESSION_HOURS = 12
+
+
+@app.post("/api/aff/login")
+def aff_login(payload: dict, request: Request):
+    """ورود همکار با کد و رمز."""
+    p = payload or {}
+    code = str(p.get("code") or "").strip().upper()[:40]
+    pw = str(p.get("password") or "")
+    ip = _client_ip(request)
+
+    # همان سدِ حدس‌زدنِ پنل — بدون آن، کد و رمزِ همکار را می‌شود
+    # پشت‌سرهم امتحان کرد
+    wait = _auth_locked(ip)
+    if wait:
+        raise HTTPException(
+            status_code=429,
+            detail=f"تلاش‌های ناموفق زیاد بود. {max(1, wait // 60)} دقیقه‌ی دیگر دوباره امتحان کنید")
+
+    con = _bot_conn()
+    if not con:
+        raise HTTPException(status_code=503, detail="دیتابیس ربات در دسترس نیست")
+    try:
+        row = con.execute(
+            "SELECT * FROM affiliates WHERE UPPER(code)=?", (code,)).fetchone()
+        aff = dict(row) if row else None
+    finally:
+        con.close()
+
+    # پیامِ یکسان برای «کد نیست» و «رمز غلط».
+    # اگر فرق کند، می‌شود با امتحان‌کردن فهمید چه کدهایی وجود دارند.
+    bad = HTTPException(status_code=401, detail="کد یا رمز نادرست است")
+    if not aff:
+        _auth_failed(ip)
+        raise bad
+    if not aff.get("active"):
+        raise HTTPException(status_code=403, detail="دسترسی شما بسته شده است")
+    if not aff.get("password"):
+        raise HTTPException(
+            status_code=409,
+            detail="هنوز رمزی برای شما تعریف نشده — با پشتیبانی تماس بگیرید")
+    if not _pw_check(pw, aff["password"]):
+        _auth_failed(ip)
+        raise bad
+
+    _auth_ok(ip)
+    tok = secrets.token_urlsafe(32)
+    _AFF_SESSIONS[tok] = (int(aff["id"]), _time.time() + AFF_SESSION_HOURS * 3600)
+    return {"token": tok, "name": aff.get("name") or "",
+            "code": aff.get("code") or "", "percent": float(aff.get("percent") or 0)}
+
+
+def aff_session(x_aff_token: str = Header(None)):
+    """همکارِ نشستِ جاری. هر مسیر `/api/aff/*` از این رد می‌شود."""
+    rec = _AFF_SESSIONS.get(str(x_aff_token or ""))
+    if not rec or rec[1] < _time.time():
+        _AFF_SESSIONS.pop(str(x_aff_token or ""), None)
+        raise HTTPException(status_code=401, detail="نشست منقضی شده — دوباره وارد شوید")
+
+    con = _bot_conn()
+    try:
+        row = con.execute("SELECT * FROM affiliates WHERE id=?",
+                          (rec[0],)).fetchone() if con else None
+    finally:
+        if con:
+            con.close()
+    if not row:
+        _AFF_SESSIONS.pop(str(x_aff_token or ""), None)
+        raise HTTPException(status_code=404, detail="این همکار دیگر وجود ندارد")
+    aff = dict(row)
+    if not aff.get("active"):
+        # دسترسی همان لحظه بسته می‌شود، نه سرِ انقضای نشست
+        _AFF_SESSIONS.pop(str(x_aff_token or ""), None)
+        raise HTTPException(status_code=403, detail="دسترسی شما بسته شده است")
+    return aff
+
+
+@app.post("/api/aff/logout")
+def aff_logout(x_aff_token: str = Header(None)):
+    _AFF_SESSIONS.pop(str(x_aff_token or ""), None)
+    return {"ok": True}
+
+
+@app.get("/api/aff/summary")
+def aff_summary(aff: dict = Depends(aff_session)):
+    """
+    همه‌ی چیزی که همکار می‌بیند، در یک درخواست.
+
+    مانده از `_affiliate_balance` می‌آید — همان تابعی که پنلِ مالک
+    هم صدا می‌زند. اگر این‌جا دوباره حساب می‌شد، روزی دو عدد
+    می‌دادند.
+    """
+    aid = int(aff["id"])
+    con = _bot_conn()
+    if not con:
+        raise HTTPException(status_code=503, detail="دیتابیس ربات در دسترس نیست")
+    try:
+        earned = con.execute(
+            "SELECT COALESCE(SUM(commission),0) FROM affiliate_commissions "
+            "WHERE affiliate_id=? AND status != 'cancelled'", (aid,)).fetchone()[0]
+        paid = con.execute(
+            "SELECT COALESCE(SUM(amount),0) FROM affiliate_payouts "
+            "WHERE affiliate_id=?", (aid,)).fetchone()[0]
+        balance = _affiliate_balance(con, aid)
+
+        # مشتری‌هایی که این همکار آورده — با مجموعِ خریدشان
+        users = [dict(r) for r in con.execute("""
+            SELECT u.id, u.first_name, u.username, u.tg_id, u.created_at,
+                   (SELECT COUNT(*) FROM orders o
+                     WHERE o.user_id = u.id AND o.status='approved') AS orders,
+                   (SELECT COALESCE(SUM(o.amount),0) FROM orders o
+                     WHERE o.user_id = u.id AND o.status='approved') AS spent
+              FROM users u WHERE u.affiliate_id = ?
+             ORDER BY u.id DESC LIMIT 200""", (aid,))]
+
+        comms = [dict(r) for r in con.execute("""
+            SELECT c.id, c.order_id, c.order_amount, c.percent, c.commission,
+                   c.status, c.created_at, u.first_name, u.username
+              FROM affiliate_commissions c
+              LEFT JOIN users u ON u.id = c.user_id
+             WHERE c.affiliate_id = ? AND c.status != 'cancelled'
+             ORDER BY c.id DESC LIMIT 200""", (aid,))]
+
+        pays = [dict(r) for r in con.execute(
+            "SELECT id, amount, note, paid_at FROM affiliate_payouts "
+            "WHERE affiliate_id=? ORDER BY id DESC LIMIT 100", (aid,))]
+    except Exception as e:
+        log.exception("خلاصه‌ی همکار خوانده نشد")
+        raise HTTPException(status_code=502, detail=f"خوانده نشد: {str(e)[:120]}")
+    finally:
+        con.close()
+
+    return {
+        "name": aff.get("name") or "", "code": aff.get("code") or "",
+        "percent": float(aff.get("percent") or 0),
+        "earned": int(earned or 0), "paid": int(paid or 0), "balance": int(balance),
+        "users": users, "commissions": comms, "payouts": pays,
+    }
+
+
+@app.post("/api/admin/bot/affiliate/{aid}/password")
+def bot_affiliate_password(aid: int, payload: dict,
+                           x_admin_password: str = Header(...)):
+    """
+    رمزِ ورودِ همکار را مالک تعیین می‌کند.
+
+    خالی‌فرستادن یعنی «دسترسی را ببند» — رمز پاک می‌شود و همکار
+    دیگر وارد نمی‌شود. نشستِ بازش هم همان لحظه باطل می‌شود، وگرنه
+    تا دوازده ساعت هنوز می‌دید.
+    """
+    check_auth(x_admin_password)
+    pw = str((payload or {}).get("password") or "")
+    if pw and len(pw) < 6:
+        raise HTTPException(status_code=400, detail="رمز باید حداقل ۶ کاراکتر باشد")
+
+    con = _bot_rw()
+    try:
+        row = con.execute("SELECT id FROM affiliates WHERE id=?", (aid,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="همکار پیدا نشد")
+        con.execute("UPDATE affiliates SET password=? WHERE id=?",
+                    (_pw_hash(pw) if pw else None, aid))
+        con.commit()
+    finally:
+        con.close()
+
+    for tok, rec in list(_AFF_SESSIONS.items()):
+        if rec[0] == aid:
+            _AFF_SESSIONS.pop(tok, None)
+    return {"ok": True, "hasPassword": bool(pw)}
 
 
 @app.post("/api/admin/bot/xui-trace")
@@ -10509,6 +10731,23 @@ def _bot_username(t):
     return who
 
 
+def _ref_count(tid, uid):
+    """چند نفر با کدِ این کاربر وارد شده‌اند."""
+    con = _bot_conn()
+    if not con:
+        return 0
+    try:
+        row = con.execute(
+            "SELECT COUNT(*) n FROM users WHERE tenant_id=? AND referred_by=?",
+            (tid, uid)).fetchone()
+        return int(row["n"] or 0) if row else 0
+    except Exception:
+        log.debug("شمارشِ دعوت‌ها ناموفق", exc_info=True)
+        return 0
+    finally:
+        con.close()
+
+
 @app.get("/api/mini/me")
 def mini_me(tu: tuple = Depends(mini_user)):
     """کیستم، چقدر پول و سکه دارم، و برندِ این ربات چیست."""
@@ -10535,6 +10774,11 @@ def mini_me(tu: tuple = Depends(mini_user)):
         "logo": _logo_url(t["id"]),
         "avatar": _avatar_url(t["id"], u["id"]),
         "phone": u.get("phone") or "",
+        # دعوتِ دوست — کدِ خودِ کاربر و اینکه چند نفر با آن آمده‌اند.
+        # داده‌اش از قبل بود و فقط راهی برای دیدنش نداشت؛ مشتری
+        # مجبور بود از منوی ربات پیدایش کند.
+        "refCode": u.get("ref_code") or "",
+        "refCount": _ref_count(t["id"], u["id"]),
     }
 
 

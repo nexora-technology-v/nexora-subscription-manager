@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS affiliates (
     percent     REAL NOT NULL DEFAULT 10,
     active      INTEGER DEFAULT 1,
     note        TEXT,
+    password    TEXT,                          -- هَش؛ برای ورود خودِ همکار
     created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (tenant_id, code)
 );
@@ -311,6 +312,10 @@ def _migrate(con):
     """ستون‌های جدید را به دیتابیس‌های موجود اضافه می‌کند."""
     adds = [
         ("users", "phone_asked", "INTEGER DEFAULT 0"),
+        # رمزِ ورودِ خودِ همکار فروش — هَش‌شده، مثل رمز پنل.
+        # بدون این، همکار برای دیدنِ طلبش باید هر بار از مالک
+        # می‌پرسید.
+        ("affiliates", "password", "TEXT"),
         # کدام همکار فروش این کاربر را آورده — تا پورسانت هر خریدش
         # به همان نفر برسد، نه فقط خرید اول
         ("users", "affiliate_id", "INTEGER"),

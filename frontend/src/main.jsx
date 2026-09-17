@@ -1,6 +1,6 @@
 import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
-import { isMini, portalSlug } from "./lib/route.js";
+import { isAff, isMini, portalSlug } from "./lib/route.js";
 import { Splash } from "./lib/mark.jsx";
 import "./index.css";
 
@@ -17,10 +17,12 @@ import "./index.css";
 const PICK = {
   mini: () => import("./mini/index.jsx"),
   portal: () => import("./portal/index.jsx"),
+  aff: () => import("./aff/index.jsx"),
   admin: () => import("./App.jsx"),
 };
 
-const WHICH = isMini() ? "mini" : portalSlug() ? "portal" : "admin";
+const WHICH = isMini() ? "mini" : isAff() ? "aff"
+  : portalSlug() ? "portal" : "admin";
 
 // دانلود **همین حالا** شروع می‌شود، نه موقع رندر.
 //
@@ -36,7 +38,7 @@ const Root = lazy(() => CHUNK);
 // وابستگی‌ای ندارد — اگر از کتابخانه‌ی UI می‌آمد، همه‌ی آیکون‌هایش
 // هم داخل تکه‌ی ورودی می‌نشستند و lazy بی‌معنی می‌شد.
 const BOOT_LABEL = { mini: "اشتراک من", portal: "پنل نمایندگی",
-                     admin: "پنل مدیریت" }[WHICH];
+                     aff: "پنل همکار فروش", admin: "پنل مدیریت" }[WHICH];
 
 /**
  * صفحه‌ی ورود، با وضعیتِ واقعی.

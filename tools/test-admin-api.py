@@ -2570,6 +2570,137 @@ finally:
 
 
 # ═══════════════════════════════════════════════════════════
+head("همکار فروش · یک عدد، دو جا")
+
+# چرا این بخش: همکار حالا خودش مانده‌اش را می‌بیند. اگر آن عدد با
+# عددِ پنلِ مالک یکی نباشد، همان می‌شود موضوعِ بحث — و هیچ‌کدام
+# نمی‌توانند ثابت کنند حق با آن‌هاست.
+
+import tempfile as _tfa2                                  # noqa: E402
+import sqlite3 as _sqa                                    # noqa: E402
+from pathlib import Path as _Pa                           # noqa: E402
+
+_adir = _Pa(_tfa2.mkdtemp(prefix="nx-affx-"))
+_old_bot2 = app.BOT_DB
+try:
+    _adb = _adir / "bot.db"
+    _c = _sqa.connect(str(_adb))
+    import sys as _sysa
+    _sysa.path.insert(0, ".")
+    from bot import db as _BDa
+    _c.executescript(_BDa.SCHEMA)
+    _BDa._migrate(_c)
+    _c.execute("INSERT INTO tenants (id,name) VALUES (1,'owner')")
+    _c.execute("INSERT INTO affiliates (id,tenant_id,name,code,percent) "
+               "VALUES (1,1,'رضا','AFF1',10)")
+    _c.execute("INSERT INTO affiliates (id,tenant_id,name,code,percent) "
+               "VALUES (2,1,'سارا','AFF2',15)")
+    for _u, _a in ((1, 1), (2, 1), (3, 2)):
+        _c.execute("INSERT INTO users (id,tenant_id,tg_id,first_name,affiliate_id) "
+                   "VALUES (?,1,?,?,?)", (_u, 7000 + _u, f"کاربر{_u}", _a))
+    for _o, _u, _amt, _aff, _p in ((1, 1, 500000, 1, 10), (2, 2, 300000, 1, 10),
+                                   (3, 3, 200000, 2, 15)):
+        _c.execute("INSERT INTO orders (id,tenant_id,user_id,amount,base_amount,status) "
+                   "VALUES (?,1,?,?,?, 'approved')", (_o, _u, _amt, _amt))
+        _c.execute("INSERT INTO affiliate_commissions "
+                   "(tenant_id,affiliate_id,order_id,user_id,order_amount,percent,commission) "
+                   "VALUES (1,?,?,?,?,?,?)",
+                   (_aff, _o, _u, _amt, _p, round(_amt * _p / 100)))
+    _c.commit()
+    app.BOT_DB = _adb
+
+    # ── تسویه‌ی جزئی ──
+    #
+    # نسخه‌ی قبلی از مبلغِ همین پرداخت کم می‌کرد و وقتی به پورسانتی
+    # می‌رسید که از باقی‌مانده بزرگ‌تر بود `break` می‌زد — باقی‌مانده
+    # دور ریخته می‌شد و وضعیت‌ها با واقعیت جور درنمی‌آمد.
+    check("مانده‌ی اولیه درست است", app._affiliate_balance(_c, 1) == 80000,
+          str(app._affiliate_balance(_c, 1)))
+    app.bot_affiliate_payout(1, {"amount": 60000}, x_admin_password=app._INTERNAL_PW)
+    check("پرداختِ جزئی مانده را درست کم می‌کند",
+          app._affiliate_balance(_c, 1) == 20000, str(app._affiliate_balance(_c, 1)))
+    app.bot_affiliate_payout(1, {"amount": 20000}, x_admin_password=app._INTERNAL_PW)
+    _st = [r[0] for r in _c.execute(
+        "SELECT status FROM affiliate_commissions WHERE affiliate_id=1 ORDER BY id")]
+    check("و بعد از تسویه‌ی کامل، هیچ پورسانتی pending نمی‌ماند",
+          _st == ["paid", "paid"], "، ".join(_st))
+    check("و مانده صفر می‌شود", app._affiliate_balance(_c, 1) == 0)
+
+    # ── رمز و ورود ──
+    class _Rq:
+        client = type("C", (), {"host": "9.9.9.9"})()
+        headers = {}
+
+    app.bot_affiliate_password(1, {"password": "aff-secret"},
+                               x_admin_password=app._INTERNAL_PW)
+    try:
+        app.aff_login({"code": "AFF1", "password": "bad"}, _Rq())
+        check("رمز غلط رد می‌شود", False, "پذیرفته شد")
+    except app.HTTPException as _e:
+        check("رمز غلط رد می‌شود", _e.status_code == 401, str(_e.status_code))
+
+    # پیامِ «کد نیست» باید همان پیامِ «رمز غلط» باشد، وگرنه با
+    # امتحان‌کردن می‌شود فهمید چه کدهایی وجود دارند
+    try:
+        app.aff_login({"code": "NOPE", "password": "x"}, _Rq())
+        _d1 = ""
+    except app.HTTPException as _e:
+        _d1 = str(_e.detail)
+    try:
+        app.aff_login({"code": "AFF1", "password": "bad"}, _Rq())
+        _d2 = ""
+    except app.HTTPException as _e:
+        _d2 = str(_e.detail)
+    check("کدِ ناموجود و رمزِ غلط یک پیام می‌دهند", _d1 == _d2 and bool(_d1),
+          "وگرنه می‌شود فهمید چه کدهایی هست")
+
+    _tok = app.aff_login({"code": "aff1", "password": "aff-secret"}, _Rq())
+    check("ورود با کدِ کوچک هم کار می‌کند", bool(_tok.get("token")))
+
+    # ── مرز ──
+    _sm = app.aff_summary(app.aff_session(_tok["token"]))
+    check("همکار فقط مشتری‌های خودش را می‌بیند",
+          all(u["first_name"] != "کاربر3" for u in _sm["users"]),
+          "کاربر۳ مالِ همکارِ دیگر است")
+    check("و فقط پورسانت‌های خودش را",
+          all(c["order_id"] != 3 for c in _sm["commissions"]))
+
+    # ── همان عدد ──
+    _own = [a for a in app.bot_affiliates(x_admin_password=app._INTERNAL_PW)["affiliates"]
+            if a["id"] == 1][0]
+    check("مانده‌ی همکار با عددِ پنلِ مالک یکی است",
+          _sm["balance"] == _own["balance"],
+          f"همکار {_sm['balance']} ≠ مالک {_own['balance']}")
+
+    # ── غیرفعال ──
+    _c.execute("UPDATE affiliates SET active=0 WHERE id=1")
+    _c.commit()
+    try:
+        app.aff_session(_tok["token"])
+        check("همکارِ غیرفعال همان لحظه بیرون می‌رود", False, "هنوز باز است")
+    except app.HTTPException as _e:
+        check("همکارِ غیرفعال همان لحظه بیرون می‌رود", _e.status_code == 403,
+              str(_e.status_code))
+    _c.close()
+finally:
+    app.BOT_DB = _old_bot2
+
+# ── قواعدی که در کد بمانند ──
+_AFSRC = _APSRC[_APSRC.find("def aff_summary("):]
+_AFSRC = _AFSRC[:_AFSRC.find("\n@app.")]
+check("خلاصه‌ی همکار مانده را دوباره حساب نمی‌کند",
+      "_affiliate_balance(con, aid)" in _AFSRC,
+      "دو نسخه یعنی روزی دو عدد")
+check("و هر کوئری‌اش به خودِ همکار محدود است",
+      _AFSRC.count("affiliate_id = ?") + _AFSRC.count("affiliate_id=?") >= 3,
+      "بدون شرط، دادهٔ همکارِ دیگر هم می‌آید")
+check("همکار هیچ مسیرِ نوشتنی ندارد",
+      '@app.post("/api/aff/' not in _APSRC.replace(
+          '@app.post("/api/aff/login")', "").replace('@app.post("/api/aff/logout")', ""),
+      "همکار فقط می‌خواند")
+
+
+# ═══════════════════════════════════════════════════════════
 head("رمز پنل · هَش، و بدون قفل‌شدنِ کسی")
 
 # چرا: `auth.json` خودِ رمز را داشت. هر کسی که آن فایل را می‌خواند

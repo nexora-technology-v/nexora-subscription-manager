@@ -243,11 +243,79 @@ function SubRow({ s, onOpen }) {
   );
 }
 
+/**
+ * دعوتِ دوست.
+ *
+ * کدِ معرف از قبل برای هر کاربر ساخته می‌شد، ولی فقط در منوی ربات
+ * دیده می‌شد — یعنی کسی که از مینی‌اپ می‌آمد اصلاً نمی‌دانست چنین
+ * چیزی هست.
+ *
+ * دکمه‌ی اشتراک‌گذاری از خودِ تلگرام می‌رود (`openTelegramLink` با
+ * `share/url`)، چون کاربر همین‌جا داخل تلگرام است و بیرون‌بردنش به
+ * مرورگر یعنی گم‌شدنِ مسیر.
+ */
+function InviteCard({ me }) {
+  const [copied, setCopied] = useState(false);
+  const bot = String(me?.botUsername || "").replace(/^@/, "");
+  const code = me?.refCode || "";
+  if (!bot || !code) return null;
+
+  const link = `https://t.me/${bot}?start=${code}`;
+
+  const copy = () => {
+    try { navigator.clipboard?.writeText(link); } catch { /* بی‌صدا */ }
+    buzz("ok");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+
+  const share = () => {
+    const w = tg();
+    const text = "با این لینک وارد شو و اشتراکت رو بگیر 👇";
+    const url = `https://t.me/share/url?url=${encodeURIComponent(link)}`
+              + `&text=${encodeURIComponent(text)}`;
+    buzz("light");
+    if (w?.openTelegramLink) w.openTelegramLink(url);
+    else window.open(url, "_blank", "noopener");
+  };
+
+  return (
+    <div className="mn-sec">
+      <div className="mn-sec-head mb-1">
+        <div>
+          <h2>دعوت از دوستان</h2>
+          <p>
+            {me.refCount > 0
+              ? <>تا حالا {faNum(me.refCount)} نفر با لینک شما آمده‌اند.</>
+              : <>لینک خودتان را بفرستید؛ با هر عضوِ تازه سکه می‌گیرید.</>}
+          </p>
+        </div>
+      </div>
+
+      <div className="mn-invite">
+        <span className="mn-invite-code" dir="ltr">{code}</span>
+        <div className="mn-invite-acts">
+          <button className="mn-act" onClick={copy}>
+            {copied ? <Check size={15} /> : <Copy size={15} />}
+            {copied ? "کپی شد" : "کپی لینک"}
+          </button>
+          <button className="mn-act" onClick={share}>
+            <Send size={15} /> فرستادن
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function HomeView({ me, subs, onOpen, onBuy, onAll }) {
   const recent = (subs || []).slice(0, 3);
   return (
     <>
       <Balance me={me} />
+
+      <InviteCard me={me} />
 
       <div className="mn-sec">
         <div className="mn-sec-head">

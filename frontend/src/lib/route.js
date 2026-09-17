@@ -21,3 +21,8 @@ export function portalSlug() {
 export function isMini() {
   return /^\/app(\/|$)/.test(window.location.pathname || "");
 }
+
+/** پنل همکار فروش: /aff */
+export function isAff() {
+  return /^\/aff(\/|$)/.test(window.location.pathname || "");
+}

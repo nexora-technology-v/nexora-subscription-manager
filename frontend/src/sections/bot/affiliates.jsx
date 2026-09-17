@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect } from "react";
 import {
-  AlertTriangle, Check, CheckCircle2, Coins, DollarSign, Eye, EyeOff, Loader2, Plus as PlusIcon, Sliders, Trash2, Users, Wallet,
+  AlertTriangle, Check, CheckCircle2, Coins, DollarSign, Eye, EyeOff, Key, Loader2, Plus as PlusIcon, Sliders, Trash2, Users, Wallet,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errText, faNum } from "../../lib/format";
@@ -17,6 +17,7 @@ export function BotAffiliates({ password }) {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [payFor, setPayFor] = useState(null);
+  const [pwFor, setPwFor] = useState(null);
   const [edit, setEdit] = useState(null);
   const [msg, setMsg] = useState(null);
 
@@ -209,12 +210,22 @@ export function BotAffiliates({ password }) {
                 مانده {faNum(a.balance)}
               </b>
             </div>
-            {a.balance > 0 && (
-              <button onClick={() => setPayFor(a)}
-                className="fx-btn px-3 py-2 text-[13px] flex items-center gap-1.5">
-                <DollarSign size={12} /> ثبت پرداخت
+            <div className="flex items-center gap-2">
+              {/* رمزِ ورودِ همکار. بدون این، همکار برای دیدنِ طلبش
+                  باید هر بار بپرسد — و پنلی که ساخته شده به آن
+                  نمی‌رسد. */}
+              <button onClick={() => setPwFor(a)}
+                className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5"
+                title="رمز ورود همکار به پنل خودش">
+                <Key size={12} /> رمز ورود
               </button>
-            )}
+              {a.balance > 0 && (
+                <button onClick={() => setPayFor(a)}
+                  className="fx-btn px-3 py-2 text-[13px] flex items-center gap-1.5">
+                  <DollarSign size={12} /> ثبت پرداخت
+                </button>
+              )}
+            </div>
           </div>
         </div>
       ))}
@@ -229,6 +240,12 @@ export function BotAffiliates({ password }) {
         <AffiliatePayoutModal affiliate={payFor} password={password}
           onClose={() => setPayFor(null)}
           onDone={() => { setPayFor(null); load(); setMsg({ t: "ok", m: "پرداخت ثبت شد" }); }} />
+      )}
+
+      {pwFor && (
+        <AffiliatePasswordModal affiliate={pwFor} password={password}
+          onClose={() => setPwFor(null)}
+          onDone={(m) => { setPwFor(null); load(); setMsg({ t: "ok", m }); }} />
       )}
     </div>
   );
@@ -395,3 +412,64 @@ export function AffiliatePayoutModal({ affiliate, password, onClose, onDone }) {
 }
 
 /* ═══════════════════ تانل ═══════════════════ */
+
+
+/**
+ * رمزِ ورودِ همکار به پنل خودش.
+ *
+ * خالی‌گذاشتن و زدنِ «برداشتن رمز» یعنی دسترسی بسته شود — و نشستِ
+ * بازش هم همان لحظه باطل می‌شود، وگرنه تا ساعت‌ها هنوز می‌دید.
+ */
+function AffiliatePasswordModal({ affiliate, password, onClose, onDone }) {
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const send = async (value) => {
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch(
+        `${API_URL}/api/admin/bot/affiliate/${affiliate.id}/password`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Admin-Password": password },
+          body: JSON.stringify({ password: value }),
+        });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(j.detail, "ثبت نشد"));
+      onDone(value ? "رمز همکار ثبت شد" : "دسترسی همکار بسته شد");
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal title={`رمز ورود — ${affiliate.name}`} onClose={onClose}>
+      <p className="text-[12.5px] mb-3 leading-relaxed" style={{ color: "var(--muted)" }}>
+        همکار با کد <b dir="ltr">{affiliate.code}</b> و این رمز وارد
+        نشانی <b dir="ltr">/aff</b> می‌شود و فقط مشتری‌ها، پورسانت‌ها و
+        مانده‌ی خودش را می‌بیند.
+      </p>
+
+      <Field label="رمز تازه" hint="حداقل ۶ کاراکتر.">
+        <input className="fx-input" type="text" dir="ltr" value={pw}
+          onChange={(e) => setPw(e.target.value)} placeholder="••••••" />
+      </Field>
+
+      {err && (
+        <p className="text-[12.5px] mb-3 flex items-start gap-1.5"
+          style={{ color: "var(--danger)" }}>
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+        </p>
+      )}
+
+      <div className="flex gap-2">
+        <button className="fx-btn flex-1 py-2.5 text-[13px]"
+          disabled={busy || pw.length < 6} onClick={() => send(pw)}>
+          ثبت رمز
+        </button>
+        <button className="fx-btn-g px-4 py-2.5 text-[13px]"
+          disabled={busy} onClick={() => send("")}>
+          برداشتن رمز
+        </button>
+      </div>
+    </Modal>
+  );
+}
