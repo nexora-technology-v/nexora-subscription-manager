@@ -203,8 +203,10 @@
         }
 
         .profile-img {
-            width: 46px;
-            height: 46px;
+            /* کوچک‌تر از ۴۶: در سرصفحه‌ای که بقیه‌اش ۱۳ و ۱۴ پیکسل
+               است، دایره‌ی بزرگ از همه چیز جلو می‌زند. */
+            width: 38px;
+            height: 38px;
             /* و خودش هم نباید کوتاه شود، هر چه کنارش بیاید */
             flex: none;
             border-radius: 50%;
@@ -237,11 +239,19 @@
             display: none;
             align-items: center;
             justify-content: center;
-            font-weight: 800;
-            font-size: 19px;
+            font-weight: 700;
+            font-size: 15px;
             line-height: 1;
-            color: #06090F;
             user-select: none;
+
+            /* آرام، نه پررنگ.
+               گرادیانِ سیرِ قبلی وسطِ یک سرصفحه‌ی تیره مثل یک لکه‌ی
+               رنگی بیرون می‌زد و چشم را از خودِ نام می‌دزدید. حالا
+               همان رنگ است ولی به‌شکلِ تهِ‌رنگ روی سطحِ خودِ صفحه —
+               حرف با رنگِ برند، زمینه هم‌خانواده‌ی بقیه‌ی کارت‌ها.
+               مقدارها را `paintAvatar` می‌گذارد. */
+            background: var(--surface-alt);
+            border: 1px solid var(--border);
         }
         .profile-initial.on { display: flex; }
         .profile-initial.on + .default-avatar-svg,
@@ -549,13 +559,47 @@
             background-color: var(--surface);
             border: 1px solid var(--border);
             border-radius: 18px;
-            padding: 16px 14px;
+            padding: 6px;
             margin-bottom: 16px;
-            display: flex;
-            justify-content: space-between;
+            /* شبکه‌ی سه‌تایی به‌جای ردیفِ چهارتایی با خط‌چین.
+               شش قلم در یک ردیف یعنی متنِ ۱۰ پیکسلی و عددهای
+               شکسته؛ سه‌تا در هر ردیف جا دارد که خوانده شود. */
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1px;
+            background: var(--border);
+            overflow: hidden;
             box-shadow: var(--box-shadow-light);
         }
         .stat-item { flex: 1; display: flex; flex-direction: column; align-items: center; }
+
+        /* سلولِ آمار — لبه‌هایش را خودِ فاصله‌ی شبکه می‌سازد، پس
+           خط‌چینِ جدا لازم نیست. */
+        .stat-cell {
+            background: var(--surface);
+            padding: 13px 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 7px;
+            min-width: 0;
+        }
+        .stat-cell .stat-value {
+            font-size: 15px;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .stat-cell .stat-title { font-size: 10.5px; }
+        /* مقدارهایی که متن‌اند نه عدد: کمی کوچک‌تر، چون کلمه از عدد
+           پهن‌تر است و سلول یک‌سومِ عرضِ گوشی است. */
+        .stat-cell .stat-value-text { font-size: 13px; font-weight: 600; }
+
+        /* روی صفحه‌های خیلی باریک، دوتایی — سه‌تا هم می‌شکند */
+        @media (max-width: 340px) {
+            .stats-card { grid-template-columns: repeat(2, 1fr); }
+        }
         .stat-header-row {
             display: flex;
             align-items: center;
@@ -2055,37 +2099,56 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 
 
         <!-- کارت آمار -->
+        <!-- شش قلمِ یکتا، در یک کارت.
+             قبلاً همین‌ها در دو کارت بودند و «مصرف کل» و «باقی‌مانده»
+             هر کدام دو بار تکرار می‌شدند — ۲۶۲ پیکسل، یک‌سوم صفحه،
+             برای گفتنِ یک چیز دو بار. -->
         <div class="stats-card" id="sec-stats" data-sec="stats">
-            <div class="stat-item">
+            <div class="stat-cell">
                 <div class="stat-header-row">
-                    <div class="stat-icon-wrapper"><i class="fa-solid fa-database" style="color: #4C8DFF;"></i></div>
+                    <div class="stat-icon-wrapper"><i class="fa-solid fa-database" style="color: var(--accent);"></i></div>
                     <div class="stat-title" id="title-limit">حجم کلی</div>
                 </div>
                 <div class="stat-value purple-value en-font" id="stat-limit">0 GB</div>
             </div>
-            <div class="stat-divider"></div>
-            <div class="stat-item">
+            <div class="stat-cell">
                 <div class="stat-header-row">
-                    <div class="stat-icon-wrapper"><i class="fa-solid fa-chart-pie" style="color: #2DD4BF;"></i></div>
+                    <div class="stat-icon-wrapper"><i class="fa-solid fa-chart-pie" style="color: var(--cy);"></i></div>
                     <div class="stat-title" id="title-total">مصرف کل</div>
                 </div>
                 <div class="stat-value en-font" id="stat-total-val">0 B</div>
             </div>
-            <div class="stat-divider"></div>
-            <div class="stat-item">
+            <div class="stat-cell">
                 <div class="stat-header-row">
-                    <div class="stat-icon-wrapper"><i class="fa-solid fa-arrow-down" style="color: #4C8DFF;"></i></div>
+                    <div class="stat-icon-wrapper"><i class="fa-solid fa-gauge-high" style="color: var(--ok);"></i></div>
+                    <div class="stat-title" id="detail-remaining-volume-label">حجم باقی‌مانده</div>
+                </div>
+                <div class="stat-value en-font" id="detail-remaining-volume">نامحدود</div>
+            </div>
+            <div class="stat-cell">
+                <div class="stat-header-row">
+                    <div class="stat-icon-wrapper"><i class="fa-solid fa-arrow-down" style="color: var(--accent-2);"></i></div>
                     <div class="stat-title" id="title-download">دانلود</div>
                 </div>
                 <div class="stat-value en-font" id="stat-dl-val">0 B</div>
             </div>
-            <div class="stat-divider"></div>
-            <div class="stat-item">
+            <div class="stat-cell">
                 <div class="stat-header-row">
-                    <div class="stat-icon-wrapper"><i class="fa-solid fa-arrow-up" style="color: #F4A94A;"></i></div>
+                    <div class="stat-icon-wrapper"><i class="fa-solid fa-arrow-up" style="color: var(--warn);"></i></div>
                     <div class="stat-title" id="title-upload">آپلود</div>
                 </div>
                 <div class="stat-value en-font" id="stat-ul-val">0 B</div>
+            </div>
+            <div class="stat-cell">
+                <div class="stat-header-row">
+                    <div class="stat-icon-wrapper"><i class="fa-solid fa-clock" style="color: var(--text-muted);"></i></div>
+                    <div class="stat-title" id="detail-last-connect-label">آخرین اتصال</div>
+                </div>
+                <!-- بدون `en-font`: «۷ دقیقه پیش» نثرِ فارسی است، نه
+                     عدد. JetBrains Mono حرف فارسی ندارد و فقط به
+                     فونتِ دیگری می‌افتد — با پهنای بیشتر، که همین
+                     یک پیکسل باعثِ سه‌نقطه می‌شد. -->
+                <div class="stat-value stat-value-text" id="detail-last-connect-value">--</div>
             </div>
         </div>
 
@@ -2115,24 +2178,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         </div>
 
         <!-- گرید جزئیات -->
-        <div class="details-grid" id="sec-details" data-sec="details">
-            <div class="detail-card">
-                <span class="label" id="detail-total-label">مصرف کل</span>
-                <span class="value" id="detail-total-value">0 B</span>
-            </div>
-            <div class="detail-card">
-                <span class="label" id="detail-remaining-label">باقی‌مانده</span>
-                <span class="value accent-value" id="detail-remaining-value">0%</span>
-            </div>
-            <div class="detail-card">
-                <span class="label" id="detail-remaining-volume-label">حجم باقی‌مانده</span>
-                <span class="value" id="detail-remaining-volume">نامحدود</span>
-            </div>
-            <div class="detail-card">
-                <span class="label" id="detail-last-connect-label">آخرین اتصال</span>
-                <span class="value" id="detail-last-connect-value">--</span>
-            </div>
-        </div>
+        
 
         <!-- دکمه‌های عملیاتی -->
         <div class="actions-grid" id="sec-actions" data-sec="actions">
@@ -3260,6 +3306,44 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             ["#60A5FA", "#3B82F6"], ["#F472B6", "#EC4899"]
         ];
 
+        /**
+         * نوشتنِ متن روی یک شناسه، با نگهبان.
+         *
+         * `document.getElementById(x).innerText = v` اگر `x` نباشد
+         * کلِ رندر را می‌اندازد — و این صفحه چیدمانش عوض می‌شود.
+         * یک عنصرِ جابه‌جاشده نباید صفحه را سفید کند.
+         */
+        function setText(id, v) {
+            const el = document.getElementById(id);
+            if (el) el.innerText = v;
+        }
+
+        /**
+         * فاصله‌ی زمانی به زبانِ آدمیزاد.
+         *
+         * ورودی میلی‌ثانیه است — همان چیزی که 3x-ui می‌دهد، مثل
+         * `expiryTime`. (با ثانیه، `new Date` می‌رود به ۱۹۷۰.)
+         */
+        function timeAgo(ms) {
+            const L = (locales[currentLang] || locales.fa);
+            const sec = Math.max(0, Math.floor((Date.now() - Number(ms)) / 1000));
+            const fa = currentLang === 'fa';
+            const n = (x) => (fa ? String(x).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[d]) : x);
+            if (sec < 90) return L.agoNow || (fa ? 'همین الان' : 'just now');
+            const m = Math.floor(sec / 60);
+            if (m < 60) return (L.agoMin || (fa ? '%s دقیقه پیش' : '%s min ago')).replace('%s', n(m));
+            const h = Math.floor(m / 60);
+            if (h < 24) return (L.agoHour || (fa ? '%s ساعت پیش' : '%s h ago')).replace('%s', n(h));
+            const d = Math.floor(h / 24);
+            if (d < 30) return (L.agoDay || (fa ? '%s روز پیش' : '%s d ago')).replace('%s', n(d));
+            // قدیمی‌تر از یک ماه: تاریخِ کوتاه، بدون ساعت
+            try {
+                return new Date(Number(ms)).toLocaleDateString(
+                    fa ? 'fa-IR' : currentLang === 'ar' ? 'ar-EG'
+                       : currentLang === 'tr' ? 'tr-TR' : 'en-US');
+            } catch (e) { return String(d); }
+        }
+
         function paintAvatar(name) {
             const el = document.getElementById("profile-initial");
             const box = document.getElementById("profile-img");
@@ -3271,7 +3355,14 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) >>> 0;
             const pair = NEXORA_AVATAR_HUES[h % NEXORA_AVATAR_HUES.length];
             el.textContent = ch;
-            el.style.background = "linear-gradient(140deg, " + pair[0] + ", " + pair[1] + ")";
+            // تهِ‌رنگِ همان رنگ روی سطح، و خودِ حرف با رنگِ سیر.
+            // `color-mix` روی همه‌ی مرورگرهای امروزی هست؛ اگر نبود،
+            // زمینه همان `--surface-alt` می‌ماند که از CSS آمده.
+            el.style.background =
+                "color-mix(in srgb, " + pair[0] + " 18%, var(--surface-alt))";
+            el.style.borderColor =
+                "color-mix(in srgb, " + pair[0] + " 45%, transparent)";
+            el.style.color = pair[0];
             el.classList.add("on");
             box.classList.add("has-initial");
         }
@@ -3309,7 +3400,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             document.getElementById("stat-ul-val").innerText = formatBytes(sanaeiClientData.uploadByte);
             document.getElementById("stat-total-val").innerText = formatBytes(totalUsage);
 
-            document.getElementById("detail-total-value").innerText = formatBytes(totalUsage);
+            setText("detail-total-value", formatBytes(totalUsage));
 
             let percentRemaining = 100;
             let remainingVolume = sanaeiClientData.totalByte - totalUsage;
@@ -3319,27 +3410,28 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
                 if (percentRemaining < 0) percentRemaining = 0;
                 if (percentRemaining > 100) percentRemaining = 100;
             }
-            document.getElementById("detail-remaining-value").innerText = percentRemaining + '%';
+            setText("detail-remaining-value", percentRemaining + '%');
             sanaeiClientData.percentRemaining = percentRemaining;
 
             if (sanaeiClientData.totalByte > 0) {
-                document.getElementById("detail-remaining-volume").innerText = remainingVolume > 0 ? formatBytes(remainingVolume) : '0 B';
+                setText("detail-remaining-volume", remainingVolume > 0 ? formatBytes(remainingVolume) : '0 B');
             } else {
-                document.getElementById("detail-remaining-volume").innerText = data.unlimitedText;
+                setText("detail-remaining-volume", data.unlimitedText);
             }
 
+            // «چند وقت پیش»، نه مهرِ زمانیِ کامل.
+            //
+            // `toLocaleString` چیزی مثل «۱۴۰۴/۷/۱۲، ۲۰:۳۷:۱۹» می‌دهد
+            // که در یک سلولِ یک‌سومِ عرضِ گوشی جا نمی‌شود و آخرش
+            // بریده می‌شد. و مشتری هم ثانیه‌ی دقیق را نمی‌خواهد —
+            // می‌خواهد بداند «الان» بوده یا «دیروز».
             let lastConnectStr = data.lastConnectUnknown;
             if (sanaeiClientData.lastOnline && sanaeiClientData.lastOnline > 0) {
-                const d = new Date(sanaeiClientData.lastOnline);
                 try {
-                    if (currentLang === 'fa') lastConnectStr = d.toLocaleString('fa-IR');
-                    else if (currentLang === 'en') lastConnectStr = d.toLocaleString('en-US');
-                    else if (currentLang === 'tr') lastConnectStr = d.toLocaleString('tr-TR');
-                    else if (currentLang === 'ar') lastConnectStr = d.toLocaleString('ar-EG');
-                    else lastConnectStr = d.toLocaleString();
+                    lastConnectStr = timeAgo(sanaeiClientData.lastOnline);
                 } catch (e) { /* ignore */ }
             }
-            document.getElementById("detail-last-connect-value").innerText = lastConnectStr;
+            setText("detail-last-connect-value", lastConnectStr);
 
             const ringColor = getColorForPercentage(percentRemaining);
             const pctEl = document.getElementById("live-percent-display");
@@ -3943,9 +4035,9 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             document.getElementById("title-download").innerText = data.titleDownload;
             document.getElementById("title-upload").innerText = data.titleUpload;
 
-            document.getElementById("detail-total-label").innerText = data.detailTotal;
-            document.getElementById("detail-remaining-label").innerText = data.detailRemaining;
-            document.getElementById("detail-remaining-volume-label").innerText = data.detailRemainingVolume;
+            setText("detail-total-label", data.detailTotal);
+            setText("detail-remaining-label", data.detailRemaining);
+            setText("detail-remaining-volume-label", data.detailRemainingVolume);
             document.getElementById("detail-last-connect-label").innerText = data.detailLastConnect;
 
             document.getElementById("action-renew").innerText = data.actionRenew;

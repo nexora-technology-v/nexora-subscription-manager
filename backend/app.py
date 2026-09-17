@@ -2178,6 +2178,34 @@ def _logo_clear(tid: int):
                 log.debug("پاک‌کردن لوگو ناموفق", exc_info=True)
 
 
+@app.get("/api/admin/brand/logo")
+def brand_logo_get(x_admin_password: str = Header(...)):
+    """
+    لوگوی خودِ مالک — شناسه‌اش و اینکه هست یا نه.
+
+    چرا مسیرِ جدا: فهرستِ نماینده‌ها `WHERE parent_id IS NOT NULL`
+    است، یعنی خودِ مالک هیچ‌وقت در آن نیست. پس تا امروز هیچ جایی
+    برای آپلودِ لوگوی خودش وجود نداشت — قابلیتی که ساخته شده بود ولی
+    صاحبِ پنل به آن نمی‌رسید.
+    """
+    check_auth(x_admin_password)
+    con = _bot_conn()
+    if not con:
+        raise HTTPException(status_code=503, detail="دیتابیس ربات در دسترس نیست")
+    try:
+        # هیچ‌وقت `LIMIT 1` بدون شرط: ردیفِ مالک اگر یک‌بار پاک و
+        # دوباره ساخته شود، شناسه‌اش از نماینده بزرگ‌تر می‌شود.
+        r = con.execute(
+            "SELECT id, name FROM tenants "
+            "WHERE parent_id IS NULL ORDER BY id LIMIT 1").fetchone()
+    finally:
+        con.close()
+    if not r:
+        raise HTTPException(status_code=404, detail="مستاجر ریشه پیدا نشد")
+    return {"id": r["id"], "name": r["name"] or "",
+            "logo": _logo_url(r["id"])}
+
+
 @app.get("/api/public/logo/{tid}")
 def public_logo(tid: int):
     """

@@ -37,7 +37,10 @@ const VALS = {
   ".subTitle": "اشتراک نکسورا",
   ".subSupportUrl": "https://t.me/nexora_support",
   ".datepicker": "jalali",
-  ".lastOnline": String(now - 420),
+  // میلی‌ثانیه، نه ثانیه — مثل `expiryTime` در خودِ 3x-ui.
+  // با ثانیه، `new Date()` می‌رفت به ۱۹۷۰ و صفحه «۱۳۴۸/۱۱/۱»
+  // نشان می‌داد. داده‌ی ساختگیِ غلط، باگی می‌سازد که وجود ندارد.
+  ".lastOnline": String((now - 420) * 1000),
 };
 
 const EMAILS = ["رضا مرادی", "nexora_8814_1"];

@@ -9,6 +9,7 @@ import {
   Activity, AlertTriangle, ArrowUpRight, ShoppingCart, TrendingUp, Wallet, Bell, Check, CheckCircle2, ChevronLeft, Clock, Copy, Download, ExternalLink, Eye, Gift, Globe, HelpCircle, Key, Layers, LayoutGrid, Loader2, MessageCircle, MessageSquare, Package, Palette, PlayCircle, Plus, Search, Settings, ShieldCheck, Sliders, Smartphone, Star, Trash2, Type, Upload, UserPlus, Users, Video,
 } from "lucide-react";
 import { errText, faNum } from "../lib/format";
+import { NexoraMark } from "../lib/mark.jsx";
 import { API_URL, LANG_TABS, OS_TABS, SCHEME_ICON, SCHEME_OPTIONS, WS_MODES } from "../lib/constants";
 import { WsModePreview } from "../shell/workspace";
 import { AreaChart, BarList, CountUp, Donut, EmptyState, Field, InfoBox, NumberStepper,
@@ -689,6 +690,110 @@ export function LinksSection({ config, setConfig }) {
   );
 }
 
+
+/**
+ * لوگوی برندِ خودِ مالک.
+ *
+ * چرا این‌جا و نه کنار نماینده‌ها: فهرستِ نماینده‌ها
+ * `WHERE parent_id IS NOT NULL` است، پس خودِ مالک هیچ‌وقت در آن
+ * نیست. قابلیت ساخته شده بود ولی صاحبِ پنل به آن نمی‌رسید — یعنی
+ * عملاً وجود نداشت.
+ *
+ * همین لوگو در نوار کناری پنل، در مینی‌اپ، و در صفحه‌ی اشتراک
+ * می‌نشیند.
+ */
+function BrandLogo({ password }) {
+  const ref = React.useRef(null);
+  const [info, setInfo] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState("");
+
+  const load = React.useCallback(async () => {
+    try {
+      const r = await fetch(`${API_URL}/api/admin/brand/logo`,
+        { headers: { "X-Admin-Password": password } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(j.detail, "خوانده نشد"));
+      setInfo(j);
+    } catch (e) { setErr(e.message); }
+  }, [password]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const send = async (body, method) => {
+    if (!info?.id) return;
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch(`${API_URL}/api/admin/tenant/${info.id}/logo`, {
+        method,
+        headers: { "Content-Type": "application/json",
+                   "X-Admin-Password": password },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(j.detail, "آپلود نشد"));
+      await load();
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+
+  const pick = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.size > 512 * 1024) { setErr("حجم فایل بیشتر از ۵۱۲ کیلوبایت است"); return; }
+    const data = await new Promise((res, rej) => {
+      const rd = new FileReader();
+      rd.onload = () => res(String(rd.result || ""));
+      rd.onerror = () => rej(new Error("فایل خوانده نشد"));
+      rd.readAsDataURL(f);
+    }).catch((e2) => { setErr(e2.message); return null; });
+    if (data) send({ data }, "POST");
+  };
+
+  return (
+    <div className="flex items-center gap-4 flex-wrap">
+      <div className="shrink-0">
+        {info?.logo
+          ? <img src={info.logo} alt="لوگو" className="nx-logo"
+              style={{ width: 64, height: 64, border: "1px solid var(--border)" }} />
+          : <NexoraMark size={64} />}
+      </div>
+      <div className="min-w-0 flex-1" style={{ minWidth: 200 }}>
+        <div className="text-[13px] mb-1.5" style={{ color: "var(--dim)" }}>
+          لوگوی برند شما
+        </div>
+        <div className="text-[12px] mb-2.5 leading-relaxed"
+          style={{ color: "var(--muted)" }}>
+          در نوار کناری پنل، مینی‌اپ تلگرام و صفحه‌ی اشتراک مشتری
+          نشان داده می‌شود. PNG، JPEG یا WebP — حداکثر ۵۱۲ کیلوبایت.
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={() => ref.current?.click()} disabled={busy || !info}
+            className="fx-btn px-3 py-2 text-[13px] flex items-center gap-1.5">
+            {busy ? <Loader2 size={13} className="animate-spin" />
+                  : <Upload size={13} />}
+            {info?.logo ? "تغییر لوگو" : "آپلود لوگو"}
+          </button>
+          {info?.logo && (
+            <button onClick={() => send(null, "DELETE")} disabled={busy}
+              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
+              <Trash2 size={13} /> برداشتن
+            </button>
+          )}
+        </div>
+        {err && (
+          <p className="text-[12px] mt-2 flex items-start gap-1.5"
+            style={{ color: "var(--danger)" }}>
+            <AlertTriangle size={12} className="shrink-0 mt-0.5" />{err}
+          </p>
+        )}
+      </div>
+      <input ref={ref} type="file" accept="image/png,image/jpeg,image/webp"
+        onChange={pick} className="hidden" />
+    </div>
+  );
+}
+
 export function SettingsSection({ config, setConfig, password, onPasswordChanged, onRestored, wsMode, setWsMode }) {
   const a = config.advanced || {};
   const update = (patch) => setConfig({ ...config, advanced: { ...a, ...patch } });
@@ -746,6 +851,12 @@ export function SettingsSection({ config, setConfig, password, onPasswordChanged
 
       <div className="fx-card p-5 mb-4">
         <div className="text-[14px] font-semibold text-white mb-4 flex items-center gap-2"><Type size={15} style={{ color: "var(--accent-2)" }} /> هویت برند</div>
+
+        <div className="rounded-xl p-4 mb-4"
+          style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
+          <BrandLogo password={password} />
+        </div>
+
         <div className="fx-g3 grid grid-cols-2 gap-4">
           <Field label="نام برند"><input className="fx-input" value={a.brandName || ""} onChange={(e) => update({ brandName: e.target.value })} placeholder="NEXORA" /></Field>
           <Field label="عنوان صفحه (تب مرورگر)"><input className="fx-input" value={a.pageTitle || ""} onChange={(e) => update({ pageTitle: e.target.value })} /></Field>
