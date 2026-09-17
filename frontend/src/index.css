@@ -1661,6 +1661,10 @@ html[dir="rtl"] .nx-bar > i { transform-origin: right center; }
    باشد، در transform آن کلاس حبس می‌شود. */
 .mn-sheet-wrap {
   position: fixed; inset: 0; z-index: 90;
+  /* `dvh` نه `vh`: داخل تلگرام ارتفاعِ قابل‌استفاده از خودِ صفحه
+     کمتر است و `inset:0` روی viewportِ چیدمانی می‌نشیند، نه آنچه
+     دیده می‌شود. */
+  height: 100dvh;
   display: flex; align-items: flex-end; justify-content: center;
 }
 .mn-sheet-bg {
@@ -1680,6 +1684,20 @@ html[dir="rtl"] .nx-bar > i { transform-origin: right center; }
   padding: 10px 16px calc(18px + var(--mn-sa-bottom));
   box-shadow: var(--e-3);
   animation: mn-rise .26s var(--sp-snappy) both;
+
+  /* بلندتر از فضای موجود که شد، بالایش بریده می‌شد.
+     روی گوشیِ ۸۱۲ پیکسلی جا می‌شد و مشکلی دیده نمی‌شد؛ داخل تلگرام
+     که ارتفاعِ قابل‌استفاده کمتر است، برگه ۵۳۴ پیکسل می‌شد در ۴۸۰ و
+     دستگیره و عنوانش می‌رفتند بالای لبه. */
+  max-height: calc(100dvh - var(--mn-sa-top) - 24px);
+  overflow-y: auto;
+  /* اسکرولِ برگه نباید به صفحه‌ی پشتش سرایت کند */
+  overscroll-behavior: contain;
+}
+
+/* دستگیره همیشه دیده شود، حتی وقتی برگه اسکرول خورده */
+.mn-sheet-grip {
+  position: sticky; top: 0; z-index: 1;
 }
 @keyframes mn-rise {
   from { transform: translateY(14px); opacity: 0; }
