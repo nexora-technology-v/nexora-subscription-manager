@@ -60,6 +60,13 @@
   --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono",
           "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 
+  /* قلمِ عدد — برای جایی که رقمِ *فارسی* نشان داده می‌شود.
+     `--mono` گلیفِ فارسی ندارد، پس «۳۲» بی‌صدا به قلمِ پشتیبان
+     می‌افتاد و کنارِ واحدش («گیگابایت») دو قلمِ متفاوت می‌نشست.
+     `tabular-nums` همان چیزی را می‌دهد که از مونو می‌خواستیم:
+     ستونِ عددِ هم‌عرض. */
+  --num: "IRANSansX", ui-monospace, Consolas, monospace;
+
   /* قلمِ اصلی، تا برگشتن از مونو یک‌جا تعریف شده باشد.
      چرا لازم شد: چند سلولِ جدول dir="ltr" و مونو دارند (که برای
      تاریخ و آی‌پی درست است) و یک زیرخطِ فارسی داخلشان می‌نشیند که
@@ -359,7 +366,7 @@ input, select, textarea, button, optgroup {
    کارت بیرون می‌زد. با :where هر اندازه‌ی صریحی در JSX برنده است و
    جایی که چیزی نوشته نشده، همین پیش‌فرض می‌ماند. */
 :where(.fx-stat-num) { font-size: 32px; font-weight: 700; }
-.fx-stat-num { font-family: var(--mono); line-height: 1; letter-spacing: -1px; }
+.fx-stat-num { font-family: var(--num); font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -1px; }
 
 /* متنِ فارسی داخل سلولی که dir="ltr" و مونو است.
    آن سلول‌ها برای تاریخ شمسی، آی‌پی و مبلغ درست‌اند، ولی زیرخطِ
@@ -502,7 +509,7 @@ select.fx-input {
 .fx-stepper-btn:disabled { opacity: .3; cursor: not-allowed; }
 .fx-stepper-val {
   flex: 1; text-align: center; border: none; background: transparent; color: var(--text);
-  font-size: 18px; font-weight: 700; font-family: var(--mono);
+  font-size: 18px; font-weight: 700; font-family: var(--num); font-variant-numeric: tabular-nums;
   outline: none; padding: 0 4px; min-width: 0; -moz-appearance: textfield;
 }
 .fx-stepper-val::-webkit-outer-spin-button, .fx-stepper-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -1335,7 +1342,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .mn-bal-top { display: flex; align-items: center; justify-content: space-between; }
 .mn-bal-label {
   font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
-  opacity: .85; font-family: var(--mono);
+  opacity: .85; font-family: var(--num); font-variant-numeric: tabular-nums;
 }
 .mn-chip {
   width: 30px; height: 22px; border-radius: 5px; display: block;
@@ -1348,7 +1355,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 .mn-bal-amount b {
   font-size: 32px; font-weight: 800; line-height: 1;
-  font-family: var(--mono); letter-spacing: -.02em;
+  font-family: var(--num); font-variant-numeric: tabular-nums; letter-spacing: -.02em;
 }
 .mn-bal-amount span { font-size: 13px; opacity: .9; }
 .mn-bal-foot {
@@ -1360,7 +1367,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .mn-bal-cell.end { text-align: end; }
 .mn-bal-cell span { display: block; font-size: 11px; opacity: .8; margin-bottom: 3px; }
 .mn-bal-cell b {
-  display: block; font-size: 14px; font-family: var(--mono); font-weight: 700;
+  display: block; font-size: 14px; font-family: var(--num); font-variant-numeric: tabular-nums; font-weight: 700;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
@@ -1438,7 +1445,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 .mn-hero p {
   font-size: 12px; color: var(--muted); margin: 0 0 10px;
-  font-family: var(--mono); text-align: start; word-break: break-all;
+  font-family: var(--num); font-variant-numeric: tabular-nums; text-align: start; word-break: break-all;
 }
 
 .mn-cells { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -1449,12 +1456,12 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .mn-cell-label { display: block; font-size: 11.5px; color: var(--muted); margin-bottom: 5px; }
 .mn-cell-value {
   display: block; font-size: 17px; font-weight: 700; color: var(--text);
-  font-family: var(--mono); line-height: 1.2;
+  font-family: var(--num); font-variant-numeric: tabular-nums; line-height: 1.2;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .mn-cell-value em {
   font-style: normal; font-size: 11.5px; font-weight: 500;
-  color: var(--muted); margin-inline-start: 4px; font-family: var(--sans);
+  color: var(--muted); margin-inline-start: 7px; font-family: var(--sans);
 }
 
 .mn-note {
@@ -1525,7 +1532,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .mn-plan-meta { font-size: 12px; color: var(--dim); margin-top: 4px; }
 .mn-plan-price {
   margin-top: 8px; font-size: 18px; font-weight: 800;
-  color: var(--cy); font-family: var(--mono);
+  color: var(--cy); font-family: var(--num); font-variant-numeric: tabular-nums;
 }
 .mn-plan-price em {
   font-style: normal; font-size: 11.5px; font-weight: 500;
@@ -1989,7 +1996,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px;
 }
 .mn-pend-amt {
-  flex: none; font-family: var(--mono); font-size: 13px;
+  flex: none; font-family: var(--num); font-variant-numeric: tabular-nums; font-size: 13px;
   font-weight: 700; color: var(--text);
 }
 
@@ -2071,7 +2078,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   font-size: 10px; opacity: .6;
   margin-inline-start: 8px;
   transform: translateY(4px);
-  font-family: var(--mono);
+  font-family: var(--num); font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 /* خبرِ خودکار چندخطی است؛ آن‌جا شناورکردن ساعت متن را می‌شکند */
@@ -2355,7 +2362,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .fx-bub-meta {
   float: inline-end;
   display: inline-flex; align-items: center; gap: 3px;
-  font-size: 10px; font-family: var(--mono);
+  font-size: 10px; font-family: var(--num); font-variant-numeric: tabular-nums;
   opacity: .6;
   margin-inline-start: 8px;
   /* کمی پایین‌تر از خطِ متن می‌نشیند تا با حروف هم‌تراز نباشد */
@@ -2438,7 +2445,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 .mn-prof-side > span {
   display: block; font-size: 12px; color: var(--muted);
-  font-family: var(--mono); margin-top: 3px;
+  font-family: var(--num); font-variant-numeric: tabular-nums; margin-top: 3px;
 }
 .mn-prof-drop {
   margin-top: 8px; display: inline-flex; align-items: center; gap: 5px;
@@ -2601,8 +2608,12 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
    همان‌جایی می‌ماند که دیده نمی‌شود. */
 :root { --mn-kb: 0px; }
 
-/* نوارِ تب کنار می‌رود — همان کاری که خودِ تلگرام می‌کند. جایش
-   را هم پس می‌دهد، وگرنه یک نوار فضای خالی می‌ماند. */
+/* نوارِ تب کنار می‌رود — همان کاری که خودِ تلگرام می‌کند.
+   `data-mn-typing` نشانه‌ی اصلی است: فوکوسِ جعبه‌ی نوشتن یعنی
+   کیبورد باز است، و این روی هر WebViewی یکسان کار می‌کند.
+   `data-mn-kb` (اختلافِ ارتفاع) فقط پشتیبانش است — روی WebViewِ
+   اندروید لایه‌ی چیدمان هم کوچک می‌شود و آن اختلاف صفر می‌ماند. */
+:root[data-mn-typing="1"] .mn-tabs,
 :root[data-mn-kb="1"] .mn-tabs {
   transform: translateY(110%);
   pointer-events: none;
@@ -2618,6 +2629,8 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
    فضای پایینِ گفتگو باز می‌شود و خودِ جعبه با scrollIntoView در
    دید می‌آید — که روی هر مرورگری یک‌جور کار می‌کند. */
 :root[data-mn-kb="1"] .mn-chat { padding-bottom: var(--mn-kb); }
+/* وقتی نوار تب کنار رفته، جایش به گفتگو برمی‌گردد */
+:root[data-mn-typing="1"] .mn-app { padding-bottom: 12px; }
 
 /* گفتگو قدِ صفحه را پر می‌کند.
    بدون این، `.mn-view` و `.mn-chat` هر دو `flex: 0 1 auto` بودند و
@@ -2674,3 +2687,17 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 .fx-tabs::-webkit-scrollbar { display: none; }
 .fx-tabs > button { flex-shrink: 0; white-space: nowrap; }
+
+/* انتخابِ مبلغِ شارژ */
+.mn-amt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.mn-amt {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 11px 8px; border-radius: var(--r-m);
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text); font-family: inherit; font-size: 14px; font-weight: 700;
+  transition: border-color var(--m-fast) linear, background var(--m-fast) linear;
+}
+.mn-amt em { font-style: normal; font-size: 10.5px; font-weight: 500; color: var(--muted); }
+.mn-amt.on { border-color: var(--accent); background: var(--accent-wash); }
+.mn-amt:active { transform: scale(.98); }
+.mn-head-busy { color: var(--muted); }

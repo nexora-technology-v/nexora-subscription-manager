@@ -243,7 +243,7 @@ function SubRow({ s, onOpen }) {
   );
 }
 
-function HomeView({ me, subs, onOpen, onBuy }) {
+function HomeView({ me, subs, onOpen, onBuy, onAll }) {
   const recent = (subs || []).slice(0, 3);
   return (
     <>
@@ -255,8 +255,10 @@ function HomeView({ me, subs, onOpen, onBuy }) {
             <h2>اشتراک‌های اخیر</h2>
             <p>برای جزئیات و مدیریت، روی هر مورد بزنید</p>
           </div>
+          {/* «همه» یعنی فهرستِ اشتراک‌ها، نه صفحه‌ی خرید.
+              تا امروز `onBuy` بود و کاربر را می‌برد جایی که نخواسته. */}
           {(subs || []).length > 3 && (
-            <button className="mn-link" onClick={onBuy}>
+            <button className="mn-link" onClick={onAll}>
               همه <ChevronLeft size={13} />
             </button>
           )}
@@ -653,15 +655,39 @@ function InboxView({ msgs, busy, onSend, support, channel }) {
   useEffect(() => {
     const el = boxRef.current;
     if (!el) return undefined;
-    const show = () => setTimeout(
-      () => el.scrollIntoView({ block: "end", behavior: "smooth" }), 120);
-    el.addEventListener("focus", show);
+    const de = document.documentElement;
+
+    /* کیبورد را از روی *فوکوس* می‌شناسیم، نه از اختلافِ ارتفاع.
+     *
+     * نسخه‌ی قبلی `innerHeight - visualViewport.height` را می‌سنجید.
+     * آن روی بعضی مرورگرها کار می‌کند، ولی داخل WebViewِ اندروید
+     * خودِ لایه‌ی چیدمان هم کوچک می‌شود — یعنی اختلاف تقریباً صفر
+     * می‌ماند و نوارِ تب هیچ‌وقت کنار نمی‌رفت. دقیقاً همان چیزی که
+     * مالک دید: «منو می‌آید بالای کیبورد و هیچی دیده نمی‌شود».
+     *
+     * فوکوس روی جعبه‌ی نوشتن یعنی کیبورد باز است. این هیچ ریاضی‌ای
+     * ندارد و روی هر WebViewی یکسان است.
+     */
+    const on = () => {
+      de.dataset.mnTyping = "1";
+      // فقط روی لمسی: روی دسکتاپ کیبوردی بالا نمی‌آید و این اسکرول
+      // فقط صفحه را بی‌دلیل می‌پراند — که خودِ مالک هم دید
+      if (matchMedia("(pointer: coarse)").matches) {
+        setTimeout(() => el.scrollIntoView({ block: "end", behavior: "smooth" }), 140);
+      }
+    };
+    const off = () => { delete de.dataset.mnTyping; };
+
+    el.addEventListener("focus", on);
+    el.addEventListener("blur", off);
     const vv = window.visualViewport;
-    const onResize = () => { if (document.activeElement === el) show(); };
+    const onResize = () => { if (document.activeElement === el) on(); };
     vv?.addEventListener("resize", onResize);
     return () => {
-      el.removeEventListener("focus", show);
+      el.removeEventListener("focus", on);
+      el.removeEventListener("blur", off);
       vv?.removeEventListener("resize", onResize);
+      delete de.dataset.mnTyping;
     };
   }, []);
 
@@ -751,12 +777,14 @@ function InboxView({ msgs, busy, onSend, support, channel }) {
  * دیگر، این مقایسه را از جلوی چشمش برمی‌دارد.
  */
 function PaySheet({ pay, me, onClose, onConfirm, onTopUp,
-                   onCard, onReceipt }) {
+                   onCard, onReceipt, onTopupStart }) {
   const fileRef = useRef(null);
+  const [amt, setAmt] = useState(0);
   if (!pay) return null;
+  const isTopup = !!pay.topup;
   const p = pay.plan;
   const bal = Number(me?.balance || 0);
-  const price = Number(p?.price || 0);
+  const price = isTopup ? 0 : Number(p?.price || 0);
   const after = bal - price;
   const short = price - bal;
   const busy = pay.state === "busy";
@@ -778,15 +806,58 @@ function PaySheet({ pay, me, onClose, onConfirm, onTopUp,
 
   const head = (
     <div className="mn-sheet-head">
-      <b>{pay.step === "card" ? "واریز کارت‌به‌کارت" : "تایید خرید"}</b>
-      <span>{p.gb === 0 ? "نامحدود" : `${faNum(p.gb)} گیگابایت`}
-        {" / "}{faNum(p.days)} روز</span>
+      <b>{isTopup
+        ? (pay.step === "card" ? "واریز کارت‌به‌کارت" : "شارژ کیف پول")
+        : (pay.step === "card" ? "واریز کارت‌به‌کارت" : "تایید خرید")}</b>
+      <span>{isTopup
+        ? `موجودی فعلی: ${faNum(bal)} تومان`
+        : `${p.gb === 0 ? "نامحدود" : `${faNum(p.gb)} گیگابایت`} / ${faNum(p.days)} روز`}</span>
     </div>
   );
 
   let body;
 
-  if (pay.state === "done") {
+  /* انتخابِ مبلغِ شارژ.
+     مبلغ‌های آماده همان‌هایی‌اند که ربات نشان می‌دهد، به‌علاوه‌ی
+     مبلغِ دلخواه — چون کسی که دقیقاً ۲۳۰ هزار کم دارد نباید مجبور
+     شود ۵۰۰ بریزد. */
+  if (isTopup && pay.step === "amount") {
+    const PRESETS = [100000, 200000, 500000, 1000000];
+    const chosen = Number(amt || 0);
+    const okAmount = chosen >= 10000 && chosen <= 50000000;
+    body = (
+      <>
+        <div className="mn-amt-grid">
+          {PRESETS.map((v) => (
+            <button key={v} className={`mn-amt ${chosen === v ? "on" : ""}`}
+              onClick={() => { buzz("light"); setAmt(v); }}>
+              {faNum(v)}
+              <em>تومان</em>
+            </button>
+          ))}
+        </div>
+
+        <div className="mn-field mt-1">
+          <label htmlFor="mn-amt">مبلغ دلخواه</label>
+          <input id="mn-amt" inputMode="numeric" dir="ltr"
+            value={chosen ? String(chosen) : ""}
+            onChange={(e) => setAmt(Number(String(e.target.value).replace(/\D/g, "")) || 0)}
+            placeholder="250000" />
+          <small>از ۱۰ هزار تا ۵۰ میلیون تومان.</small>
+        </div>
+
+        {pay.state === "err" && (
+          <div className="mn-pay-err"><AlertTriangle size={14} /><span>{pay.why}</span></div>
+        )}
+
+        <button className="mn-pay-btn" disabled={!okAmount || busy}
+          onClick={() => onTopupStart?.(chosen)}>
+          {busy ? <Loader2 size={15} className="animate-spin" /> : <Wallet size={15} />}
+          ادامه
+        </button>
+      </>
+    );
+  } else if (pay.state === "done") {
     body = (
       <div className="mn-pay-done">
         <span className="mn-pay-tick"><Check size={26} /></span>
@@ -817,7 +888,9 @@ function PaySheet({ pay, me, onClose, onConfirm, onTopUp,
       <>
         {head}
         <div className="mn-pay-rows">
-          <div><span>مبلغ</span><b>{faNum(price)} تومان</b></div>
+          {/* برای شارژ، مبلغ از خودِ سفارش می‌آید — `price`
+              مالِ پلن است و در شارژ صفر می‌ماند. */}
+          <div><span>مبلغ</span><b>{faNum(isTopup ? pay.amount : price)} تومان</b></div>
           {c.holder && <div><span>به نام</span><b>{c.holder}</b></div>}
           {c.bank && <div><span>بانک</span><b>{c.bank}</b></div>}
         </div>
@@ -1236,7 +1309,29 @@ export default function Mini() {
   };
 
   // شارژ کیف پول هنوز در ربات است — رسیدِ شارژ آن‌جا ثبت می‌شود.
-  const topUp = () => toBot("wallet", "برای شارژ کیف پول به ربات برگردید");
+  /* شارژ کیف پول، داخل خودِ مینی‌اپ.
+     تا امروز ربات را باز می‌کرد و کاربر باید آن‌جا مبلغ می‌زد و
+     رسید می‌فرستاد — یعنی وسطِ خرید از اپ بیرون می‌افتاد. حالا
+     همان برگه‌ی پرداخت، فقط با مبلغِ دلخواه به‌جای پلن. */
+  const topUp = () => {
+    buzz("light");
+    setPay({ topup: true, state: "ask", step: "amount", amount: 0 });
+  };
+
+  const topup = {
+    start: async (amount) => {
+      setPay((x) => ({ ...x, state: "busy" }));
+      try {
+        const r = await api("/api/mini/topup", { method: "POST", body: { amount } });
+        buzz("ok");
+        setPay((x) => ({ ...x, state: "ask", step: "card", amount: r.amount,
+                         orderId: r.orderId, card: r.card, text: "" }));
+      } catch (e) {
+        buzz("err");
+        setPay((x) => ({ ...x, state: "err", why: e.message }));
+      }
+    },
+  };
 
   // تمدید هم در ربات است، ولی مستقیم روی همین اشتراک باز می‌شود
   const renew = (s) => toBot(s?.id ? `renew_${s.id}` : "subs",
@@ -1324,10 +1419,11 @@ export default function Mini() {
             <span>{me?.name || "—"}</span>
           </div>
         </div>
-        <button className="mn-icon-btn" onClick={() => { buzz("light"); load(); }}
-          disabled={busy} title="تازه‌سازی" aria-label="تازه‌سازی">
-          <RefreshCw size={16} className={busy ? "animate-spin" : ""} />
-        </button>
+        {/* دکمه‌ی «تازه‌سازی» برداشته شد.
+            اپ خودش هر سه تا بیست ثانیه، و با برگشتن به آن، تازه
+            می‌شود — پس دکمه‌اش فقط می‌گفت «شاید تازه نباشد». تنها
+            نشانه‌ای که می‌ماند، چرخنده‌ی موقعِ بارگذاری است. */}
+        {busy && <Loader2 size={16} className="animate-spin mn-head-busy" />}
       </header>
 
       <main className="mn-body">
@@ -1385,7 +1481,7 @@ export default function Mini() {
         ) : (
           <>
             <PendingOrders orders={orders} />
-            <HomeView me={me} subs={subs} onOpen={setDetail}
+            <HomeView me={me} subs={subs} onOpen={setDetail} onAll={() => setTab("subs")}
               onBuy={() => setTab("buy")} />
           </>
         )}
@@ -1429,6 +1525,7 @@ export default function Mini() {
       <PaySheet pay={pay} me={me}
         onConfirm={confirmPay}
         onTopUp={topUp}
+        onTopupStart={topup.start}
         onCard={card}
         onReceipt={sendReceipt}
         onClose={() => {

@@ -1877,33 +1877,54 @@ def wallet_topup(ctx, user, chat_id, message_id):
                   kb(rows))
 
 
-def wallet_topup_amount(ctx, user, chat_id, message_id, amount):
-    """ساخت سفارش شارژ و نمایش کارت."""
+#: کمینه و بیشینه‌ی شارژ — یک جا، چون هم ربات می‌سنجدش هم مینی‌اپ
+TOPUP_MIN = 10_000
+TOPUP_MAX = 50_000_000
+
+
+def topup_order(ctx, user, amount):
+    """
+    هسته‌ی شارژ کیف پول: سفارشِ `topup` بساز و کارت را برگردان.
+
+    چرا هسته شد: مینی‌اپ هم باید همین کار را بکند، و اگر آن‌جا
+    دوباره نوشته شود می‌شود مسیرِ دومی که یک روز یکی از قاعده‌ها را
+    فراموش می‌کند — دقیقاً همان چیزی که سه مسیرِ خرید سرش اتفاق
+    افتاد.
+
+    برمی‌گرداند `(order, card)`؛ روی ورودیِ بد `ValueError` با متنی
+    که مستقیم قابل نشان‌دادن است.
+    """
     try:
         amount = int(amount)
     except (TypeError, ValueError):
-        return _reply(ctx, chat_id, message_id,
-                      "این مبلغ خوانده نشد. یکی از مبلغ‌های آماده را انتخاب کنید.",
-                      back_kb("wallet"))
+        raise ValueError("این مبلغ خوانده نشد")
 
-    if not (10000 <= amount <= 50000000):
-        return _reply(ctx, chat_id, message_id,
-                      "مبلغ باید بین ۱۰ هزار تا ۵۰ میلیون تومان باشد.",
-                      back_kb("wallet"))
+    if not (TOPUP_MIN <= amount <= TOPUP_MAX):
+        raise ValueError("مبلغ باید بین ۱۰ هزار تا ۵۰ میلیون تومان باشد")
 
-    u = ctx.db.get_user(user["tg_id"])
+    u = ctx.db.get_user(user["tg_id"]) if user.get("tg_id") else user
     card = core.pick_card(ctx.s.get("cards"))
     if not card:
-        return _reply(ctx, chat_id, message_id,
-                      "هنوز شماره کارتی ثبت نشده.\n\n"
-                      "<blockquote>از پنل، بخش «اتصال و تنظیمات»، کارت را "
-                      "اضافه کنید.</blockquote>",
-                      back_kb("wallet"))
+        raise ValueError("هنوز شماره کارتی ثبت نشده")
 
     # plan_id خالی یعنی این سفارش شارژ است نه خرید پلن
     order = ctx.db.create_order(u["id"], None, amount, amount, kind="topup")
-
     ctx.db.set_state(u["id"], "await_receipt", {"order_id": order["id"]})
+    return order, card
+
+
+def wallet_topup_amount(ctx, user, chat_id, message_id, amount):
+    """پوسته‌ی تلگرامیِ `topup_order` — منطقش این‌جا نیست."""
+    try:
+        order, card = topup_order(ctx, user, amount)
+    except ValueError as e:
+        msg = str(e)
+        if "کارتی" in msg:
+            msg += ("\n\n<blockquote>از پنل، بخش «اتصال و تنظیمات»، کارت را "
+                    "اضافه کنید.</blockquote>")
+        return _reply(ctx, chat_id, message_id, msg, back_kb("wallet"))
+
+    amount = int(order["amount"])
 
     return _reply(ctx, chat_id, message_id,
                   f"💳 <b>شارژ کیف پول</b>\n\n"

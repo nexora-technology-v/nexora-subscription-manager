@@ -132,7 +132,7 @@ export function CountUp({ value, duration = 850 }) {
 
   useEffect(() => {
     const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-    if (reduce || target === 0) { setN(target); return; }
+    if (reduce || target === 0) { setN(target); return undefined; }
 
     let raf, t0;
     const step = (t) => {
@@ -142,10 +142,19 @@ export function CountUp({ value, duration = 850 }) {
       if (p < 1) raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+
+    /* تورِ ایمنی: در تبِ پنهان `requestAnimationFrame` اصلاً اجرا
+       نمی‌شود، پس عدد تا ابد صفر می‌ماند — یعنی مالک پنل را در تبِ
+       پس‌زمینه باز می‌کند و بعد یک داشبوردِ پر از صفر می‌بیند. */
+    const settle = setTimeout(() => setN(target), duration + 120);
+    return () => { cancelAnimationFrame(raf); clearTimeout(settle); };
   }, [target, duration]);
 
-  return <>{n}</>;
+  /* رقمِ فارسی.
+     این کامپوننت زیرِ همه‌ی KPIهای پنل است و عددِ خام برمی‌گرداند،
+     پس «۶ روی ۳ پلتفرم» می‌شد «6 روی ۳ پلتفرم» — همان قاطی‌شدنی که
+     مالک روی داشبورد و پرونده‌ی کاربر دید. */
+  return <>{faNum(n)}</>;
 }
 
 export function SectionHead({ title, desc, action }) {

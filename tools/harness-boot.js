@@ -517,6 +517,21 @@
   }
 
   function byPath(u, body) {
+    if (u.indexOf("/mini/topup/options") >= 0) {
+      return { min: 10000, max: 50000000,
+               presets: [100000, 200000, 500000, 1000000],
+               balance: M_ME.balance };
+    }
+    if (u.indexOf("/mini/topup") >= 0) {
+      var amt = Number((body || {}).amount || 0);
+      if (!(amt >= 10000 && amt <= 50000000)) {
+        var te = new Error("مبلغ باید بین ۱۰ هزار تا ۵۰ میلیون تومان باشد");
+        te.status = 400; throw te;
+      }
+      return { orderId: 5200, amount: amt,
+               card: { number: "6037991234567890", holder: "علی رضایی" },
+               ttlMinutes: 60 };
+    }
     if (u.indexOf("/mini/profile/avatar") >= 0) {
       // DELETE و POST هر دو به همین می‌رسند؛ بدنه فرق را می‌گوید
       if (body && body.data) { M_ME.avatar = body.data; return { ok: true, avatar: M_ME.avatar }; }

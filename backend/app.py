@@ -10798,6 +10798,46 @@ def mini_ping(tu: tuple = Depends(mini_user)):
             "subs": int(subs or 0)}
 
 
+@app.post("/api/mini/topup")
+def mini_topup(payload: dict, tu: tuple = Depends(mini_user)):
+    """
+    شارژ کیف پول از داخل مینی‌اپ.
+
+    **هیچ منطقی این‌جا نیست** — `handlers.topup_order` همان هسته‌ای
+    است که ربات هم از آن رد می‌شود. اگر این‌جا دوباره نوشته شود،
+    می‌شود مسیرِ دومی که یک روز کمینه‌ی مبلغ یا انتخابِ کارت را
+    فراموش می‌کند.
+
+    رسیدش از همان `/api/mini/order/{oid}/receipt` می‌رود؛ سفارشِ
+    شارژ و سفارشِ خرید هر دو یک شکل‌اند.
+    """
+    t, u = tu
+    h, ctx = _mini_ctx(t)
+    try:
+        order, card = h.topup_order(ctx, u, (payload or {}).get("amount"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("ساخت سفارش شارژ ناموفق")
+        raise HTTPException(status_code=502, detail=f"ثبت نشد: {str(e)[:120]}")
+
+    st = {}
+    try:
+        st = json.loads(t.get("settings") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        st = {}
+
+    return {
+        "orderId": int(order["id"]),
+        "amount": int(order["amount"]),
+        "card": {"number": str(card.get("number") or ""),
+                 "holder": str(card.get("holder") or "")},
+        "ttlMinutes": int(st.get("order_ttl_minutes") or 0),
+    }
+
+
 @app.post("/api/mini/profile")
 def mini_profile_save(payload: dict, tu: tuple = Depends(mini_user)):
     """
