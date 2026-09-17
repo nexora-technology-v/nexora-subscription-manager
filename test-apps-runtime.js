@@ -71,6 +71,23 @@ if (stale || !fs.existsSync(path.join(DIST, "index.html"))) {
     console.error((r.stderr || r.stdout || "").slice(-400));
     process.exit(1);
   }
+
+  // بیلد پوشه را پاک می‌کند، پس هارنس‌ها هم با آن می‌روند.
+  //
+  // چرا این‌جا و نه در دستِ آدم: این تست بی‌سروصدا بیلد می‌کند، پس
+  // کسی که فقط تست را اجرا کرده انتظار ندارد `/harness.html` از بین
+  // برود — و بعد سرورِ پیش‌نمایش بی‌صدا خودِ پنل را برمی‌گرداند
+  // (SPA fallback) و آدم فکر می‌کند صفحه خراب شده. هر بار که این
+  // تست بیلد می‌کند، همان‌جا دوباره می‌سازدشان.
+  for (const tool of ["make-harness.js", "make-subpage-harness.js"]) {
+    const h = spawnSync("node", [path.join(__dirname, "tools", tool)], {
+      cwd: __dirname, shell: true, encoding: "utf8",
+    });
+    if (h.status !== 0) {
+      console.error(`⚠️  ${tool} دوباره ساخته نشد — /harness.html نخواهد بود`);
+      console.error((h.stderr || h.stdout || "").slice(-200));
+    }
+  }
 }
 
 const assets = path.join(DIST, "assets");

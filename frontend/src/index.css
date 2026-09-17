@@ -1898,3 +1898,15 @@ html[dir="rtl"] .nx-bar > i { transform-origin: right center; }
   flex: none; font-family: var(--mono); font-size: 13px;
   font-weight: 700; color: var(--text);
 }
+
+/* ورودِ صفحه در مینی‌اپ.
+   کوتاه‌تر از پنل (۰٫۲۸ در برابر ۰٫۴۲): روی گوشی، انگشت تندتر از
+   موس است و هر میلی‌ثانیه‌ی اضافه حس «کند» می‌دهد. */
+.mn-view { animation: mn-view-in .28s var(--sp-snappy) both; }
+@keyframes mn-view-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mn-view { animation: none; }
+}
