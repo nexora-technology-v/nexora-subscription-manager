@@ -57,6 +57,40 @@
             --shadow: rgba(0, 0, 0, 0.4);
             --box-shadow-light: 0 4px 12px rgba(0,0,0,0.15);
             --notification-bg: rgba(18, 22, 31, 0.85);
+
+            /* ── سری دومِ برند ──
+               پنل دو رنگ دارد: آبی و فیروزه‌ای. این صفحه فقط آبی
+               داشت، و همین باعث می‌شد کنارِ پنل «یکی از آن‌ها» به
+               نظر نرسد. فیروزه‌ای عمداً از خانواده‌ی اکسنت بیرون
+               است — همان کاری که --cy در index.css می‌کند. */
+            --cy: #2DD4BF;
+            --cy-rgb: 45, 212, 191;
+
+            /* پله‌های معنایی — همان پنج پله‌ی پنل، با همان مقادیر.
+               بدون این‌ها هر چیپ در این صفحه شفافیتِ دلبخواهی داشت. */
+            --ok: #34D399;
+            --ok-wash: rgba(52, 211, 153, 0.07);
+            --ok-soft: rgba(52, 211, 153, 0.12);
+            --ok-line: rgba(52, 211, 153, 0.30);
+            --warn-wash: rgba(244, 169, 74, 0.07);
+            --warn-soft: rgba(244, 169, 74, 0.12);
+            --warn-line: rgba(244, 169, 74, 0.30);
+            --alert-wash: rgba(240, 101, 95, 0.07);
+            --alert-soft: rgba(240, 101, 95, 0.12);
+            --alert-line: rgba(240, 101, 95, 0.30);
+            --accent-wash: rgba(43, 127, 214, 0.07);
+            --accent-soft: rgba(43, 127, 214, 0.12);
+            --accent-line: rgba(90, 169, 230, 0.40);
+
+            --hair-1: rgba(255, 255, 255, 0.04);
+            --hair-2: rgba(255, 255, 255, 0.07);
+            --hair-3: rgba(255, 255, 255, 0.12);
+
+            /* سایه نقش دارد نه تزئین: e-1 چیزی که روی سطح نشسته،
+               e-2 کارتی که بالا آمده، e-3 فقط مودال. */
+            --e-1: 0 1px 2px rgba(0, 0, 0, .28);
+            --e-2: 0 8px 24px -12px rgba(0, 0, 0, .55);
+            --e-3: 0 24px 60px -24px rgba(0, 0, 0, .7);
         }
 
         body.light-mode {
@@ -67,6 +101,14 @@
             --text: #10141C;
             --text-muted: #6B7484;
             --border: rgba(16, 21, 32, 0.08);
+            /* روی زمینه‌ی روشن، «مو» باید تیره باشد نه سفید — وگرنه
+               اصلاً دیده نمی‌شود و کارت‌ها لبه‌شان را از دست می‌دهند */
+            --hair-1: rgba(16, 21, 32, 0.04);
+            --hair-2: rgba(16, 21, 32, 0.07);
+            --hair-3: rgba(16, 21, 32, 0.12);
+            --e-1: 0 1px 2px rgba(16, 21, 32, .06);
+            --e-2: 0 8px 24px -14px rgba(16, 21, 32, .18);
+            --e-3: 0 24px 60px -26px rgba(16, 21, 32, .26);
             --accent: #1F6FC4;
             --accent-rgb: 31, 111, 196;
             --accent-2: #2D6CDF;
@@ -1713,6 +1755,104 @@
                 scroll-behavior: auto !important;
             }
         }
+
+        /* ═══════════════════════════════════════════════════════
+           زبانِ کارتِ نکسورا
+
+           پنل و این صفحه باید دو نسخه از یک برند باشند، نه دو
+           پروژه. سه چیز این را می‌سازد و این صفحه هیچ‌کدام را
+           نداشت:
+
+             ۱. خطِ مویِ روشن روی لبه‌ی بالای هر سطح — نورِ فرضی از
+                بالا می‌آید، پس لبه‌ی بالا روشن‌تر است. بدون آن،
+                کارت یک مستطیلِ تخت است.
+             ۲. فیروزه‌ای به‌عنوان سری دوم، نه فقط آبی.
+             ۳. نورِ محیطیِ خیلی کم‌رنگ زیرِ همه چیز.
+
+           همه با گرادینت و سایه؛ بدون تصویر، بدون کتابخانه.
+           ═══════════════════════════════════════════════════════ */
+
+        .subscription-card,
+        .stats-card,
+        .promo-card,
+        .referral-card,
+        .detail-card,
+        .action-card,
+        .client-card-item,
+        .video-card,
+        .faq-item {
+            position: relative;
+        }
+
+        /* خطِ مو. `::after` عمداً — چند تا از این کلاس‌ها از قبل
+           `::before` دارند (مثلاً سه‌نقطه‌ی قالبِ کنسول) و گرفتنش
+           یعنی خراب‌کردنِ آن‌ها. همان اشتباهی که یک‌بار در پنل روی
+           کارت KPI رخ داد. */
+        .subscription-card::after,
+        .stats-card::after,
+        .promo-card::after,
+        .referral-card::after,
+        .detail-card::after,
+        .client-card-item::after,
+        .video-card::after,
+        .faq-item::after {
+            content: '';
+            position: absolute;
+            inset-inline: 14px;
+            top: 0;
+            height: 1px;
+            border-radius: 1px;
+            background: linear-gradient(90deg,
+                transparent,
+                var(--hair-3) 22%,
+                var(--hair-3) 78%,
+                transparent);
+            pointer-events: none;
+        }
+
+        /* نورِ محیطی — زیرِ همه چیز، فقط برای عمق.
+           ثابت است و اسکرول نمی‌کند، پس رنگِ صفحه یکدست می‌ماند. */
+        .nx-amb {
+            position: fixed;
+            inset: 0;
+            /* پشتِ همه چیز، بدون دست‌زدن به بقیه.
+               تلاش اول `body > *:not(.nx-amb) { position: relative }`
+               بود و همان یک خط، `position: fixed`ِ مودال‌ها و
+               اعلان‌ها را به relative برد — یعنی آن‌ها وارد جریان
+               شدند و ۳۸۰ پیکسل فضای خالی بالای صفحه ساختند. */
+            z-index: -1;
+            pointer-events: none;
+            background:
+                radial-gradient(60% 38% at 50% 0%,
+                    rgba(var(--accent-rgb), .10), transparent 70%),
+                radial-gradient(45% 30% at 88% 14%,
+                    rgba(var(--cy-rgb), .07), transparent 72%);
+        }
+
+        /* سری دومِ برند، جایی که واقعاً دو چیز است:
+           نوارِ مصرف و دکمه‌های اصلی. */
+        .nexora-brand-logo {
+            background: linear-gradient(140deg,
+                var(--accent-2), var(--accent) 58%, var(--cy)) !important;
+        }
+
+        /* نوارِ پایین: لبه‌ی بالایش هم مو دارد */
+        .bottom-nav::after {
+            content: '';
+            position: absolute;
+            inset-inline: 0;
+            top: 0;
+            height: 1px;
+            background: linear-gradient(90deg,
+                transparent, var(--hair-3), transparent);
+            pointer-events: none;
+        }
+        .bottom-nav { position: relative; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .nx-amb { display: none; }
+        }
+
     </style>
 
 <style id="nexora-iransans">
@@ -1774,6 +1914,8 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     </script>
 </head>
 <body>
+    <!-- نورِ محیطی: زیرِ همه چیز، فقط برای عمق -->
+    <div class="nx-amb" aria-hidden="true"></div>
 
     <svg style="position: absolute; width: 0; height: 0;" width="0" height="0">
         <defs>
