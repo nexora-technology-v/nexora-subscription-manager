@@ -385,6 +385,7 @@
   var M_ME = { name: "مریم کاظمی", brand: "نکسورا", balance: 240000, coins: 36,
                logo: FAKE_LOGO,
                support: "nexora_support", channel: "nexora_vpn",
+               phone: "", avatar: "",
                tgId: 1278109787, username: "maryam_k",
                botUsername: "nexora_vpn_bot" };
   var GB = 1024 * 1024 * 1024;
@@ -495,7 +496,7 @@
   }
 
   var A_INBOX = { unread: 2, threads: [
-    { userId: 1, tgId: 6001, name: "مریم کاظمی", username: "maryam",
+    { userId: 1, tgId: 6001, name: "مریم کاظمی", username: "maryam", avatar: "",
       unread: 2, lastBody: "ممنون، دوباره واریز کردم", lastAt: "2026-09-17 11:20" },
     { userId: 2, tgId: 6002, name: "علی رضایی", username: "ali",
       unread: 0, lastBody: "مرسی درست شد", lastAt: "2026-09-16 19:02" },
@@ -507,7 +508,21 @@
     { id: 4, from: "user", body: "ممنون، دوباره واریز کردم", orderId: null, at: "2026-09-17 11:20", read: false },
   ] };
 
+  // پروفایلِ ساختگی — تا بشود دید ذخیره و عکس واقعاً چه می‌کنند
+  function miniProfile(body) {
+    var b = body || {};
+    if (b.name) M_ME.name = b.name;
+    if (b.phone) M_ME.phone = b.phone;
+    return { ok: true, name: M_ME.name, phone: M_ME.phone || "" };
+  }
+
   function byPath(u, body) {
+    if (u.indexOf("/mini/profile/avatar") >= 0) {
+      // DELETE و POST هر دو به همین می‌رسند؛ بدنه فرق را می‌گوید
+      if (body && body.data) { M_ME.avatar = body.data; return { ok: true, avatar: M_ME.avatar }; }
+      M_ME.avatar = ""; return { ok: true, avatar: "" };
+    }
+    if (u.indexOf("/mini/profile") >= 0) return miniProfile(body);
     if (u.indexOf("/admin/bot/alerts") >= 0) return { receipts: 3, messages: 2, ready: true };
     if (u.indexOf("/admin/bot/inbox/send") >= 0) return { ok: true };
     if (u.indexOf("/admin/bot/inbox") >= 0) {

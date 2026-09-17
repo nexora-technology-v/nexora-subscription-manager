@@ -2233,6 +2233,7 @@ def admin_inbox(user_id: int = None, x_admin_password: str = Header(...)):
         return {"threads": [{
             "userId": r["user_id"], "tgId": r["tg_id"],
             "name": r["first_name"] or "", "username": r["username"] or "",
+            "avatar": _avatar_url(t["id"], r["user_id"]),
             "unread": int(r["unread"] or 0),
             "lastBody": (r["last_body"] or "")[:120],
             "lastAt": r["last_at"] or "",
@@ -2370,6 +2371,90 @@ def _receipt_local(ref):
         return None
     p = RECEIPT_DIR / name
     return p if p.exists() else None
+
+
+#: عکسِ پروفایلِ مشتری.
+#
+#  نامِ فایل تصادفی است، نه `<مستاجر>_<کاربر>.png`. چرا: این مسیر
+#  عمومی است (تگِ <img> نمی‌تواند هدرِ احراز هویت بفرستد)، و نامِ
+#  قابل‌حدس یعنی هر کسی می‌تواند عکسِ هر مشتری را با شمردنِ شناسه‌ها
+#  بردارد. نامِ تصادفی همان «آدرس، خودش کلید است».
+AVATAR_DIR = Path(os.getenv("AVATAR_DIR", str(CONFIG_PATH.parent / "avatars")))
+AVATAR_MAX_BYTES = 512 * 1024
+
+
+def _avatar_find(tid, uid):
+    """فایلِ عکسِ این کاربر، اگر باشد."""
+    if not AVATAR_DIR.exists():
+        return None
+    for p in AVATAR_DIR.glob(f"{int(tid)}_{int(uid)}_*"):
+        if p.is_file():
+            return p
+    return None
+
+
+def _avatar_url(tid, uid):
+    p = _avatar_find(tid, uid)
+    return f"/api/public/avatar/{p.name}" if p else ""
+
+
+def _avatar_clear(tid, uid):
+    while True:
+        p = _avatar_find(tid, uid)
+        if not p:
+            return
+        try:
+            p.unlink()
+        except OSError:
+            return
+
+
+def _avatar_save(tid, uid, raw):
+    """base64 → فایل. برمی‌گرداند نشانی، یا خطا می‌دهد."""
+    import base64
+    import secrets as _s
+    raw = str(raw or "")
+    if raw.lstrip().startswith("data:") and "," in raw[:80]:
+        raw = raw.split(",", 1)[1]
+    raw = raw.strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="عکسی فرستاده نشد")
+    if len(raw) > (AVATAR_MAX_BYTES * 4) // 3 + 1024:
+        raise HTTPException(status_code=413, detail="حجم عکس بیشتر از ۵۱۲ کیلوبایت است")
+    try:
+        blob = base64.b64decode(raw, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="عکس خوانده نشد")
+    if len(blob) > AVATAR_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="حجم عکس بیشتر از ۵۱۲ کیلوبایت است")
+    ext, _c = _logo_kind(blob)
+    if not ext:
+        raise HTTPException(status_code=400, detail="فقط PNG، JPEG یا WebP")
+
+    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    _avatar_clear(tid, uid)
+    name = f"{int(tid)}_{int(uid)}_{_s.token_hex(8)}.{ext}"
+    (AVATAR_DIR / name).write_bytes(blob)
+    return f"/api/public/avatar/{name}"
+
+
+@app.get("/api/public/avatar/{name}")
+def public_avatar(name: str):
+    """
+    عکسِ پروفایل. نامِ فایل تصادفی است، پس خودش کلیدِ دسترسی است.
+    """
+    # نامِ آمده از بیرون هرگز مستقیم به مسیر نمی‌چسبد
+    if "/" in name or "\\" in name or ".." in name:
+        raise HTTPException(status_code=404, detail="پیدا نشد")
+    p = AVATAR_DIR / name
+    if not p.exists() or not p.is_file():
+        raise HTTPException(status_code=404, detail="پیدا نشد")
+    blob = p.read_bytes()
+    _e, ctype = _logo_kind(blob)
+    if not ctype:
+        raise HTTPException(status_code=404, detail="پیدا نشد")
+    return Response(content=blob, media_type=ctype,
+                    headers={"Cache-Control": "public, max-age=600"})
 
 
 @app.get("/api/public/logo/{tid}")
@@ -9972,6 +10057,8 @@ def mini_me(tu: tuple = Depends(mini_user)):
         # لوگوی همین فروشگاه. خالی یعنی «نشان نکسورا» — رابط خودش
         # تصمیم می‌گیرد، این‌جا حدس نمی‌زنیم.
         "logo": _logo_url(t["id"]),
+        "avatar": _avatar_url(t["id"], u["id"]),
+        "phone": u.get("phone") or "",
     }
 
 
@@ -10233,6 +10320,57 @@ def mini_ping(tu: tuple = Depends(mini_user)):
         con.close()
     return {"unread": int(unread or 0), "openOrders": int(opened or 0),
             "subs": int(subs or 0)}
+
+
+@app.post("/api/mini/profile")
+def mini_profile_save(payload: dict, tu: tuple = Depends(mini_user)):
+    """
+    نام و شماره‌ی خودِ مشتری.
+
+    چرا مشتری خودش بنویسد: `first_name` از تلگرام می‌آید و ممکن است
+    «😎» باشد یا اصلاً نباشد؛ و شماره را ربات فقط وقتی می‌گیرد که
+    کاربر دکمه‌اش را بزند. بدون این دو، پشتیبانی نمی‌داند با که حرف
+    می‌زند.
+    """
+    t, u = tu
+    p = payload or {}
+    name = str(p.get("name") or "").strip()[:60]
+    phone = str(p.get("phone") or "").strip()[:24]
+
+    # شماره اگر آمد باید شبیه شماره باشد — وگرنه ستونی پر می‌شود که
+    # بعداً هیچ‌کس نمی‌تواند رویش حساب کند
+    if phone and not _re.fullmatch(r"[0-9+\-\s()]{6,24}", phone):
+        raise HTTPException(status_code=400, detail="شماره معتبر نیست")
+
+    con = _bot_rw()
+    try:
+        con.execute(
+            "UPDATE users SET first_name=COALESCE(NULLIF(?,''), first_name), "
+            "phone=COALESCE(NULLIF(?,''), phone) WHERE tenant_id=? AND id=?",
+            (name, phone, t["id"], u["id"]))
+        con.commit()
+    except Exception as e:
+        log.exception("ذخیره‌ی پروفایل ناموفق")
+        raise HTTPException(status_code=502, detail=f"ذخیره نشد: {str(e)[:120]}")
+    finally:
+        con.close()
+    return {"ok": True, "name": name or u.get("first_name") or "",
+            "phone": phone or u.get("phone") or ""}
+
+
+@app.post("/api/mini/profile/avatar")
+def mini_avatar_set(payload: dict, tu: tuple = Depends(mini_user)):
+    """عکسِ پروفایلِ خودِ مشتری."""
+    t, u = tu
+    return {"ok": True, "avatar": _avatar_save(t["id"], u["id"],
+                                               (payload or {}).get("data"))}
+
+
+@app.delete("/api/mini/profile/avatar")
+def mini_avatar_clear(tu: tuple = Depends(mini_user)):
+    t, u = tu
+    _avatar_clear(t["id"], u["id"])
+    return {"ok": True, "avatar": ""}
 
 
 @app.post("/api/mini/inbox/send")

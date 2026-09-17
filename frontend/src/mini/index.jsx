@@ -24,11 +24,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, ArrowLeft, Check, ChevronLeft, Clock, Copy, CreditCard,
-  MessageCircle, Send,
-  ExternalLink, Gift, Home, Image as ImageIcon, Layers, Link2, Loader2,
-  Package, QrCode, RefreshCw, Shield, ShoppingBag, ShoppingCart, Trash2,
-  Wallet, Zap,
+  AlertTriangle, ArrowLeft, Camera, Check, ChevronLeft, Clock, Copy,
+  CreditCard, ExternalLink, Gift, Home, Image as ImageIcon, Layers, Link2,
+  Loader2, MessageCircle, Package, Phone, QrCode, RefreshCw, Send, Shield,
+  ShoppingBag, ShoppingCart, Trash2, User, Wallet, Zap,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -455,6 +454,167 @@ function PendingOrders({ orders }) {
   );
 }
 
+/* ═══════════════ تنظیمات و پروفایل ═══════════════ */
+
+/**
+ * پروفایلِ خودِ مشتری.
+ *
+ * چرا لازم است: `first_name` از تلگرام می‌آید و ممکن است «😎» باشد
+ * یا اصلاً نباشد، و شماره را ربات فقط وقتی دارد که کاربر دکمه‌اش را
+ * زده باشد. بدون این دو، پشتیبانی نمی‌داند با که حرف می‌زند — و
+ * خودِ مشتری هم در فهرستِ سفارش‌ها «بدون نام» است.
+ */
+function SettingsView({ me, onSave, onAvatar, onDropAvatar, onTopUp,
+                        support, channel }) {
+  const [name, setName] = useState(me?.name || "");
+  const [phone, setPhone] = useState(me?.phone || "");
+  const [busy, setBusy] = useState("");
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const fileRef = useRef(null);
+
+  useEffect(() => {
+    setName(me?.name || "");
+    setPhone(me?.phone || "");
+  }, [me?.name, me?.phone]);
+
+  const dirty = (name || "") !== (me?.name || "")
+             || (phone || "") !== (me?.phone || "");
+
+  const save = async () => {
+    setBusy("save"); setErr(""); setMsg("");
+    try {
+      await onSave({ name: name.trim(), phone: phone.trim() });
+      buzz("ok");
+      setMsg("ذخیره شد");
+      setTimeout(() => setMsg(""), 2200);
+    } catch (e) { buzz("err"); setErr(e.message); } finally { setBusy(""); }
+  };
+
+  const pick = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setErr("");
+    if (f.size > 512 * 1024) { setErr("حجم عکس بیشتر از ۵۱۲ کیلوبایت است"); return; }
+    setBusy("photo");
+    try {
+      const data = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result || ""));
+        r.onerror = () => rej(new Error("فایل خوانده نشد"));
+        r.readAsDataURL(f);
+      });
+      await onAvatar(data);
+      buzz("ok");
+    } catch (e2) { buzz("err"); setErr(e2.message); } finally { setBusy(""); }
+  };
+
+  return (
+    <>
+      <div className="mn-sec-head mb-1">
+        <div>
+          <h2>تنظیمات</h2>
+          <p>مشخصاتتان را کامل کنید تا پشتیبانی سریع‌تر کمکتان کند</p>
+        </div>
+      </div>
+
+      {/* ── عکس ── */}
+      <div className="mn-prof">
+        <button className="mn-prof-pic" onClick={() => fileRef.current?.click()}
+          disabled={busy === "photo"} title="تغییر عکس">
+          <Avatar name={me?.name} id={me?.tgId} size={74} src={me?.avatar} ring />
+          <span className="mn-prof-cam">
+            {busy === "photo" ? <Loader2 size={13} className="animate-spin" />
+                              : <Camera size={13} />}
+          </span>
+        </button>
+        <div className="mn-prof-side">
+          <b>{me?.name || "بدون نام"}</b>
+          <span dir="ltr">{me?.tgId ? faDigits(me.tgId) : "—"}</span>
+          {me?.avatar && (
+            <button className="mn-prof-drop" onClick={onDropAvatar}>
+              <Trash2 size={12} /> برداشتن عکس
+            </button>
+          )}
+        </div>
+        <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
+          onChange={pick} className="hidden" />
+      </div>
+
+      {/* ── مشخصات ── */}
+      <div className="mn-field">
+        <label htmlFor="mn-name"><User size={13} /> نام و نام خانوادگی</label>
+        <input id="mn-name" value={name} maxLength={60}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="مثلاً مریم کاظمی" />
+      </div>
+
+      <div className="mn-field">
+        <label htmlFor="mn-phone"><Phone size={13} /> شماره تماس</label>
+        <input id="mn-phone" value={phone} dir="ltr" inputMode="tel" maxLength={24}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="09121234567" />
+        <small>فقط برای پشتیبانی استفاده می‌شود.</small>
+      </div>
+
+      {err && (
+        <div className="mn-pay-err"><AlertTriangle size={14} /><span>{err}</span></div>
+      )}
+
+      <button className="mn-pay-btn" onClick={save} disabled={!dirty || busy === "save"}>
+        {busy === "save" ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+        {/* «ذخیره شد» فقط *بعد از* ذخیره‌کردن. نسخه‌ی اول وقتی چیزی
+            عوض نشده بود هم همین را می‌گفت — یعنی همان لحظه‌ی اول
+            به کاربر می‌گفت کاری کرده که نکرده. */}
+        {msg || "ذخیره"}
+      </button>
+
+      {/* ── حساب ── */}
+      <div className="mn-sec-head mt-5 mb-1">
+        <div><h2>حساب</h2></div>
+      </div>
+      <div className="mn-rows">
+        <div className="mn-row-kv">
+          <span>کیف پول</span>
+          <b>{faNum(me?.balance ?? 0)} تومان</b>
+        </div>
+        <div className="mn-row-kv">
+          <span>سکه</span>
+          <b>{faNum(me?.coins ?? 0)}</b>
+        </div>
+        <button className="mn-row-kv act" onClick={onTopUp}>
+          <span>شارژ کیف پول</span>
+          <b><ChevronLeft size={15} /></b>
+        </button>
+      </div>
+
+      {/* ── ارتباط ── */}
+      {(support || channel) && (
+        <>
+          <div className="mn-sec-head mt-5 mb-1">
+            <div><h2>ارتباط با ما</h2></div>
+          </div>
+          <div className="mn-links">
+            {channel && (
+              <a className="mn-link-chip" target="_blank" rel="noreferrer"
+                href={`https://t.me/${String(channel).replace(/^@/, "")}`}>
+                <Link2 size={14} /> کانال ما
+              </a>
+            )}
+            {support && (
+              <a className="mn-link-chip" target="_blank" rel="noreferrer"
+                href={`https://t.me/${String(support).replace(/^@/, "")}`}>
+                <ExternalLink size={14} /> پشتیبانی در تلگرام
+              </a>
+            )}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 /* ═══════════════ صندوق پیام ═══════════════ */
 
 /**
@@ -521,7 +681,7 @@ function InboxView({ msgs, busy, onSend, support, channel }) {
             className={`mn-msg ${m.from === "user" ? "me" : m.from === "system" ? "sys" : "them"}`}>
             {m.from === "system" && <Shield size={13} className="mn-msg-ico" />}
             <span className="mn-msg-body">{m.body}</span>
-            <span className="mn-msg-at">{m.at ? String(m.at).slice(11, 16) : ""}</span>
+            <span className="mn-msg-at">{m.at ? faDigits(String(m.at).slice(11, 16)) : ""}</span>
           </div>
         ))}
         <div ref={endRef} />
@@ -741,8 +901,9 @@ function PaySheet({ pay, me, onClose, onConfirm, onTopUp,
 const TABS = [
   { k: "home", l: "خانه", i: Home },
   { k: "buy", l: "خرید", i: ShoppingBag },
-  { k: "subs", l: "اشتراک‌ها", i: Layers },
+  { k: "subs", l: "اشتراک", i: Layers },
   { k: "chat", l: "پیام‌ها", i: MessageCircle },
+  { k: "me", l: "تنظیمات", i: User },
 ];
 
 export default function Mini() {
@@ -872,6 +1033,27 @@ export default function Mini() {
     beat();
     return () => { alive = false; clearInterval(id); };
   }, [load]);
+
+  const saveProfile = async (body) => {
+    await api("/api/mini/profile", { method: "POST", body });
+    const m = await api("/api/mini/me");
+    setMe(m);
+  };
+
+  const setAvatar = async (data) => {
+    await api("/api/mini/profile/avatar", { method: "POST", body: { data } });
+    const m = await api("/api/mini/me");
+    setMe(m);
+  };
+
+  const dropAvatar = async () => {
+    try {
+      await api("/api/mini/profile/avatar", { method: "DELETE" });
+      const m = await api("/api/mini/me");
+      buzz("light");
+      setMe(m);
+    } catch (e) { setErr(e.message); }
+  };
 
   const sendMsg = async (body) => {
     await api("/api/mini/inbox/send", { method: "POST", body: { body } });
@@ -1053,6 +1235,10 @@ export default function Mini() {
           <SubDetail s={detail} onBack={() => setDetail(null)} />
         ) : view === "buy" ? (
           <BuyView plans={plans} onBuy={buy} />
+        ) : view === "me" ? (
+          <SettingsView me={me} onSave={saveProfile} onAvatar={setAvatar}
+            onDropAvatar={dropAvatar} onTopUp={topUp}
+            support={me?.support} channel={me?.channel} />
         ) : view === "chat" ? (
           <InboxView msgs={msgs} busy={busy} onSend={sendMsg}
             support={me?.support} channel={me?.channel} />

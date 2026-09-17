@@ -2152,3 +2152,270 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   color: var(--dim); font-size: 12.5px;
   display: flex; align-items: flex-start; gap: 7px;
 }
+
+/* ══════════════════════════════════════════════════════════
+   پیام‌رسانِ پنل
+   ══════════════════════════════════════════════════════════
+   این صفحه جایی است که مالک با مشتریِ عصبانی حرف می‌زند. هر چیزی
+   که در تلگرام عادت دارد و این‌جا نباشد، یک لحظه مکث می‌سازد — و
+   مکثِ آن لحظه یعنی جوابِ دیرتر. */
+
+.fx-chat {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 12px;
+  /* قدِ ثابت تا هر دو ستون با هم اسکرول نخورند و سرصفحه‌ی گفتگو
+     سر جایش بماند */
+  height: calc(100dvh - 210px);
+  min-height: 420px;
+}
+
+/* ── ستونِ گفتگوها ── */
+.fx-chat-list {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-l); overflow: hidden;
+}
+.fx-chat-search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; flex: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.fx-chat-search input {
+  flex: 1; min-width: 0; background: none; border: 0;
+  color: var(--text); font-size: 12.5px; font-family: inherit;
+}
+.fx-chat-search input:focus { outline: none; }
+.fx-chat-search input::placeholder { color: var(--muted); }
+
+.fx-chat-rows { flex: 1; min-height: 0; overflow-y: auto; }
+.fx-chat-row {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; text-align: start;
+  border-bottom: 1px solid var(--hair-1);
+  transition: background var(--m-fast) linear;
+}
+.fx-chat-row:hover { background: var(--hair-1); }
+.fx-chat-row.on { background: var(--accent-wash); }
+.fx-chat-row-body { flex: 1; min-width: 0; }
+.fx-chat-row-top {
+  display: flex; align-items: baseline; gap: 8px;
+}
+.fx-chat-row-top > b {
+  flex: 1; min-width: 0; font-size: 13px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fx-chat-row-top > i {
+  flex: none; font-style: normal; font-size: 10.5px; color: var(--muted);
+  font-family: var(--mono);
+}
+.fx-chat-row-bot {
+  display: flex; align-items: center; gap: 8px; margin-top: 3px;
+}
+.fx-chat-row-bot > span {
+  flex: 1; min-width: 0; font-size: 11.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fx-chat-row-bot > em {
+  flex: none; font-style: normal;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px;
+  background: var(--danger); color: #fff;
+  font-size: 10.5px; font-weight: 800;
+  display: grid; place-items: center;
+}
+
+/* ── ستونِ گفتگو ── */
+.fx-chat-pane {
+  position: relative;
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-l); overflow: hidden;
+}
+.fx-chat-blank { flex: 1; display: grid; place-items: center; padding: 20px; }
+
+.fx-chat-head {
+  flex: none; display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.fx-chat-head b {
+  display: block; font-size: 13.5px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fx-chat-head span {
+  display: block; font-size: 11.5px; color: var(--muted);
+  font-family: var(--mono); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.fx-chat-log {
+  flex: 1; min-height: 0; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 14px;
+  /* بافتِ بسیار کم‌رنگ تا زمینه‌ی گفتگو از کارتِ ساده جدا شود */
+  background:
+    radial-gradient(circle at 20% 10%, var(--accent-wash), transparent 45%),
+    var(--surface);
+}
+
+/* جداکننده‌ی روز */
+.fx-chat-day { display: flex; justify-content: center; margin: 10px 0 6px; }
+.fx-chat-day > span {
+  padding: 3px 12px; border-radius: 99px;
+  background: var(--hair-2); color: var(--muted);
+  font-size: 11px;
+}
+
+/* حباب‌ها */
+.fx-bub {
+  position: relative;
+  max-width: 68%;
+  padding: 8px 12px 6px;
+  border-radius: 14px;
+  font-size: 13px; line-height: 1.85;
+  white-space: pre-wrap; word-break: break-word;
+}
+/* پیامِ پشت‌سرهمِ یک نفر فاصله‌ی کمتری می‌گیرد — گروه می‌شود */
+.fx-bub.head { margin-top: 8px; }
+
+.fx-bub.user {
+  align-self: flex-start;
+  background: var(--surface-3); border: 1px solid var(--border);
+  color: var(--text);
+  border-start-start-radius: 5px;
+}
+.fx-bub.admin {
+  align-self: flex-end;
+  background: linear-gradient(140deg, var(--accent), var(--accent-2));
+  color: #06090F; font-weight: 500;
+  border-start-end-radius: 5px;
+}
+.fx-bub.system {
+  align-self: center; max-width: 84%;
+  background: var(--accent-wash); border: 1px solid var(--accent-fill);
+  color: var(--dim); font-size: 12.5px;
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 7px;
+  border-radius: 12px;
+}
+.fx-bub-ico { flex: none; margin-top: 4px; color: var(--accent-2); }
+.fx-bub-text { flex: 1 1 auto; min-width: 0; }
+.fx-bub-meta {
+  display: flex; align-items: center; gap: 3px; justify-content: flex-end;
+  font-size: 10px; font-family: var(--mono);
+  opacity: .62; margin-top: 2px;
+}
+.fx-bub.system .fx-bub-meta { flex: 1 0 100%; justify-content: flex-start; }
+
+/* برو پایین */
+.fx-chat-down {
+  position: absolute; inset-inline-end: 18px; bottom: 76px;
+  width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  color: var(--dim); box-shadow: var(--e-2);
+  animation: fx-in .18s ease both;
+}
+.fx-chat-down:hover { color: var(--text); }
+
+/* نوارِ نوشتن */
+.fx-chat-bar {
+  flex: none; display: flex; align-items: flex-end; gap: 9px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.fx-chat-bar textarea {
+  flex: 1; min-width: 0; resize: none; max-height: 110px;
+  padding: 10px 13px; border-radius: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); font-size: 13px; line-height: 1.8;
+  font-family: inherit;
+}
+.fx-chat-bar textarea:focus { outline: none; border-color: var(--accent-line); }
+.fx-chat-bar textarea::placeholder { color: var(--muted); }
+.fx-chat-bar button {
+  flex: none; width: 40px; height: 40px; border-radius: 50%;
+  display: grid; place-items: center; border: 0;
+  background: linear-gradient(140deg, var(--accent), var(--cy));
+  color: #06090F;
+  transition: transform var(--m-fast) var(--sp-snappy), opacity var(--m-fast) linear;
+}
+.fx-chat-bar button:active { transform: scale(.93); }
+.fx-chat-bar button:disabled { opacity: .4; }
+
+.fx-chat-note {
+  flex: none; font-size: 11px; color: var(--muted);
+  padding: 0 14px 9px; margin: 0;
+}
+
+/* روی صفحه‌ی باریک، فهرست بالای گفتگو می‌رود */
+@media (max-width: 820px) {
+  .fx-chat { grid-template-columns: 1fr; height: auto; }
+  .fx-chat-list { max-height: 260px; }
+  .fx-chat-pane { min-height: 440px; }
+  .fx-bub { max-width: 84%; }
+}
+
+/* عکسِ واقعیِ کاربر به‌جای حرفِ اول */
+.fx-avatar.img { object-fit: cover; padding: 0; }
+
+/* ── پروفایل و تنظیمات مینی‌اپ ── */
+.mn-prof {
+  display: flex; align-items: center; gap: 14px;
+  padding: 14px; margin-bottom: 14px;
+  border-radius: var(--r-l);
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.mn-prof-pic { position: relative; flex: none; line-height: 0; }
+.mn-prof-cam {
+  position: absolute; inset-inline-end: -2px; bottom: -2px;
+  width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--accent); color: #06090F;
+  border: 2px solid var(--surface-2);
+}
+.mn-prof-side { flex: 1; min-width: 0; }
+.mn-prof-side > b {
+  display: block; font-size: 15px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mn-prof-side > span {
+  display: block; font-size: 12px; color: var(--muted);
+  font-family: var(--mono); margin-top: 3px;
+}
+.mn-prof-drop {
+  margin-top: 8px; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; color: var(--danger); background: none; border: 0;
+}
+
+.mn-field { margin-bottom: 14px; }
+.mn-field label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; color: var(--dim); margin-bottom: 7px;
+}
+.mn-field input {
+  width: 100%; padding: 12px 13px; border-radius: var(--r-m);
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--text); font-size: 14px; font-family: inherit;
+}
+.mn-field input:focus { outline: none; border-color: var(--accent-line); }
+.mn-field input::placeholder { color: var(--muted); }
+.mn-field small {
+  display: block; margin-top: 6px; font-size: 11.5px; color: var(--muted);
+}
+
+.mn-rows {
+  display: grid; gap: 1px; background: var(--border);
+  border-radius: var(--r-m); overflow: hidden;
+  border: 1px solid var(--border);
+}
+.mn-row-kv {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 13px; background: var(--surface-2);
+  font-size: 13px; width: 100%; text-align: start;
+}
+.mn-row-kv > span { color: var(--muted); }
+.mn-row-kv > b { color: var(--text); display: flex; align-items: center; }
+.mn-row-kv.act > b { color: var(--accent-2); }

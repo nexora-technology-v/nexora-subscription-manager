@@ -2551,6 +2551,84 @@ finally:
 
 
 # ═══════════════════════════════════════════════════════════
+head("عکس پروفایل · نامِ فایل خودش کلید است")
+
+import base64 as _b64a                                 # noqa: E402
+import tempfile as _tfa                                # noqa: E402
+app.AVATAR_DIR = Path(_tfa.mkdtemp(prefix="nx-av-"))
+
+_PNG_A = _b64a.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+    "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+
+_u1 = app._avatar_save(7, 11, _b64a.b64encode(_PNG_A).decode())
+check("عکس ذخیره می‌شود", _u1.startswith("/api/public/avatar/"), _u1)
+
+# نام نباید قابلِ حدس باشد: `7_11.png` یعنی هر کسی با شمردنِ
+# شناسه‌ها عکسِ هر مشتری را برمی‌دارد.
+_fname = _u1.rsplit("/", 1)[-1]
+check("و نامش قابلِ حدس نیست", _fname not in ("7_11.png", "11.png")
+      and len(_fname) > 18, _fname)
+
+check("و دوباره پیدا می‌شود", app._avatar_url(7, 11) == _u1, app._avatar_url(7, 11))
+
+# عکسِ تازه، قبلی را پاک می‌کند — وگرنه پوشه پر می‌شود از عکس‌های
+# مرده که هیچ‌کس نمی‌داند مالِ کیست
+_u2 = app._avatar_save(7, 11, _b64a.b64encode(_PNG_A).decode())
+_left = sorted(p.name for p in app.AVATAR_DIR.glob("7_11_*"))
+check("و فقط یکی می‌ماند", len(_left) == 1, "، ".join(_left))
+check("و نشانی عوض می‌شود", _u2 != _u1, f"{_u1} → {_u2}")
+
+# فرمت
+for _name, _blob in (("SVG", b'<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
+                     ("متن", b"hello there, not a picture")):
+    try:
+        app._avatar_save(7, 12, _b64a.b64encode(_blob).decode())
+        check(f"{_name} رد می‌شود", False, "پذیرفته شد")
+    except app.HTTPException as _e:
+        check(f"{_name} رد می‌شود", _e.status_code == 400, str(_e.status_code))
+
+# سقف
+try:
+    app._avatar_save(7, 13, "A" * (900 * 1024))
+    check("عکسِ بزرگ رد می‌شود", False, "پذیرفته شد")
+except app.HTTPException as _e:
+    check("عکسِ بزرگ رد می‌شود", _e.status_code == 413, str(_e.status_code))
+
+# مسیرِ خطرناک — با فایلِ واقعی، وگرنه تست بی‌خود سبز می‌ماند
+_out = app.AVATAR_DIR.parent / "hidden.png"
+_out.write_bytes(_PNG_A)
+_BAD = ["../hidden.png", "a/b.png"]
+_BAD.append(".." + chr(92) + "hidden.png")
+try:
+    for _b in _BAD:
+        try:
+            app.public_avatar(_b)
+            check("مسیرِ خطرناک رد می‌شود (%s)" % _b[:14], False, "سرو شد")
+        except app.HTTPException as _e:
+            check("مسیرِ خطرناک رد می‌شود (%s)" % _b[:14],
+                  _e.status_code == 404, str(_e.status_code))
+finally:
+    try:
+        _out.unlink()
+    except OSError:
+        pass
+
+# پاک‌کردن
+app._avatar_clear(7, 11)
+check("بعد از پاک‌کردن، نشانی خالی است", app._avatar_url(7, 11) == "")
+
+# و نوشتن باید از mini_user بگذرد، خواندن نه
+_ps = _APSRC[_APSRC.find("def mini_avatar_set("):]
+_ps = _ps[:_ps.find("def mini_avatar_clear")]
+check("نوشتنِ عکس پشتِ احراز هویت است", "Depends(mini_user)" in _ps,
+      "وگرنه هر کسی عکسِ هر کسی را عوض می‌کند")
+check("و شناسه از نشست می‌آید نه از بدنه",
+      '_avatar_save(t["id"], u["id"]' in _ps,
+      "شناسه‌ی آمده از بدنه یعنی نوشتن روی پروفایل دیگری")
+
+
+# ═══════════════════════════════════════════════════════════
 head("رسیدِ تصویری · گم نشود، حتی بدون گروه تلگرام")
 
 import base64 as _b64r                                 # noqa: E402

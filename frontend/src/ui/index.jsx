@@ -1404,7 +1404,24 @@ const AVATAR_HUES = [
   ["#60A5FA", "#3B82F6"], ["#F472B6", "#EC4899"],
 ];
 
-export function Avatar({ name, id, size = 32, ring = false, className = "" }) {
+export function Avatar({ name, id, size = 32, ring = false, src = "",
+                        className = "" }) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => { setFailed(false); }, [src]);
+
+  // عکسِ واقعیِ کاربر، اگر گذاشته باشد.
+  //
+  // نیامدنش (پاک شده، شبکه قطع) بی‌صدا به حرفِ اول برمی‌گردد — نه
+  // قابِ شکسته، که از نبودنِ عکس بدتر است.
+  if (src && !failed) {
+    return (
+      <img src={src} alt={String(name || "")} width={size} height={size}
+        onError={() => setFailed(true)}
+        className={`fx-avatar img ${ring ? "ring" : ""} ${className}`}
+        style={{ width: size, height: size }} />
+    );
+  }
+
   const label = String(name || "").trim();
   // حرفِ اول: اگر نام خالی بود، «؟» — نه یک مربعِ خالی که شبیه
   // خرابی به نظر برسد
