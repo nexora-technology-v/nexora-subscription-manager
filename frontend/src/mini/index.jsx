@@ -25,6 +25,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle, ArrowLeft, Check, ChevronLeft, Clock, Copy, CreditCard,
+  MessageCircle, Send,
   ExternalLink, Gift, Home, Image as ImageIcon, Layers, Link2, Loader2,
   Package, QrCode, RefreshCw, Shield, ShoppingBag, ShoppingCart, Trash2,
   Wallet, Zap,
@@ -454,6 +455,97 @@ function PendingOrders({ orders }) {
   );
 }
 
+/* ═══════════════ صندوق پیام ═══════════════ */
+
+/**
+ * گفتگو با پشتیبانی — و خبرهای خودکار.
+ *
+ * تاییدِ رسید، ردش با متنِ دلیل، و حرف‌زدن با پشتیبانی همه در یک
+ * صندوق‌اند. سه جای جدا یعنی سه نشان و سه صدا و سه جا برای از هم
+ * پاشیدن.
+ */
+function InboxView({ msgs, busy, onSend, support, channel }) {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState("");
+  const endRef = useRef(null);
+
+  useEffect(() => {
+    // تازه‌ترین پیام باید دیده شود، نه اینکه کاربر اسکرول کند
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [msgs]);
+
+  const send = async () => {
+    const body = text.trim();
+    if (!body || sending) return;
+    setSending(true); setErr("");
+    try {
+      await onSend(body);
+      setText("");
+    } catch (e) {
+      // متن در کادر می‌ماند — کاربر دوباره تایپ نکند
+      setErr(e.message);
+    } finally { setSending(false); }
+  };
+
+  return (
+    <div className="mn-chat">
+      {(support || channel) && (
+        <div className="mn-links">
+          {channel && (
+            <a className="mn-link-chip" href={`https://t.me/${String(channel).replace(/^@/, "")}`}
+              target="_blank" rel="noreferrer">
+              <Link2 size={14} /> کانال ما
+            </a>
+          )}
+          {support && (
+            <a className="mn-link-chip" href={`https://t.me/${String(support).replace(/^@/, "")}`}
+              target="_blank" rel="noreferrer">
+              <ExternalLink size={14} /> پشتیبانی در تلگرام
+            </a>
+          )}
+        </div>
+      )}
+
+      <div className="mn-chat-log">
+        {busy && !msgs ? (
+          <div aria-busy="true">
+            <Skeleton h={54} className="mb-2" />
+            <Skeleton h={38} className="mb-2" />
+          </div>
+        ) : !(msgs || []).length ? (
+          <EmptyState icon={MessageCircle} text="هنوز پیامی نیست"
+            hint="هر سوالی دارید همین‌جا بنویسید — خبرِ تایید یا ردِ رسیدتان هم این‌جا می‌آید." />
+        ) : (msgs || []).map((m) => (
+          <div key={m.id}
+            className={`mn-msg ${m.from === "user" ? "me" : m.from === "system" ? "sys" : "them"}`}>
+            {m.from === "system" && <Shield size={13} className="mn-msg-ico" />}
+            <span className="mn-msg-body">{m.body}</span>
+            <span className="mn-msg-at">{m.at ? String(m.at).slice(11, 16) : ""}</span>
+          </div>
+        ))}
+        <div ref={endRef} />
+      </div>
+
+      {err && (
+        <div className="mn-pay-err"><AlertTriangle size={14} /><span>{err}</span></div>
+      )}
+
+      <div className="mn-chat-bar">
+        <textarea rows={1} dir="auto" value={text} placeholder="پیامتان را بنویسید…"
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+          }} />
+        <button onClick={send} disabled={sending || !text.trim()}
+          aria-label="فرستادن">
+          {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════ برگه‌ی پرداخت ═══════════════ */
 
 /**
@@ -648,8 +740,9 @@ function PaySheet({ pay, me, onClose, onConfirm, onTopUp,
 
 const TABS = [
   { k: "home", l: "خانه", i: Home },
-  { k: "buy", l: "خرید اشتراک", i: ShoppingBag },
+  { k: "buy", l: "خرید", i: ShoppingBag },
   { k: "subs", l: "اشتراک‌ها", i: Layers },
+  { k: "chat", l: "پیام‌ها", i: MessageCircle },
 ];
 
 export default function Mini() {
@@ -662,6 +755,9 @@ export default function Mini() {
   const [busy, setBusy] = useState(true);
   const [pay, setPay] = useState(null);
   const [orders, setOrders] = useState([]);
+  const [msgs, setMsgs] = useState(null);
+  const [unread, setUnread] = useState(0);
+  const [toast, setToast] = useState(null);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -674,6 +770,10 @@ export default function Mini() {
       ]);
       setMe(m); setSubs(s.subs || []); setPlans(p.plans || []);
       setOrders(o.orders || []);
+      // صندوق جدا بارگذاری می‌شود: نیامدنش نباید بقیه را بیندازد
+      api("/api/mini/inbox")
+        .then((x) => { setMsgs(x.messages || []); setUnread(x.unread || 0); })
+        .catch(() => { /* نشان عوض نمی‌شود، بقیه‌ی اپ کار می‌کند */ });
     } catch (e) {
       setErr(e.message);
     } finally { setBusy(false); }
@@ -729,6 +829,67 @@ export default function Mini() {
     document.addEventListener("visibilitychange", onBack);
     return () => document.removeEventListener("visibilitychange", onBack);
   }, [load]);
+
+  /* هر بیست ثانیه فقط شمارنده‌ها.
+   *
+   * کاربر نباید مجبور باشد تازه‌سازی بزند تا بفهمد رسیدش تایید شده.
+   * ولی گرفتنِ کلِ داده هر بیست ثانیه روی اینترنتِ موبایل گران است،
+   * پس اول شمارنده — و فقط وقتی عددی عوض شد، داده.
+   *
+   * وقتی صفحه پنهان است هیچ درخواستی نمی‌رود: مینی‌اپِ بازِ فراموش‌شده
+   * نباید تا ابد به سرور بزند.
+   */
+  const seen = useRef({ unread: -1, openOrders: -1, subs: -1 });
+  useEffect(() => {
+    let alive = true;
+    const beat = async () => {
+      if (!alive || document.visibilityState !== "visible") return;
+      try {
+        const p = await api("/api/mini/ping");
+        if (!alive) return;
+        setUnread(p.unread || 0);
+        const was = seen.current;
+        const changed = was.unread !== -1
+          && (p.unread !== was.unread || p.openOrders !== was.openOrders
+              || p.subs !== was.subs);
+        seen.current = p;
+        if (changed) {
+          load();
+          if (p.unread > was.unread) {
+            // پیامِ تازه را یک‌بار جلوی چشم بیاور — نه هر بار
+            try {
+              const x = await api("/api/mini/inbox");
+              if (!alive) return;
+              setMsgs(x.messages || []);
+              const last = (x.messages || []).filter((m) => m.from !== "user").pop();
+              if (last) { buzz("ok"); setToast(last); }
+            } catch { /* بی‌صدا */ }
+          }
+        }
+      } catch { /* شبکه قطع بود — دفعه‌ی بعد */ }
+    };
+    const id = setInterval(beat, 20000);
+    beat();
+    return () => { alive = false; clearInterval(id); };
+  }, [load]);
+
+  const sendMsg = async (body) => {
+    await api("/api/mini/inbox/send", { method: "POST", body: { body } });
+    const x = await api("/api/mini/inbox");
+    setMsgs(x.messages || []);
+    setUnread(x.unread || 0);
+  };
+
+  // بازکردنِ تبِ پیام‌ها یعنی خوانده شد
+  useEffect(() => {
+    if (tab !== "chat") return;
+    setUnread(0);
+    setToast(null);
+    api("/api/mini/inbox/read", { method: "POST" }).catch(() => { /* بی‌صدا */ });
+    api("/api/mini/inbox")
+      .then((x) => setMsgs(x.messages || []))
+      .catch(() => { /* بی‌صدا */ });
+  }, [tab]);
 
   useEffect(() => {
     const w = tg();
@@ -892,6 +1053,9 @@ export default function Mini() {
           <SubDetail s={detail} onBack={() => setDetail(null)} />
         ) : view === "buy" ? (
           <BuyView plans={plans} onBuy={buy} />
+        ) : view === "chat" ? (
+          <InboxView msgs={msgs} busy={busy} onSend={sendMsg}
+            support={me?.support} channel={me?.channel} />
         ) : view === "subs" ? (
           (subs || []).length === 0 ? (
             <EmptyState icon={Package} text="هنوز اشتراکی ندارید"
@@ -918,11 +1082,32 @@ export default function Mini() {
           <button key={t.k} className={`mn-tab ${tab === t.k && !detail ? "on" : ""}`}
             onClick={() => { buzz("light"); setDetail(null); setTab(t.k); }}
             aria-current={tab === t.k && !detail ? "page" : undefined}>
-            <t.i size={19} />
+            <span className="mn-tab-ico">
+              <t.i size={19} />
+              {t.k === "chat" && unread > 0 && (
+                <i className="mn-badge">{unread > 9 ? "۹+" : faNum(unread)}</i>
+              )}
+            </span>
             <span>{t.l}</span>
           </button>
         ))}
       </nav>
+
+      {/* پیامِ تازه یک‌بار جلوی چشم می‌آید.
+          بدون این، مشتری باید حدس بزند که باید تبِ پیام‌ها را باز
+          کند — و رسیدی که رد شده، دلیلش را هیچ‌وقت نمی‌بیند. */}
+      {toast && (
+        <button className="mn-toast" onClick={() => { setToast(null); setTab("chat"); }}>
+          <span className="mn-toast-ico">
+            {toast.from === "system" ? <Shield size={15} /> : <MessageCircle size={15} />}
+          </span>
+          <span className="mn-toast-body">
+            <b>{toast.from === "system" ? "خبر تازه" : "پاسخ پشتیبانی"}</b>
+            <span>{String(toast.body || "").slice(0, 90)}</span>
+          </span>
+          <ChevronLeft size={16} />
+        </button>
+      )}
 
       <PaySheet pay={pay} me={me}
         onConfirm={confirmPay}

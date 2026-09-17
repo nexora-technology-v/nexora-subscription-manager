@@ -244,6 +244,30 @@ CREATE TABLE IF NOT EXISTS tickets (
 );
 CREATE INDEX IF NOT EXISTS ix_tickets_tenant ON tickets(tenant_id, status);
 
+-- ═══ صندوق پیام مشتری ═══
+--
+-- سه چیزِ به‌ظاهر جدا از همین‌جا می‌آیند: خبرِ تاییدِ رسید، خبرِ ردش
+-- با متنِ دلیل، و گفتگو با پشتیبانی. هر سه «پیامی از یک طرف به طرف
+-- دیگر با وضعیت خوانده‌نشده»‌اند؛ سه جدول یعنی سه جای جدا برای از
+-- هم پاشیدن.
+--
+-- `sender='system'` برای خبرهای خودکار است — همان صندوق، همان نشان.
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id   INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    sender      TEXT NOT NULL,              -- user | admin | system
+    body        TEXT NOT NULL,
+    order_id    INTEGER,
+    created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+    read_at     TEXT                        -- طرفِ مقابل خواندش
+);
+CREATE INDEX IF NOT EXISTS ix_chat_user
+    ON chat_messages(tenant_id, user_id, id);
+-- شمارشِ خوانده‌نشده‌ها پرتکرارترین کوئریِ این جدول است
+CREATE INDEX IF NOT EXISTS ix_chat_unread
+    ON chat_messages(tenant_id, sender, read_at);
+
 -- ═══ لاگ رویدادها (برای آمار و عیب‌یابی) ═══
 CREATE TABLE IF NOT EXISTS events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -535,7 +559,8 @@ def gen_ref_code(length=6):
 class TenantDB:
     # جداولی که باید حتماً با tenant_id فیلتر شوند
     SCOPED = {"users", "plans", "orders", "subscriptions",
-              "coin_tx", "wallet_tx", "discounts", "tickets", "events"}
+              "coin_tx", "wallet_tx", "discounts", "tickets", "events",
+              "chat_messages"}
 
     def __init__(self, tenant_id: int):
         if not isinstance(tenant_id, int) or tenant_id <= 0:
@@ -1135,6 +1160,82 @@ class TenantDB:
              renew_sub_id)
         )
         return self.get_order(oid)
+
+    # ── صندوق پیام ──
+    #
+    # سه چیزِ به‌ظاهر جدا از همین‌جا می‌آیند: تاییدِ رسید، ردش با متنِ
+    # دلیل، و گفتگو با پشتیبانی. هر سه یک شکل دارند، پس یک جا.
+
+    def chat_add(self, user_id, sender, body, order_id=None):
+        """یک پیام در صندوق. برمی‌گرداند شناسه‌اش."""
+        body = str(body or "").strip()
+        if not body:
+            return None
+        return self.exec(
+            "INSERT INTO chat_messages (tenant_id, user_id, sender, body, order_id) "
+            "VALUES (?,?,?,?,?)",
+            (self.tid, user_id, sender, body[:4000], order_id))
+
+    def chat_list(self, user_id, limit=100):
+        """گفتگوی یک مشتری، قدیمی به تازه."""
+        rows = self.q(
+            "SELECT * FROM chat_messages WHERE tenant_id=? AND user_id=? "
+            "ORDER BY id DESC LIMIT ?", (self.tid, user_id, int(limit)))
+        return list(reversed(rows))
+
+    def chat_unread_for_user(self, user_id):
+        """چند پیامِ نخوانده برای *مشتری* — یعنی از طرفِ ما."""
+        r = self.q(
+            "SELECT COUNT(*) n FROM chat_messages "
+            "WHERE tenant_id=? AND user_id=? AND sender<>'user' AND read_at IS NULL",
+            (self.tid, user_id), one=True)
+        return int((r["n"] if r else 0) or 0)
+
+    def chat_unread_for_admin(self):
+        """چند پیامِ نخوانده برای *مالک* — یعنی از طرفِ مشتری‌ها."""
+        r = self.q(
+            "SELECT COUNT(*) n FROM chat_messages "
+            "WHERE tenant_id=? AND sender='user' AND read_at IS NULL",
+            (self.tid,), one=True)
+        return int((r["n"] if r else 0) or 0)
+
+    def chat_mark_read(self, user_id, by):
+        """
+        خوانده‌شدن را ثبت کن.
+
+        `by='user'` یعنی مشتری خواند، پس پیام‌های *ما* خوانده شده‌اند.
+        `by='admin'` برعکس. شرط را وارونه ننویس، وگرنه هر طرف
+        پیام‌های خودش را «خوانده» می‌کند و نشانِ طرف مقابل هیچ‌وقت
+        صفر نمی‌شود.
+        """
+        if by == "user":
+            cond = "sender<>'user'"
+        else:
+            cond = "sender='user'"
+        return self.exec(
+            f"UPDATE chat_messages SET read_at=CURRENT_TIMESTAMP "
+            f"WHERE tenant_id=? AND user_id=? AND {cond} AND read_at IS NULL",
+            (self.tid, user_id))
+
+    def chat_threads(self, limit=60):
+        """
+        فهرستِ گفتگوها برای پنل — تازه‌ترین اول، با شمارِ نخوانده.
+        """
+        return self.q(
+            """SELECT u.id AS user_id, u.tg_id, u.first_name, u.username,
+                      MAX(m.id) AS last_id,
+                      MAX(m.created_at) AS last_at,
+                      SUM(CASE WHEN m.sender='user' AND m.read_at IS NULL
+                               THEN 1 ELSE 0 END) AS unread,
+                      (SELECT body FROM chat_messages x
+                        WHERE x.tenant_id=m.tenant_id AND x.user_id=m.user_id
+                        ORDER BY x.id DESC LIMIT 1) AS last_body
+                 FROM chat_messages m
+                 JOIN users u ON u.id = m.user_id
+                WHERE m.tenant_id=?
+             GROUP BY u.id
+             ORDER BY last_id DESC
+                LIMIT ?""", (self.tid, int(limit)))
 
     def get_order(self, oid):
         return self.q("SELECT * FROM orders WHERE tenant_id=? AND id=?",

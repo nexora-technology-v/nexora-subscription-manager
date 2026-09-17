@@ -527,6 +527,26 @@ export function CountChip({ label, n, color }) {
  * کامپوننت را با همان سه آرگومان قبلی صدا می‌زنند و باید دست‌نخورده
  * کار کنند.
  */
+/**
+ * نشانِ «کاری هست» روی یک آیتمِ منو.
+ *
+ * چرا کامپوننت و نه دو تکه JSX: پنل **دو** رندرکننده‌ی منو دارد —
+ * یکی در `App.jsx` و یکی در `shell/workspace.jsx` برای حالتِ تاشو.
+ * نسخه‌ی اول فقط به اولی اضافه شد و نشان هیچ‌وقت دیده نشد، چون
+ * حالتِ پیش‌فرض دومی است. همان باگِ همیشگیِ این مخزن: یک قاعده، دو
+ * جا.
+ */
+export function NavAlert({ count }) {
+  const n = Number(count) || 0;
+  if (n <= 0) return null;
+  return (
+    <span className="fx-nav-alert" title="نیاز به رسیدگی">
+      {n > 99 ? "۹۹+" : faNum(n)}
+    </span>
+  );
+}
+
+
 export function StatTile({
   label, value, unit, hint, color = "var(--text)",
   icon: Icon, spark, sparkColor, trend, tone, className = "",

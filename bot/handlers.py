@@ -1169,6 +1169,15 @@ def approve_order(ctx, order_id, admin_tg_id):
     # می‌رفت: پیام تایید به ادمین هم نمی‌رسید و دکمه‌های رسید سر جایشان
     # می‌ماندند، انگار تایید اصلاً ثبت نشده. کانفیگ ساخته شده بود ولی
     # هیچ‌کس خبر نداشت.
+    # خبرِ تایید در صندوقِ مینی‌اپ — پیش از تحویل، چون تحویل ممکن
+    # است شکست بخورد و آن‌وقت مشتری حتی نمی‌فهمد تایید شده.
+    try:
+        ctx.db.chat_add(order["user_id"], "system",
+                        f"رسید سفارش #{order_id} تایید شد و اشتراکتان ساخته شد.",
+                        order_id=order_id)
+    except Exception:
+        log.warning("ثبت خبرِ تایید در صندوق ناموفق", exc_info=True)
+
     try:
         deliver(ctx, user, result)
     except Exception as e:
@@ -3318,6 +3327,20 @@ def do_reject(ctx, order_id, admin_tg_id, reason):
         ctx.bot.send(u["tg_id"], txt, keyboard=kb(rows))
     except TelegramError:
         pass
+
+    # و همان خبر در صندوقِ مینی‌اپ.
+    #
+    # مشتری که از مینی‌اپ خریده، ممکن است گفتگوی ربات را باز نکند.
+    # بدون این، رسیدش رد می‌شود و *دلیلش را هیچ‌وقت نمی‌بیند* — و
+    # بعد از پشتیبانی می‌پرسد چرا. متن همان متنی است که مالک نوشته.
+    try:
+        ctx.db.chat_add(
+            o["user_id"], "system",
+            f"رسید سفارش #{order_id} تایید نشد.\n\nدلیل: {reason}",
+            order_id=order_id)
+    except Exception:
+        log.warning("ثبت خبرِ رد در صندوق ناموفق", exc_info=True)
+
     return True
 
 

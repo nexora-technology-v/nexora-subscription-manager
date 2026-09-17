@@ -384,6 +384,7 @@
   /* ── مینی‌اپ مشتری ── */
   var M_ME = { name: "مریم کاظمی", brand: "نکسورا", balance: 240000, coins: 36,
                logo: FAKE_LOGO,
+               support: "nexora_support", channel: "nexora_vpn",
                tgId: 1278109787, username: "maryam_k",
                botUsername: "nexora_vpn_bot" };
   var GB = 1024 * 1024 * 1024;
@@ -469,7 +470,53 @@
     return { ok: true, status: "awaiting" };
   }
 
+  // صندوق پیام — با یک خبرِ سیستمی و یک گفتگوی واقعی، وگرنه
+  // هیچ‌وقت معلوم نمی‌شود سه نوع پیام کنار هم چه شکلی‌اند.
+  var M_INBOX = { unread: 1, messages: [
+    { id: 1, from: "user", body: "سلام، رسید رو فرستادم ولی هنوز تایید نشده",
+      orderId: 4101, at: "2026-09-17 11:02:00", read: true },
+    { id: 2, from: "admin", body: "سلام. الان بررسی می‌کنم، چند دقیقه صبر کنید.",
+      orderId: null, at: "2026-09-17 11:04:00", read: true },
+    { id: 3, from: "system",
+      body: "رسید سفارش #4101 تایید نشد.\n\nدلیل: مبلغ واریزی با مبلغ سفارش نمی‌خواند — ۱۲۰٬۰۰۰ تومان لازم بود.",
+      orderId: 4101, at: "2026-09-17 11:09:00", read: false },
+  ] };
+
+  var M_PING = { unread: 1, openOrders: 1, subs: 3 };
+
+  function inboxSend(body) {
+    var t = ((body || {}).body || "").trim();
+    if (!t) { var e = new Error("پیام خالی است"); e.status = 400; throw e; }
+    M_INBOX.messages.push({ id: M_INBOX.messages.length + 1, from: "user",
+                            body: t, orderId: null,
+                            at: new Date().toISOString().slice(0, 16).replace("T", " "),
+                            read: true });
+    return { ok: true };
+  }
+
+  var A_INBOX = { unread: 2, threads: [
+    { userId: 1, tgId: 6001, name: "مریم کاظمی", username: "maryam",
+      unread: 2, lastBody: "ممنون، دوباره واریز کردم", lastAt: "2026-09-17 11:20" },
+    { userId: 2, tgId: 6002, name: "علی رضایی", username: "ali",
+      unread: 0, lastBody: "مرسی درست شد", lastAt: "2026-09-16 19:02" },
+  ] };
+  var A_THREAD = { messages: [
+    { id: 1, from: "user", body: "سلام، رسید رو فرستادم", orderId: 4101, at: "2026-09-17 11:02", read: true },
+    { id: 2, from: "admin", body: "بررسی می‌کنم، چند دقیقه صبر کنید.", orderId: null, at: "2026-09-17 11:04", read: true },
+    { id: 3, from: "system", body: "رسید سفارش #4101 تایید نشد.\n\nدلیل: مبلغ واریزی نمی‌خواند.", orderId: 4101, at: "2026-09-17 11:09", read: false },
+    { id: 4, from: "user", body: "ممنون، دوباره واریز کردم", orderId: null, at: "2026-09-17 11:20", read: false },
+  ] };
+
   function byPath(u, body) {
+    if (u.indexOf("/admin/bot/alerts") >= 0) return { receipts: 3, messages: 2, ready: true };
+    if (u.indexOf("/admin/bot/inbox/send") >= 0) return { ok: true };
+    if (u.indexOf("/admin/bot/inbox") >= 0) {
+      return u.indexOf("user_id=") >= 0 ? A_THREAD : A_INBOX;
+    }
+    if (u.indexOf("/mini/inbox/send") >= 0) return inboxSend(body);
+    if (u.indexOf("/mini/inbox/read") >= 0) { M_INBOX.unread = 0; M_PING.unread = 0; return { ok: true }; }
+    if (u.indexOf("/mini/inbox") >= 0) return M_INBOX;
+    if (u.indexOf("/mini/ping") >= 0) return M_PING;
     if (u.indexOf("/receipt") >= 0) return miniReceipt(u, body);
     if (u.indexOf("/mini/orders") >= 0) return M_ORDERS;
     if (u.indexOf("/mini/order") >= 0) return miniOrder(body);

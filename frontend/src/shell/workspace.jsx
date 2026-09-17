@@ -9,7 +9,7 @@ import {
   Bot, Check, ChevronDown, Circle,
 } from "lucide-react";
 import { WORKSPACES, WS_COLOR } from "../lib/constants";
-import { NavIndicator, SectionHead } from "../ui/index";
+import { NavAlert, NavIndicator, SectionHead } from "../ui/index";
 
 export function ComingSoon({ title, desc, features }) {
   return (
@@ -115,7 +115,8 @@ export function WsModePreview({ mode, active }) {
  * سه حالت دارد چون سلیقه‌ها فرق می‌کند و این پنل قرار است فروخته شود.
  * حالت از تنظیمات می‌آید و در localStorage می‌ماند.
  */
-export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive }) {
+export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
+                                 alerts = {} }) {
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState(null);
   const spaces = Object.values(WORKSPACES);
@@ -163,13 +164,18 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive }
                           fontWeight: sel ? 600 : 400,
                         }}>
                         <it.icon size={12} style={{ flexShrink: 0 }} />
-                        <span className="text-[13px] truncate">{it.label}</span>
+                        <span className="flex-1 text-[13px] truncate">{it.label}</span>
                         {it.badge && (
                           <span className="text-[10.5px] px-1.5 py-0.5 rounded-full shrink-0"
                             style={{ background: "var(--hair-2)", color: "var(--muted)" }}>
                             {it.badge}
                           </span>
                         )}
+                        {/* همان نشانِ `App.jsx` — از یک کامپوننت، نه دو
+                            تکه‌ی جدا. حالتِ تاشو پیش‌فرض است، پس اگر
+                            فقط آن‌جا اضافه شود، نشان هیچ‌وقت دیده
+                            نمی‌شود. */}
+                        {!it.badge && it.alert && <NavAlert count={alerts[it.alert]} />}
                       </button>
                     );
                   })}

@@ -2178,6 +2178,133 @@ def _logo_clear(tid: int):
                 log.debug("پاک‌کردن لوگو ناموفق", exc_info=True)
 
 
+def _root_tenant_row():
+    """
+    مستاجرِ ریشه — همان مالک.
+
+    **هیچ‌وقت `LIMIT 1` بدون شرط.** اگر ردیفِ مالک یک‌بار پاک و
+    دوباره ساخته شود (نصبِ دوباره)، شناسه‌اش از نماینده بزرگ‌تر
+    می‌شود و بی‌صدا به ردیفِ اشتباه می‌رسیم. قاعده‌ی مخزن است و تستِ
+    درز اجرایش می‌کند.
+    """
+    con = _bot_conn()
+    if not con:
+        raise HTTPException(status_code=503, detail="دیتابیس ربات در دسترس نیست")
+    try:
+        r = con.execute(
+            "SELECT * FROM tenants WHERE parent_id IS NULL "
+            "ORDER BY id LIMIT 1").fetchone()
+    finally:
+        con.close()
+    if not r:
+        raise HTTPException(status_code=404, detail="مستاجر ریشه پیدا نشد")
+    return dict(r)
+
+
+def _bot_db_rw(t):
+    """
+    `TenantDB` نوشتنی برای این مستاجر.
+
+    `_bot_conn` فقط‌خواندنی است و صندوق پیام باید بنویسد. از همان
+    کلاسِ ربات استفاده می‌کنیم، نه SQL دستی — وگرنه قاعده‌ی
+    خوانده‌نشده دو جا نوشته می‌شود و روزی از هم دور می‌افتند.
+    """
+    h = _bot_handlers()
+    return h.DB.TenantDB(t["id"])
+
+
+@app.get("/api/admin/bot/inbox")
+def admin_inbox(user_id: int = None, x_admin_password: str = Header(...)):
+    """
+    گفتگوها برای مالک — فهرست، یا یک گفتگوی مشخص.
+    """
+    check_auth(x_admin_password)
+    t = _root_tenant_row()
+    try:
+        db = _bot_db_rw(t)
+        if user_id:
+            rows = db.chat_list(int(user_id))
+            return {"messages": [{
+                "id": r["id"], "from": r["sender"], "body": r["body"],
+                "orderId": r["order_id"], "at": r["created_at"],
+                "read": bool(r["read_at"]),
+            } for r in rows]}
+        threads = db.chat_threads()
+        return {"threads": [{
+            "userId": r["user_id"], "tgId": r["tg_id"],
+            "name": r["first_name"] or "", "username": r["username"] or "",
+            "unread": int(r["unread"] or 0),
+            "lastBody": (r["last_body"] or "")[:120],
+            "lastAt": r["last_at"] or "",
+        } for r in threads],
+            "unread": db.chat_unread_for_admin()}
+    except Exception as e:
+        log.exception("خواندن صندوق پنل ناموفق")
+        raise HTTPException(status_code=503, detail=f"صندوق خوانده نشد: {str(e)[:120]}")
+
+
+@app.post("/api/admin/bot/inbox/send")
+def admin_inbox_send(payload: dict, x_admin_password: str = Header(...)):
+    """پاسخ مالک به یک مشتری — هم در صندوق، هم در خودِ ربات."""
+    check_auth(x_admin_password)
+    p = payload or {}
+    try:
+        uid = int(p.get("userId"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="مشتری مشخص نشده")
+    body = str(p.get("body") or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="پیام خالی است")
+
+    t = _root_tenant_row()
+    try:
+        db = _bot_db_rw(t)
+        db.chat_add(uid, "admin", body[:2000])
+        db.chat_mark_read(uid, "admin")
+        u = db.get_user_by_id(uid)
+    except Exception as e:
+        log.exception("ثبت پاسخ ناموفق")
+        raise HTTPException(status_code=502, detail=f"فرستاده نشد: {str(e)[:120]}")
+
+    # و در خودِ تلگرام هم برسد: مشتری ممکن است مینی‌اپ را باز نکند.
+    if u:
+        try:
+            h, ctx = _mini_ctx(t)
+            ctx.bot.send(u["tg_id"],
+                         f"💬 <b>پاسخ پشتیبانی</b>\n\n{h.esc(body[:1000])}")
+        except Exception:
+            log.debug("ارسال پاسخ در تلگرام ناموفق", exc_info=True)
+
+    return {"ok": True}
+
+
+@app.get("/api/admin/bot/alerts")
+def admin_alerts(x_admin_password: str = Header(...)):
+    """
+    چیزهایی که همین حالا کارِ مالک را می‌خواهند.
+
+    چرا لازم شد: رسید می‌آمد و مالک نمی‌فهمید — تا وقتی اتفاقی
+    صفحه‌ی سفارش‌ها را باز کند. حالا پنل هر چند ثانیه همین را
+    می‌پرسد و نشان می‌گذارد.
+    """
+    check_auth(x_admin_password)
+    con = _bot_conn()
+    if not con:
+        return {"receipts": 0, "messages": 0, "ready": False}
+    try:
+        rc = con.execute(
+            "SELECT COUNT(*) n FROM orders WHERE status='awaiting'").fetchone()["n"]
+        ms = con.execute(
+            "SELECT COUNT(*) n FROM chat_messages "
+            "WHERE sender='user' AND read_at IS NULL").fetchone()["n"]
+    except Exception:
+        log.debug("خواندن هشدارها ناموفق", exc_info=True)
+        return {"receipts": 0, "messages": 0, "ready": False}
+    finally:
+        con.close()
+    return {"receipts": int(rc or 0), "messages": int(ms or 0), "ready": True}
+
+
 @app.get("/api/admin/brand/logo")
 def brand_logo_get(x_admin_password: str = Header(...)):
     """
@@ -10051,6 +10178,101 @@ def _mini_plan(t, payload):
         raise HTTPException(status_code=409,
                             detail="تست رایگان از خودِ ربات گرفته می‌شود")
     return dict(pl)
+
+
+@app.get("/api/mini/inbox")
+def mini_inbox(tu: tuple = Depends(mini_user)):
+    """گفتگوی همین مشتری، و شمارِ نخوانده‌ها."""
+    t, u = tu
+    try:
+        db = _bot_db_rw(t)
+        rows = db.chat_list(u["id"])
+        unread = db.chat_unread_for_user(u["id"])
+    except Exception as e:
+        log.exception("خواندن صندوق مینی‌اپ ناموفق")
+        raise HTTPException(status_code=503, detail=f"صندوق خوانده نشد: {str(e)[:120]}")
+    return {
+        "unread": unread,
+        "messages": [{
+            "id": r["id"], "from": r["sender"], "body": r["body"],
+            "orderId": r["order_id"], "at": r["created_at"],
+            "read": bool(r["read_at"]),
+        } for r in rows],
+    }
+
+
+@app.get("/api/mini/ping")
+def mini_ping(tu: tuple = Depends(mini_user)):
+    """
+    فقط شمارنده‌ها — سبک، برای پرسیدنِ مکرر.
+
+    مینی‌اپ هر بیست ثانیه همین را می‌پرسد و وقتی عددی عوض شد،
+    داده‌ی کامل را می‌گیرد. بدون این، کاربر باید خودش تازه‌سازی کند
+    و تا وقتی نکند، تاییدِ رسیدش را نمی‌بیند.
+    """
+    t, u = tu
+    con = _bot_conn()
+    if not con:
+        return {"unread": 0, "openOrders": 0, "subs": 0}
+    try:
+        unread = con.execute(
+            "SELECT COUNT(*) n FROM chat_messages WHERE tenant_id=? AND user_id=? "
+            "AND sender<>'user' AND read_at IS NULL",
+            (t["id"], u["id"])).fetchone()["n"]
+        opened = con.execute(
+            "SELECT COUNT(*) n FROM orders WHERE tenant_id=? AND user_id=? "
+            "AND status IN ('pending','awaiting')",
+            (t["id"], u["id"])).fetchone()["n"]
+        subs = con.execute(
+            "SELECT COUNT(*) n FROM subscriptions WHERE tenant_id=? AND user_id=?",
+            (t["id"], u["id"])).fetchone()["n"]
+    except Exception:
+        log.debug("پینگ مینی‌اپ ناموفق", exc_info=True)
+        return {"unread": 0, "openOrders": 0, "subs": 0}
+    finally:
+        con.close()
+    return {"unread": int(unread or 0), "openOrders": int(opened or 0),
+            "subs": int(subs or 0)}
+
+
+@app.post("/api/mini/inbox/send")
+def mini_inbox_send(payload: dict, tu: tuple = Depends(mini_user)):
+    """پیام مشتری به پشتیبانی."""
+    t, u = tu
+    body = str((payload or {}).get("body") or "").strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="پیام خالی است")
+    if len(body) > 2000:
+        raise HTTPException(status_code=400, detail="پیام خیلی بلند است")
+    try:
+        db = _bot_db_rw(t)
+        db.chat_add(u["id"], "user", body)
+    except Exception as e:
+        log.exception("ثبت پیام مینی‌اپ ناموفق")
+        raise HTTPException(status_code=502, detail=f"فرستاده نشد: {str(e)[:120]}")
+
+    # مالک باید بفهمد — وگرنه پیام می‌ماند تا کسی اتفاقی پنل را باز کند
+    try:
+        h, ctx = _mini_ctx(t)
+        who = u.get("first_name") or str(u.get("tg_id") or "")
+        ctx.notify_group(
+            f"💬 <b>پیام تازه از {h.esc(who)}</b>\n\n{h.esc(body[:400])}",
+            topic="tickets")
+    except Exception:
+        log.debug("اعلان پیام به گروه ناموفق", exc_info=True)
+
+    return {"ok": True}
+
+
+@app.post("/api/mini/inbox/read")
+def mini_inbox_read(tu: tuple = Depends(mini_user)):
+    """مشتری صندوقش را باز کرد."""
+    t, u = tu
+    try:
+        _bot_db_rw(t).chat_mark_read(u["id"], "user")
+    except Exception:
+        log.debug("علامت خواندن ناموفق", exc_info=True)
+    return {"ok": True}
 
 
 @app.post("/api/mini/order")

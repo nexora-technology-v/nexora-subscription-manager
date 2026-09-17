@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { API_URL, WORKSPACES, WS_MODES } from "./lib/constants";
+
 import { BillingClients, BillingDash, BillingGroups, BillingInvoice, BillingPayments, BillingPeriod, BillingSettings } from "./sections/billing";
 import { BotAffiliates } from "./sections/bot/affiliates";
 import { BotBackupSection } from "./sections/bot/backup";
@@ -19,6 +20,7 @@ import { BotCoinsSection } from "./sections/bot/coins";
 import { BotSection } from "./sections/bot/connection";
 import { BotInboundsSection } from "./sections/bot/inbounds";
 import { BotOrdersSection } from "./sections/bot/orders";
+import { BotInboxSection } from "./sections/bot/inbox";
 import { BotPlansSection } from "./sections/bot/plans";
 import { BotReportSection, BotStatsSection } from "./sections/bot/stats";
 import { BotPreviewSection, BotTextsSection } from "./sections/bot/texts";
@@ -35,7 +37,7 @@ import { AppsSection, BannersSection, FaqSection, LinksSection, OverviewSection,
 import { LivePreview, SystemSection } from "./sections/system";
 import { SystemHealth, TunnelEvents, TunnelList, TunnelNodes, TunnelOverview } from "./sections/tunnel";
 import { WorkspaceSwitch } from "./shell/workspace";
-import { CommandPalette, ConfirmModal, ErrorBoundary, LoginScreen, NavIndicator, StatusChip, Toast } from "./ui/index";
+import { CommandPalette, ConfirmModal, ErrorBoundary, LoginScreen, NavAlert, NavIndicator, StatusChip, Toast } from "./ui/index";
 
 
 const ALL_NAV = Object.values(WORKSPACES).flatMap((w) => w.groups.flatMap((g) => g.items));
@@ -48,6 +50,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [alerts, setAlerts] = useState({ receipts: 0, messages: 0 });
   const [active, setActive] = useState("overview");
   const [workspace, setWorkspace] = useState(() => {
     const w = localStorage.getItem("nexora_workspace");
@@ -63,6 +66,33 @@ export default function App() {
       return "accordion";
     }
   });
+
+  /* هشدارها — چیزهایی که همین حالا کارِ مالک را می‌خواهند.
+   *
+   * رسید می‌آمد و کسی نمی‌فهمید تا اتفاقی صفحه‌ی سفارش‌ها باز شود.
+   * یعنی مشتری پول داده و منتظر مانده، و مالک خبر نداشت.
+   *
+   * سبک است (فقط دو شمارنده) و وقتی تب پنهان است نمی‌دود — پنلِ
+   * بازِ فراموش‌شده نباید تا ابد به سرور بزند.
+   */
+  useEffect(() => {
+    if (!password) return undefined;
+    let alive = true;
+    const beat = async () => {
+      if (!alive || document.visibilityState !== "visible") return;
+      try {
+        const r = await fetch(`${API_URL}/api/admin/bot/alerts`,
+          { headers: { "X-Admin-Password": password } });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (alive) setAlerts({ receipts: j.receipts || 0, messages: j.messages || 0 });
+      } catch { /* شبکه قطع بود — دفعه‌ی بعد */ }
+    };
+    const id = setInterval(beat, 25000);
+    beat();
+    return () => { alive = false; clearInterval(id); };
+  }, [password]);
+
 
   useEffect(() => {
     try { localStorage.setItem("nexora-ws-mode", wsMode); } catch { /* بی‌صدا */ }
@@ -239,6 +269,7 @@ export default function App() {
         </div>
 
         <WorkspaceSwitch mode={wsMode} workspace={workspace} onSwitch={switchWorkspace}
+          alerts={alerts}
           active={active} setActive={setActive} />
 
         {/* در حالت تاشو، منو داخل خود آکاردئون است — اینجا تکرارش نمی‌کنیم */}
@@ -263,6 +294,11 @@ export default function App() {
                         {n.badge}
                       </span>
                     )}
+                    {/* چیزی که همین حالا کار می‌خواهد.
+                        رسید می‌آمد و کسی نمی‌فهمید تا اتفاقی صفحه‌ی
+                        سفارش‌ها باز شود — یعنی مشتری پول داده و
+                        منتظر مانده بدون اینکه کسی خبر داشته باشد. */}
+                    {!n.badge && n.alert && <NavAlert count={alerts[n.alert]} />}
                     {/* در حالت جمع، نامِ آیتم فقط روی تولتیپ می‌ماند */}
                     <span className="fx-tip-nav">{n.label}</span>
                   </button>
@@ -350,6 +386,7 @@ export default function App() {
           {active === "bot-inbounds" && <BotInboundsSection password={password} />}
           {active === "bot-plans" && <BotPlansSection password={password} />}
           {active === "bot-orders" && <BotOrdersSection password={password} />}
+          {active === "bot-inbox" && <BotInboxSection password={password} />}
           {active === "bot-users" && <BotUsersSection password={password} />}
           {active === "bot-report" && <BotReportSection password={password} />}
           {active === "bot-coins" && <BotCoinsSection password={password} />}

@@ -35,7 +35,21 @@ if (!fs.existsSync(indexPath)) {
   process.exit(1);
 }
 
-const boot = fs.readFileSync(path.join(ROOT, "tools", "harness-boot.js"), "utf8");
+const bootPath = path.join(ROOT, "tools", "harness-boot.js");
+const boot = fs.readFileSync(bootPath, "utf8");
+
+// نحوِ داده‌ی ساختگی را همین‌جا بسنج.
+//
+// یک خطای نحوی در این فایل، صفحه را نمی‌شکند — فقط اسکریپت اجرا
+// نمی‌شود و `fetch` دزدیده نمی‌شود. نتیجه: هارنس بالا می‌آید، به
+// سرورِ واقعی درخواست می‌دهد، صفحه‌ی ورود نشان می‌دهد، و آدم فکر
+// می‌کند پنل خراب شده. یک‌بار همین‌جا وقت گرفت.
+try {
+  new Function(boot);
+} catch (e) {
+  console.error("❌ harness-boot.js نحوش خراب است:", e.message);
+  process.exit(1);
+}
 let html = fs.readFileSync(indexPath, "utf8");
 
 // اسکریپتِ داده باید *پیش از* باندل اجرا شود، وگرنه اپ با fetchِ
