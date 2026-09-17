@@ -38,36 +38,62 @@ const Root = lazy(() => CHUNK);
 const BOOT_LABEL = { mini: "اشتراک من", portal: "پنل نمایندگی",
                      admin: "پنل مدیریت" }[WHICH];
 
-function Booting() {
-  return <Splash label={BOOT_LABEL} />;
+/**
+ * صفحه‌ی ورود، با وضعیتِ واقعی.
+ *
+ * `note` را از خودِ کار می‌گیرد، نه از یک تایمر: تا وقتی تکه نرسیده
+ * «در حال بارگذاری» و اگر نرسید، «نیامد» با دکمه‌ی تلاش دوباره.
+ * درصدِ ساختگی نشان نمی‌دهیم — دروغ است و کاربر هم می‌فهمد.
+ */
+function Booting({ phase, note, onRetry }) {
+  return <Splash label={BOOT_LABEL} phase={phase} note={note} onRetry={onRetry} />;
 }
 
 /**
- * صفحه‌ی ورود یک کفِ زمانی دارد.
+ * از صفحه‌ی ورود به اپ — با یک خروجِ نرم.
  *
- * روی اتصال خوب، تکه‌ی اپ در حدود صدم‌ثانیه می‌رسد و نشان فقط یک بار
- * می‌پرد و می‌رود — که از نبودنش بدتر است. این کف باعث می‌شود حرکتِ
- * خودِ نشان (حلقه ۰٫۷۸ ثانیه، بعد نام) تا آخر دیده شود.
+ * سه چیز باید هم‌زمان درست شوند:
  *
- * کف است نه تأخیر: تکه از قبل دارد دانلود می‌شود، پس اگر دیرتر
- * برسد هیچ چیزی به زمانِ انتظار اضافه نشده.
+ *   ۱. تکه‌ی اپ برسد (کارِ واقعی)
+ *   ۲. حرکتِ نشان تا آخر دیده شود (کفِ زمانی)
+ *   ۳. قطعِ ناگهانی نباشد (خروجِ نرم)
  *
- * و اگر کاربر حرکت را خاموش کرده، کف هم برداشته می‌شود: کسی که
- * `prefers-reduced-motion` گذاشته، انیمیشنی نمی‌بیند که منتظرش
- * بماند.
+ * کف، *کف* است نه تأخیر: دانلود از پیش شروع شده و هم‌زمان می‌دود.
+ * و اگر کاربر حرکت را خاموش کرده، هر دو برداشته می‌شوند — کسی که
+ * `prefers-reduced-motion` گذاشته، انیمیشنی ندارد که منتظرش بماند.
  */
-const SPLASH_MS = 1900;
+const SPLASH_MS = 1700;
+const EXIT_MS = 380;
 
 function Gate({ children }) {
   const skip = typeof window !== "undefined"
     && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  const [ready, setReady] = React.useState(!!skip);
+
+  const [phase, setPhase] = React.useState(skip ? "in" : "load");
+  const [err, setErr] = React.useState("");
+
+  // ۱. تکه واقعاً رسید؟
   React.useEffect(() => {
-    if (skip) return undefined;
-    const t = setTimeout(() => setReady(true), SPLASH_MS);
-    return () => clearTimeout(t);
-  }, [skip]);
-  return ready ? children : <Booting />;
+    let alive = true;
+    CHUNK.then(() => { if (alive) setErr(""); })
+         .catch(() => { if (alive) setErr("برنامه بارگذاری نشد."); });
+    return () => { alive = false; };
+  }, []);
+
+  // ۲+۳. کف، بعد خروج
+  React.useEffect(() => {
+    if (skip || err) return undefined;
+    const a = setTimeout(() => setPhase("done"), SPLASH_MS);
+    const b = setTimeout(() => setPhase("in"), SPLASH_MS + EXIT_MS);
+    return () => { clearTimeout(a); clearTimeout(b); };
+  }, [skip, err]);
+
+  if (err) {
+    return <Booting phase="error" note={err}
+      onRetry={() => window.location.reload()} />;
+  }
+  if (phase === "in") return children;
+  return <Booting phase={phase} note="در حال آماده‌سازی…" />;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(

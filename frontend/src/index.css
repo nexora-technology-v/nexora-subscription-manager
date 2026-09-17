@@ -1554,108 +1554,161 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 /* حرکتِ کمتر را خودِ index.css سراسری رعایت می‌کند */
 
 /* ══════════════════════════════════════════════════════════
-   نشان و صفحه‌ی ورود
+   صفحه‌ی ورود نکسورا
    ══════════════════════════════════════════════════════════
-   همه‌ی حرکت‌ها transform/opacity/stroke-dashoffset‌اند — هیچ‌کدام
-   layout را دوباره حساب نمی‌کنند. این صفحه دقیقاً وقتی نشان داده
-   می‌شود که مرورگر دارد یک تکه‌ی جاوااسکریپت را parse می‌کند، یعنی
-   بدترین لحظه برای انیمیشنی که نخِ اصلی را بگیرد. */
+   یک لودینگ نیست؛ اولین چیزی است که مشتری از این محصول می‌بیند.
+
+   همه‌ی حرکت‌ها `transform`، `opacity`، `filter` و
+   `stroke-dashoffset`‌اند — هیچ‌کدام چیدمان را دوباره حساب
+   نمی‌کنند. این صفحه دقیقاً وقتی دیده می‌شود که مرورگر دارد یک
+   باندل را parse می‌کند، یعنی بدترین لحظه برای انیمیشنی که نخِ
+   اصلی را بگیرد. */
 
 .nx-splash {
+  position: relative;
   min-height: 100vh;
   min-height: 100dvh;
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 0;
-  background:
-    radial-gradient(ellipse 70% 45% at 50% 38%, var(--accent-wash), transparent 70%),
-    var(--bg);
-  padding: 24px;
+  background: var(--bg);
+  padding: calc(24px + var(--mn-sa-top)) 24px calc(24px + var(--mn-sa-bottom));
+  overflow: hidden;
+  transition: opacity .34s var(--sp-inout), filter .34s var(--sp-inout);
+}
+/* خروجِ نرم — نه قطعِ ناگهانی. `Gate` این کلاس را می‌گذارد و بعد
+   از همین مدت، اپ را نشان می‌دهد. */
+.nx-splash.done { opacity: 0; filter: blur(6px); pointer-events: none; }
+
+/* ── نورِ محیطی ──
+   دو لکه‌ی بسیار محو که آرام جابه‌جا می‌شوند. هدف عمق است، نه
+   جلبِ توجه؛ اگر دیده شود که «یک افکت است»، زیاده‌روی شده. */
+.nx-amb-a, .nx-amb-b {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  pointer-events: none;
+  will-change: transform;
+}
+.nx-amb-a {
+  width: 46vmax; height: 46vmax;
+  background: radial-gradient(circle, var(--accent) 0%, transparent 68%);
+  opacity: .16;
+  top: -14vmax; inset-inline-end: -12vmax;
+  animation: nx-drift-a 18s ease-in-out infinite alternate;
+}
+.nx-amb-b {
+  width: 38vmax; height: 38vmax;
+  background: radial-gradient(circle, var(--cy) 0%, transparent 70%);
+  opacity: .12;
+  bottom: -12vmax; inset-inline-start: -10vmax;
+  animation: nx-drift-b 22s ease-in-out infinite alternate;
+}
+@keyframes nx-drift-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(-4vmax, 3vmax, 0) scale(1.08); }
+}
+@keyframes nx-drift-b {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(3vmax, -3vmax, 0) scale(1.1); }
 }
 
+/* ── صحنه: مدار + نشان ── */
+.nx-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 168px; height: 168px;
+}
+.nx-mark-wrap { position: absolute; inset: 0; display: grid; place-items: center; }
 .nx-mark { display: block; overflow: visible; }
 
+/* ── مدارِ راه‌اندازی ── */
+.nx-orbit { position: absolute; inset: 0; }
+.nx-orbit .nx-sweep {
+  transform-origin: 90px 90px;
+  animation: nx-spin 2.4s linear infinite;
+}
+@keyframes nx-spin { to { transform: rotate(360deg); } }
+
+/* گره‌ها یکی‌یکی روشن می‌شوند — «وصل شد، وصل شد» */
+.nx-orbit .nx-node {
+  fill: var(--accent-2);
+  opacity: .2;
+  animation: nx-node-on 2.2s ease-in-out infinite;
+}
+@keyframes nx-node-on {
+  0%, 100% { opacity: .18; }
+  40%      { opacity: 1; }
+}
+
+/* ── ورودِ نشان ──
+   مقیاسِ ظریف و رفعِ تاری. `filter` روی یک عنصرِ کوچک ارزان است و
+   حسِ «از دور آمد» می‌دهد. */
+.nx-mark.go { animation: nx-reveal .82s var(--sp-soft) both; }
+@keyframes nx-reveal {
+  from { transform: scale(.88); opacity: 0; filter: blur(9px); }
+  to   { transform: scale(1);   opacity: 1; filter: blur(0); }
+}
+
+/* ── نام ──
+   از فاصله‌ی باز به بسته — همان روشی که برندها برای «حل‌شدن» نام
+   استفاده می‌کنند. */
 .nx-word {
-  margin-top: 18px;
+  margin-top: 22px;
   font-family: var(--sans);
   font-size: 22px;
   font-weight: 800;
-  letter-spacing: .22em;
-  /* لاتین است، پس چپ‌به‌راست — وگرنه فاصله‌ی حروف در RTL
-     وارونه می‌نشیند */
   direction: ltr;
   background: linear-gradient(100deg, #EAF2FB, #5AA9E6 55%, #2DD4BF);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  animation: nx-word-in .9s var(--sp-soft) .22s both;
+}
+@keyframes nx-word-in {
+  from { letter-spacing: .62em; opacity: 0; }
+  to   { letter-spacing: .22em; opacity: 1; }
 }
 
 .nx-sub {
-  margin-top: 7px;
+  margin-top: 8px;
   font-size: 12.5px;
   color: var(--muted);
+  animation: nx-up-in .6s var(--sp-soft) .48s both;
+}
+.nx-note {
+  margin-top: 16px;
+  font-size: 11.5px;
+  color: var(--dim);
+  animation: nx-up-in .6s var(--sp-soft) .6s both;
+}
+@keyframes nx-up-in {
+  from { transform: translateY(6px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
 }
 
-.nx-bar {
-  margin-top: 26px;
-  width: 168px;
-  height: 3px;
-  border-radius: 99px;
-  background: var(--hair-2);
-  overflow: hidden;
+/* ── نیامد ── */
+.nx-fail { margin-top: 20px; text-align: center; max-width: 280px; }
+.nx-fail p { font-size: 13px; color: var(--muted); line-height: 1.9; margin: 0; }
+.nx-retry {
+  margin-top: 14px; padding: 10px 22px;
+  border: 0; border-radius: var(--r-m);
+  background: linear-gradient(140deg, var(--accent), var(--cy));
+  color: #06090F; font-weight: 700; font-size: 13.5px;
+  font-family: inherit;
+  transition: transform var(--m-fast) var(--sp-snappy);
 }
-.nx-bar > i {
-  display: block;
-  height: 100%;
-  border-radius: 99px;
-  background: linear-gradient(90deg, var(--accent), var(--cy));
-  transform-origin: left center;
-  transform: scaleX(0);
-  animation: nx-fill 1.6s var(--sp-inout) infinite;
-}
-html[dir="rtl"] .nx-bar > i { transform-origin: right center; }
-
-@keyframes nx-fill {
-  0%   { transform: scaleX(0);   opacity: 1; }
-  70%  { transform: scaleX(1);   opacity: 1; }
-  100% { transform: scaleX(1);   opacity: 0; }
-}
-
-/* ── ورودِ خودِ نشان ── */
-.nx-mark.go .nx-n {
-  transform-origin: 60px 60px;
-  animation: nx-pop .62s var(--sp-snappy) both;
-}
-@keyframes nx-pop {
-  from { transform: scale(.82); opacity: 0; }
-  to   { transform: scale(1);   opacity: 1; }
-}
-
-/* حلقه کشیده می‌شود. محیطِ کلِ بیضی (rx 50، ry 17) حدود ۲۲۳ است،
-   پس هر نیمه ~۱۱۲؛ dasharray کمی بزرگ‌تر تا انتهایش لو نرود. */
-.nx-mark.go .nx-ring {
-  stroke-dasharray: 118;
-  stroke-dashoffset: 118;
-  animation: nx-draw .78s var(--sp-inout) both;
-}
-.nx-mark.go .nx-ring.front { animation-delay: .1s; }
-@keyframes nx-draw { to { stroke-dashoffset: 0; } }
-
-/* حلقه پس از کشیده‌شدن می‌ایستد و نمی‌چرخد.
-   چرخاندنِ کلِ svg، خودِ N را هم می‌چرخاند — که غلط است؛ و چرخاندنِ
-   فقط دو نیمه، جای جلو و عقبشان را عوض می‌کند و با آن اختلافِ
-   شفافیت، چشمک می‌زند. «هنوز دارد می‌آید» را نوارِ پایین می‌گوید،
-   که کارِ خودش است. */
+.nx-retry:active { transform: scale(.96); }
 
 @media (prefers-reduced-motion: reduce) {
-  .nx-mark.go .nx-n,
-  .nx-mark.go .nx-ring,
-  .nx-bar > i {
+  .nx-amb-a, .nx-amb-b,
+  .nx-orbit .nx-sweep, .nx-orbit .nx-node,
+  .nx-mark.go, .nx-word, .nx-sub, .nx-note {
     animation: none;
   }
-  .nx-mark.go .nx-ring { stroke-dashoffset: 0; }
-  .nx-bar > i { transform: scaleX(.4); }
+  .nx-word { letter-spacing: .22em; }
+  .nx-splash { transition: none; }
 }
 
 /* ── برگه‌ی پرداختِ مینی‌اپ ──

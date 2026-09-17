@@ -85,21 +85,91 @@ export function NexoraMark({ size = 96, animate = false, src = "",
 }
 
 /**
- * صفحه‌ی ورود — تا وقتی تکه‌ی اپ برسد.
+ * حلقه‌ی راه‌اندازی.
  *
- * `label` زیرِ نام می‌آید و می‌گوید کدام‌یک از سه اپ دارد بالا
- * می‌آید؛ صفحه‌ی یکسان برای هر سه، به کاربر هیچ نمی‌گوید.
+ * چرخنده نیست. یک مدارِ نقطه‌چین با کمانی که رویش می‌چرخد — حسِ
+ * «دارد وصل می‌شود»، نه «منتظر بمان». تعمداً نامعین است: پیشرفتِ
+ * دانلودِ یک تکه را نمی‌شود صادقانه اندازه گرفت، و درصدِ ساختگی
+ * دروغ است.
+ *
+ * فقط `transform` و `stroke-dashoffset` حرکت می‌کنند — هیچ‌کدام
+ * چیدمان را دوباره حساب نمی‌کنند. این صفحه دقیقاً وقتی دیده می‌شود
+ * که مرورگر دارد یک باندل را parse می‌کند، یعنی بدترین لحظه برای
+ * انیمیشنی که نخِ اصلی را بگیرد.
  */
-export function Splash({ label = "", logo = "", name = "" }) {
+function OrbitRing({ size = 168, state = "load" }) {
+  const R = 78;
+  const C = 2 * Math.PI * R;
+  // شش گرهِ روی مدار — «شبکه»، نه تزئین
+  const nodes = [0, 60, 120, 180, 240, 300];
   return (
-    <div className="nx-splash" dir="rtl">
-      <NexoraMark size={104} animate src={logo} alt={name} />
+    <svg className={`nx-orbit ${state}`} width={size} height={size}
+      viewBox="0 0 180 180" aria-hidden="true">
+      {/* مدارِ کم‌رنگ */}
+      <circle cx="90" cy="90" r={R} fill="none"
+        stroke="var(--hair-3)" strokeWidth="1" strokeDasharray="2 6" />
+      {/* کمانِ چرخان */}
+      <circle className="nx-sweep" cx="90" cy="90" r={R} fill="none"
+        stroke="url(#nxSweep)" strokeWidth="2.5" strokeLinecap="round"
+        strokeDasharray={`${C * 0.16} ${C}`} />
+      <defs>
+        <linearGradient id="nxSweep" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0" />
+          <stop offset="60%" stopColor="var(--accent-2)" />
+          <stop offset="100%" stopColor="var(--cy)" />
+        </linearGradient>
+      </defs>
+      {nodes.map((deg, i) => {
+        const a = (deg - 90) * Math.PI / 180;
+        return (
+          <circle key={deg} className="nx-node" r="2.5"
+            cx={90 + R * Math.cos(a)} cy={90 + R * Math.sin(a)}
+            style={{ animationDelay: `${i * 0.22}s` }} />
+        );
+      })}
+    </svg>
+  );
+}
+
+/**
+ * صفحه‌ی ورود.
+ *
+ * `phase`:
+ *   load   در حال آمدن
+ *   done   رسید — خروجِ نرم پیش از نمایشِ اپ
+ *   error  نیامد — با دکمه‌ی تلاش دوباره
+ *
+ * `note` متنِ وضعیت است و باید *واقعی* باشد. درصدِ ساختگی نشان
+ * نمی‌دهیم؛ اگر چیزی برای گفتن نیست، هیچ نمی‌گوییم.
+ */
+export function Splash({ label = "", logo = "", name = "",
+                        phase = "load", note = "", onRetry }) {
+  return (
+    <div className={`nx-splash ${phase}`} dir="rtl" role="status" aria-live="polite">
+      {/* نورِ محیطی — دو لکه‌ی بسیار محو که آرام جابه‌جا می‌شوند */}
+      <div className="nx-amb-a" aria-hidden="true" />
+      <div className="nx-amb-b" aria-hidden="true" />
+
+      <div className="nx-stage">
+        {phase !== "error" && <OrbitRing state={phase} />}
+        <div className="nx-mark-wrap">
+          <NexoraMark size={84} animate src={logo} alt={name} />
+        </div>
+      </div>
+
       <div className="nx-word">{name || "NEXORA"}</div>
       {label ? <div className="nx-sub">{label}</div> : null}
-      {/* نوارِ پیشرفت عمداً زمان‌بندی‌شده است، نه واقعی: پیشرفتِ
-          دانلودِ یک تکه را نمی‌شود صادقانه اندازه گرفت. کارش فقط این
-          است که بگوید «ایستاده نیست». */}
-      <div className="nx-bar" aria-hidden="true"><i /></div>
+
+      {phase === "error" ? (
+        <div className="nx-fail">
+          <p>{note || "اتصال برقرار نشد."}</p>
+          {onRetry && (
+            <button className="nx-retry" onClick={onRetry}>تلاش دوباره</button>
+          )}
+        </div>
+      ) : (
+        note ? <div className="nx-note">{note}</div> : null
+      )}
     </div>
   );
 }
