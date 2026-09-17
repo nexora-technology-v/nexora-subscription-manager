@@ -855,10 +855,10 @@ function PlansBox({ token, onClose, onNote }) {
                   <div>
                     <label className="text-[11px] block mb-1"
                       style={{ color: "var(--muted)" }}>حجم (GB)</label>
+                    {/* select بدون مونو: گزینه‌ها «نامحدود» و «خارج از
+                        نرخ» هم دارند و JetBrains Mono حرف فارسی ندارد،
+                        پس فقط به فونتِ دیگری می‌افتد. */}
                     {policy.mode === "tiers" ? (
-                      {/* بدون مونو: گزینه‌ها «نامحدود» و «خارج از نرخ»
-                          هم دارند و JetBrains Mono حرف فارسی ندارد،
-                          پس فقط به فونتِ دیگری می‌افتد. */}
                       <select value={r.gb ?? 0}
                         onChange={(e) => patch(i, { gb: Number(e.target.value) || 0 })}
                         className="fx-input text-[13px] text-center w-full">
