@@ -545,7 +545,19 @@
           plan: "شش ماهه", at: "2026-09-17 11:30", waitedMin: 6, hasPhoto: true },
       ],
     };
-    if (u.indexOf("/admin/bot/inbox/send") >= 0) return { ok: true };
+    if (u.indexOf("/admin/bot/inbox/send") >= 0) {
+      /* پیام واقعاً اضافه شود.
+         با `{ok:true}` خالی، حبابِ خوش‌بینانه بعد از خواندنِ دوباره
+         ناپدید می‌شد و هارنس حالتی را نشان می‌داد که سرورِ واقعی
+         ندارد — یعنی باگی که نیست. */
+      var ab = ((body || {}).body || "").trim();
+      if (!ab) { var ae = new Error("پیام خالی است"); ae.status = 400; throw ae; }
+      A_THREAD.messages.push({ id: A_THREAD.messages.length + 1, from: "admin",
+                               body: ab, orderId: null,
+                               at: new Date().toISOString().slice(0, 16).replace("T", " "),
+                               read: false });
+      return { ok: true };
+    }
     if (u.indexOf("/admin/bot/inbox") >= 0) {
       return u.indexOf("user_id=") >= 0 ? A_THREAD : A_INBOX;
     }

@@ -40,6 +40,7 @@ import { WorkspaceSwitch } from "./shell/workspace";
 import { CommandPalette, ConfirmModal, ErrorBoundary, LoginScreen, NavAlert, NavIndicator, StatusChip, Toast } from "./ui/index";
 import { AlertBell } from "./shell/alertbell";
 import { errText } from "./lib/format";
+import { readKey, workspaceOf, writeKey } from "./lib/panelroute";
 
 
 const ALL_NAV = Object.values(WORKSPACES).flatMap((w) => w.groups.flatMap((g) => g.items));
@@ -59,8 +60,17 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [alerts, setAlerts] = useState({ receipts: 0, messages: 0 });
-  const [active, setActive] = useState("overview");
+  /* صفحه‌ی اولیه از نشانی می‌آید، نه همیشه داشبورد.
+     رفرش روی «سفارش‌ها» باید همان‌جا برگردد، نه اول. */
+  const [active, setActive] = useState(() => {
+    const k = readKey();
+    return ALL_NAV.some((n) => n.key === k) ? k : "overview";
+  });
   const [workspace, setWorkspace] = useState(() => {
+    // اگر نشانی صفحه‌ای را می‌گوید، فضای کاری از *همان* می‌آید —
+    // وگرنه صفحه بالا می‌آید و افکتِ نگهبان فوراً پرتش می‌کند بیرون
+    const fromUrl = workspaceOf(WORKSPACES, readKey());
+    if (fromUrl) return fromUrl;
     const w = localStorage.getItem("nexora_workspace");
     return WORKSPACES[w] ? w : "sub";
   });
@@ -210,7 +220,49 @@ export default function App() {
     return () => window.removeEventListener("keydown", k);
   }, [open]);
 
-  const navigate = (k) => { setActive(k); setOpen(false); };
+  /**
+   * رفتن به یک صفحه — تنها راه.
+   *
+   * چرا یک تابع: چهار جا این کار را جدا انجام می‌دادند (دسترسی
+   * سریع، زنگ اعلان، پالت فرمان، و خودِ منو) و یکی‌شان فضای کاری
+   * را عوض نمی‌کرد. نتیجه‌اش این بود که دکمه‌های «دسترسی سریع»
+   * هیچ کاری نمی‌کردند: `active` عوض می‌شد و افکتِ نگهبان — که
+   * می‌بیند این صفحه در فضای کاریِ فعلی نیست — فوراً برش
+   * می‌گرداند به صفحه‌ی اول.
+   */
+  const goTo = useCallback((k, opt) => {
+    if (!k) return;
+    const ws = workspaceOf(WORKSPACES, k);
+    if (ws && ws !== workspace) {
+      setWorkspace(ws);
+      try { localStorage.setItem("nexora_workspace", ws); } catch { /* بی‌صدا */ }
+    }
+    setActive(k);
+    setOpen(false);
+    if (!opt?.fromUrl) writeKey(k, true);
+  }, [workspace]);
+
+  const navigate = goTo;
+
+  /* عقب و جلوی مرورگر.
+     تنها جایی که نشانی *فرمان* می‌دهد؛ بقیه‌ی جاها نشانی را
+     دنبالِ خودشان می‌کشند. */
+  useEffect(() => {
+    const onPop = () => {
+      const k = readKey();
+      if (k && ALL_NAV.some((n) => n.key === k)) goTo(k, { fromUrl: true });
+    };
+    window.addEventListener("popstate", onPop);
+    window.addEventListener("hashchange", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      window.removeEventListener("hashchange", onPop);
+    };
+  }, [goTo]);
+
+  // نشانی همیشه صفحه‌ی فعلی را بگوید — حتی وقتی چیزِ دیگری
+  // (مثل تعویض فضای کاری) صفحه را عوض کرده
+  useEffect(() => { writeKey(active, false); }, [active]);
 
   // اگر صفحه‌ی فعال در حالت کاری جاری وجود نداشت (مثلاً بعد از رفرش)،
   // خودکار به اولین صفحه‌ی همان حالت می‌رویم تا صفحه‌ی خالی نبینیم.
@@ -223,14 +275,15 @@ export default function App() {
   }, [workspace, active]);
 
   // تعویض حالت کاری — به اولین آیتم فعال همان حالت می‌رود
+  /* تعویض فضای کاری = رفتن به اولین صفحه‌ی همان فضا.
+     از همان درِ واحد رد می‌شود تا نشانی و تاریخچه هم درست بمانند —
+     وگرنه دکمه‌ی «عقب» از این پرش رد نمی‌شود. */
   const switchWorkspace = (wsKey) => {
-    setWorkspace(wsKey);
-    localStorage.setItem("nexora_workspace", wsKey);
     const first = WORKSPACES[wsKey].groups
       .flatMap((g) => g.items)
       .find((i) => !i.badge);
-    if (first) setActive(first.key);
-    setOpen(false);
+    if (first) goTo(first.key);
+    else { setWorkspace(wsKey); setOpen(false); }
   };
   const login = (pw) => { localStorage.setItem("nexora_subpage_admin_pw", pw); setPassword(pw); };
   const logout = () => { localStorage.removeItem("nexora_subpage_admin_pw"); setPassword(""); setAuthed(false); };
@@ -400,13 +453,7 @@ export default function App() {
             {/* پریدن به همان صفحه — و حالتِ کاری هم باید عوض شود،
                 وگرنه افکتِ نگهبان فوراً برمی‌گرداندش به صفحه‌ی اولِ
                 حالتِ فعلی و دکمه «کار نمی‌کند» */}
-            <AlertBell data={alerts} onGo={(key) => {
-              const ws = Object.keys(WORKSPACES).find((w) =>
-                WORKSPACES[w].groups.some((g) => g.items.some((i) => i.key === key)));
-              if (ws && ws !== workspace) setWorkspace(ws);
-              setActive(key);
-              setOpen(false);
-            }} />
+            <AlertBell data={alerts} onGo={goTo} />
             <button className="fx-btn-g w-9 h-9 grid place-items-center shrink-0 fx-hide-m"
               onClick={() => setCalm((v) => !v)}
               title={calm ? "حرکت: کم — برای روشن‌کردن بزنید" : "حرکت: روشن — برای کم‌کردن بزنید"}
@@ -505,11 +552,7 @@ export default function App() {
       {/* پالت فرمان — هم می‌برد، هم کار می‌کند */}
       <CommandPalette
         open={palOpen} onClose={() => setPalOpen(false)} workspaces={WORKSPACES}
-        onPick={(ws, key) => {
-          if (ws !== workspace) { setWorkspace(ws); localStorage.setItem("nexora_workspace", ws); }
-          setActive(key);
-          setOpen(false);
-        }}
+        onPick={(ws, key) => goTo(key)}
         extra={[
           { label: dirty ? "ذخیره‌ی تغییرات" : "ذخیره (چیزی عوض نشده)",
             group: "کارها", icon: Save, run: () => dirty && save() },

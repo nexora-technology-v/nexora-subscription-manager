@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
-import { errText, faNum, toFaDigits as faDigits } from "../lib/format";
+import { errText, faDate, faNum, toFaDigits as faDigits } from "../lib/format";
 import { Avatar, EmptyState, Skeleton } from "../ui/index";
 
 /* آیا این آدرس مینی‌اپ است؟ — نام باید در دامنه‌ی خودِ ماژول هم
@@ -324,7 +324,7 @@ function SubDetail({ s, onBack, onRenew }) {
         <Cell label="باقی‌مانده" value={remain ? remain.n : "نامحدود"}
           unit={remain ? remain.u : null}
           tone={s.usagePct >= 90 ? "var(--danger)" : undefined} />
-        <Cell label="انقضا" value={s.expiryJalali || "—"}
+        <Cell label="انقضا" value={faDate(s.expiryJalali)}
           tone={s.daysLeft !== null && s.daysLeft <= 0 ? "var(--danger)"
             : s.daysLeft !== null && s.daysLeft <= 7 ? "var(--warn)" : undefined} />
       </div>
@@ -645,6 +645,26 @@ function InboxView({ msgs, busy, onSend, support, channel }) {
     endRef.current?.scrollIntoView({ block: "end" });
   }, [msgs]);
 
+  /* وقتی کیبورد باز می‌شود، جعبه‌ی نوشتن را در دید نگه دار.
+     روی گوشی، بازشدنِ کیبورد جعبه را زیر خودش می‌برد و کاربر
+     چیزی را که می‌نویسد نمی‌بیند. هر مرورگری این را جور دیگری
+     مدیریت می‌کند، ولی `scrollIntoView` روی همه یکسان است. */
+  const boxRef = useRef(null);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return undefined;
+    const show = () => setTimeout(
+      () => el.scrollIntoView({ block: "end", behavior: "smooth" }), 120);
+    el.addEventListener("focus", show);
+    const vv = window.visualViewport;
+    const onResize = () => { if (document.activeElement === el) show(); };
+    vv?.addEventListener("resize", onResize);
+    return () => {
+      el.removeEventListener("focus", show);
+      vv?.removeEventListener("resize", onResize);
+    };
+  }, []);
+
   const send = async () => {
     const body = text.trim();
     if (!body || sending) return;
@@ -688,10 +708,15 @@ function InboxView({ msgs, busy, onSend, support, channel }) {
             hint="هر سوالی دارید همین‌جا بنویسید — خبرِ تایید یا ردِ رسیدتان هم این‌جا می‌آید." />
         ) : (msgs || []).map((m) => (
           <div key={m.id}
-            className={`mn-msg ${m.from === "user" ? "me" : m.from === "system" ? "sys" : "them"}`}>
+            className={`mn-msg ${m.from === "user" ? "me" : m.from === "system" ? "sys" : "them"}`
+              + `${m.pending ? " pending" : ""}${m.failed ? " failed" : ""}`}>
             {m.from === "system" && <Shield size={13} className="mn-msg-ico" />}
             <span className="mn-msg-body">{m.body}</span>
-            <span className="mn-msg-at">{m.at ? faDigits(String(m.at).slice(11, 16)) : ""}</span>
+            <span className="mn-msg-at">
+              {m.at ? faDigits(String(m.at).slice(11, 16)) : ""}
+              {m.pending && " · در حال رفتن"}
+              {m.failed && " · نرفت"}
+            </span>
           </div>
         ))}
         <div ref={endRef} />
@@ -702,7 +727,7 @@ function InboxView({ msgs, busy, onSend, support, channel }) {
       )}
 
       <div className="mn-chat-bar">
-        <textarea rows={1} dir="auto" value={text} placeholder="پیامتان را بنویسید…"
+        <textarea ref={boxRef} rows={1} dir="auto" value={text} placeholder="پیامتان را بنویسید…"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
@@ -1012,6 +1037,44 @@ export default function Mini() {
     };
   }, [load]);
 
+  /* کیبوردِ گوشی.
+   *
+   * جعبه‌ی نوشتن `position: sticky; bottom: 0` است، یعنی به پایینِ
+   * *لایه‌ی چیدمان* می‌چسبد. ولی کیبورد لایه‌ی چیدمان را کوچک
+   * نمی‌کند — فقط `visualViewport` را. نتیجه این بود که جعبه پشتِ
+   * کیبورد می‌رفت و نوارِ تب هم رویش می‌نشست: کاربر تایپ می‌کرد و
+   * چیزی که می‌نوشت را نمی‌دید.
+   *
+   * پس ارتفاعِ کیبورد را خودمان می‌سنجیم و به CSS می‌دهیم. وقتی
+   * باز است نوارِ تب کنار می‌رود — همان کاری که خودِ تلگرام
+   * می‌کند.
+   */
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return undefined;
+    const de = document.documentElement;
+    /* بدون requestAnimationFrame.
+       rAF در تبِ پنهان اصلاً اجرا نمی‌شود، پس اندازه‌ی کیبورد تا
+       وقتی صفحه دوباره دیده نشود به‌روز نمی‌شد — و کارش هم آن‌قدر
+       سبک است که به کوالسینگ نیاز ندارد. */
+    const apply = () => {
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      de.style.setProperty("--mn-kb", `${Math.round(kb)}px`);
+      // آستانه: چرخاندنِ گوشی و نوارِ آدرس هم چند ده پیکسل
+      // جابه‌جا می‌کنند و آن‌ها کیبورد نیستند
+      de.dataset.mnKb = kb > 120 ? "1" : "0";
+    };
+    apply();
+    vv.addEventListener("resize", apply);
+    vv.addEventListener("scroll", apply);
+    return () => {
+      vv.removeEventListener("resize", apply);
+      vv.removeEventListener("scroll", apply);
+      de.style.removeProperty("--mn-kb");
+      delete de.dataset.mnKb;
+    };
+  }, []);
+
   /* هر بیست ثانیه فقط شمارنده‌ها.
    *
    * کاربر نباید مجبور باشد تازه‌سازی بزند تا بفهمد رسیدش تایید شده.
@@ -1056,7 +1119,11 @@ export default function Mini() {
        چت‌کردن* است یعنی تا بیست ثانیه جوابِ پشتیبانی را نمی‌بیند —
        که در یک گفتگو خیلی طولانی است. بیرون از چت همان بیست
        می‌ماند تا روی اینترنت موبایل گران نشود. */
-    const id = setInterval(beat, tab === "chat" ? 6000 : 20000);
+    /* سه ثانیه داخل گفتگو.
+       شش ثانیه هم برای یک گفتگوی زنده زیاد بود — مالک جواب
+       می‌داد و مشتری تا شش ثانیه بعد نمی‌دید. بیرون از چت همان
+       بیست می‌ماند تا روی اینترنت موبایل گران نشود. */
+    const id = setInterval(beat, tab === "chat" ? 3000 : 20000);
     beat();
     return () => { alive = false; clearInterval(id); };
   }, [load, tab]);
@@ -1082,11 +1149,29 @@ export default function Mini() {
     } catch (e) { setErr(e.message); }
   };
 
+  /**
+   * فرستادنِ پیام — با حبابِ فوری.
+   *
+   * قبلاً تا *دو* رفت‌وبرگشت تمام نمی‌شد (POST، بعد خواندنِ دوباره)
+   * هیچ چیزی روی صفحه نمی‌آمد. روی اینترنتِ موبایل یعنی یکی دو
+   * ثانیه سکوت، و کاربر دوباره می‌زد.
+   */
   const sendMsg = async (body) => {
-    await api("/api/mini/inbox/send", { method: "POST", body: { body } });
-    const x = await api("/api/mini/inbox");
-    setMsgs(x.messages || []);
-    setUnread(x.unread || 0);
+    const temp = `tmp-${Date.now()}`;
+    const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+    setMsgs((prev) => [...(prev || []),
+      { id: temp, from: "user", body, at: now, pending: true }]);
+    try {
+      await api("/api/mini/inbox/send", { method: "POST", body: { body } });
+      const x = await api("/api/mini/inbox");
+      setMsgs(x.messages || []);
+      setUnread(x.unread || 0);
+    } catch (e) {
+      // حبابِ نرفته نباید شبیه پیامِ رفته بماند
+      setMsgs((prev) => (prev || []).map(
+        (m) => (m.id === temp ? { ...m, pending: false, failed: true } : m)));
+      throw e;
+    }
   };
 
   // بازکردنِ تبِ پیام‌ها یعنی خوانده شد

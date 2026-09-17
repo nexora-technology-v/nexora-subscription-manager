@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
-import { errText, faNum, monoIf } from "../lib/format";
+import { errText, faDate, faNum, monoIf } from "../lib/format";
 import { isoToJalaliLabel } from "../ui/jalali";
 // usePager از کتابخانه‌ی مشترک می‌آید، نه کپیِ محلی: صفحه‌بندی یک
 // قاعده است و دو پیاده‌سازی از یک قاعده دیر یا زود از هم جدا
@@ -1388,8 +1388,8 @@ function ConfigBox({ token, row, onClose, onRenew, onToggle }) {
 
           {tab === "info" && (
             <div>
-              <Rowline k="تاریخ ساخت" v={row.createdJalali || "—"} />
-              <Rowline k="تاریخ انقضا" v={row.expiryJalali || "بدون انقضا"} />
+              <Rowline k="تاریخ ساخت" v={faDate(row.createdJalali)} />
+              <Rowline k="تاریخ انقضا" v={faDate(row.expiryJalali, "بدون انقضا")} />
               <Rowline k="روز باقی‌مانده"
                 v={row.daysLeft === null || row.daysLeft === undefined ? "—"
                   : expired ? "منقضی شده" : `${faNum(row.daysLeft)} روز`}
@@ -1902,7 +1902,7 @@ function Dashboard({ token, onOut }) {
                       </td>
                       <td data-label="دستگاه">{c.devices ? faNum(c.devices) : "∞"}</td>
                       <td data-label="انقضا">
-                        <span>{c.expiryJalali || "—"}</span>
+                        <span>{faDate(c.expiryJalali)}</span>
                         {c.daysLeft !== null && c.daysLeft <= 7 && (
                           <span className="fx-pill mr-2 text-[11.5px]"
                             style={{

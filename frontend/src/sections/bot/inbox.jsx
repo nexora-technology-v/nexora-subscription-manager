@@ -105,28 +105,82 @@ export function BotInboxSection({ password }) {
     setAtEnd(el.scrollHeight - el.scrollTop - el.clientHeight < 60);
   };
 
-  // گفتگوی باز زنده می‌ماند — مشتری ممکن است همین حالا بنویسد
+  /* گفتگوی باز زنده می‌ماند — مشتری ممکن است همین حالا بنویسد.
+   *
+   * پانزده ثانیه برای یک گفتگو خیلی زیاد بود: مشتری می‌نوشت و
+   * مالک تا ربع دقیقه بعد نمی‌دید. حالا سه ثانیه — ولی فقط تا دو
+   * دقیقه بعد از آخرین حرکت. گفتگویی که رها شده نباید تا ابد هر
+   * سه ثانیه به سرور بزند.
+   */
+  const lastMove = useRef(Date.now());
+  useEffect(() => { lastMove.current = Date.now(); }, [open, msgs]);
+
   useEffect(() => {
     if (!open) return undefined;
     const id = setInterval(() => {
-      if (document.visibilityState === "visible") { loadThread(open); loadThreads(); }
-    }, 15000);
+      if (document.visibilityState !== "visible") return;
+      const idle = Date.now() - lastMove.current > 120000;
+      // وقتی گفتگو سرد شده، هر پنجمین تیک کافی است
+      if (idle && Math.floor(Date.now() / 3000) % 5 !== 0) return;
+      loadThread(open);
+      loadThreads();
+    }, 3000);
     return () => clearInterval(id);
   }, [open, loadThread, loadThreads]);
 
+  // برگشت به تب باید فوری تازه کند، نه اینکه تا تیکِ بعدی صبر کند
+  useEffect(() => {
+    if (!open) return undefined;
+    const wake = () => {
+      if (document.visibilityState !== "visible") return;
+      lastMove.current = Date.now();
+      loadThread(open);
+      loadThreads();
+    };
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
+    return () => {
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
+    };
+  }, [open, loadThread, loadThreads]);
+
+  /**
+   * فرستادن — با حبابِ فوری.
+   *
+   * قبلاً متن تا وقتی *دو* رفت‌وبرگشت تمام نمی‌شد (POST، بعد
+   * خواندنِ دوباره‌ی گفتگو) روی صفحه نمی‌آمد. روی اینترنتِ کند یعنی
+   * یکی دو ثانیه که انگار هیچ اتفاقی نیفتاده — و مالک دوباره
+   * می‌زد.
+   *
+   * حالا حباب همان لحظه می‌نشیند با نشانِ «در حال رفتن»، و اگر
+   * نرسید همان‌جا قرمز می‌شود. جعبه هم فوری خالی می‌شود.
+   */
   const send = async () => {
     const body = text.trim();
     if (!body || busy || !open) return;
+    const temp = `tmp-${Date.now()}`;
     setBusy(true); setErr("");
+    setText("");
+    setAtEnd(true);
+    setMsgs((prev) => [...(prev || []), {
+      id: temp, from: "admin", body,
+      at: new Date().toISOString().slice(0, 19).replace("T", " "),
+      pending: true,
+    }]);
+    boxRef.current?.focus();
     try {
       await call("/api/admin/bot/inbox/send", password,
                  { method: "POST", body: { userId: open, body } });
-      setText("");
-      setAtEnd(true);
+      lastMove.current = Date.now();
       await loadThread(open);
       loadThreads();
-      boxRef.current?.focus();
-    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      setErr(e.message);
+      // حبابِ ناموفق نباید شبیه پیامِ رفته بماند
+      setMsgs((prev) => (prev || []).map(
+        (m) => (m.id === temp ? { ...m, pending: false, failed: true } : m)));
+    } finally { setBusy(false); }
   };
 
   const cur = (threads || []).find((t) => t.userId === open);
@@ -250,13 +304,18 @@ export function BotInboxSection({ password }) {
                       <div key={g.key} className="fx-chat-day"><span>{g.label}</span></div>
                     ) : (
                       <div key={g.key}
-                        className={`fx-bub ${g.m.from} ${g.head ? "head" : ""}`}>
+                        className={`fx-bub ${g.m.from} ${g.head ? "head" : ""}`
+                          + `${g.m.pending ? " pending" : ""}${g.m.failed ? " failed" : ""}`}>
                         {g.m.from === "system" && <Shield size={12} className="fx-bub-ico" />}
                         <span className="fx-bub-text">{g.m.body}</span>
                         <span className="fx-bub-meta">
                           {clock(g.m.at)}
+                          {/* حبابِ خوش‌بینانه باید بگوید هنوز نرفته —
+                              وگرنه پیامی که نرسیده شبیه پیامِ رفته است */}
                           {g.m.from === "admin" && (
-                            g.m.read ? <CheckCheck size={12} /> : <Check size={12} />
+                            g.m.failed ? <AlertTriangle size={12} />
+                              : g.m.pending ? <Loader2 size={12} className="animate-spin" />
+                                : g.m.read ? <CheckCheck size={12} /> : <Check size={12} />
                           )}
                         </span>
                       </div>

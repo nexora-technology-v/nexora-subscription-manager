@@ -5,6 +5,7 @@
  * در آن عملاً ناممکن.
  */
 import React, { useState, useEffect } from "react";
+import { useDebouncedChange } from "../../lib/hooks";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle, Ban, ChevronLeft, Loader2, Package, RefreshCw, Search, Send, Users, Wallet, X,
@@ -68,11 +69,10 @@ export function BotUsersSection({ password }) {
   };
   useEffect(() => { load({ offset: 0 }); }, [password]);
 
-  // جستجوی زنده — بدون این، ادمین باید هر بار Enter بزند
-  useEffect(() => {
-    const t = setTimeout(() => { setOffset(0); load({ q, offset: 0 }); }, 350);
-    return () => clearTimeout(t);
-  }, [q]);
+  // جستجوی زنده — بدون این، ادمین باید هر بار Enter بزند.
+  // بارِ اول اجرا نمی‌شود، وگرنه بازکردنِ صفحه دو درخواستِ یکسان
+  // می‌زد و فهرست بعد از آمدن دوباره به اسکلت برمی‌گشت.
+  useDebouncedChange(q, 350, () => { setOffset(0); load({ q, offset: 0 }); });
 
   const pick = (key) => { setFilter(key); setOffset(0); load({ filter: key, offset: 0 }); };
   const pickSort = (key) => { setSort(key); setOffset(0); load({ sort: key, offset: 0 }); };

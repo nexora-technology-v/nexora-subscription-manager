@@ -41,3 +41,40 @@ export function usePolling(fn, ms, deps = []) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ms, ...deps]);
 }
+
+/**
+ * جست‌وجوی باتأخیر — که بارِ اول اجرا نمی‌شود.
+ *
+ * چرا این قلّاب لازم شد: الگوی معمولِ «دیبونس» این شکل بود
+ *
+ *     useEffect(() => { load(); }, [password]);          // بارِ اول
+ *     useEffect(() => {                                   // و دوباره!
+ *       const t = setTimeout(() => load(), 350);
+ *       return () => clearTimeout(t);
+ *     }, [q]);
+ *
+ * و افکتِ دوم **هنگام سوارشدن هم اجرا می‌شود**، چون `q` از خالی
+ * شروع می‌شود. اندازه‌گیری روی «کاربران ربات»: دو درخواستِ کاملاً
+ * یکسان، یکی در ۱۰ میلی‌ثانیه و یکی در ۳۷۲ — و دومی دوباره
+ * `loading` را روشن می‌کرد، پس فهرست می‌آمد و بلافاصله به اسکلت
+ * برمی‌گشت. از بیرون «لگ» و «چند بار رندر» دیده می‌شد.
+ *
+ * تابع در ref نگه داشته می‌شود تا همیشه تازه‌ترین نسخه‌اش صدا زده
+ * شود، بدون اینکه عوض‌شدنِ خودش تایمر را از نو بیندازد.
+ */
+export function useDebouncedChange(value, ms, fn) {
+  const first = useRef(true);
+  const latest = useRef(fn);
+  latest.current = fn;
+
+  useEffect(() => {
+    if (first.current) {
+      first.current = false;
+      return undefined;
+    }
+    const t = setTimeout(() => latest.current?.(), ms);
+    return () => clearTimeout(t);
+    // فقط به خودِ مقدار وابسته است؛ تابع در ref است
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, ms]);
+}

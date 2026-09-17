@@ -5,13 +5,14 @@
  * در آن عملاً ناممکن.
  */
 import React, { useState, useEffect, useRef } from "react";
+import { useDebouncedChange } from "../lib/hooks";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle, Check, CheckCircle2, ChevronLeft, Circle, Clock, Database, Download, FileText, Layers, Loader2, Plus as PlusIcon, RefreshCw, Save, Search, Send, ShieldCheck, Trash2, TrendingUp, Upload, Users, Wallet, X, XCircle,
 } from "lucide-react";
 import { JalaliDate, isoToJalaliLabel } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
-import { errText, faNum, monoIf } from "../lib/format";
+import { errText, faDate, faNum, monoIf } from "../lib/format";
 import { Donut, EmptyState, Field, InfoBox, Modal, Msg, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../ui/index";
 
 export function BillingPeriod({ password }) {
@@ -108,8 +109,8 @@ export function BillingPeriod({ password }) {
                     <div className="flex-1 text-center py-2 rounded-xl text-[13px]"
                       style={{ background: "var(--surface-3)", color: "var(--dim)" }}>
                       {!p ? "بازه دلخواه"
-                        : p.full ? `از ابتدا — ${p.startJalali} تا ${p.endJalali}`
-                          : `${p.startJalali} تا ${p.endJalali}`}
+                        : p.full ? `از ابتدا — ${faDate(p.startJalali)} تا ${faDate(p.endJalali)}`
+                          : `${faDate(p.startJalali)} تا ${faDate(p.endJalali)}`}
                     </div>
                     <button onClick={() => { setCustom(false); setShift(0); load(0); }}
                       className="fx-ico-btn shrink-0" title="بازگشت به دوره‌ها">
@@ -123,7 +124,7 @@ export function BillingPeriod({ password }) {
                     </button>
                     <div className="flex-1 text-center py-2 rounded-xl text-[13px]"
                       style={{ background: "var(--surface-3)", color: "var(--dim)" }}>
-                      {p ? `${p.startJalali} تا ${p.endJalali}` : "—"}
+                      {p ? `${faDate(p.startJalali)} تا ${faDate(p.endJalali)}` : "—"}
                     </div>
                     <button title="دوره‌ی بعد" onClick={() => move(1)} className="fx-ico-btn shrink-0"
                       style={{ transform: "rotate(180deg)" }}>
@@ -288,7 +289,7 @@ export function BillingPeriod({ password }) {
                             {x.email}
                           </div>
                           <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>
-                            {x.dateJalali || x.date} · {x.gbLabel}
+                            {faDate(x.dateJalali || x.date)} · {x.gbLabel}
                             {x.kind === "تخمینی" && (
                               <span style={{ color: "var(--warn)" }}> · تخمینی</span>
                             )}
@@ -369,11 +370,9 @@ export function BillingClients({ password }) {
   useEffect(() => { load(); },
     [password, group, status, renewed, age, priced, dates, sort, order, page]);
 
-  // جستجو با تاخیر — تا با هر حرف یک درخواست نرود
-  useEffect(() => {
-    const t = setTimeout(() => { setPage(0); load(); }, 400);
-    return () => clearTimeout(t);
-  }, [q]);
+  // جستجو با تاخیر — تا با هر حرف یک درخواست نرود.
+  // بارِ اول اجرا نمی‌شود؛ همان باگِ دو-درخواستیِ «کاربران ربات».
+  useDebouncedChange(q, 400, () => { setPage(0); load(); });
 
   const exportCsv = async () => {
     try {
@@ -689,7 +688,7 @@ export function BillingClients({ password }) {
                     {/* ایجاد */}
                     <td className="px-3 py-3 text-center text-[13px]" dir="ltr"
                       style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
-                      {c.createdJalali || "—"}
+                      {faDate(c.createdJalali)}
                       {c.days && (
                         <div className="text-[12px] mt-0.5 fx-fa-sub" style={{ color: "var(--muted)" }}>
                           {faNum(Math.round(c.days))} روز
@@ -700,7 +699,7 @@ export function BillingClients({ password }) {
                     {/* انقضا */}
                     <td className="px-3 py-3 text-center text-[13px]" dir="ltr"
                       style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
-                      {c.expiryJalali || "—"}
+                      {faDate(c.expiryJalali)}
                     </td>
 
                     {/* مانده */}
@@ -882,8 +881,8 @@ export function ClientDetailModal({ client: c, onClose }) {
 
       <Row label="حجم پلن" value={c.gbLabel} />
       <Row label="مصرف" value={`${faNum(c.usedGB)} GB${c.usagePct !== null ? ` (${faNum(c.usagePct)}٪)` : ""}`} mono />
-      <Row label="تاریخ ایجاد" value={c.createdJalali || "—"} mono />
-      <Row label="تاریخ انقضا" value={c.expiryJalali || "—"} mono />
+      <Row label="تاریخ ایجاد" value={faDate(c.createdJalali)} mono />
+      <Row label="تاریخ انقضا" value={faDate(c.expiryJalali)} mono />
       <Row label="روز مانده"
         value={c.remainingDays === null ? "—" : faNum(Math.round(c.remainingDays))} mono
         color={c.remainingDays !== null && c.remainingDays < 0 ? "var(--danger)" : undefined} />

@@ -2555,3 +2555,41 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 .fx-row-kv:last-child { border-bottom: none; }
 .fx-row-kv:hover { background: var(--hair-1); }
+
+/* حبابِ در حال رفتن و حبابِ نرسیده.
+   بدون این، پیامی که هنوز نرفته دقیقاً شبیه پیامِ رفته است و مالک
+   فکر می‌کند جواب داده — در حالی که نداده. */
+.fx-bub.pending { opacity: .62; }
+.fx-bub.failed {
+  background: var(--danger-wash); border-color: var(--danger-line);
+}
+.fx-bub.failed .fx-bub-meta { color: var(--danger); }
+
+/* مینی‌اپ: پیامی که هنوز نرفته، و پیامی که نرسید */
+.mn-msg.pending { opacity: .6; }
+.mn-msg.failed { background: var(--danger-wash) !important; border: 1px solid var(--danger-line); }
+.mn-msg.failed .mn-msg-at { color: var(--danger); }
+
+/* ═══════════════ کیبوردِ گوشی ═══════════════
+   جعبه‌ی نوشتن پشتِ کیبورد و زیرِ نوارِ تب گم می‌شد. کیبورد
+   لایه‌ی چیدمان را کوچک نمی‌کند، پس `sticky; bottom: 0` دقیقاً
+   همان‌جایی می‌ماند که دیده نمی‌شود. */
+:root { --mn-kb: 0px; }
+
+/* نوارِ تب کنار می‌رود — همان کاری که خودِ تلگرام می‌کند. جایش
+   را هم پس می‌دهد، وگرنه یک نوار فضای خالی می‌ماند. */
+:root[data-mn-kb="1"] .mn-tabs {
+  transform: translateY(110%);
+  pointer-events: none;
+  transition: transform .18s var(--sp-snappy);
+}
+.mn-tabs { transition: transform .18s var(--sp-snappy); }
+
+/* و گفتگو پشتِ کیبورد نرود.
+
+   جابه‌جاکردنِ خودِ جعبه با `bottom` امتحان شد و درست درنیامد:
+   جعبه sticky است و به پایینِ *اسکرول‌پورت* می‌چسبد، پس نتیجه به
+   اینکه مرورگر صفحه را چقدر اسکرول کرده گره می‌خورد. به‌جایش
+   فضای پایینِ گفتگو باز می‌شود و خودِ جعبه با scrollIntoView در
+   دید می‌آید — که روی هر مرورگری یک‌جور کار می‌کند. */
+:root[data-mn-kb="1"] .mn-chat { padding-bottom: var(--mn-kb); }
