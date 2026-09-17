@@ -39,12 +39,19 @@ import { SystemHealth, TunnelEvents, TunnelList, TunnelNodes, TunnelOverview } f
 import { WorkspaceSwitch } from "./shell/workspace";
 import { CommandPalette, ConfirmModal, ErrorBoundary, LoginScreen, NavAlert, NavIndicator, StatusChip, Toast } from "./ui/index";
 import { AlertBell } from "./shell/alertbell";
+import { errText } from "./lib/format";
 
 
 const ALL_NAV = Object.values(WORKSPACES).flatMap((w) => w.groups.flatMap((g) => g.items));
 
 export default function App() {
   const [password, setPassword] = useState(() => localStorage.getItem("nexora_subpage_admin_pw") || "");
+  /* نسخه‌ی تنظیماتی که گرفته‌ایم.
+
+     موقع ذخیره همین پس فرستاده می‌شود. اگر کسِ دیگری — یا تبِ
+     دیگرِ خودمان — زودتر ذخیره کرده باشد، سرور رد می‌کند؛ وگرنه
+     هر کدام که دیرتر ذخیره کند کارِ دیگری را بی‌صدا پاک می‌کند. */
+  const [cfgVersion, setCfgVersion] = useState(null);
   const [authed, setAuthed] = useState(false);
   const [config, setConfigRaw] = useState(null);
   const [stats, setStats] = useState(null);
@@ -172,6 +179,12 @@ export default function App() {
       ]);
       if (!cRes.ok) throw new Error();
       const loaded = await cRes.json();
+      /* هدرِ نسخه اختیاری است و *هرگز* نباید بارگذاری را بشکند.
+         یک‌بار همین کار را کرد: روی پاسخی که headers نداشت خطا
+         داد، خطا داخل catchِ بیرونی افتاد، و نتیجه‌اش بیرون‌انداختنِ
+         مالک از پنل بود — برای نبودِ یک هدر. */
+      try { setCfgVersion(cRes.headers?.get?.("X-Config-Version") || null); }
+      catch { setCfgVersion(null); }
       setConfigRaw(loaded);
       setSavedConfig(JSON.parse(JSON.stringify(loaded)));
       if (sRes.ok) setStats(await sRes.json());
@@ -235,16 +248,33 @@ export default function App() {
     try {
       const res = await fetch(`${API_URL}/api/admin/config`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "X-Admin-Password": password },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Admin-Password": password,
+          ...(cfgVersion ? { "X-Config-Version": String(cfgVersion) } : {}),
+        },
         body: JSON.stringify(config),
       });
       if (res.ok) {
+        const j = await res.json().catch(() => ({}));
+        if (j.version) setCfgVersion(String(j.version));
         setDirty(false);
         setSavedConfig(JSON.parse(JSON.stringify(config)));
         setToast({ message: "تغییرات با موفقیت ذخیره شد", type: "ok" });
         const sRes = await fetch(`${API_URL}/api/admin/stats`, { headers: { "X-Admin-Password": password } });
         if (sRes.ok) setStats(await sRes.json());
-      } else setToast({ message: "ذخیره‌سازی ناموفق بود", type: "error" });
+      } else {
+        /* دلیلِ سرور را نشان بده، نه یک «ناموفق بود» خشک.
+           مهم‌ترین حالتش ۴۰۹ است: یعنی جای دیگری عوض شده و اگر
+           به زور ذخیره کنیم، کارِ آن‌جا پاک می‌شود. */
+        const j = await res.json().catch(() => ({}));
+        setToast({
+          message: errText(j.detail, res.status === 409
+            ? "این تنظیمات را جای دیگری عوض کرده‌اید — صفحه را تازه کنید"
+            : "ذخیره‌سازی ناموفق بود"),
+          type: "error",
+        });
+      }
     } catch { setToast({ message: "اتصال به سرور برقرار نشد", type: "error" }); }
     finally { setSaving(false); }
   };

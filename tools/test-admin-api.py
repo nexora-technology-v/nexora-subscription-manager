@@ -2551,6 +2551,118 @@ finally:
 
 
 # ═══════════════════════════════════════════════════════════
+head("تنظیمات روی دیتابیس · نه نصفه، نه بی‌صدا، نه پاک‌شده")
+
+# چرا این بخش: تنظیمات در یک فایل JSON بود که (۱) اتمی نوشته
+# نمی‌شد، (۲) وقتی خراب می‌شد بی‌صدا به پیش‌فرض برمی‌گشت — یعنی
+# برند و پالت و فهرست نماینده‌ها پاک می‌شد و هیچ‌جا نمی‌گفت چرا —
+# و (۳) آخرین ذخیره کارِ بقیه را می‌برد.
+
+import tempfile as _tfc                                   # noqa: E402
+import sqlite3 as _sqc                                     # noqa: E402
+import json as _jsc                                        # noqa: E402
+from pathlib import Path as _Pc                            # noqa: E402
+
+_cdir = _Pc(_tfc.mkdtemp(prefix="nx-cfgt-"))
+_old_bot, _old_cfg = app.BOT_DB, app.CONFIG_PATH
+_old_ready = app._CFG_READY
+try:
+    app.BOT_DB = _cdir / "bot.db"
+    app.CONFIG_PATH = _cdir / "config.json"
+    app._CFG_READY = False
+    app._CFG_LOCAL = __import__("threading").local()
+    app._CFG_CACHE["version"] = None
+
+    # ── مهاجرت ──
+    app.CONFIG_PATH.write_text(_jsc.dumps({
+        "links": {"channelUsername": "old_chan"},
+        "resellers": [{"name": "حسین", "slug": "hossein", "enabled": True}],
+        "theme": "emerald",
+    }, ensure_ascii=False), encoding="utf-8")
+
+    _c1 = app.load_config()
+    check("از config.json مهاجرت می‌کند",
+          _c1["links"].get("channelUsername") == "old_chan",
+          str(_c1["links"].get("channelUsername")))
+    check("و نماینده‌ها با آن می‌آیند",
+          [r["name"] for r in _c1.get("resellers", [])] == ["حسین"])
+    check("و مهاجرتِ قالبِ قدیمی هنوز کار می‌کند",
+          _c1.get("template") == "classic" and _c1.get("palette") == "forest",
+          f"{_c1.get('template')}/{_c1.get('palette')}")
+    check("و فایل پاک نمی‌شود", app.CONFIG_PATH.exists(),
+          "فایل پشتیبانِ مالک است؛ پاک‌کردنش راهِ برگشت را می‌بندد")
+
+    # ── رفت‌وبرگشت ──
+    _c1["links"]["channelUsername"] = "new_chan"
+    _v = app.save_config(_c1)
+    check("ذخیره نسخه را جلو می‌برد", _v == 2, str(_v))
+    check("و خواندنِ دوباره همان را می‌دهد",
+          app.load_config()["links"]["channelUsername"] == "new_chan")
+
+    # ── دو تبِ باز ──
+    _ver = app.config_version()
+    app.save_config(app.load_config())          # تبِ اول
+    try:
+        app.save_config(app.load_config(), expected_version=_ver)
+        check("ذخیره‌ی کهنه رد می‌شود", False, "پذیرفته شد — کارِ تبِ اول پاک شد")
+    except app.HTTPException as _e:
+        check("ذخیره‌ی کهنه رد می‌شود", _e.status_code == 409, str(_e.status_code))
+
+    # ── خرابیِ عمدی ──
+    #
+    # این مهم‌ترین تستِ این بخش است: رفتارِ قبلی «بی‌صدا پیش‌فرض»
+    # بود، که از خطا بدتر است چون پنل سالم به نظر می‌رسد.
+    _cc = _sqc.connect(str(app.BOT_DB))
+    _cc.execute("UPDATE panel_config SET body='{این JSON نیست' WHERE id=1")
+    _cc.commit(); _cc.close()
+    app._CFG_CACHE["version"] = None
+    _back = app.load_config()
+    check("بدنه‌ی خراب از تاریخچه ترمیم می‌شود",
+          _back["links"].get("channelUsername") == "new_chan",
+          "پیش‌فرض یعنی تنظیماتِ مالک بی‌صدا پاک شد")
+
+    # ── تاریخچه و برگشت ──
+    _h = app.config_history()
+    check("تاریخچه نسخه‌ها را نگه می‌دارد", len(_h) >= 2, f"{len(_h)} نسخه")
+    _target = [x for x in _h if x["version"] == 1]
+    if _target:
+        _rb = app.config_rollback(1)
+        check("برگشت به نسخه‌ی قبل مقدارِ همان را می‌دهد",
+              _rb["links"].get("channelUsername") == "old_chan",
+              str(_rb["links"].get("channelUsername")))
+        check("و خودِ برگشت هم یک نسخه‌ی تازه است",
+              app.config_version() > 1, str(app.config_version()))
+    check("نسخه‌ی ناموجود خطای تمیز می‌دهد", True)
+    try:
+        app.config_rollback(9999)
+        check("نسخه‌ی ناموجود رد می‌شود", False, "پذیرفته شد")
+    except app.HTTPException as _e:
+        check("نسخه‌ی ناموجود رد می‌شود", _e.status_code == 404, str(_e.status_code))
+finally:
+    app.BOT_DB, app.CONFIG_PATH = _old_bot, _old_cfg
+    app._CFG_READY = _old_ready
+    app._CFG_LOCAL = __import__("threading").local()
+    app._CFG_CACHE["version"] = None
+
+# ── قواعدی که باید در کد بمانند ──
+_CSRC = _APSRC[_APSRC.find("def save_config("):]
+_CSRC = _CSRC[:_CSRC.find("def config_history")]
+check("ذخیره پیش از نوشتن ادعا می‌کند", "BEGIN IMMEDIATE" in _CSRC,
+      "تراکنشِ deferred یعنی دو نویسنده هر دو نسخه‌ی N را می‌خوانند")
+check("و نسخه‌ی قبلی در تاریخچه می‌نشیند",
+      "INSERT INTO panel_config_history" in _CSRC)
+
+_LSRC = _APSRC[_APSRC.find("def _cfg_raw("):]
+_LSRC = _LSRC[:_LSRC.find("def config_version")]
+check("خرابی لاگِ بلند دارد", "log.error" in _LSRC,
+      "بی‌صدا برگشتن به پیش‌فرض همان باگی است که این بخش برایش نوشته شد")
+
+check("هدرِ نسخه از CORS بیرون داده می‌شود",
+      'expose_headers=["X-Config-Version"]' in _APSRC,
+      "وگرنه در حالت cross-origin نامرئی است و محافظ بی‌صدا از کار می‌افتد")
+
+
+# ═══════════════════════════════════════════════════════════
 head("هشدارها · فقط مالِ خودِ مالک")
 
 # چرا این تست: کوئریِ هشدارها هیچ `tenant_id` نداشت، پس رسیدِ

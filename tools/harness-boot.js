@@ -523,6 +523,15 @@
       M_ME.avatar = ""; return { ok: true, avatar: "" };
     }
     if (u.indexOf("/mini/profile") >= 0) return miniProfile(body);
+    if (u.indexOf("/admin/config/history") >= 0) return {
+      current: 7,
+      versions: [
+        { version: 6, at: "2026-09-17 11:20", size: 3090 },
+        { version: 5, at: "2026-09-17 09:02", size: 3044 },
+        { version: 4, at: "2026-09-16 18:41", size: 2987 },
+      ],
+    };
+    if (u.indexOf("/admin/config/rollback/") >= 0) return { ok: true, version: 8, config: CONFIG };
     if (u.indexOf("/admin/bot/alerts") >= 0) return {
       receipts: 3, messages: 2, ready: true, oldestMin: 214,
       items: [
@@ -610,8 +619,13 @@
       status = e.status || 500;
       data = { detail: e.message || "خطا" };
     }
+    /* هدرها هم باید باشند. بدون اینها، کدی که یک هدرِ اختیاری
+       می‌خواند روی هارنس خطا می‌داد و هارنس حالتی را نشان می‌داد
+       که سرورِ واقعی هیچ‌وقت ندارد. */
+    var HDR = { "x-config-version": "7" };
     return Promise.resolve({
       ok: status < 400, status: status,
+      headers: { get: function (k) { return HDR[String(k).toLowerCase()] || null; } },
       json: function () { return Promise.resolve(data); },
       text: function () { return Promise.resolve(""); },
     });

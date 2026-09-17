@@ -4,6 +4,7 @@ import os
 import json
 import re as _re
 import secrets
+import threading as _threading
 import time
 import logging
 import urllib.error
@@ -275,33 +276,178 @@ def find_reseller(cfg: dict, email: str = None, host: str = None):
     return None
 
 app = FastAPI(title="Nexora Sub Page Config API")
-app.add_middleware(CORSMiddleware, allow_origins=[ALLOWED_ORIGIN], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+# `expose_headers` لازم است: هدرِ سفارشی در حالت cross-origin
+# برای جاوااسکریپت نامرئی است مگر این‌جا نامش بیاید — و پنل
+# روی همان مبدأ صفحه‌ی اشتراک نیست. بدون این، نسخه‌ی تنظیمات
+# همیشه null می‌شد و محافظِ «دو تبِ باز» بی‌صدا از کار می‌افتاد.
+app.add_middleware(CORSMiddleware, allow_origins=[ALLOWED_ORIGIN],
+                   allow_credentials=True, allow_methods=["*"],
+                   allow_headers=["*"], expose_headers=["X-Config-Version"])
 
 
-def load_config():
+#: تنظیماتِ پنل روی دیتابیس می‌نشیند، نه فایل JSON.
+#
+#  چرا عوض شد — سه چیز، هر سه واقعی:
+#
+#  ۱. نوشتن اتمی نبود. `open(w)` اول فایل را خالی می‌کرد بعد
+#     می‌نوشت؛ برق برود یا دیسک پر شود، فایل نصفه می‌ماند.
+#  ۲. و خرابی بی‌صدا بود: JSONِ خراب یعنی برگشت به `DEFAULT_CONFIG`،
+#     یعنی برند و پالت و لینک‌ها و فهرست نماینده‌ها پاک می‌شدند و
+#     هیچ‌جا نمی‌گفت چرا. مالک فکر می‌کرد خودش خرابش کرده.
+#  ۳. آخرین ذخیره همه‌چیز را می‌برد. دو تبِ باز یعنی یکی بی‌صدا
+#     کارِ دیگری را پاک می‌کند.
+#
+#  چرا داخل `bot.db` و نه فایلِ سوم: یک فایل برای پشتیبان‌گرفتن و
+#  برگرداندن، همان چیزی که مالک خواست.
+CONFIG_HISTORY_KEEP = 50
+
+#: جدول‌ها یک‌بار ساخته می‌شوند، نه در هر اتصال
+_CFG_READY = False
+_CFG_LOCAL = _threading.local()
+
+
+def _cfg_con():
     """
-    تنظیمات را می‌خواند و همیشه یک ساختار کامل برمی‌گرداند.
+    اتصال به دیتابیسِ تنظیمات، با ساختِ جدول‌ها اگر نبودند.
 
-    نکته‌ی مهم: اگر فایل ذخیره‌شده از نسخه‌ی قدیمی‌تر باشد و فیلدهای جدید
-    (مثل videos، popup، bot، resellers) را نداشته باشد، آن‌ها از مقادیر
-    پیش‌فرض پر می‌شوند. بدون این کار، پنل مدیریت هنگام دسترسی به فیلد
-    ناموجود کرش می‌کند.
+    `CHECK (id = 1)` عمدی است: یک ردیف، ساختاری تضمین‌شده. این همان
+    دامِ «FROM … LIMIT 1 بدون شرط» است که در این مخزن پنج بار پیدا
+    شد — این‌جا از اول ممکنش نمی‌کنیم.
     """
-    if not CONFIG_PATH.exists():
-        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        save_config(DEFAULT_CONFIG)
-        return json.loads(json.dumps(DEFAULT_CONFIG))
+    import sqlite3
+    # اتصال به‌ازای هر نخ نگه داشته می‌شود و بسته نمی‌شود.
+    #
+    # اندازه‌گیری: با بازکردنِ اتصالِ تازه در هر خواندن، هر
+    # `load_config()` حدود یک میلی‌ثانیه طول می‌کشید — کندتر از
+    # خواندنِ همان فایل JSON. هزینه‌اش خودِ باز کردن بود، نه کوئری.
+    #
+    # اتصالِ SQLite فقط در نخِ خودش امن است، و FastAPI مسیرهای
+    # همگام را در یک استخرِ نخ اجرا می‌کند که نخ‌هایش بازاستفاده
+    # می‌شوند — پس تعدادِ اتصال‌ها کران‌دار است.
+    have = getattr(_CFG_LOCAL, "con", None)
+    if have is not None:
+        return have
+    BOT_DB.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(BOT_DB), timeout=15)
+    con.row_factory = sqlite3.Row
+    # پیش‌فرضِ پایتون تراکنشِ deferred است؛ برای ادعا کردن پیش از
+    # نوشتن، خودمان BEGIN IMMEDIATE می‌زنیم
+    con.isolation_level = None
+    # ساختِ جدول فقط یک‌بار در عمرِ پردازه.
+    #
+    # اندازه‌گیری: با اجرای این دو دستور در هر اتصال، خواندنِ
+    # تنظیمات ۱٫۱۷ میلی‌ثانیه شد — کندتر از خواندنِ همان فایل JSON،
+    # یعنی دقیقاً برعکسِ چیزی که می‌خواستیم.
+    if not _CFG_READY:
+        con.execute("""CREATE TABLE IF NOT EXISTS panel_config (
+            id         INTEGER PRIMARY KEY CHECK (id = 1),
+            body       TEXT NOT NULL,
+            version    INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP)""")
+        con.execute("""CREATE TABLE IF NOT EXISTS panel_config_history (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            version INTEGER NOT NULL,
+            body    TEXT NOT NULL,
+            note    TEXT,
+            at      TEXT DEFAULT CURRENT_TIMESTAMP)""")
+        globals()["_CFG_READY"] = True
+    _CFG_LOCAL.con = con
+    return con
 
-    try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            stored = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        # فایل خراب است — از پیش‌فرض استفاده می‌کنیم تا سرویس از کار نیفتد
-        return json.loads(json.dumps(DEFAULT_CONFIG))
 
+#: کَشِ درون‌پردازه‌ای. نرمال‌سازی (ادغام با پیش‌فرض و اصلاح نوع‌ها)
+#  گران‌ترین بخشِ خواندن است و در هر درخواست تکرار می‌شد.
+_CFG_CACHE = {"version": None, "json": None}
+
+
+def _cfg_migrate(con):
+    """
+    یک‌بار، از `config.json` به جدول.
+
+    فایل **پاک نمی‌شود** — به‌عنوان پشتیبان می‌ماند. اگر جدول پر
+    باشد، فایل اصلاً خوانده نمی‌شود.
+    """
+    stored = None
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                stored = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            log.warning("config.json خوانده نشد؛ از پیش‌فرض شروع می‌کنیم",
+                        exc_info=True)
     if not isinstance(stored, dict):
-        return json.loads(json.dumps(DEFAULT_CONFIG))
+        stored = json.loads(json.dumps(DEFAULT_CONFIG))
+    con.execute("INSERT OR REPLACE INTO panel_config (id, body, version) "
+                "VALUES (1, ?, 1)",
+                (json.dumps(stored, ensure_ascii=False),))
+    log.info("تنظیمات از config.json به دیتابیس منتقل شد")
+    return stored
 
+
+def _cfg_raw():
+    """بدنه‌ی خام و نسخه‌اش — بدون نرمال‌سازی."""
+    con = _cfg_con()
+    try:
+        row = con.execute(
+            "SELECT body, version FROM panel_config WHERE id = 1").fetchone()
+        if row is None:
+            con.execute("BEGIN IMMEDIATE")
+            try:
+                # ممکن است بین SELECT و این‌جا کسِ دیگری ساخته باشد
+                again = con.execute(
+                    "SELECT body, version FROM panel_config WHERE id = 1").fetchone()
+                if again is not None:
+                    con.execute("COMMIT")
+                    return again["body"], int(again["version"])
+                stored = _cfg_migrate(con)
+                con.execute("COMMIT")
+            except Exception:
+                con.execute("ROLLBACK")
+                raise
+            return json.dumps(stored, ensure_ascii=False), 1
+
+        body, ver = row["body"], int(row["version"])
+        try:
+            json.loads(body)
+        except json.JSONDecodeError:
+            # خرابی — ولی این‌بار بی‌صدا به پیش‌فرض برنمی‌گردیم.
+            # تاریخچه دقیقاً برای همین هست: آخرین نسخه‌ی سالم.
+            log.error("بدنه‌ی تنظیمات (نسخه %s) خراب است — "
+                      "برمی‌گردیم به آخرین نسخه‌ی سالم", ver)
+            for h in con.execute(
+                    "SELECT body, version FROM panel_config_history "
+                    "ORDER BY id DESC LIMIT 20"):
+                try:
+                    json.loads(h["body"])
+                except json.JSONDecodeError:
+                    continue
+                log.error("نسخه‌ی %s از تاریخچه استفاده شد", h["version"])
+                return h["body"], ver
+            log.error("هیچ نسخه‌ی سالمی در تاریخچه نبود — پیش‌فرض")
+            return json.dumps(DEFAULT_CONFIG, ensure_ascii=False), ver
+        return body, ver
+    finally:
+        pass
+
+
+def config_version():
+    """نسخه‌ی فعلی — پنل همین را موقع ذخیره پس می‌فرستد."""
+    con = _cfg_con()
+    row = con.execute(
+        "SELECT version FROM panel_config WHERE id = 1").fetchone()
+    return int(row["version"]) if row else 0
+
+
+def _normalize_config(stored):
+    """
+    ساختارِ کامل از روی چیزی که ذخیره شده.
+
+    اگر فایلِ ذخیره‌شده از نسخه‌ی قدیمی‌تر باشد و فیلدهای جدید را
+    نداشته باشد، از پیش‌فرض پر می‌شوند — بدون این، پنل هنگام
+    دسترسی به فیلدِ ناموجود کرش می‌کند.
+    """
+    if not isinstance(stored, dict):
+        stored = {}
     # ادغام: مقادیر ذخیره‌شده روی پیش‌فرض می‌نشینند،
     # ولی هر فیلدی که در ذخیره‌شده نباشد از پیش‌فرض می‌آید
     merged = deep_merge(json.loads(json.dumps(DEFAULT_CONFIG)), stored)
@@ -350,13 +496,105 @@ def load_config():
         merged["palette"] = pal
     merged.setdefault("template", "classic")
     merged.setdefault("palette", "ocean")
-
     return merged
 
 
-def save_config(data):
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+def load_config():
+    """تنظیمات، همیشه با ساختارِ کامل."""
+    # اول فقط نسخه را بپرس. بدنه ممکن است چند کیلوبایت باشد و
+    # کشیدن و پارس‌کردنش وقتی چیزی عوض نشده، دور ریختنِ کار است.
+    ver = config_version()
+    if ver and _CFG_CACHE["version"] == ver and _CFG_CACHE["json"] is not None:
+        # کپیِ تازه می‌دهیم: فراخوان‌ها مقدار را دست‌کاری می‌کنند و
+        # بعد ذخیره — اگر همان شیء برگردد، کشِ مشترک آلوده می‌شود
+        return json.loads(_CFG_CACHE["json"])
+    body, ver = _cfg_raw()
+    merged = _normalize_config(json.loads(body))
+    _CFG_CACHE["version"] = ver
+    _CFG_CACHE["json"] = json.dumps(merged, ensure_ascii=False)
+    return merged
+
+
+def save_config(data, expected_version=None):
+    """
+    ذخیره‌ی اتمی، با تاریخچه.
+
+    `expected_version` اگر داده شود و با نسخه‌ی فعلی نخواند، ذخیره
+    رد می‌شود — این همان چیزی است که جلوی «دو تبِ باز، یکی کارِ
+    دیگری را پاک می‌کند» را می‌گیرد. فراخوان‌های داخلی ندهند؛
+    آن‌ها خودشان همین حالا خوانده‌اند.
+
+    `BEGIN IMMEDIATE` عمدی است: نسخه را باید *پیش از* نوشتن ادعا
+    کرد، وگرنه دو نویسنده هر دو نسخه‌ی N را می‌خوانند و هر دو
+    N+1 می‌نویسند.
+    """
+    body = json.dumps(data, ensure_ascii=False)
+    con = _cfg_con()
+    con.execute("BEGIN IMMEDIATE")
+    try:
+        row = con.execute(
+            "SELECT body, version FROM panel_config WHERE id = 1").fetchone()
+        cur_ver = int(row["version"]) if row else 0
+        if expected_version is not None and int(expected_version) != cur_ver:
+            raise HTTPException(
+                status_code=409,
+                detail="این تنظیمات را جای دیگری عوض کرده‌اید — "
+                       "صفحه را تازه کنید تا تغییراتِ آن‌جا از بین نرود")
+        new_ver = cur_ver + 1
+        if row is not None:
+            # نسخه‌ی *قبلی* در تاریخچه می‌نشیند، چون برگشت یعنی
+            # برگشت به همان
+            con.execute(
+                "INSERT INTO panel_config_history (version, body) VALUES (?,?)",
+                (cur_ver, row["body"]))
+            con.execute(
+                "DELETE FROM panel_config_history WHERE id NOT IN "
+                "(SELECT id FROM panel_config_history ORDER BY id DESC LIMIT ?)",
+                (CONFIG_HISTORY_KEEP,))
+        con.execute(
+            "INSERT INTO panel_config (id, body, version, updated_at) "
+            "VALUES (1, ?, ?, CURRENT_TIMESTAMP) "
+            "ON CONFLICT(id) DO UPDATE SET body=excluded.body, "
+            "version=excluded.version, updated_at=CURRENT_TIMESTAMP",
+            (body, new_ver))
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+    _CFG_CACHE["version"] = None      # دفعه‌ی بعد دوباره بخوان
+    return new_ver
+
+
+def config_history(limit=20):
+    """نسخه‌های قبلی — برای دیدن و برگشتن."""
+    con = _cfg_con()
+    rows = con.execute(
+        "SELECT version, at, LENGTH(body) n FROM panel_config_history "
+        "ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
+    return [{"version": int(r["version"]), "at": r["at"], "size": int(r["n"])}
+            for r in rows]
+
+
+def config_rollback(version):
+    """
+    برگشت به یک نسخه‌ی قبلی.
+
+    خودِ برگشت هم یک ذخیره‌ی تازه است، نه پاک‌کردنِ تاریخچه — پس
+    اگر اشتباه بود، از همان راه برمی‌گردد.
+    """
+    con = _cfg_con()
+    row = con.execute(
+        "SELECT body FROM panel_config_history WHERE version = ? "
+        "ORDER BY id DESC LIMIT 1", (int(version),)).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail="این نسخه در تاریخچه نیست")
+    try:
+        data = json.loads(row["body"])
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422,
+                            detail="این نسخه خوانا نیست و برگرداندنی نیست")
+    save_config(data)
+    return _normalize_config(data)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -730,17 +968,56 @@ def _learn_panel_origin(request):
 
 
 @app.get("/api/admin/config")
-def get_admin_config(request: Request, x_admin_password: str = Header(...)):
+def get_admin_config(request: Request, response: Response,
+                     x_admin_password: str = Header(...)):
+    """
+    تنظیمات، به‌علاوه‌ی نسخه‌اش در هدر.
+
+    چرا در هدر و نه داخل خودِ سند: پنل همین سند را می‌گیرد، دست‌کاری
+    می‌کند و عیناً پس می‌فرستد. هر کلیدی که این‌جا اضافه شود، آن‌جا
+    ذخیره می‌شود و برای همیشه در تنظیمات می‌ماند.
+    """
     check_auth(x_admin_password)
     _learn_panel_origin(request)
-    return load_config()
+    cfg = load_config()
+    response.headers["X-Config-Version"] = str(config_version())
+    return cfg
 
 
 @app.put("/api/admin/config")
-def update_config(payload: dict, x_admin_password: str = Header(...)):
+def update_config(payload: dict, x_admin_password: str = Header(...),
+                  x_config_version: str = Header(None)):
+    """
+    ذخیره — و اگر جای دیگری عوض شده باشد، رد.
+
+    بدون این، دو تبِ باز یعنی هر کدام که دیرتر ذخیره کند کارِ
+    دیگری را بی‌صدا پاک می‌کند. پنل نسخه‌ای را که گرفته پس
+    می‌فرستد؛ اگر نخواند، خطای روشن می‌گیرد نه پاک‌شدنِ خاموش.
+    """
     check_auth(x_admin_password)
-    save_config(payload)
-    return {"ok": True}
+    want = None
+    if x_config_version not in (None, ""):
+        try:
+            want = int(x_config_version)
+        except ValueError:
+            want = None
+    ver = save_config(payload, expected_version=want)
+    return {"ok": True, "version": ver}
+
+
+@app.get("/api/admin/config/history")
+def get_config_history(x_admin_password: str = Header(...)):
+    """نسخه‌های قبلیِ تنظیمات."""
+    check_auth(x_admin_password)
+    return {"current": config_version(), "versions": config_history()}
+
+
+@app.post("/api/admin/config/rollback/{version}")
+def post_config_rollback(version: int, x_admin_password: str = Header(...)):
+    """برگشت به یک نسخه‌ی قبلی."""
+    check_auth(x_admin_password)
+    cfg = config_rollback(version)
+    return {"ok": True, "version": config_version(), "config": cfg}
 
 
 @app.post("/api/admin/reset-defaults")

@@ -2542,3 +2542,16 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 .fx-bell-empty p { font-size: 13px; color: var(--dim); margin-top: 9px; }
 .fx-bell-empty span { font-size: 11.5px; display: block; margin-top: 4px; }
+
+/* ردیفِ کلید-مقدار در پنل — تاریخچه‌ی تنظیمات از این استفاده می‌کند */
+.fx-rows {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: var(--r-m); overflow: hidden;
+}
+.fx-row-kv {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; font-size: 13px; color: var(--dim);
+  border-bottom: 1px solid var(--border);
+}
+.fx-row-kv:last-child { border-bottom: none; }
+.fx-row-kv:hover { background: var(--hair-1); }

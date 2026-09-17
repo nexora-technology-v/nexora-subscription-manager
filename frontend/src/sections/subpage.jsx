@@ -794,6 +794,95 @@ function BrandLogo({ password }) {
   );
 }
 
+/**
+ * تاریخچه‌ی تنظیمات و برگشت به عقب.
+ *
+ * چرا هست: تا امروز تنظیمات در یک فایل JSON بود که با هر ذخیره
+ * بازنویسی می‌شد. یک تغییرِ اشتباه — یا فایلی که نصفه نوشته شده
+ * بود — یعنی راهِ برگشتی وجود نداشت.
+ *
+ * حالا هر ذخیره نسخه‌ی قبلی را نگه می‌دارد و از همین‌جا برمی‌گردد.
+ */
+function ConfigHistory({ password, onRestored }) {
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(0);
+
+  const load = async () => {
+    setErr("");
+    try {
+      const r = await fetch(`${API_URL}/api/admin/config/history`,
+        { headers: { "X-Admin-Password": password } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(j.detail, "تاریخچه خوانده نشد"));
+      setData(j);
+    } catch (e) { setErr(e.message); setData({ versions: [] }); }
+  };
+
+  useEffect(() => { load(); }, [password]);   // eslint-disable-line
+
+  const back = async (v) => {
+    setBusy(v); setErr("");
+    try {
+      const r = await fetch(`${API_URL}/api/admin/config/rollback/${v}`,
+        { method: "POST", headers: { "X-Admin-Password": password } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(j.detail, "برگرداندن ناموفق بود"));
+      onRestored?.(j.config, j.version);
+      await load();
+    } catch (e) { setErr(e.message); } finally { setBusy(0); }
+  };
+
+  const rows = data?.versions || [];
+
+  return (
+    <div className="fx-card p-5 mt-5">
+      <SectionHead icon={Clock} title="تاریخچه تنظیمات"
+        desc="هر ذخیره، نسخه‌ی قبلی را نگه می‌دارد. اگر چیزی را اشتباه عوض کردید، از همین‌جا برگردید."
+        action={
+          <button onClick={load}
+            className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
+            <Activity size={13} /> تازه‌سازی
+          </button>
+        } />
+
+      {err && (
+        <p className="text-[13px] mb-3 flex items-start gap-1.5"
+          style={{ color: "var(--danger)" }}>
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+        </p>
+      )}
+
+      {!data ? (
+        <Skeleton h={90} />
+      ) : !rows.length ? (
+        <EmptyState icon={Clock} text="هنوز نسخه‌ی قبلی‌ای نیست"
+          hint="بعد از اولین ذخیره، نسخه‌ی پیشین این‌جا می‌ماند." />
+      ) : (
+        <div className="fx-rows">
+          {rows.map((v) => (
+            <div key={v.version} className="fx-row-kv">
+              <span className="flex items-center gap-2 min-w-0">
+                <b style={{ fontFamily: "var(--mono)" }} dir="ltr">#{faNum(v.version)}</b>
+                <i className="not-italic text-[12px] truncate"
+                  style={{ color: "var(--muted)" }} dir="ltr">{v.at}</i>
+              </span>
+              <button className="fx-btn-g px-3 py-1.5 text-[12.5px] flex items-center gap-1.5"
+                disabled={busy === v.version} onClick={() => back(v.version)}>
+                {busy === v.version
+                  ? <Loader2 size={12} className="animate-spin" />
+                  : <ChevronLeft size={12} />}
+                بازگرداندن
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 export function SettingsSection({ config, setConfig, password, onPasswordChanged, onRestored, wsMode, setWsMode }) {
   const a = config.advanced || {};
   const update = (patch) => setConfig({ ...config, advanced: { ...a, ...patch } });
@@ -951,6 +1040,8 @@ export function SettingsSection({ config, setConfig, password, onPasswordChanged
       </div>
 
       <InfoBox tone="warn">تنظیمات این بخش مستقیم روی ظاهر صفحه‌ی همه‌ی مشتری‌ها اثر می‌گذارد. بعد از تغییر، حتماً یک‌بار خودتان صفحه‌ی اشتراک را باز کنید.</InfoBox>
+
+      <ConfigHistory password={password} onRestored={onRestored} />
     </div>
   );
 }
