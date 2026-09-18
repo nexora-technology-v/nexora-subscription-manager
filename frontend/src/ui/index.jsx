@@ -583,11 +583,20 @@ export function StatTile({
   }, [value]);
 
   return (
-    <div className={`fx-card fx-kpi ${className}`}>
+    /* رنگِ کارت از `tone` می‌آید، نه یک آبیِ ثابت برای همه.
+       تا امروز هر چهار کارتِ شاخص یک درخششِ آبی داشتند — چشم
+       هیچ‌کدام را از دیگری تشخیص نمی‌داد و کلِ ردیف یک لکه بود.
+       حالا آیکون، خطِ لبه و درخششِ هاور هر سه یک رنگ‌اند. */
+    <div className={`fx-card fx-kpi ${className}`}
+      style={tone ? { "--kpi-tone": tone } : undefined}>
       <div className="flex items-center gap-2">
         {Icon && (
           <span className="w-7 h-7 rounded-[8px] grid place-items-center shrink-0"
-            style={{ background: "var(--hair-2)", color: tone || "var(--muted)" }}>
+            style={{
+              background: tone ? "color-mix(in srgb, var(--kpi-tone) 14%, transparent)"
+                               : "var(--hair-2)",
+              color: tone || "var(--muted)",
+            }}>
             <Icon size={14} />
           </span>
         )}
@@ -610,7 +619,11 @@ export function StatTile({
           می‌شود، پس هیچ اندازه‌گیریِ چیدمانی لازم نیست. */}
       <div ref={box}
         className={`fx-kpi-val ${String(value ?? "").length >= 9 ? "long" : ""}`}>
-        <span style={{ color, fontFamily: "var(--mono)" }}>{value}</span>
+        {/* `--mono` گلیفِ فارسی ندارد و عددِ این کارت فارسی است،
+            پس بی‌صدا به قلمِ دیگری می‌افتاد و کنارِ واحدش ناجور
+            می‌نشست. همان اشتباهی که یک‌بار در یازده جای دیگر پیدا
+            شد. */}
+        <span style={{ color, fontFamily: "var(--num)" }}>{value}</span>
         {unit && <span className="u fx-fa-sub">{unit}</span>}
       </div>
 

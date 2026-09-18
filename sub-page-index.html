@@ -308,8 +308,12 @@
             display: flex;
             align-items: center;
             gap: 5px;
-            flex-wrap: wrap;
+            /* بدونِ wrap: نامِ بلند باید با سه‌نقطه کوتاه شود، نه
+               اینکه به خطِ بعد برود. با wrap، سرصفحه دو خطی می‌شد و
+               چهره و شمارِ روز را پایین می‌راند. */
+            flex-wrap: nowrap;
             min-width: 0;
+            max-width: 100%;
         }
         html[dir="rtl"] .user-name { flex-direction: row-reverse; }
         html[dir="ltr"] .user-name { flex-direction: row; }
@@ -324,8 +328,20 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            max-width: 140px;
+            /* `max-width: 140px` بود — یک عددِ جادویی.
+               روی صفحه‌ی پهن، نامِ کاملاً جاشونده را بی‌دلیل
+               می‌برید؛ و روی صفحه‌ی باریک، ۱۴۰ پیکسل هنوز از جای
+               موجود بیشتر بود و سرصفحه را می‌شکست.
+
+               حالا جا را خودِ فلکس تصمیم می‌گیرد: نام هر چقدر جا
+               هست می‌گیرد و بقیه‌اش سه‌نقطه می‌شود. `min-width: 0`
+               لازم است، وگرنه فرزندِ فلکس از عرضِ محتوایش کوچک‌تر
+               نمی‌شود و سه‌نقطه هیچ‌وقت ظاهر نمی‌شود. */
+            flex: 0 1 auto;
+            min-width: 0;
         }
+        /* سلام هیچ‌وقت کوتاه نمی‌شود — این نام است که باید کوتاه شود */
+        .greeting-text { flex: none; }
         .username-text.online {
             color: var(--accent);
         }
@@ -574,7 +590,11 @@
                شش قلم در یک ردیف یعنی متنِ ۱۰ پیکسلی و عددهای
                شکسته؛ سه‌تا در هر ردیف جا دارد که خوانده شود. */
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            /* همان قاعده‌ی ردیفِ دکمه‌ها: تعدادِ ستون از عرضِ
+               واقعی می‌آید، نه از یک عددِ ثابت. روی صفحه‌ی پهن‌تر
+               شش قلم در دو ردیفِ سه‌تایی می‌نشینند و روی گوشیِ
+               باریک خودشان دوتایی می‌شوند — بدون media query جدا. */
+            grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
             gap: 1px;
             background: var(--border);
             overflow: hidden;
@@ -981,12 +1001,30 @@
         html[dir="ltr"] .section-title { text-align: left; }
 
         /* ===== دکمه‌های عملیاتی ===== */
+        /* ردیفِ دکمه‌ها — شبکه‌ای که خودش تعداد ستون را تصمیم
+           می‌گیرد، نه چهار خانه‌ی ثابت.
+
+           چرا عوض شد: با flex، چهار خانه روی ۳۹۰ پیکسل هر کدام ۸۱
+           پیکسل می‌شدند و «کپی لینک ساب» در دو خط می‌شکست. و اگر
+           مالک یکی از دکمه‌ها را خاموش می‌کرد، سه‌تای باقی‌مانده
+           بی‌قواره پهن می‌شدند.
+
+           `auto-fit` با کفِ ۸۸ پیکسل یعنی: روی گوشیِ باریک دو
+           ردیفِ دوتایی، روی گوشیِ معمولی چهارتا در یک ردیف، و روی
+           صفحه‌ی بزرگ‌تر همه در یک ردیفِ راحت. */
         .actions-grid {
-            display: flex;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
             gap: 10px;
             margin-bottom: 12px;
         }
-        .action-cell { flex: 1; }
+        /* روی صفحه‌ی خیلی باریک دوتایی، نه سه‌تا.
+           با سه ستون و چهار دکمه، چهارمی تنها در ردیفِ دوم می‌افتد —
+           و یک دکمه‌ی تنهای پهن بدترین حالتِ ممکن است. */
+        @media (max-width: 330px) {
+            .actions-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        .action-cell { min-width: 0; }
         .action-card {
             background-color: var(--surface);
             border: 1px solid var(--border);
@@ -1005,6 +1043,14 @@
         .action-card:active { transform: scale(0.96); }
         .action-card:hover { border-color: rgba(var(--accent-rgb), 0.3); }
         .action-card i { font-size: 20px; }
+        /* برچسبِ دو خطی، ولی بدونِ بریدنِ کلمه.
+           `min-height` تا کارتی که برچسبِ یک‌خطی دارد با کارتِ
+           دوخطی هم‌قد بماند — وگرنه ردیف پله‌پله می‌شود. */
+        .action-card .action-label {
+            min-height: 2.6em;
+            display: flex; align-items: center; justify-content: center;
+            word-break: keep-all;
+        }
         .action-card.renew i { color: var(--warn); }
         .action-card.link i { color: var(--accent); }
         .action-card.qr i { color: var(--accent-2); }
@@ -1897,7 +1943,16 @@
                 var(--accent-2), var(--accent) 58%, var(--cy)) !important;
         }
 
-        /* نوارِ پایین: لبه‌ی بالایش هم مو دارد */
+        /* نوارِ پایین: لبه‌ی بالایش هم مو دارد.
+           `::after` با `position: absolute` به همان نوار می‌چسبد —
+           چون `position: fixed` خودش قابِ لنگر است و به `relative`
+           نیازی ندارد.
+
+           و این‌جا یک‌بار `‎.bottom-nav { position: relative }‎`
+           نوشته شده بود تا همین لنگر را بسازد. ولی این قاعده بعد
+           از تعریفِ اصلی می‌آمد و `fixed` را پس می‌زد: نوار از
+           پایینِ صفحه کنده می‌شد و وسطِ محتوا، درست زیرِ سوالات
+           متداول، می‌نشست. */
         .bottom-nav::after {
             content: '';
             position: absolute;
@@ -1908,7 +1963,6 @@
                 transparent, var(--hair-3), transparent);
             pointer-events: none;
         }
-        .bottom-nav { position: relative; }
 
         @media (prefers-reduced-motion: reduce) {
             .nx-amb { display: none; }
@@ -2572,9 +2626,18 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             if (langBtn) langBtn.style.display = adv.allowLanguageToggle === false ? 'none' : '';
 
             // لیست کانفیگ‌ها (مخفی‌سازی برای جلوگیری از اشتراک‌گذاری دستی)
+            //
+            // کلِ خانه مخفی می‌شود، نه فقط برچسبش.
+            //
+            // `action-config` شناسه‌ی *متنِ* دکمه است، نه خودِ دکمه.
+            // با مخفی‌کردنش، کارت سرِ جایش می‌ماند و یک مربعِ ۸۱
+            // پیکسلی با آیکون و بدونِ هیچ نوشته‌ای نشان داده می‌شد —
+            // دکمه‌ای که معلوم نیست چه می‌کند، و بدتر از نبودنِ دکمه
+            // است.
             const configBtn = document.getElementById('action-config');
-            if (configBtn) {
-                configBtn.style.display = adv.hideConfigsList === true ? 'none' : '';
+            const configCell = configBtn && configBtn.closest('.action-cell');
+            if (configCell) {
+                configCell.style.display = adv.hideConfigsList === true ? 'none' : '';
             }
 
             // بخش سوالات متداول (نمایش/مخفی)
@@ -3463,7 +3526,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             document.getElementById("user-name").innerHTML = `
                 ${waveIconHTML}
                 <span class="greeting-text">${data.greet}</span>
-                <span class="${usernameClass}">${username}</span>
+                <span class="${usernameClass}" title="${String(username || "").replace(/"/g, "&quot;")}">${username}</span>
             `;
 
             if (sanaeiClientData.daysLeft === -1) {

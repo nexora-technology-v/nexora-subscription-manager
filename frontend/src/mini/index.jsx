@@ -27,7 +27,7 @@ import {
   AlertTriangle, ArrowLeft, Camera, Check, ChevronLeft, Clock, Copy,
   CreditCard, ExternalLink, Gift, Home, Image as ImageIcon, ImagePlus, Layers,
   Link2, Loader2, MessageCircle, Package, Phone, QrCode, RefreshCw, Send,
-  Coins, Shield, ShoppingBag, ShoppingCart, Trash2, User, Wallet, X, Zap,
+  Coins, Plus, Shield, ShoppingBag, ShoppingCart, Trash2, User, Wallet, X, Zap,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -187,7 +187,7 @@ function SubTags({ s }) {
 
 /* ═══════════════ صفحه‌ی خانه ═══════════════ */
 
-function Balance({ me }) {
+function Balance({ me, onTopUp }) {
   const [copied, setCopied] = useState(false);
   const copyId = () => {
     try { navigator.clipboard?.writeText(String(me?.tgId || "")); } catch { /* بی‌صدا */ }
@@ -198,7 +198,21 @@ function Balance({ me }) {
     <div className="mn-card-bal">
       <div className="mn-bal-top">
         <span className="mn-bal-label">موجودی</span>
-        <span className="mn-chip" aria-hidden="true" />
+        {/* شارژ، روی خودِ کارتِ موجودی.
+            تا امروز فقط دو راه داشت: ردیفی ته صفحه‌ی تنظیمات، و
+            برگه‌ی پرداخت وقتی پول کم می‌آمد. یعنی کاربر باید
+            *دنبالش می‌گشت* — و کسی که دنبالِ شارژ بگردد، معمولاً
+            نمی‌گردد.
+
+            جایش این‌جاست چون همین‌جا عددِ موجودی را می‌بیند و
+            همین‌جاست که تصمیم می‌گیرد کم است. */}
+        {onTopUp ? (
+          <button className="mn-bal-add" onClick={onTopUp}>
+            <Plus size={13} /> شارژ
+          </button>
+        ) : (
+          <span className="mn-chip" aria-hidden="true" />
+        )}
       </div>
       <div className="mn-bal-amount">
         <b>{faNum(me?.balance ?? 0)}</b>
@@ -292,6 +306,16 @@ function RewardCard({ me, rw, onShare }) {
 
   return (
     <div className="mn-sec">
+      {/* عنوان، مثل هر بخشِ دیگرِ این صفحه.
+          بدونش این کارت بی‌مقدمه ظاهر می‌شد و معلوم نبود بخشِ
+          جداست یا دنباله‌ی کارتِ موجودی. */}
+      <div className="mn-sec-head">
+        <div>
+          <h2>سکه و دعوت</h2>
+          <p>سکه جمع کنید، تخفیفِ خریدِ بعدی‌تان بیشتر شود</p>
+        </div>
+      </div>
+
       <div className="mn-rw">
         <div className="mn-rw-top">
           <div className="mn-rw-coins">
@@ -317,11 +341,21 @@ function RewardCard({ me, rw, onShare }) {
               <b>{faNum(nxt.need)}</b> سکه تا <b>{faNum(nxt.percent)}٪</b> تخفیف
             </>
           ) : pct > 0 ? (
-            <>بالاترین پله را دارید — {faNum(pct)}٪ از خرید بعدی کم می‌شود</>
+            <>بالاترین پله را دارید</>
           ) : (
             <>با جمع‌کردن سکه، تخفیفِ خریدهای بعدی‌تان باز می‌شود</>
           )}
         </p>
+
+        {/* *کجا* خرج می‌شود.
+            بدونِ این خط، کارت می‌گفت «۱۰٪ تخفیف فعال» و مشتری
+            انتظار داشت خودکار اعمال شود — در حالی که باید موقعِ
+            خرید انتخابش کند، و فقط روی کارت‌به‌کارت. */}
+        {pct > 0 && (
+          <p className="mn-rw-where">
+            موقعِ خرید، گزینه‌ی «سکه‌ام را خرج کن» را بزنید
+          </p>
+        )}
 
         {/* نردبان، تا معلوم باشد آخرش کجاست */}
         {(rw?.tiers || []).length > 0 && (
@@ -353,35 +387,39 @@ function RewardCard({ me, rw, onShare }) {
                 : <>لینک خودتان را بفرستید تا دوستتان هم عضو شود.</>}
             </p>
           </div>
+          {/* شمارِ دعوت‌شده‌ها کنارِ عنوان، نه یک ردیفِ جدا.
+              ردیفِ جداش ۴۴ پیکسل می‌گرفت تا یک عدد را بگوید. */}
+          {rw?.refCount > 0 && (
+            <span className="mn-rw-count" title="نفراتی که با لینک شما آمده‌اند">
+              {faNum(rw.refCount)} نفر
+            </span>
+          )}
         </div>
 
-        {rw?.refCount > 0 && (
-          <div className="mn-rw-count">
-            <b>{faNum(rw.refCount)}</b> نفر با لینک شما آمده‌اند
-          </div>
-        )}
-
-        <div className="mn-rw-code">
-          <span dir="ltr">{code}</span>
-          <button onClick={copy} aria-label="کپی لینک">
+        {/* کد و فرستادن در یک ردیف.
+            دو ردیفِ تمام‌عرض برای دو کارِ مرتبط، ۵۲ پیکسل اضافه
+            می‌گرفت و هیچ چیزِ تازه‌ای نمی‌گفت. */}
+        <div className="mn-rw-act">
+          <button className="mn-rw-code" onClick={copy}
+            title="کپی لینک دعوت">
+            <span dir="ltr">{code}</span>
             {copied ? <Check size={14} /> : <Copy size={14} />}
           </button>
+          <button className="mn-rw-share" onClick={onShare}>
+            <Send size={15} /> فرستادن
+          </button>
         </div>
-
-        <button className="mn-rw-share" onClick={onShare}>
-          <Send size={15} /> فرستادن به دوستان
-        </button>
       </div>
     </div>
   );
 }
 
 
-function HomeView({ me, subs, rw, onOpen, onBuy, onAll, onShare }) {
+function HomeView({ me, subs, rw, onOpen, onBuy, onAll, onShare, onTopUp }) {
   const recent = (subs || []).slice(0, 3);
   return (
     <>
-      <Balance me={me} />
+      <Balance me={me} onTopUp={onTopUp} />
 
       <RewardCard me={me} rw={rw} onShare={onShare} />
 
@@ -967,8 +1005,8 @@ function InboxView({ msgs, busy, onSend, support, channel, onZoom }) {
  * همان لحظه ببیند چقدر دارد و بعدش چقدر می‌ماند. رفتن به صفحه‌ی
  * دیگر، این مقایسه را از جلوی چشمش برمی‌دارد.
  */
-function PaySheet({ pay, me, onClose, onConfirm, onTopUp,
-                   onCard, onReceipt, onTopupStart }) {
+function PaySheet({ pay, me, rw, onClose, onConfirm, onTopUp,
+                   onCard, onReceipt, onTopupStart, onCoins }) {
   const fileRef = useRef(null);
   const [amt, setAmt] = useState(0);
   if (!pay) return null;
@@ -980,6 +1018,10 @@ function PaySheet({ pay, me, onClose, onConfirm, onTopUp,
   const short = price - bal;
   const busy = pay.state === "busy";
   const enough = after >= 0;
+  // سکه فقط وقتی معنی دارد که پله‌ای باز شده باشد و خریدِ واقعی
+  // باشد، نه شارژ
+  const canCoins = !isTopup && !!rw && rw.enabled !== false
+                   && Number(rw.percent) > 0 && Number(rw.coins) > 0;
 
   const pickFile = async (e) => {
     const f = e.target.files?.[0];
@@ -1148,6 +1190,25 @@ function PaySheet({ pay, me, onClose, onConfirm, onTopUp,
         {pay.state === "err" && (
           <div className="mn-pay-err"><AlertTriangle size={14} />
             <span>{pay.why}</span></div>
+        )}
+
+        {/* خرج‌کردنِ سکه.
+            فقط روی کارت‌به‌کارت اثر دارد — هسته‌ی کیف پول
+            (`wallet_purchase`) تخفیفِ سکه ندارد، نه در ربات و نه
+            این‌جا. گفتنش لازم است، وگرنه مشتری تیک می‌زند، از کیف
+            پول می‌خرد، و نمی‌فهمد چرا چیزی کم نشد. */}
+        {canCoins && (
+          <button type="button" className={`mn-pay-coins${pay.useCoins ? " on" : ""}`}
+            onClick={() => onCoins(!pay.useCoins)} disabled={busy}>
+            <span className="mn-pay-coins-box" aria-hidden="true">
+              {pay.useCoins ? <Check size={12} /> : null}
+            </span>
+            <span className="mn-pay-coins-txt">
+              <b>{faNum(rw.coins)} سکه‌ام را خرج کن</b>
+              <i>{faNum(rw.percent)}٪ تخفیف · فقط روی کارت‌به‌کارت</i>
+            </span>
+            <Coins size={15} />
+          </button>
         )}
 
         {/* کیف پول وقتی پول هست، وگرنه کارت. هر دو همیشه در دسترس‌اند
@@ -1580,7 +1641,13 @@ export default function Mini() {
       setPay((x) => ({ ...x, state: "busy" }));
       try {
         const r = await api("/api/mini/order", {
-          method: "POST", body: { planId: pay.plan.id },
+          /* سکه، اگر مشتری انتخابش کرده باشد.
+             بک‌اند `useCoins` را از قبل می‌پذیرفت و به
+             `handlers.card_order` می‌داد — همان هسته‌ای که ربات هم
+             از آن رد می‌شود. ولی مینی‌اپ هیچ‌وقت نمی‌فرستادش، پس
+             مشتری‌ای که سکه داشت از این‌جا قیمتِ کامل می‌داد و
+             سکه‌هایش عملاً بی‌مصرف بودند. */
+          method: "POST", body: { planId: pay.plan.id, useCoins: !!pay.useCoins },
         });
         buzz("ok");
         setPay((x) => ({ ...x, state: "ask", step: "card",
@@ -1721,7 +1788,7 @@ export default function Mini() {
             <PendingOrders orders={orders} />
             <HomeView me={me} subs={subs} rw={rw} onOpen={setDetail}
               onAll={() => setTab("subs")} onBuy={() => setTab("buy")}
-              onShare={shareInvite} />
+              onShare={shareInvite} onTopUp={topUp} />
           </>
         )}
         </div>
@@ -1763,7 +1830,8 @@ export default function Mini() {
 
       <Lightbox src={zoom} onClose={() => setZoom("")} />
 
-      <PaySheet pay={pay} me={me}
+      <PaySheet pay={pay} me={me} rw={rw}
+        onCoins={(v) => setPay((x) => (x ? { ...x, useCoins: v } : x))}
         onConfirm={confirmPay}
         onTopUp={topUp}
         onTopupStart={topup.start}

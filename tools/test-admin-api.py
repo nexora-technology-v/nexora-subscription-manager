@@ -14,6 +14,7 @@ from datetime import datetime as _dt
 import json
 import os
 import sys
+import io as _io
 import tempfile
 from pathlib import Path
 
@@ -2567,6 +2568,137 @@ try:
         check("در حالت حجمی، هر حجمی می‌گذرد", False, str(_e.detail)[:80])
 finally:
     app._portal_rates = _saved_rates
+
+
+# ═══════════════════════════════════════════════════════════
+head("مصرف · ریست، عددِ قبلی را نمی‌خورد")
+
+# چرا این بخش: x-ui با ریستِ ترافیک `up` و `down` را صفر می‌کند و
+# هیچ تاریخچه‌ای نگه نمی‌دارد. پس کانفیگی که سهمیه‌اش تمام شده،
+# ریست خورده، و دوباره مصرف کرده، در پنل «کم‌مصرف» به نظر می‌رسید.
+#
+# اندازه‌گیری‌شده: ۵۰۰ گیگ مصرف، ریست، ۴۵۰ گیگِ دیگر → پنل ۴۵۰
+# می‌گفت. ۵۰۰ گیگ بی‌صدا گم شده بود، و روی صورتحساب یعنی واسطه‌ای
+# که با ریست‌زدن دو برابر فروخته، یک‌بار پول می‌دهد.
+
+import tempfile as _tfu                                   # noqa: E402
+import sqlite3 as _squ                                    # noqa: E402
+import time as _tmu                                       # noqa: E402
+from pathlib import Path as _Pu                            # noqa: E402
+
+_GB = 1024 ** 3
+_udir = _Pu(_tfu.mkdtemp(prefix="nx-usex-"))
+# مسیرِ x-ui از متغیرِ محیطی می‌آید، نه یک صفتِ ماژول —
+# `_xui_db_path()` هر بار دوباره می‌خواندش
+import os as _osu                                         # noqa: E402
+_old_xui = _osu.environ.get("XUI_DB_PATH", "")
+_old_bill = app.BILLING_DB
+try:
+    _xpath = _udir / "x-ui.db"
+    _osu.environ["XUI_DB_PATH"] = str(_xpath)
+    app.BILLING_DB = _udir / "bill.db"
+    _ux = _squ.connect(str(_xpath))
+    _ux.executescript("""
+        CREATE TABLE clients (email TEXT, total_gb INTEGER, expiry_time INTEGER,
+                              enable INTEGER, created_at INTEGER, group_name TEXT,
+                              reset INTEGER DEFAULT 0, limit_ip INTEGER DEFAULT 0);
+        CREATE TABLE client_traffics (email TEXT, up INTEGER, down INTEGER,
+                                      expiry_time INTEGER, enable INTEGER);
+        CREATE TABLE client_groups (id INTEGER PRIMARY KEY, name TEXT);
+    """)
+    _ux.execute("INSERT INTO client_groups (id,name) VALUES (1,'g1')")
+    _ux.execute("INSERT INTO clients VALUES ('u1', ?, 0, 1, ?, 'g1', 0, 0)",
+                (500 * _GB, int(_tmu.time() * 1000) - 40 * 86400000))
+    _ux.execute("INSERT INTO client_traffics VALUES ('u1', 0, 0, 0, 1)")
+    _ux.commit()
+
+    _bc = app._billing_conn()
+    _bc.execute(
+        "INSERT OR REPLACE INTO group_config (group_key, billable, rates, period_start) "
+        "VALUES ('g1', 1, ?, date('now','-40 days'))",
+        ('[{"gb":500,"price":300000}]',))
+    _bc.commit()
+    _bc.close()
+
+    def _look():
+        _r = app.billing_clients(x_admin_password=app._INTERNAL_PW)
+        return [c for c in _r["clients"] if c["email"] == "u1"][0]
+
+    def _use(gb, reset=None):
+        _ux.execute("UPDATE client_traffics SET down=? WHERE email='u1'",
+                    (int(gb * _GB),))
+        if reset is not None:
+            _ux.execute("UPDATE clients SET reset=? WHERE email='u1'", (reset,))
+        _ux.commit()
+
+    _use(500)
+    _c1 = _look()
+    check("مصرفِ دوره‌ی جاری درست خوانده می‌شود", abs(_c1["usedGB"] - 500) < 1,
+          f"{_c1['usedGB']} GB")
+    check("و تا وقتی ریستی نبوده، جمع با همان برابر است",
+          abs(_c1["usedTotalGB"] - 500) < 1, f"{_c1['usedTotalGB']} GB")
+
+    _use(0, reset=1)
+    _c2 = _look()
+    check("بعد از ریست، دوره‌ی جاری صفر می‌شود", _c2["usedGB"] < 1,
+          f"{_c2['usedGB']} GB")
+    check("ولی جمع همان ۵۰۰ می‌ماند", abs(_c2["usedTotalGB"] - 500) < 1,
+          f"{_c2['usedTotalGB']} GB — پیش از این، ۵۰۰ گیگ این‌جا گم می‌شد")
+
+    _use(450)
+    _c3 = _look()
+    check("و مصرفِ تازه رویش جمع می‌شود", abs(_c3["usedTotalGB"] - 950) < 1,
+          f"{_c3['usedTotalGB']} GB")
+    check("و رابط می‌داند چقدرش مالِ دوره‌های ریست‌شده است",
+          abs(_c3["usedBeforeGB"] - 500) < 1, f"{_c3['usedBeforeGB']} GB")
+
+    # ریستِ دوم — یک‌بار کار کردن کافی نیست
+    _use(0, reset=2)
+    _use(80)
+    _c4 = _look()
+    check("ریستِ دوم هم شمرده می‌شود", abs(_c4["usedTotalGB"] - 1030) < 1,
+          f"{_c4['usedTotalGB']} GB")
+
+    # و مهم‌تر: نگاه‌کردنِ مکرر نباید عدد را باد کند. پنل هر ۴۰
+    # ثانیه می‌پرسد؛ اگر هر بار جمع می‌شد، یک شب کافی بود تا عدد
+    # بی‌معنا شود.
+    _b4 = _c4["usedTotalGB"]
+    _look(); _look(); _look()
+    check("و نگاه‌کردنِ مکرر عدد را باد نمی‌کند",
+          abs(_look()["usedTotalGB"] - _b4) < 0.01,
+          "چهار بار خواندن، بدون تغییرِ مصرف")
+
+    _ux.close()
+finally:
+    if _old_xui:
+        _osu.environ["XUI_DB_PATH"] = _old_xui
+    else:
+        _osu.environ.pop("XUI_DB_PATH", None)
+    app.BILLING_DB = _old_bill
+
+# ── درصدِ مصرف: واحدها باید بخوانند ──
+#
+# `_usage_percent` بایت می‌گیرد و x-ui گاهی بایت می‌دهد و گاهی خودِ
+# عددِ گیگ. هر چهار صداکننده مقدارِ خام را می‌دادند انگار بایت است.
+# روی نصبی که عددِ گیگ نگه می‌دارد، نتیجه ۹۶٬۶۳۶٬۷۶۴٬۱۶۰٪ بود.
+check("درصدِ مصرف با سهمیه‌ی بایتی درست است",
+      app._usage_percent(450 * _GB, 500 * _GB) == 90,
+      str(app._usage_percent(450 * _GB, 500 * _GB)))
+check("و با سهمیه‌ای که عددِ گیگ است هم همان",
+      app._usage_percent(450 * _GB, 500) == 90,
+      str(app._usage_percent(450 * _GB, 500)))
+check("سهمیه‌ی صفر یعنی نامحدود، نه صفر درصد",
+      app._usage_percent(10 * _GB, 0) is None)
+
+# ── قواعدی که در کد بمانند ──
+check("فهرستِ مرجع هم مصرف را ثبت می‌کند",
+      "_record_seen(bcon, clients)" in _APSRC.split("def billing_clients")[1][:4000],
+      "مصرفِ جمع‌شده از *مشاهده* ساخته می‌شود؛ صفحه‌ای که نگاه نکند، ریست را می‌بازد")
+
+_BILLJSX = _io.open("frontend/src/sections/billing.jsx", encoding="utf-8").read()
+check("صفحه‌های حسابداری خودشان تازه می‌شوند",
+      _BILLJSX.count("usePolling(") >= 2,
+      "عددِ روی صفحه‌ی باز باید زنده بماند — و ریستی که دیده نشود، گم می‌شود")
 
 
 # ═══════════════════════════════════════════════════════════

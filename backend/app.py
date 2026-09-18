@@ -5657,7 +5657,22 @@ def _billing_conn():
             -- تاریخچه‌ای نگه نمی‌دارد. تنها راه فهمیدنش این است که
             -- خودمان انقضا را به خاطر بسپاریم و دفعه‌ی بعد مقایسه
             -- کنیم — اگر جلو رفته باشد، تمدید شده.
-            last_expiry INTEGER
+            last_expiry INTEGER,
+
+            -- مصرف، و همان قاعده برای ترافیک.
+            --
+            -- x-ui با ریست‌شدنِ ترافیک `up` و `down` را صفر می‌کند و
+            -- عددِ قبلی برای همیشه می‌رود. اندازه‌گیری‌شده: کانفیگِ
+            -- ۵۰۰ گیگی که ۵۰۰ مصرف کرد، ریست خورد، و ۴۵۰ دیگر مصرف
+            -- کرد — پنل ۴۵۰ نشان می‌داد و ۵۰۰ گیگ بی‌صدا گم شده بود.
+            --
+            -- روی صورتحساب یعنی واسطه‌ای که با ریست‌زدن دو برابر حجم
+            -- فروخته، یک‌بار پول می‌دهد.
+            --
+            -- `used_before` جمعِ دوره‌های ریست‌شده است و `last_used`
+            -- مبنای مقایسه. افتادنِ عدد یعنی ریست.
+            last_used   INTEGER,
+            used_before INTEGER DEFAULT 0
         );
 
         -- لاگ تمدید: x-ui تاریخچه ندارد، پس از امروز خودمان ثبت می‌کنیم
@@ -5976,14 +5991,28 @@ def _duration_days(created, expiry):
     return round(days, 1) if days > 0 else None
 
 
-def _usage_percent(used_bytes, quota_bytes):
+def _usage_percent(used_bytes, quota_raw):
     """
     درصد مصرف. برای پلن نامحدود None برمی‌گردد چون درصدی از
     بی‌نهایت معنا ندارد.
+
+    `quota_raw` همان چیزی است که x-ui می‌دهد — و x-ui گاهی بایت
+    می‌دهد و گاهی خودِ عددِ گیگ. پس از `_gb_of` رد می‌شود، همان
+    هسته‌ای که بقیه‌ی حسابداری هم از آن می‌گذرد.
+
+    چرا این‌جا و نه در صداکننده‌ها: هر چهار صداکننده مقدارِ خامِ
+    x-ui را می‌دادند انگار بایت است. روی نصبی که `total_gb` عددِ
+    گیگ نگه می‌دارد، نتیجه‌اش این بود:
+
+        used=450GB، quota=500  →  ۹۶٬۶۳۶٬۷۶۴٬۱۶۰٪
+
+    و در مینی‌اپ، `gb` و `usagePct` دو خط فاصله داشتند و همان یک
+    مقدار در یکی از `_gb_of` رد می‌شد و در دیگری نه.
     """
-    if not quota_bytes or quota_bytes <= 0:
+    gb = _gb_of(quota_raw)
+    if gb <= 0:
         return None
-    return round(used_bytes * 100.0 / quota_bytes)
+    return round(used_bytes * 100.0 / (gb * (1024 ** 3)))
 
 
 def _start_ms(cl, since=None, first_seen=None):
@@ -6587,16 +6616,23 @@ def _record_seen(bcon, clients):
     now = datetime.now().strftime("%Y-%m-%d")
     out = {}
     known = {}
+    #: ایمیل → (آخرین مصرفی که دیدیم، جمعِ دوره‌های ریست‌شده)
+    seen_used = {}
     try:
         # ستون در نصب‌های قدیمی نیست — بی‌سروصدا اضافه‌اش می‌کنیم.
         cols = {r[1] for r in bcon.execute("PRAGMA table_info(client_seen)")}
-        if "last_expiry" not in cols:
-            bcon.execute("ALTER TABLE client_seen ADD COLUMN last_expiry INTEGER")
-            bcon.commit()
+        for _c, _t in (("last_expiry", "INTEGER"),
+                       ("last_used", "INTEGER"),
+                       ("used_before", "INTEGER DEFAULT 0")):
+            if _c not in cols:
+                bcon.execute(f"ALTER TABLE client_seen ADD COLUMN {_c} {_t}")
+        bcon.commit()
         for r in bcon.execute(
-                "SELECT email, first_seen, last_expiry FROM client_seen"):
+                "SELECT email, first_seen, last_expiry, last_used, used_before "
+                "FROM client_seen"):
             out[r["email"]] = r["first_seen"]
             known[r["email"]] = r["last_expiry"]
+            seen_used[r["email"]] = (r["last_used"], r["used_before"] or 0)
     except Exception:
         return out
 
@@ -6606,22 +6642,25 @@ def _record_seen(bcon, clients):
     # last_expiry خالی ساخته می‌شود — یعنی مبنای مقایسه یک دور دیرتر
     # جا می‌افتد و اولین تمدیدِ هر کانفیگ برای همیشه از دست می‌رود.
     fresh = [(c["email"], c.get("group") or "", now, now,
-              _epoch_ms(c.get("expiry")))
+              _epoch_ms(c.get("expiry")), int(c.get("used") or 0))
              for c in clients if c.get("email") and c["email"] not in out]
     if fresh:
         try:
             bcon.executemany(
                 "INSERT OR IGNORE INTO client_seen "
-                "(email, group_key, first_seen, last_seen, last_expiry) "
-                "VALUES (?,?,?,?,?)", fresh)
+                "(email, group_key, first_seen, last_seen, last_expiry, "
+                " last_used, used_before) "
+                "VALUES (?,?,?,?,?,?,0)", fresh)
             bcon.commit()
-            for em, _g, fs, _l, exp in fresh:
+            for em, _g, fs, _l, exp, us in fresh:
                 out[em] = fs
                 known[em] = exp
+                seen_used[em] = (us, 0)
         except Exception:
             log.debug("ثبت اولین دیدن ناموفق", exc_info=True)
 
     _detect_renewals(bcon, clients, known, now)
+    _track_usage(bcon, clients, seen_used)
 
     try:
         bcon.executemany(
@@ -6631,6 +6670,48 @@ def _record_seen(bcon, clients):
     except Exception:
         pass
     return out
+
+
+def _track_usage(bcon, clients, seen_used):
+    """
+    مصرفِ جمع‌شده را نگه می‌دارد — حتی وقتی ترافیک ریست می‌شود.
+
+    همان قاعده‌ی تشخیصِ تمدید، برای ترافیک: x-ui تاریخچه ندارد، پس
+    خودمان عددِ قبلی را به خاطر می‌سپاریم و مقایسه می‌کنیم. اگر
+    مصرف **پایین** آمده باشد، یعنی ریست شده و عددِ قبلی باید به
+    جمع اضافه شود، وگرنه برای همیشه می‌رود.
+
+    اندازه‌گیری‌شده: کانفیگِ ۵۰۰ گیگی که ۵۰۰ مصرف کرد، ریست خورد،
+    و ۴۵۰ دیگر مصرف کرد — پنل ۴۵۰ می‌گفت. ۵۰۰ گیگ بی‌صدا گم شده
+    بود، و روی صورتحساب یعنی واسطه یک‌بار پول داده برای دو دوره.
+
+    یک نکته: «پایین آمدن» را با حاشیه نمی‌سنجیم. مصرف هیچ‌وقت خودش
+    کم نمی‌شود، پس هر کاهشی ریست است. ولی *مساوی* ریست نیست —
+    وگرنه کانفیگی که بی‌استفاده مانده هر بار دوباره جمع می‌شد.
+    """
+    ups = []
+    for c in clients:
+        em = c.get("email")
+        if not em:
+            continue
+        now_used = int(c.get("used") or 0)
+        prev, before = seen_used.get(em, (None, 0))
+        if prev is None:
+            ups.append((now_used, before, em))
+            continue
+        if now_used < prev:
+            # ریست: آنچه تا پیش از ریست مصرف شده بود را نگه دار
+            before = int(before or 0) + int(prev)
+        ups.append((now_used, before, em))
+
+    if not ups:
+        return
+    try:
+        bcon.executemany(
+            "UPDATE client_seen SET last_used=?, used_before=? WHERE email=?", ups)
+        bcon.commit()
+    except Exception:
+        log.debug("ثبت مصرف جمع‌شده ناموفق", exc_info=True)
 
 
 
@@ -9033,11 +9114,28 @@ def billing_clients(
             "SELECT email, COALESCE(SUM(months),0) m FROM renewals GROUP BY email")}
         rows_by = _rows_by_email([dict(r) for r in bcon.execute(
             "SELECT email, months, created_at FROM renewals")])
+        # این صفحه هم باید ثبت کند، نه فقط نمای کلی.
+        #
+        # تا امروز فقط `billing/overview` صدایش می‌زد. ولی مصرفِ
+        # جمع‌شده از *مشاهده* ساخته می‌شود: اگر بین دو نگاه ریست
+        # بیفتد، عددِ قبلی دیده نشده و برای همیشه می‌رود. «همه
+        # کاربران» جایی است که مالک به مصرف نگاه می‌کند، پس همین‌جا
+        # هم باید چشم باز باشد.
+        #
+        # دوباره‌اجرا بی‌خطر است: هم تشخیص تمدید و هم شمارش مصرف با
+        # مقایسه‌ی مقدارِ قبلی کار می‌کنند، نه با افزودنِ کور.
         try:
-            seen = {r["email"]: r["first_seen"] for r in bcon.execute(
-                "SELECT email, first_seen FROM client_seen")}
+            seen = _record_seen(bcon, clients)
         except Exception:
+            log.debug("ثبت دیدن در فهرست مرجع ناموفق", exc_info=True)
             seen = {}
+        # مصرفِ دوره‌های ریست‌شده. بدون این، عددِ مصرف بعد از هر
+        # ریست از صفر شروع می‌شود و آنچه قبلش بوده گم می‌شود.
+        try:
+            before = {r["email"]: int(r["used_before"] or 0) for r in bcon.execute(
+                "SELECT email, used_before FROM client_seen")}
+        except Exception:
+            before = {}
         since_of = {k: _bill_since(v)[0] for k, v in cfg.items()}
     finally:
         bcon.close()
@@ -9115,6 +9213,12 @@ def billing_clients(
             remaining = round((exp - now_ms) / 86400000.0, 1)
 
         used = cl["used"]
+        # `used` مصرفِ دوره‌ی جاری است و `usedTotal` جمعِ همه‌ی
+        # دوره‌ها. درصد روی دوره‌ی جاری می‌ماند — «۱۹۰٪ از سهمیه»
+        # عدد بی‌معنایی است — ولی جمع باید دیده شود، چون همان است
+        # که مشتری واقعاً مصرف کرده.
+        reset_before = before.get(cl["email"], 0)
+        used_total = used + reset_before
         pct = _usage_percent(used, cl["totalGB"])
 
         if not exp:
@@ -9141,6 +9245,10 @@ def billing_clients(
             "gbLabel": "نامحدود" if gb == 0 else f"{gb} GB",
             "usedBytes": used,
             "usedGB": round(used / (1024 ** 3), 2),
+            "usedTotalGB": round(used_total / (1024 ** 3), 2),
+            # چقدر از مصرف مالِ دوره‌های ریست‌شده است — رابط فقط
+            # وقتی نشانش می‌دهد که صفر نباشد
+            "usedBeforeGB": round(reset_before / (1024 ** 3), 2),
             "usagePct": pct,
             "limitIp": cl.get("limitIp") or 0,
             "subId": cl.get("subId") or "",

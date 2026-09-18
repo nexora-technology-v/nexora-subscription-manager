@@ -28,8 +28,11 @@
   --space-8: 32px;
 
   --bg: #070A12;
-  --surface: #0E1523;
-  --surface-2: #131C2E;
+  /* سطح‌ها کمی از هم جدا شدند.
+     ‎#0E1523‎ و ‎#131C2E‎ اختلافِ روشناییِ ۲٪ داشتند، پس کارتِ
+     روی کارت دیده نمی‌شد و همه‌چیز یک صفحه‌ی تخت بود. */
+  --surface: #101827;
+  --surface-2: #17223A;
   --surface-3: #0A0F1A;
   /* مرزها عمداً کم‌رنگ‌اند، ولی ۰٫۰۵ عملاً نامرئی بود و کارت‌ها
      در هم می‌رفتند. این مقدارها هنوز ملایم‌اند اما دیده می‌شوند. */
@@ -132,6 +135,7 @@
   /* ── لایه‌های سفید و سیاه ──
      «مو» یعنی خطِ نازکِ روشن روی سطحِ تیره؛ «پرده» یعنی سیاهی که
      روی چیزی می‌افتد. این دو هم ۸۵ بار دستی نوشته شده بودند. */
+  --card-hair: rgba(255,255,255,.10);
   --hair-1: rgba(255, 255, 255, 0.04);
   --hair-2: rgba(255, 255, 255, 0.07);
   --hair-3: rgba(255, 255, 255, 0.12);
@@ -204,9 +208,16 @@ body {
 body::before {
   content: "";
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  /* سه منبع، سه رنگ — نه دو سایه از یک آبی.
+     قبلاً هر دو لکه آبی بودند (#2B7FD6 و #5AA9E6)، یعنی کلِ
+     پس‌زمینه یک رنگ بود با دو غلظت؛ چشم عمق نمی‌دید و صفحه «یک‌شکل»
+     به نظر می‌رسید.
+     مقدارها عمداً بسیار پایین‌اند: این لایه باید *حس* شود، نه
+     دیده. اگر کسی بتواند بگوید «این‌جا سبز است»، زیاده‌روی شده. */
   background:
-    radial-gradient(900px 600px at 82% -8%, rgba(43,127,214,.10), transparent 60%),
-    radial-gradient(760px 520px at 8% 108%, rgba(90,169,230,.07), transparent 62%);
+    radial-gradient(1000px 640px at 88% -10%, rgba(43,127,214,.12), transparent 58%),
+    radial-gradient(720px 520px at 4% 46%, rgba(45,212,191,.055), transparent 60%),
+    radial-gradient(820px 560px at 26% 112%, rgba(167,139,250,.05), transparent 62%);
 }
 
 /* فقط فونت — عناصر فرم آن را از body ارث نمی‌برند.
@@ -845,13 +856,26 @@ code, kbd, samp, pre { overflow-wrap: anywhere; }
 /* ::after و نه ::before — چون .fx-card هم ::before دارد (خطِ نازکِ
    لبه‌ی بالا) و کارت شاخص هر دو کلاس را با هم می‌گیرد. با ::before،
    هرکدام که دیرتر در فایل بیاید دیگری را بی‌صدا پاک می‌کند. */
+.fx-kpi {
+  /* پیش‌فرض همان آبیِ برند است؛ کارتی که `tone` دارد رویش
+     می‌نویسد */
+  --kpi-tone: var(--accent-2);
+  /* و خطِ لبه‌ی بالا رنگِ همان کارت را می‌گیرد — تنها نشانه‌ی
+     رنگیِ همیشه‌دیده‌شده، بدون اینکه کارت رنگی شود */
+  --card-hair: color-mix(in srgb, var(--kpi-tone) 42%, transparent);
+}
 .fx-kpi::after {
   content: ""; position: absolute; inset: 0; opacity: 0; pointer-events: none;
-  background: radial-gradient(22rem 12rem at 80% -20%, rgba(90,169,230,.14), transparent 70%);
+  background: radial-gradient(22rem 12rem at 80% -20%,
+              color-mix(in srgb, var(--kpi-tone) 16%, transparent), transparent 70%);
   transition: opacity var(--m-base) linear;
 }
 .fx-kpi:hover::after { opacity: 1; }
-.fx-kpi:hover { transform: translateY(-3px); border-color: var(--border-2); }
+.fx-kpi:hover {
+  transform: translateY(-3px);
+  border-color: color-mix(in srgb, var(--kpi-tone) 30%, var(--border-2));
+}
+
 .fx-bump { animation: fx-bump var(--m-slow) var(--sp-snappy); }
 @keyframes fx-bump {
   0% { transform: none; }
@@ -1096,8 +1120,15 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
    پس‌زمینه جدا می‌کند بدون اینکه مرزش پررنگ شود */
 .fx-card::before {
   content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+  /* رنگِ خط از یک متغیر می‌آید تا کارت‌های خاص بتوانند رنگیش کنند
+     *بدونِ* ساختنِ یک `::before` دوم.
+
+     چرا این‌قدر صریح: `.fx-card` و `.fx-kpi` روی یک عنصر با هم
+     می‌آیند، پس دو بلوکِ `::before` یعنی هرکدام که دیرتر در فایل
+     بیاید دیگری را بی‌صدا پاک می‌کند. دروازه‌ی ظاهر همین را
+     می‌گیرد — و یک‌بار گرفت. */
   background: linear-gradient(to left, transparent,
-              rgba(255,255,255,.10) 22%, rgba(255,255,255,.10) 78%, transparent);
+              var(--card-hair) 22%, var(--card-hair) 78%, transparent);
   border-radius: var(--r-l) var(--r-l) 0 0; pointer-events: none;
 }
 
@@ -1349,6 +1380,23 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   background: linear-gradient(140deg, #F5D67B, #C9A227);
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.18);
 }
+
+/* «شارژ» روی خودِ کارتِ موجودی — جای تراشه‌ی تزئینی.
+   کارت زمینه‌ی آبیِ پررنگ دارد، پس دکمه شیشه‌ای است نه رنگی:
+   رنگِ تازه روی آن زمینه با خودِ کارت دعوا می‌کند. */
+.mn-bal-add {
+  display: inline-flex; align-items: center; gap: 4px;
+  /* ۳۴ پیکسل، نه ۳۰: کفِ هدفِ لمسی همین است و این دکمه روی گوشی
+     زده می‌شود */
+  height: 34px; padding: 0 12px; border-radius: 99px;
+  background: rgba(255,255,255,.16);
+  border: 1px solid rgba(255,255,255,.26);
+  color: #fff; font-size: 12.5px; font-weight: 700;
+  backdrop-filter: blur(4px);
+  transition: background var(--m-fast) linear, transform var(--m-fast) var(--sp-snappy);
+}
+.mn-bal-add:hover { background: rgba(255,255,255,.24); }
+.mn-bal-add:active { transform: scale(.94); }
 .mn-bal-amount {
   display: flex; align-items: baseline; gap: 7px; margin: 16px 0 18px;
   direction: rtl;
@@ -2910,6 +2958,17 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
    ستونِ کناری بلندتر بود و شبکه پیش‌فرض همه را کش می‌دهد. */
 .fx-g2 { align-items: start; }
 
+/* ...مگر شبکه‌ای که عمداً ردیف‌بندی شده.
+   وقتی چهار کارت در دو ردیف می‌نشینند، «قدِ محتوا» یعنی دو کارتِ
+   یک ردیف در دو جای متفاوت تمام می‌شوند و چشم ناهم‌ترازی را
+   می‌بیند. اندازه‌گیری‌شده روی داشبورد: ۳۲۵ در برابر ۲۵۷ و ۱۸۰ در
+   برابر ۲۶۷ پیکسل.
+
+   نامش `fx-g2-rows` است نه `fx-rows`: آن یکی از قبل وجود دارد و
+   `display: flex` می‌دهد — شبکه را کلاً flex کرد و هر چهار کارت
+   زیر هم افتادند. */
+.fx-g2.fx-g2-rows { align-items: stretch; }
+
 /* نوار تب همیشه یک ردیف است، نه فقط روی موبایل.
    قاعده‌ی اسکرول تا امروز داخل مدیا-کوئریِ موبایل بود؛ روی دسکتاپ
    نوارِ پرتب می‌توانست بشکند و هیچ‌کس نمی‌دیدش چون پنجره‌ی ما پهن
@@ -2944,6 +3003,34 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 
 /* دعوتِ دوست */
+/* انتخابِ «سکه‌هایم را خرج کن» در برگه‌ی پرداخت */
+.mn-pay-coins {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 11px 13px; margin-bottom: 10px;
+  border-radius: 13px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--dim); text-align: start;
+  transition: border-color var(--m-fast) linear, background var(--m-fast) linear;
+}
+.mn-pay-coins.on {
+  border-color: var(--warn-line); background: var(--warn-soft);
+}
+.mn-pay-coins > svg { flex: none; margin-inline-start: auto; color: var(--warn); }
+.mn-pay-coins-box {
+  flex: none; width: 19px; height: 19px; border-radius: 6px;
+  display: grid; place-items: center;
+  border: 1px solid var(--border-2); background: var(--bg);
+  color: #06090F;
+}
+.mn-pay-coins.on .mn-pay-coins-box {
+  background: var(--warn); border-color: var(--warn);
+}
+.mn-pay-coins-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mn-pay-coins-txt b { font-size: 13px; color: var(--text); }
+.mn-pay-coins-txt i {
+  font-style: normal; font-size: 11.5px; color: var(--muted);
+}
+
 /* ── سکه و دعوت ──
    نسخه‌ی قبلی یک جعبه‌ی خاکستری با کد و دو دکمه بود و سه چیزِ لازم
    را نمی‌گفت: چند سکه دارم، به چه دردی می‌خورد، و دعوت چه سودی
@@ -2998,14 +3085,14 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 /* نردبان — یک ردیف که افقی اسکرول می‌خورد. با wrap، پنج پله روی
    گوشی سه ردیف می‌شد و کارت را دو برابر می‌کرد. */
 .mn-rw-ladder {
-  display: flex; gap: 6px; margin-top: 12px;
+  display: flex; gap: 6px; margin-top: 10px;
   overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none;
   padding-bottom: 2px;
 }
 .mn-rw-ladder::-webkit-scrollbar { display: none; }
 .mn-rw-step {
-  flex: none; min-width: 62px; text-align: center;
-  padding: 7px 8px; border-radius: 10px;
+  flex: none; min-width: 58px; text-align: center;
+  padding: 6px 8px; border-radius: 10px;
   background: var(--hair-1); border: 1px solid transparent;
 }
 .mn-rw-step > b {
@@ -3024,12 +3111,23 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .mn-rw-step.on > span { color: var(--dim); }
 
 /* ── بخشِ دعوت ── */
+/* بخشِ دعوت — همان کارت، با یک خطِ جداکننده.
+   قبلاً جعبه‌ی دومی با ۱۰ پیکسل فاصله بود، و دو جعبه‌ی جدا برای یک
+   موضوع یعنی چشم آن را دو بخش می‌خواند. */
 .mn-rw-inv {
-  margin-top: 10px; padding: 14px;
-  border-radius: var(--r-l);
-  background: var(--surface-2); border: 1px solid var(--border);
+  margin-top: 0; padding: 13px 15px 15px;
+  border-radius: 0 0 var(--r-l) var(--r-l);
+  background: var(--surface-2);
+  border: 1px solid var(--warn-line); border-top: 0;
+}
+/* و بالاییِ این جفت، فقط گوشه‌های بالا را گرد می‌کند */
+.mn-rw:has(+ .mn-rw-inv) { border-radius: var(--r-l) var(--r-l) 0 0; }
+
+.mn-rw-where {
+  margin-top: 6px; font-size: 11.5px; color: var(--muted);
 }
 .mn-rw-inv-head { display: flex; gap: 10px; align-items: flex-start; }
+.mn-rw-inv-head > div { min-width: 0; }
 .mn-rw-inv-head > svg { flex: none; margin-top: 2px; color: var(--accent-2); }
 .mn-rw-inv-head b { font-size: 13.5px; color: var(--text); }
 .mn-rw-inv-head p {
@@ -3037,38 +3135,42 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 .mn-rw-inv-head p b { color: var(--warn); font-family: var(--num); }
 
+/* شمارِ دعوت‌شده‌ها، کنارِ عنوان */
 .mn-rw-count {
-  margin-top: 10px; padding: 7px 10px; border-radius: 9px;
-  font-size: 12.5px; color: var(--dim);
-  background: var(--accent-soft);
+  flex: none; margin-inline-start: auto; align-self: flex-start;
+  padding: 3px 8px; border-radius: 99px;
+  font-size: 11.5px; font-weight: 700;
+  color: var(--accent-2); background: var(--accent-soft);
+  font-family: var(--num);
 }
-.mn-rw-count b { color: var(--accent-2); font-family: var(--num); }
 
 /* کد و دکمه‌ی کپی در یک ردیف: کدِ وسط‌چینِ تنها، دکمه‌ای که آن را
    کپی می‌کند دو خط پایین‌تر داشت و ربطشان دیده نمی‌شد */
+/* کد و فرستادن، یک ردیف */
+.mn-rw-act { display: flex; gap: 8px; margin-top: 11px; }
+
 .mn-rw-code {
-  display: flex; align-items: center; gap: 8px;
-  margin-top: 10px; padding: 8px 8px 8px 12px;
-  border-radius: 10px;
+  flex: 1 1 auto; min-width: 0;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  height: 42px; padding: 0 12px;
+  border-radius: 12px;
   background: var(--bg); border: 1px dashed var(--border-2);
+  color: var(--dim);
+  transition: border-color var(--m-fast) linear;
 }
+.mn-rw-code:hover { border-color: var(--accent-line); }
 .mn-rw-code > span {
-  flex: 1; min-width: 0; text-align: center;
-  font-size: 17px; font-weight: 800; letter-spacing: .16em;
+  min-width: 0;
+  font-size: 16px; font-weight: 800; letter-spacing: .14em;
   color: var(--accent-2); font-family: var(--num);
-  user-select: all;            /* یک کلیک، کلِ کد انتخاب می‌شود */
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.mn-rw-code > button {
-  flex: none; width: 34px; height: 34px; border-radius: 9px;
-  display: grid; place-items: center;
-  background: var(--surface-2); border: 1px solid var(--border);
-  color: var(--dim);
-}
+.mn-rw-code > svg { flex: none; }
 
 .mn-rw-share {
-  display: flex; align-items: center; justify-content: center; gap: 7px;
-  width: 100%; margin-top: 10px; height: 42px;
+  flex: none;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 16px; height: 42px;
   border-radius: 12px; border: 0;
   background: linear-gradient(140deg, var(--accent), var(--cy));
   color: #06090F; font-size: 13.5px; font-weight: 700;
@@ -3099,6 +3201,19 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
    تبِ گفتگو کنار می‌ماند: آن‌جا چیدمان فلکس است و حاشیه ارتفاع را
    به‌هم می‌ریزد. */
 .mn-view:not(.chat) > * + * { margin-top: 22px; }
+
+/* ...ولی ۲۲ پیکسل ریتمِ *بخش‌ها* است، نه ریتمِ هر چیزی.
+   اندازه‌گیری‌شده: همین قاعده بین سه کارتِ فهرستِ اشتراک‌ها هم
+   ۲۲ پیکسل می‌گذاشت — سه ردیفِ یک فهرست که به نظر می‌رسید سه
+   بخشِ بی‌ربط‌اند. و بین دو فیلدِ پشت‌سرهمِ یک فرم هم همین‌طور. */
+
+/* ردیف‌های یک فهرست به هم نزدیک‌اند */
+.mn-view:not(.chat) > .mn-row + .mn-row { margin-top: 10px; }
+/* فیلدهای یک فرم هم */
+.mn-view:not(.chat) > .mn-field + .mn-field { margin-top: 14px; }
+/* و عنوانِ بخش فاصله‌ی خودش را دارد؛ ۲۲ پیکسلِ دیگر یعنی عنوان از
+   چیزی که عنوانش است جدا بیفتد */
+.mn-view:not(.chat) > .mn-sec-head + * { margin-top: 12px; }
 
 /* و عنوان تا خودِ کارت کمی بازتر */
 .mn-sec-head { margin-bottom: 12px; }

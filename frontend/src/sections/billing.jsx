@@ -5,6 +5,7 @@
  * در آن عملاً ناممکن.
  */
 import React, { useState, useEffect, useRef } from "react";
+import { usePolling } from "../lib/hooks";
 import { useDebouncedChange } from "../lib/hooks";
 import { createPortal } from "react-dom";
 import {
@@ -368,6 +369,21 @@ export function BillingClients({ password }) {
   };
 
   useEffect(() => { load(); },
+    [password, group, status, renewed, age, priced, dates, sort, order, page]);
+
+  /* تازه‌سازیِ زنده.
+     دو دلیل، و دومی از اولی مهم‌تر است:
+
+       ۱. عددِ مصرف روی صفحه‌ی باز هیچ‌وقت عوض نمی‌شد. مالک صفحه را
+          باز می‌گذاشت و ساعت‌ها همان عدد را می‌دید.
+       ۲. مصرفِ جمع‌شده از *مشاهده* ساخته می‌شود. x-ui با ریستِ
+          ترافیک عدد را صفر می‌کند و تاریخچه‌ای ندارد، پس تنها راهِ
+          نگه‌داشتنش این است که پنل قبلش دیده باشدش. ریستی که بین
+          دو نگاه بیفتد، برای همیشه می‌رود.
+
+     چهل ثانیه: به‌اندازه‌ای کوتاه که ریست را نبازد، به‌اندازه‌ای
+     بلند که روی صدها کانفیگ بار نشود. */
+  usePolling(() => { if (!loading) load(); }, 40000,
     [password, group, status, renewed, age, priced, dates, sort, order, page]);
 
   // جستجو با تاخیر — تا با هر حرف یک درخواست نرود.
@@ -755,13 +771,23 @@ export function BillingClients({ password }) {
                     <td className="px-3 py-3">
                       <div className="flex items-baseline gap-1.5 justify-center mb-1.5">
                         <span className="text-[14px] font-semibold"
-                          style={{ color: "var(--text)", fontFamily: "var(--mono)" }}>
+                          style={{ color: "var(--text)", fontFamily: "var(--num)" }}>
                           {faNum(c.usedGB)}
                         </span>
                         <span className="text-[12px]" style={{ color: "var(--muted)" }}>
                           / {c.gb === 0 ? "∞" : faNum(c.gb)} GB
                         </span>
                       </div>
+                      {/* مصرفِ دوره‌های ریست‌شده.
+                          بدونِ این، کانفیگی که ریست خورده «کم‌مصرف»
+                          به نظر می‌رسد در حالی که چند برابرِ سهمیه‌اش
+                          رد شده — و همان عدد است که باید روی نرخ
+                          اثر بگذارد. */}
+                      {c.usedBeforeGB > 0 && (
+                        <div className="text-[11.5px] mb-1.5" style={{ color: "var(--warn)" }}>
+                          جمعاً {faNum(c.usedTotalGB)} GB با {faNum(c.resetCount)} ریست
+                        </div>
+                      )}
                       <div style={{ height: 5, borderRadius: 99,
                                     background: "var(--hair-2)", overflow: "hidden" }}>
                         <div style={{
@@ -880,7 +906,12 @@ export function ClientDetailModal({ client: c, onClose }) {
       </div>
 
       <Row label="حجم پلن" value={c.gbLabel} />
-      <Row label="مصرف" value={`${faNum(c.usedGB)} GB${c.usagePct !== null ? ` (${faNum(c.usagePct)}٪)` : ""}`} mono />
+      <Row label="مصرف این دوره" value={`${faNum(c.usedGB)} GB${c.usagePct !== null ? ` (${faNum(c.usagePct)}٪)` : ""}`} mono />
+      {/* «مصرف» به‌تنهایی وقتی ریست خورده باشد گمراه‌کننده است:
+          عددی که نشان می‌دهد فقط دوره‌ی جاری است. */}
+      {c.usedBeforeGB > 0 && (
+        <Row label="مصرف کل (با ریست‌ها)" value={`${faNum(c.usedTotalGB)} GB`} mono />
+      )}
       <Row label="تاریخ ایجاد" value={faDate(c.createdJalali)} mono />
       <Row label="تاریخ انقضا" value={faDate(c.expiryJalali)} mono />
       <Row label="روز مانده"
@@ -1288,6 +1319,10 @@ export function useBilling(password) {
     } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, [password]);
+  /* همان دلیلِ «همه کاربران»: عددِ صفحه‌ی باز باید زنده بماند، و
+     مصرفِ جمع‌شده از مشاهده ساخته می‌شود. این هوک زیرِ داشبورد و
+     چند صفحه‌ی دیگر است، پس هر کدامشان که باز باشد چشم باز است. */
+  usePolling(load, 40000, [password]);
   return { data, loading, reload: load };
 }
 

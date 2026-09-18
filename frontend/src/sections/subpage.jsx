@@ -60,7 +60,9 @@ function BillingMini({ data, onGo }) {
   const max = groups.reduce((m, g) => Math.max(m, g.due || 0), 0) || 1;
 
   return (
-    <div className="fx-card p-5">
+    /* کارتِ شبکه تا قدِ ردیف کش می‌آید؛ بدونِ `flex-col` محتوایش
+       بالا جمع می‌شود و زیرش حفره می‌ماند */
+    <div className="fx-card p-5 flex flex-col">
       <div className="flex items-center justify-between gap-2 mb-4">
         <div>
           <h3 className="text-[14px] font-bold text-white">بدهی نماینده‌ها</h3>
@@ -80,7 +82,7 @@ function BillingMini({ data, onGo }) {
         <EmptyState icon={Layers} text="بدهی بازی نیست"
           hint="هر نماینده‌ای که این دوره کانفیگ ساخته باشد، این‌جا با مبلغش می‌آید." />
       ) : (
-        <div className="flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2.5 flex-1 justify-between">
           {groups.map((g) => (
             <div key={g.name} className="flex items-center gap-3">
               <span className="text-[13px] shrink-0" style={{ color: "var(--dim)", minWidth: 62 }}>
@@ -283,10 +285,17 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
         </div>
       </div>
 
-      {/* ── صفحه‌ی اشتراک: وضعیت محتوا ── */}
-      <div className="fx-g2 grid gap-3">
-        <div className="flex flex-col gap-3 min-w-0">
-        <div className="fx-card p-5">
+      {/* ── صفحه‌ی اشتراک: وضعیت محتوا ──
+
+          دو ستونِ مستقل نیست، یک شبکه‌ی ۲×۲ است. چرا عوض شد:
+          هر ستون یک استکِ جدا بود، پس کارتِ دومِ هر ستون هر جا که
+          کارتِ اولش تمام می‌شد شروع می‌کرد — و آن دو جا یکی نبودند.
+
+          اندازه‌گیری‌شده: ته ستون‌ها ۱۹ پیکسل با هم فرق داشت و
+          «بدهی نماینده‌ها» ۸۲ پیکسل پایین‌تر از «دسترسی سریع»
+          شروع می‌شد. با شبکه، هر ردیف خودش هم‌قد می‌شود. */}
+      <div className="fx-g2 fx-g2-rows grid gap-3">
+        <div className="fx-card p-5 min-w-0">
           <div className="flex items-center justify-between gap-2 mb-4">
             <div>
               <h3 className="text-[14px] font-bold text-white">محتوای صفحه‌ی اشتراک</h3>
@@ -313,15 +322,8 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
           </div>
         </div>
 
-        {/* ── صورتحساب نماینده‌ها ──
-            ستونِ کناری از کارتِ محتوا بلندتر بود و زیرش حفره
-            می‌ماند. به‌جای کش‌دادنِ آن کارت — که فقط حفره را به
-            داخلش می‌برد — این‌جا عددِ واقعی می‌نشیند. */}
-        <BillingMini data={bill} onGo={() => navigate("bill-dash")} />
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <div className="fx-card p-5"
+        {/* ردیفِ ۱، ستونِ ۲ */}
+        <div className="fx-card p-5 flex flex-col"
             style={{ background: "linear-gradient(150deg,rgba(43,127,214,.12),var(--surface))",
                      borderColor: "rgba(90,169,230,.22)" }}>
             <div className="flex items-start justify-between gap-2 mb-3">
@@ -330,35 +332,41 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
               </div>
               <StatusChip dirty={dirty} />
             </div>
-            <h3 className="text-[14px] font-bold text-white mb-3">قابلیت‌های روشن</h3>
-            <div className="flex flex-col gap-2.5">
-              {features.map((x, i) => (
-                <button key={i} onClick={() => navigate(x.k)} className="flex items-center justify-between w-full">
-                  <span className="text-[13px]" style={{ color: "var(--dim)" }}>{x.l}</span>
-                  <span className="fx-pill" style={{
-                    background: x.on ? "var(--ok-soft)" : "rgba(255,255,255,.04)",
-                    color: x.on ? "var(--ok)" : "var(--muted)" }}>
-                    {x.on ? "فعال" : "خاموش"}
-                  </span>
-                </button>
-              ))}
-            </div>
+          <h3 className="text-[14px] font-bold text-white mb-3">قابلیت‌های روشن</h3>
+          {/* `justify-between` تا وقتی این کارت هم‌قدِ کارتِ کناری
+              کش می‌آید، ردیف‌ها در فضای موجود پخش شوند نه اینکه
+              زیرشان حفره بماند */}
+          <div className="flex flex-col gap-2.5 flex-1 justify-between">
+            {features.map((x, i) => (
+              <button key={i} onClick={() => navigate(x.k)} className="flex items-center justify-between w-full">
+                <span className="text-[13px]" style={{ color: "var(--dim)" }}>{x.l}</span>
+                <span className="fx-pill" style={{
+                  background: x.on ? "var(--ok-soft)" : "rgba(255,255,255,.04)",
+                  color: x.on ? "var(--ok)" : "var(--muted)" }}>
+                  {x.on ? "فعال" : "خاموش"}
+                </span>
+              </button>
+            ))}
           </div>
+        </div>
 
-          <div className="fx-card p-5">
-            <h3 className="text-[14px] font-bold text-white mb-3.5">دسترسی سریع</h3>
-            <div className="flex flex-col gap-2">
-              {[{ l: "مشاهده پیش‌نمایش زنده", i: Eye, k: "preview" },
-                { l: "سفارش‌های ربات", i: Package, k: "bot-orders" },
-                { l: "صورتحساب نماینده‌ها", i: Layers, k: "bill-dash" },
-                { l: "تنظیمات پیشرفته", i: Settings, k: "settings" }].map((x, i) => (
-                <button title="رفتن به این بخش" key={i} onClick={() => navigate(x.k)}
-                  className="fx-btn-g flex items-center justify-between px-3 py-2.5 text-[13px] w-full">
-                  <span className="flex items-center gap-2"><x.i size={14} /> {x.l}</span>
-                  <ArrowUpRight size={13} />
-                </button>
-              ))}
-            </div>
+        {/* ── ردیفِ ۲ ──
+            صورتحساب نماینده‌ها و دسترسی سریع، هم‌قد. */}
+        <BillingMini data={bill} onGo={() => navigate("bill-dash")} />
+
+        <div className="fx-card p-5 flex flex-col">
+          <h3 className="text-[14px] font-bold text-white mb-3.5">دسترسی سریع</h3>
+          <div className="flex flex-col gap-2 flex-1 justify-between">
+            {[{ l: "مشاهده پیش‌نمایش زنده", i: Eye, k: "preview" },
+              { l: "سفارش‌های ربات", i: Package, k: "bot-orders" },
+              { l: "صورتحساب نماینده‌ها", i: Layers, k: "bill-dash" },
+              { l: "تنظیمات پیشرفته", i: Settings, k: "settings" }].map((x, i) => (
+              <button title="رفتن به این بخش" key={i} onClick={() => navigate(x.k)}
+                className="fx-btn-g flex items-center justify-between px-3 py-2.5 text-[13px] w-full">
+                <span className="flex items-center gap-2"><x.i size={14} /> {x.l}</span>
+                <ArrowUpRight size={13} />
+              </button>
+            ))}
           </div>
         </div>
       </div>
