@@ -2570,6 +2570,157 @@ finally:
 
 
 # ═══════════════════════════════════════════════════════════
+head("سکه · همان نردبانی که صندوق به کار می‌برد")
+
+# چرا این بخش: صفحه‌ی «سکه و دعوت» پنل عددها را جایی می‌نوشت که
+# ربات نگاه نمی‌کرد (`settings.coins_per_referral` در برابر
+# `settings.coins.per_referral`). مالک عدد می‌گذاشت، «ذخیره شد»
+# می‌دید، و ربات پیش‌فرض می‌داد. اندازه‌گیری‌شده: «۲۵ سکه به معرف»
+# → ربات ۱۰ می‌داد.
+#
+# حالا مینی‌اپ هم همان نردبان را نشان می‌دهد، پس سه‌تایی باید یکی
+# باشند: پنل، مینی‌اپ، و لحظه‌ی خرید.
+
+import json as _jsc                                       # noqa: E402
+import tempfile as _tfc                                   # noqa: E402
+import sqlite3 as _sqc                                    # noqa: E402
+import base64 as _b64c                                    # noqa: E402
+from pathlib import Path as _Pc                            # noqa: E402
+
+_cdir = _Pc(_tfc.mkdtemp(prefix="nx-coinx-"))
+_old_bot3 = app.BOT_DB
+_old_chat = app.CHAT_DIR
+try:
+    app.CHAT_DIR = _cdir / "chat"
+    _cdb = _cdir / "bot.db"
+    _cc = _sqc.connect(str(_cdb))
+    _cc.row_factory = _sqc.Row
+    import sys as _sysc
+    _sysc.path.insert(0, ".")
+    from bot import db as _BDc
+    _cc.executescript(_BDc.SCHEMA)
+    _BDc._migrate(_cc)
+
+    # نرخ‌هایی که هیچ‌کدام پیش‌فرض نیستند — وگرنه تست با پیش‌فرض هم
+    # سبز می‌شود و دقیقاً همان باگ را نمی‌بیند
+    _cset = {"coins": {"per_referral": 25, "welcome_bonus": 7,
+                       "max_percent": 40,
+                       "tiers": [{"coins": 30, "percent": 15},
+                                 {"coins": 60, "percent": 35},
+                                 {"coins": 90, "percent": 60}]}}
+    _cc.execute("INSERT INTO tenants (id,name,settings,bot_username) "
+                "VALUES (1,'owner',?,?)",
+                (_jsc.dumps(_cset, ensure_ascii=False), "nexora_bot"))
+    _cc.execute("INSERT INTO users (id,tenant_id,tg_id,first_name,coins,ref_code) "
+                "VALUES (1,1,555001,'مریم',40,'NX7K2M')")
+    _cc.execute("INSERT INTO users (id,tenant_id,tg_id,first_name,referred_by) "
+                "VALUES (2,1,555002,'سارا',1)")
+    _cc.commit()
+    app.BOT_DB = _cdb
+
+    _ct = dict(_cc.execute("SELECT * FROM tenants WHERE id=1").fetchone())
+    _cu = dict(_cc.execute("SELECT * FROM users WHERE id=1").fetchone())
+    _rw = app.mini_rewards((_ct, _cu))
+
+    check("نرخِ معرف از تنظیماتِ مالک می‌آید", _rw["perReferral"] == 25,
+          f"{_rw['perReferral']} — پیش‌فرض ۱۰ است، پس تنظیمات واقعاً رسیده")
+    check("و پاداشِ دعوت‌شده هم", _rw["welcomeBonus"] == 7,
+          str(_rw["welcomeBonus"]))
+    check("پله‌های خودِ مالک، نه پیش‌فرض",
+          [x["coins"] for x in _rw["tiers"]] == [30, 60, 90],
+          str([x["coins"] for x in _rw["tiers"]]))
+    check("سقفِ تخفیف روی پله‌ی بلندتر اعمال می‌شود",
+          _rw["tiers"][-1]["percent"] == 40,
+          "پله ۶۰٪ نوشته، سقف ۴۰٪ است — بدون این، کاربر عددی می‌بیند که نمی‌گیرد")
+
+    # ── و همان عددی که صندوق کم می‌کند ──
+    #
+    # این مهم‌ترین سطرِ این بخش است: اگر مینی‌اپ نردبان را خودش
+    # می‌ساخت، روزی «۳۵٪» نشان می‌داد و صندوق ۱۵٪ کم می‌کرد.
+    import core as _corec                                  # noqa: E402
+    _pr = _corec.price_order(500000, coins=40,
+                             coin_cfg=_cset["coins"], use_coins=True)
+    check("درصدِ مینی‌اپ با درصدِ لحظه‌ی خرید یکی است",
+          _rw["percent"] == _pr["coin_percent"],
+          f"مینی‌اپ {_rw['percent']}٪ · صندوق {_pr['coin_percent']}٪")
+    check("و پله‌ی بعدی درست شمرده می‌شود",
+          _rw["next"] and _rw["next"]["need"] == 20,
+          str(_rw.get("next")))
+    check("لینکِ دعوت کامل است",
+          _rw["link"] == "https://t.me/nexora_bot?start=NX7K2M", _rw["link"])
+    check("و شمارِ دعوت‌شده‌ها", _rw["refCount"] == 1, str(_rw["refCount"]))
+
+    # ── عکسِ گفتگو ──
+    head("عکسِ گفتگو · آدرس، خودش کلید است")
+
+    _png = _b64c.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGA"
+        "hKmMIQAAAABJRU5ErkJggg==")
+    _url = app._chat_photo_save(1, 1, _b64c.b64encode(_png).decode())
+    _name = _url.rsplit("/", 1)[-1]
+    # نامِ قابل‌حدس یعنی هر کسی با شمردنِ شناسه‌ها عکسِ پشتیبانیِ
+    # بقیه را برمی‌دارد — همان قاعده‌ی عکسِ پروفایل
+    check("نامِ فایل تصادفی است، نه <مستاجر>_<کاربر>",
+          len(_name.split("_")[-1].split(".")[0]) >= 24, _name)
+    check("و سرو می‌شود", app.public_chat_photo(_name).media_type == "image/png")
+    check("بایت‌هایش برای تلگرام هم در دسترس است",
+          app._chat_photo_bytes(_url) == _png)
+
+    for _bad, _lbl, _code in (
+            (b"not an image", "فایلِ غیرتصویری", 400),
+            (b"\x89PNG\r\n\x1a\n" + b"x" * (4 * 1024 * 1024), "بیش از حد", 413)):
+        try:
+            app._chat_photo_save(1, 1, _b64c.b64encode(_bad).decode())
+            check(f"{_lbl} رد می‌شود", False, "پذیرفته شد")
+        except app.HTTPException as _e:
+            check(f"{_lbl} رد می‌شود", _e.status_code == _code, str(_e.status_code))
+
+    # نامِ آمده از بیرون نباید به مسیر بچسبد
+    _esc = []
+    for _n in ("../config.json", "..\\x", "a/b", "....//x"):
+        try:
+            app.public_chat_photo(_n)
+            _esc.append(_n)
+        except app.HTTPException:
+            pass
+    check("مسیرِ آمده از بیرون از پوشه بیرون نمی‌زند", not _esc, "، ".join(_esc))
+
+    # ── پیامِ فقط‌عکس ──
+    _cdb2 = _BDc.TenantDB(1)
+    check("پیامی که فقط عکس دارد ثبت می‌شود",
+          _cdb2.chat_add(1, "user", "", photo=_url) is not None,
+          "عکسِ بدونِ متن پیامِ معتبری است")
+    check("و پیامِ کاملاً خالی نه",
+          _cdb2.chat_add(1, "user", "", photo=None) is None)
+    _crows = _cdb2.chat_list(1)
+    check("عکس با پیام برمی‌گردد", bool(_crows[-1]["photo"]))
+    _cth = _cdb2.chat_threads()
+    check("پیش‌نمایشِ گفتگو خالی نمی‌ماند",
+          bool(app._row_get(_cth[0], "last_photo")),
+          "پیامِ فقط‌عکس در فهرست یک خطِ خالی می‌شد")
+
+    # ترتیبِ به‌روزرسانی روی سرور مرتب نیست: پنل تازه می‌شود و ربات
+    # هنوز ری‌استارت نشده، پس ستونِ تازه هنوز نیست
+    check("ستونِ نبوده کلِ صندوق را نمی‌اندازد",
+          app._row_get(_crows[-1], "nope", "د") == "د",
+          "sqlite3.Row برای کلیدِ ناموجود IndexError می‌دهد، نه None")
+
+    _cc.close()
+finally:
+    app.BOT_DB = _old_bot3
+    app.CHAT_DIR = _old_chat
+
+# ── قواعدی که در کد بمانند ──
+check("عکس پیش از ثبتِ پیام ذخیره می‌شود",
+      _APSRC.find("_chat_photo_save(t[\"id\"], uid, raw)")
+      < _APSRC.find('db.chat_add(uid, "admin"'),
+      "برعکسش یعنی ردیفی که به عکسِ ناموجود اشاره می‌کند")
+check("گروهِ مدیریت خودِ عکس را می‌بیند",
+      "photo=blob" in _APSRC,
+      "«عکس فرستاد» بدونِ عکس یعنی مالک باید پنل را باز کند")
+
+
+# ═══════════════════════════════════════════════════════════
 head("همکار فروش · یک عدد، دو جا")
 
 # چرا این بخش: همکار حالا خودش مانده‌اش را می‌بیند. اگر آن عدد با

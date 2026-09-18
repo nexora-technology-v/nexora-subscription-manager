@@ -8,7 +8,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { NexoraMark } from "../lib/mark.jsx";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Loader2, Minus, Plus, Search, X,
+  AlertTriangle, ArrowDownUp, Check, CheckCircle2, ChevronDown, ChevronLeft,
+  ChevronRight, Info, Loader2, Minus, Plus, Search, SlidersHorizontal, X,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { faNum, errText } from "../lib/format";
@@ -1458,5 +1459,225 @@ export function Avatar({ name, id, size = 32, ring = false, src = "",
       }}>
       {ch}
     </span>
+  );
+}
+
+
+/**
+ * عکس، تمام‌صفحه.
+ *
+ * عکسِ داخلِ حبابِ گفتگو حداکثر ۲۲۰ پیکسل است و چیزی که مشتری از
+ * خطای اپلیکیشنش می‌فرستد در آن اندازه خوانده نمی‌شود — نه متنِ
+ * خطا، نه نامِ سرور.
+ *
+ * یک نسخه برای پنل و مینی‌اپ هر دو: دو نسخه یعنی روزی یکی‌شان
+ * بسته‌شدن با «عقب» را ندارد و روی اندروید کاربر از کلِ مینی‌اپ
+ * بیرون می‌افتد.
+ */
+export function Lightbox({ src, onClose }) {
+  useEffect(() => {
+    if (!src) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    // روی گوشی اولین چیزی که کاربر می‌زند دکمه‌ی «عقب» است. بدون
+    // این، «عقب» به‌جای بستنِ عکس از خودِ اپ بیرون می‌برد.
+    const onPop = () => onClose();
+    window.addEventListener("keydown", onKey);
+    window.history.pushState({ nxZoom: 1 }, "");
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("popstate", onPop);
+      // اگر با Escape یا کلیک بسته شد، ورودیِ تاریخچه باید برداشته
+      // شود — وگرنه یک «عقب»ِ بی‌اثر در تاریخچه می‌ماند
+      try {
+        if (window.history.state?.nxZoom) window.history.back();
+      } catch { /* مرورگرِ عجیب */ }
+    };
+  }, [src, onClose]);
+
+  if (!src) return null;
+  return createPortal(
+    <div className="fx-lightbox fx-fade" role="dialog" aria-modal="true"
+      aria-label="عکس" onClick={onClose}>
+      <button className="fx-lightbox-x" aria-label="بستن"><X size={18} /></button>
+      <img src={src} alt="" onClick={(e) => e.stopPropagation()} />
+    </div>,
+    document.body);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   منو و نوارِ فیلتر
+
+   اندازه‌گیری‌شده در همین پنل، صفحه‌ی «کاربران ربات»: یازده چیپِ
+   فیلتر به‌اضافه‌ی شش دکمه‌ی مرتب‌سازی — **هفده دکمه** در یک کارتِ
+   ۱۵۷ پیکسلی، پیش از آنکه یک ردیف داده دیده شود. و روی پهنای ۹۰۰
+   پیکسل ۳۱ پیکسل از چیپ‌ها بیرون از دید می‌ماند، پس بعضی فیلترها
+   عملاً پیدا نمی‌شوند.
+
+   قاعده‌ای که از رابط‌های فهرست‌محور (Linear، GitHub، Notion)
+   برمی‌داریم: انتخاب‌ها در منو می‌نشینند، نه روی نوار. روی نوار
+   فقط چیزی می‌ماند که *الان فعال است* — چون همان تنها چیزی است
+   که کاربر باید ببیند و بتواند بردارد.
+
+   چرا portal: قاعده‌ی مخزن — هر چیزی با `position: fixed` که داخل
+   `.fx-anim` باشد باید از راه portal روی `document.body` برود؛ آن
+   کلاس `transform` ماندگار دارد و `fixed` را در خودش حبس می‌کند.
+   ═══════════════════════════════════════════════════════════ */
+
+/**
+ * منوی کشویی که به یک دکمه لنگر می‌اندازد.
+ *
+ * جا را از روی خودِ دکمه حساب می‌کند و اگر پایین جا نبود بالا
+ * می‌رود. بدون این، منوی صفحه‌ی آخرِ یک جدولِ بلند نیمه‌بیرون از
+ * پنجره باز می‌شد و گزینه‌های آخرش دیده نمی‌شدند.
+ */
+export function Menu({ label, icon: Icon, value, items, onPick, counts,
+                       width = 216, title, keepLabel = false, active = false }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState(null);
+  const btn = useRef(null);
+  const box = useRef(null);
+
+  const place = React.useCallback(() => {
+    const b = btn.current;
+    if (!b) return;
+    const r = b.getBoundingClientRect();
+    const h = Math.min(items.length * 36 + 12, 320);
+    const below = window.innerHeight - r.bottom;
+    const top = below > h + 12 ? r.bottom + 6 : Math.max(8, r.top - h - 6);
+    // راست‌چین: لبه‌ی راستِ منو روی لبه‌ی راستِ دکمه. و از پنجره
+    // بیرون نزند، وگرنه روی صفحه‌ی باریک نصفش قیچی می‌شود.
+    let left = r.right - width;
+    left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+    setPos({ top, left, maxHeight: h });
+  }, [items.length, width]);
+
+  useEffect(() => {
+    if (!open) return;
+    place();
+    const onDoc = (e) => {
+      if (btn.current?.contains(e.target) || box.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); } };
+    // اسکرول یعنی دکمه جابه‌جا شده — منو باید دنبالش بیاید، وگرنه
+    // معلق وسطِ صفحه می‌ماند
+    const onMove = () => place();
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onMove);
+    window.addEventListener("scroll", onMove, true);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", onMove);
+      window.removeEventListener("scroll", onMove, true);
+    };
+  }, [open, place]);
+
+  const cur = items.find((i) => i.key === value);
+
+  return (
+    <>
+      <button ref={btn} type="button" title={title || label}
+        aria-haspopup="listbox" aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={`fx-menu-btn${active ? " on" : ""}`}
+        style={open ? { borderColor: "var(--accent-edge)", color: "var(--accent-2)" } : undefined}>
+        {Icon && <Icon size={13} className="shrink-0" />}
+        <span className="truncate">{keepLabel ? label : (cur?.label || label)}</span>
+        <ChevronDown size={12} className="shrink-0" style={{ opacity: 0.6 }} />
+      </button>
+
+      {open && pos && createPortal(
+        <div ref={box} role="listbox" aria-label={title || label}
+          className="fx-menu fx-fade"
+          style={{ top: pos.top, left: pos.left, width, maxHeight: pos.maxHeight }}>
+          {items.map((it) => {
+            const on = it.key === value;
+            const n = counts?.[it.key];
+            return (
+              <button key={it.key} type="button" role="option" aria-selected={on}
+                onClick={() => { onPick(it.key); setOpen(false); }}
+                className="fx-menu-item" style={on ? { color: "var(--accent-2)" } : undefined}>
+                <Check size={13} className="shrink-0"
+                  style={{ opacity: on ? 1 : 0 }} />
+                <span className="truncate flex-1 text-right">{it.label}</span>
+                {n !== undefined && (
+                  <span className="text-[12px] shrink-0" style={{ color: "var(--muted)" }}>
+                    {faNum(n)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>, document.body)}
+    </>
+  );
+}
+
+/**
+ * جستجو + فیلتر + مرتب‌سازی، در یک ردیف.
+ *
+ * `filters[0]` همیشه «همه» است: وقتی همان انتخاب شده، چیپِ فعال
+ * نشان داده نمی‌شود — چون «هیچ فیلتری» خبر نیست.
+ */
+export function FilterBar({ q, onQ, placeholder, filters, filter, onFilter,
+                           sorts, sort, onSort, counts, extra, busy }) {
+  const base = filters?.[0]?.key;
+  const on = filter && filter !== base;
+  const cur = on ? filters.find((f) => f.key === filter) : null;
+
+  return (
+    <div className="fx-card p-3 mb-4">
+      <div className="fx-filterbar">
+        <div className="fx-search" style={{ width: "auto", flex: "1 1 220px", minWidth: 0 }}>
+          <Search size={14} style={{ color: "var(--muted)" }} />
+          <input placeholder={placeholder} value={q}
+            onChange={(e) => onQ(e.target.value)} />
+          {/* نشانِ «در حال جستجو» همین‌جاست، نه روی خودِ فهرست:
+              جایگزین‌کردنِ فهرست با اسکلت یعنی هر ضربه‌ی کیبورد
+              داده را ناپدید می‌کند و کاربر فکر می‌کند خراب شده. */}
+          {busy ? (
+            <Loader2 size={13} className="shrink-0 animate-spin"
+              style={{ color: "var(--muted)" }} />
+          ) : q ? (
+            <button title="پاک‌کردن جستجو" onClick={() => onQ("")} className="shrink-0">
+              <X size={13} style={{ color: "var(--muted)" }} />
+            </button>
+          ) : null}
+        </div>
+
+        {/* برچسبِ دکمه همیشه «فیلتر» است، نه نامِ فیلترِ فعال:
+            آن را چیپِ زیرش می‌گوید و تکرارش فقط جا می‌گیرد.
+            `keepLabel` هم‌زمان تیکِ گزینه‌ی انتخاب‌شده را در منو
+            نگه می‌دارد — وگرنه کاربر نمی‌داند کجاست. */}
+        {filters?.length > 0 && (
+          <Menu label="فیلتر" title="فیلتر" icon={SlidersHorizontal}
+            value={filter} keepLabel active={on} items={filters} counts={counts}
+            onPick={onFilter} />
+        )}
+        {sorts?.length > 0 && (
+          <Menu label="مرتب‌سازی" title="مرتب‌سازی" icon={ArrowDownUp}
+            value={sort} items={sorts} onPick={onSort} />
+        )}
+        {extra}
+      </div>
+
+      {/* فقط فیلترِ فعال روی نوار می‌ماند — با راهِ برداشتنش.
+          بدون این، کاربر نمی‌داند چرا فهرست کوتاه است. */}
+      {cur && (
+        <div className="flex items-center gap-2 mt-2.5">
+          <span className="fx-filter-on">
+            {cur.label}
+            {counts?.[cur.key] !== undefined && (
+              <b style={{ opacity: 0.7, fontWeight: 400 }}>{faNum(counts[cur.key])}</b>
+            )}
+            <button title="برداشتن فیلتر" onClick={() => onFilter(base)}
+              className="shrink-0 flex"><X size={11} /></button>
+          </span>
+        </div>
+      )}
+    </div>
   );
 }

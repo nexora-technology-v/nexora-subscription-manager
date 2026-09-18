@@ -259,6 +259,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     sender      TEXT NOT NULL,              -- user | admin | system
     body        TEXT NOT NULL,
+    photo       TEXT,                       -- نشانیِ عکس، اگر پیام عکس دارد
     order_id    INTEGER,
     created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
     read_at     TEXT                        -- طرفِ مقابل خواندش
@@ -321,6 +322,17 @@ def _migrate(con):
         ("users", "affiliate_id", "INTEGER"),
         # اینباندهای هر پلن — خالی یعنی از تنظیم سراسری پیروی کن
         ("plans", "inbound_ids", "TEXT"),
+        # عکسِ پیام — نشانیِ فایل، نه خودِ بایت‌ها.
+        #
+        # بیشترِ چیزی که مشتری در پشتیبانی می‌خواهد بگوید یک تصویر
+        # است: عکسِ خطای اپلیکیشن، رسید، یا صفحه‌ای که کار نمی‌کند.
+        # تا حالا باید توصیفش می‌کرد.
+        #
+        # چرا نشانی و نه بایت: گذاشتنِ base64 در همان ستونِ متن
+        # یعنی هر بار خواندنِ گفتگو، همه‌ی عکس‌ها هم از دیتابیس
+        # بیرون می‌آیند — حتی وقتی فقط شمارِ نخوانده‌ها را
+        # می‌خواهیم.
+        ("chat_messages", "photo", "TEXT"),
         # حالت پیش‌فرض: all | default | custom
         ("tenants", "inbound_mode", "TEXT DEFAULT 'all'"),
         ("tenants", "inbound_ids", "TEXT"),
@@ -1171,15 +1183,22 @@ class TenantDB:
     # سه چیزِ به‌ظاهر جدا از همین‌جا می‌آیند: تاییدِ رسید، ردش با متنِ
     # دلیل، و گفتگو با پشتیبانی. هر سه یک شکل دارند، پس یک جا.
 
-    def chat_add(self, user_id, sender, body, order_id=None):
-        """یک پیام در صندوق. برمی‌گرداند شناسه‌اش."""
+    def chat_add(self, user_id, sender, body, order_id=None, photo=None):
+        """
+        یک پیام در صندوق. برمی‌گرداند شناسه‌اش.
+
+        عکسِ بدونِ متن پیامِ معتبری است — پس شرطِ «خالی نباشد» روی
+        هر دو با هم است، نه فقط روی متن. اگر فقط متن را می‌سنجید،
+        فرستادنِ عکسِ تنها بی‌صدا هیچ‌کاری نمی‌کرد.
+        """
         body = str(body or "").strip()
-        if not body:
+        photo = str(photo or "").strip() or None
+        if not body and not photo:
             return None
         return self.exec(
-            "INSERT INTO chat_messages (tenant_id, user_id, sender, body, order_id) "
-            "VALUES (?,?,?,?,?)",
-            (self.tid, user_id, sender, body[:4000], order_id))
+            "INSERT INTO chat_messages (tenant_id, user_id, sender, body, photo, order_id) "
+            "VALUES (?,?,?,?,?,?)",
+            (self.tid, user_id, sender, body[:4000], photo, order_id))
 
     def chat_list(self, user_id, limit=100):
         """گفتگوی یک مشتری، قدیمی به تازه."""
@@ -1234,7 +1253,13 @@ class TenantDB:
                                THEN 1 ELSE 0 END) AS unread,
                       (SELECT body FROM chat_messages x
                         WHERE x.tenant_id=m.tenant_id AND x.user_id=m.user_id
-                        ORDER BY x.id DESC LIMIT 1) AS last_body
+                        ORDER BY x.id DESC LIMIT 1) AS last_body,
+                      -- بدون این، پیامی که فقط عکس است در فهرست
+                      -- گفتگوها یک خطِ خالی می‌شد و به نظر می‌رسید
+                      -- چیزی نیامده
+                      (SELECT photo FROM chat_messages x
+                        WHERE x.tenant_id=m.tenant_id AND x.user_id=m.user_id
+                        ORDER BY x.id DESC LIMIT 1) AS last_photo
                  FROM chat_messages m
                  JOIN users u ON u.id = m.user_id
                 WHERE m.tenant_id=?

@@ -202,7 +202,7 @@ class Bot:
                          reply_markup=keyboard, message_thread_id=topic_id)
 
     def send_photo_bytes(self, chat_id, data, filename="qr.png", caption=None,
-                         keyboard=None):
+                         keyboard=None, topic_id=None):
         """
         ارسال تصویری که همین‌جا ساخته شده — مثل کیوآر لینک اشتراک.
 
@@ -212,9 +212,16 @@ class Bot:
         # بایت خام می‌فرستیم نه BytesIO: اگر تلاش مجدد لازم شود،
         # جریانِ یک‌بار خوانده‌شده خالی است ولی بایت‌ها دوباره خوانده
         # می‌شوند.
+        # نوعِ محتوا از خودِ بایت‌ها، نه از پسوندِ نامِ فایل: عکسِ
+        # گفتگو ممکن است JPEG یا WebP باشد و اعلامِ image/png برای
+        # آن، تلگرام را به رد یا فشرده‌سازیِ بد می‌رساند.
+        ctype = ("image/png" if data[:8] == b"\x89PNG\r\n\x1a\n"
+                 else "image/webp" if data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+                 else "image/jpeg")
         return self.call("sendPhoto", chat_id=chat_id, caption=caption,
                          parse_mode="HTML", reply_markup=keyboard,
-                         _files={"photo": (filename, bytes(data), "image/png")})
+                         message_thread_id=topic_id,
+                         _files={"photo": (filename, bytes(data), ctype)})
 
     def action(self, chat_id, kind="typing"):
         """

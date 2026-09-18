@@ -209,8 +209,14 @@ class Ctx:
                 return True
         return False
 
-    def notify_group(self, text, keyboard=None, topic=None):
-        """ارسال به گروه مدیریت در تاپیک مشخص."""
+    def notify_group(self, text, keyboard=None, topic=None, photo=None):
+        """
+        ارسال به گروه مدیریت در تاپیک مشخص.
+
+        `photo` بایت‌های تصویر است و متن به زیرنویسش می‌رود. چرا
+        این‌جا و نه یک تابع دوم: پیداکردنِ گروه و تاپیک همین‌جاست و
+        نسخه‌ی دومی از آن یعنی روزی یکی‌شان تاپیک را فراموش می‌کند.
+        """
         t = DB.get_tenant(self.tid)
         gid = t.get("admin_group_id")
         if not gid:
@@ -220,6 +226,14 @@ class Ctx:
         except json.JSONDecodeError:
             topics = {}
         try:
+            if photo:
+                return self.bot.send_photo_bytes(
+                    gid, photo, filename="photo.jpg",
+                    # زیرنویسِ تلگرام ۱۰۲۴ کاراکتر است، نه ۴۰۹۶.
+                    # بلندتر که باشد، کلِ ارسال رد می‌شود — نه اینکه
+                    # کوتاه شود.
+                    caption=text[:1000], keyboard=keyboard,
+                    topic_id=topics.get(topic))
             return self.bot.send(gid, text, keyboard=keyboard,
                                  topic_id=topics.get(topic))
         except TelegramError as e:

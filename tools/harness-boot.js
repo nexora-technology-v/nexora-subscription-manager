@@ -390,6 +390,21 @@
                refCode: "NX7K2M", refCount: 3,
                tgId: 1278109787, username: "maryam_k",
                botUsername: "nexora_vpn_bot" };
+  /* پاداش‌ها. عددها واقع‌نما: ۳۶ سکه یعنی پله‌ی ۲۰ باز شده و
+     پله‌ی ۴۰ نزدیک است — همان حالتی که نوارِ پیشرفت را معنادار
+     می‌کند. با صفر، کارت شاخه‌ی «هنوز چیزی ندارید» را می‌گرفت و
+     سالم به نظر می‌رسید. */
+  var M_REWARDS = {
+    enabled: true, coins: 36, percent: 10, cost: 20,
+    next: { coins: 40, percent: 20, need: 4 },
+    maxPercent: 50,
+    tiers: [{ coins: 20, percent: 10 }, { coins: 40, percent: 20 },
+            { coins: 60, percent: 30 }, { coins: 80, percent: 40 },
+            { coins: 100, percent: 50 }],
+    perReferral: 10, welcomeBonus: 3, expireDays: 0,
+    refCode: "NX7K2M", refCount: 3, botUsername: "nexora_vpn_bot",
+    link: "https://t.me/nexora_vpn_bot?start=NX7K2M"
+  };
   var GB = 1024 * 1024 * 1024;
   var M_SUBS = { subs: mk(3, function (i) {
     var tot = [50 * GB, 100 * GB, 50 * 1024 * 1024][i];
@@ -475,6 +490,10 @@
 
   // صندوق پیام — با یک خبرِ سیستمی و یک گفتگوی واقعی، وگرنه
   // هیچ‌وقت معلوم نمی‌شود سه نوع پیام کنار هم چه شکلی‌اند.
+  /* عکسِ ساختگیِ یک اسکرین‌شاتِ خطا — با آرایه‌ی بدونِ عکس،
+     حبابِ تصویر هیچ‌وقت رندر نمی‌شد و سالم به نظر می‌رسید */
+  var FAKE_SHOT = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNjAgNjQwIj48cmVjdCB3aWR0aD0iMzYwIiBoZWlnaHQ9IjY0MCIgZmlsbD0iIzBGMTcyQSIvPjxyZWN0IHg9IjI0IiB5PSIxODAiIHdpZHRoPSIzMTIiIGhlaWdodD0iMTIwIiByeD0iMTIiIGZpbGw9IiM3RjFEMUQiLz48dGV4dCB4PSIxODAiIHk9IjIzMCIgZm9udC1zaXplPSIyMCIgZm9udC1mYW1pbHk9InNhbnMtc2VyaWYiIGZpbGw9IiNGQ0E1QTUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkNvbm5lY3Rpb24gZmFpbGVkPC90ZXh0Pjx0ZXh0IHg9IjE4MCIgeT0iMjYyIiBmb250LXNpemU9IjE1IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZmlsbD0iI0ZFQ0FDQSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+dGltZW91dCBhZnRlciAzMHM8L3RleHQ+PC9zdmc+";
+
   var M_INBOX = { unread: 1, messages: [
     { id: 1, from: "user", body: "سلام، رسید رو فرستادم ولی هنوز تایید نشده",
       orderId: 4101, at: "2026-09-17 11:02:00", read: true },
@@ -483,15 +502,22 @@
     { id: 3, from: "system",
       body: "رسید سفارش #4101 تایید نشد.\n\nدلیل: مبلغ واریزی با مبلغ سفارش نمی‌خواند — ۱۲۰٬۰۰۰ تومان لازم بود.",
       orderId: 4101, at: "2026-09-17 11:09:00", read: false },
+    { id: 4, from: "user", body: "این خطا رو می‌گیرم", photo: FAKE_SHOT,
+      orderId: null, at: "2026-09-17 11:15:00", read: true },
+    { id: 5, from: "admin", body: "", photo: FAKE_SHOT,
+      orderId: null, at: "2026-09-17 11:18:00", read: true },
   ] };
 
   var M_PING = { unread: 1, openOrders: 1, subs: 3 };
 
   function inboxSend(body) {
     var t = ((body || {}).body || "").trim();
-    if (!t) { var e = new Error("پیام خالی است"); e.status = 400; throw e; }
+    // پیامی که فقط عکس است هم معتبر است — همان قاعده‌ی سرور
+    if (!t && !(body || {}).photo) {
+      var e = new Error("پیام خالی است"); e.status = 400; throw e;
+    }
     M_INBOX.messages.push({ id: M_INBOX.messages.length + 1, from: "user",
-                            body: t, orderId: null,
+                            body: t, photo: (body || {}).photo || "", orderId: null,
                             at: new Date().toISOString().slice(0, 16).replace("T", " "),
                             read: true });
     return { ok: true };
@@ -508,6 +534,8 @@
     { id: 2, from: "admin", body: "بررسی می‌کنم، چند دقیقه صبر کنید.", orderId: null, at: "2026-09-17 11:04", read: true },
     { id: 3, from: "system", body: "رسید سفارش #4101 تایید نشد.\n\nدلیل: مبلغ واریزی نمی‌خواند.", orderId: 4101, at: "2026-09-17 11:09", read: false },
     { id: 4, from: "user", body: "ممنون، دوباره واریز کردم", orderId: null, at: "2026-09-17 11:20", read: false },
+    { id: 5, from: "user", body: "این خطا رو می‌گیرم", photo: FAKE_SHOT, orderId: null, at: "2026-09-17 11:22", read: false },
+    { id: 6, from: "admin", body: "", photo: FAKE_SHOT, orderId: null, at: "2026-09-17 11:25", read: true },
   ] };
 
   // پروفایلِ ساختگی — تا بشود دید ذخیره و عکس واقعاً چه می‌کنند
@@ -660,6 +688,7 @@
     if (u.indexOf("/mini/orders") >= 0) return M_ORDERS;
     if (u.indexOf("/mini/order") >= 0) return miniOrder(body);
     if (u.indexOf("/mini/buy") >= 0) return miniBuy(body);
+    if (u.indexOf("/mini/rewards") >= 0) return M_REWARDS;
     if (u.indexOf("/mini/me") >= 0) return M_ME;
     if (u.indexOf("/mini/subs") >= 0) return M_SUBS;
     if (u.indexOf("/mini/plans") >= 0) return M_PLANS;

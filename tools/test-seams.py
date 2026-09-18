@@ -541,6 +541,13 @@ KNOWN_PUBLIC = {
     # کلیدِ دسترسی است و با شمردنِ شناسه‌ها پیدا نمی‌شود.
     # *نوشتن* رویش از `mini_user` می‌گذرد.
     "/api/public/avatar/{name}",
+
+    # عکسِ داخلِ گفتگو. همان قاعده‌ی آواتار و به همان دلیل: تگِ
+    # <img> هدر نمی‌فرستد. نامِ فایل ۱۲ بایت تصادفی دارد، پس
+    # «آدرس، خودش کلید است» و شمردنِ شناسه‌ها به جایی نمی‌رسد.
+    # *نوشتن* رویش از `mini_user` (مشتری) یا `check_auth` (مالک)
+    # می‌گذرد.
+    "/api/public/chat-photo/{name}",
 }
 
 # بقیه‌ی مسیرهای نماینده یک دسته‌اند و تستِ اختصاصیِ پایین تضمین
@@ -593,6 +600,91 @@ _aff_open = [p for p, n in _aff
              and not p.endswith("/login") and not p.endswith("/logout")]
 check("هر مسیر همکار از aff_session رد می‌شود", not _aff_open,
       "، ".join(_aff_open) or f"{len(_aff)} مسیر بررسی شد")
+
+# ── درز · تنظیماتِ سکه ──
+#
+# این درز یک‌بار شکسته بود و **بی‌صدا**: صفحه‌ی «سکه و دعوت» پنل
+# `settings.coins_per_referral` می‌نوشت و ربات
+# `settings.coins.per_referral` می‌خواند. یعنی مالک عدد می‌گذاشت،
+# «ذخیره شد» می‌دید، و ربات همان پیش‌فرض را می‌داد.
+#
+# اندازه‌گیری‌شده: مالک «۲۵ سکه به معرف» گذاشت، ربات ۱۰ داد. و
+# پله‌ها `{coins, pct}` نوشته می‌شدند در حالی که `core.tier_for`
+# `percent` می‌خواهد — با `pct` اصلاً KeyError می‌داد.
+#
+# هیچ تستی نگرفتش چون هر دو طرف جدا درست بودند؛ فقط به هم وصل
+# نبودند. این‌جا دقیقاً همان اتصال سنجیده می‌شود.
+print(f"\n{D}── درز · سکه: پنل ↔ ربات ──{X}")
+
+def _nocomment(src):
+    """
+    کامنت‌ها را برمی‌دارد.
+
+    لازم شد چون خودِ همین باگ بالای فایل توضیح داده شده — با نامِ
+    کلیدهای غلطش. بدون این، دروازه به کامنتی که می‌گوید «این غلط
+    بود» گیر می‌داد و مجبور می‌شدیم توضیح را پاک کنیم تا تست سبز
+    شود؛ یعنی دقیقاً همان دانشی را دور بیندازیم که نگهش داشتیم.
+    """
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    return re.sub(r"^\s*//.*$", "", src, flags=re.M)
+
+
+_coins_jsx = _nocomment(rd("frontend", "src", "sections", "bot", "coins.jsx"))
+_core_py = rd("bot", "core.py")
+
+# کلیدهای واقعیِ ربات، از خودِ `DEFAULT_COIN_SETTINGS`
+_m = re.search(r"DEFAULT_COIN_SETTINGS\s*=\s*\{(.*?)\n\}", _core_py, re.S)
+_bot_keys = set(re.findall(r'"(\w+)"\s*:', _m.group(1))) if _m else set()
+check("کلیدهای سکه‌ی ربات خوانده شدند", len(_bot_keys) >= 5,
+      "، ".join(sorted(_bot_keys)) if _bot_keys else "DEFAULT_COIN_SETTINGS پیدا نشد")
+
+# پنل باید زیر `coins` بنویسد، نه کنارش
+check("پنل تنظیمات سکه را زیر کلید coins می‌گذارد",
+      "coins: {" in _coins_jsx or "coins: c" in _coins_jsx,
+      "ربات `ctx.s.get(\"coins\")` می‌خواند؛ کلیدِ مسطح را هیچ‌وقت نمی‌بیند")
+
+# هیچ کلیدِ مسطحِ قدیمی نماند
+_flat = [k for k in ("coins_per_referral", "coins_for_invitee",
+                     "min_purchase_for_coin", "coin_tiers")
+         if k in _coins_jsx]
+check("کلیدهای مسطحِ قدیمی برنگشته‌اند", not _flat,
+      "، ".join(_flat) if _flat else "هیچ‌کدام به ربات نمی‌رسیدند")
+
+# هر کلیدی که پنل داخلِ شیءِ سکه می‌نویسد باید ربات بشناسدش
+_obj = re.search(r"const DEFAULTS = \{(.*?)\n\};", _coins_jsx, re.S)
+_panel_keys = set(re.findall(r"^\s*(\w+):", _obj.group(1), re.M)) if _obj else set()
+_unknown = sorted(_panel_keys - _bot_keys)
+check("هر کلیدی که پنل می‌نویسد ربات می‌شناسد", not _unknown,
+      "، ".join(_unknown) if _unknown
+      else f"{len(_panel_keys)} کلید، همه در DEFAULT_COIN_SETTINGS")
+
+# و هیچ کلیدی از قلم نیفتاده باشد: چیزی که پنل تنظیمش نمی‌کند،
+# مالک هم نمی‌تواند عوضش کند
+_missing = sorted(_bot_keys - _panel_keys - {"tiers"})
+check("و هر کلیدی که ربات دارد در پنل قابل تنظیم است", not _missing,
+      "، ".join(_missing) if _missing else f"{len(_bot_keys)} کلید")
+
+# نامِ فیلدِ پله — `percent`، نه `pct`
+check("پله‌ها percent می‌نویسند، نه pct",
+      "pct" not in _coins_jsx and "percent:" in _coins_jsx,
+      "`core.tier_for` روی `reached[\"percent\"]` می‌ایستد و با pct KeyError می‌دهد")
+
+# مینی‌اپ نردبان را خودش نسازد — همان قاعده‌ی «پول یک هسته دارد»
+_mini_rw = _nocomment(rd("frontend", "src", "mini", "index.jsx"))
+check("مینی‌اپ نردبانِ تخفیف را دوباره حساب نمی‌کند",
+      "/api/mini/rewards" in _mini_rw
+      and not re.search(r"coins\s*>=\s*\d+\s*\?", _mini_rw),
+      "درصد از `core.coin_progress` می‌آید — همان که لحظه‌ی خرید قیمت را کم می‌کند")
+
+_app_py = rd("backend", "app.py")
+check("و مسیرِ پاداش هم از خودِ core می‌پرسد",
+      "core.coin_progress(" in _app_py,
+      "دو نسخه یعنی روزی مینی‌اپ ۳۰٪ نشان دهد و صندوق ۲۰٪ کم کند")
+
+check("مسیرِ پاداش همان کلیدی را می‌خواند که ربات",
+      'st.get("coins")' in _app_py,
+      "هر دسترسیِ دیگری یعنی دو نردبانِ متفاوت")
+
 
 _new_public = [p for p in _public if p not in KNOWN_PUBLIC]
 check("مسیر عمومی تازه‌ای بی‌خبر اضافه نشده", not _new_public,

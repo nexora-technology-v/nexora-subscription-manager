@@ -14,13 +14,14 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, ArrowDown, Check, CheckCheck, Loader2, MessageCircle,
-  RefreshCw, Search, Send, Shield,
+  AlertTriangle, ArrowDown, Check, CheckCheck, ImagePlus, Loader2,
+  MessageCircle, RefreshCw, Search, Send, Shield, X,
 } from "lucide-react";
 
 import { API_URL } from "../../lib/constants";
 import { errText, faNum, toFaDigits } from "../../lib/format";
-import { Avatar, EmptyState, PageSkeleton, SectionHead } from "../../ui/index";
+import { Avatar, EmptyState, Lightbox, PageSkeleton, SectionHead } from "../../ui/index";
+import { shrinkImage } from "../../lib/image.js";
 
 async function call(path, password, opt = {}) {
   const res = await fetch(`${API_URL}${path}`, {
@@ -68,10 +69,15 @@ export function BotInboxSection({ password }) {
   const [err, setErr] = useState("");
   const [q, setQ] = useState("");
   const [atEnd, setAtEnd] = useState(true);
+  // عکسِ انتخاب‌شده ولی هنوز نفرستاده، و عکسی که تمام‌صفحه باز است
+  const [photo, setPhoto] = useState("");
+  const [shrinking, setShrinking] = useState(false);
+  const [zoom, setZoom] = useState("");
 
   const logRef = useRef(null);
   const endRef = useRef(null);
   const boxRef = useRef(null);
+  const photoRef = useRef(null);
 
   const loadThreads = useCallback(async () => {
     setErr("");
@@ -156,22 +162,45 @@ export function BotInboxSection({ password }) {
    * حالا حباب همان لحظه می‌نشیند با نشانِ «در حال رفتن»، و اگر
    * نرسید همان‌جا قرمز می‌شود. جعبه هم فوری خالی می‌شود.
    */
+  /* عکسِ انتخاب‌شده، پیش از فرستادن.
+     همان هسته‌ی کوچک‌کردنِ مینی‌اپ (`lib/image.js`) — نه نسخه‌ی
+     دومی که یک روز حدِ حجم یا چرخشِ عکس را فراموش کند. */
+  const pickPhoto = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setErr("");
+    if (!/^image\//.test(f.type || "")) { setErr("فقط عکس فرستاده می‌شود"); return; }
+    setShrinking(true);
+    try {
+      const out = await shrinkImage(f);
+      if (out.bytes > 3 * 1024 * 1024) {
+        setErr("حجم عکس بیشتر از ۳ مگابایت است"); return;
+      }
+      setPhoto(out.data);
+      boxRef.current?.focus();
+    } catch (e2) { setErr(e2.message || "عکس خوانده نشد"); }
+    finally { setShrinking(false); }
+  };
+
   const send = async () => {
     const body = text.trim();
-    if (!body || busy || !open) return;
+    if ((!body && !photo) || busy || !open) return;
     const temp = `tmp-${Date.now()}`;
+    const pic = photo;
     setBusy(true); setErr("");
-    setText("");
+    setText(""); setPhoto("");
     setAtEnd(true);
     setMsgs((prev) => [...(prev || []), {
-      id: temp, from: "admin", body,
+      id: temp, from: "admin", body, photo: pic,
       at: new Date().toISOString().slice(0, 19).replace("T", " "),
       pending: true,
     }]);
     boxRef.current?.focus();
     try {
       await call("/api/admin/bot/inbox/send", password,
-                 { method: "POST", body: { userId: open, body } });
+                 { method: "POST",
+                   body: { userId: open, body, ...(pic ? { photo: pic } : {}) } });
       lastMove.current = Date.now();
       await loadThread(open);
       loadThreads();
@@ -305,9 +334,16 @@ export function BotInboxSection({ password }) {
                     ) : (
                       <div key={g.key}
                         className={`fx-bub ${g.m.from} ${g.head ? "head" : ""}`
-                          + `${g.m.pending ? " pending" : ""}${g.m.failed ? " failed" : ""}`}>
+                          + `${g.m.pending ? " pending" : ""}${g.m.failed ? " failed" : ""}`
+                          + `${g.m.photo ? " pic" : ""}`}>
                         {g.m.from === "system" && <Shield size={12} className="fx-bub-ico" />}
-                        <span className="fx-bub-text">{g.m.body}</span>
+                        {g.m.photo && (
+                          <button className="fx-bub-photo" onClick={() => setZoom(g.m.photo)}
+                            aria-label="بزرگ‌کردن عکس">
+                            <img src={g.m.photo} alt="" loading="lazy" />
+                          </button>
+                        )}
+                        {g.m.body && <span className="fx-bub-text">{g.m.body}</span>}
                         <span className="fx-bub-meta">
                           {clock(g.m.at)}
                           {/* حبابِ خوش‌بینانه باید بگوید هنوز نرفته —
@@ -331,14 +367,45 @@ export function BotInboxSection({ password }) {
                   </button>
                 )}
 
+                {/* عکسِ آماده‌ی ارسال، با راهِ برداشتنش */}
+                {photo && (
+                  <div className="fx-chat-att">
+                    <img src={photo} alt="عکس انتخاب‌شده" />
+                    <button onClick={() => setPhoto("")} aria-label="برداشتن عکس">
+                      <X size={13} />
+                    </button>
+                  </div>
+                )}
+
                 <footer className="fx-chat-bar">
+                  <button className="fx-clip" onClick={() => photoRef.current?.click()}
+                    disabled={busy || shrinking} aria-label="فرستادن عکس"
+                    title="فرستادن عکس">
+                    {shrinking ? <Loader2 size={16} className="animate-spin" />
+                               : <ImagePlus size={16} />}
+                  </button>
+                  <input ref={photoRef} type="file" accept="image/*" className="hidden"
+                    onChange={pickPhoto} />
                   <textarea ref={boxRef} rows={1} dir="auto" value={text}
                     onChange={(e) => setText(e.target.value)}
+                    onPaste={(e) => {
+                      /* چسباندنِ عکس از کلیپ‌بورد: مالک معمولاً
+                         اسکرین‌شات می‌گیرد و Ctrl+V می‌زند. بدون
+                         این، باید اول ذخیره‌اش کند. */
+                      const it = [...(e.clipboardData?.items || [])]
+                        .find((x) => x.type?.startsWith("image/"));
+                      const f = it?.getAsFile?.();
+                      if (!f) return;
+                      e.preventDefault();
+                      pickPhoto({ target: { files: [f], value: "" } });
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
                     }}
-                    placeholder="پیام بنویسید…  (Enter می‌فرستد، Shift+Enter خط تازه)" />
-                  <button onClick={send} disabled={busy || !text.trim()}
+                    placeholder={photo
+                      ? "توضیحی برای عکس… (اختیاری)"
+                      : "پیام بنویسید…  (Enter می‌فرستد، Shift+Enter خط تازه)"} />
+                  <button onClick={send} disabled={busy || (!text.trim() && !photo)}
                     aria-label="فرستادن" title="فرستادن">
                     {busy ? <Loader2 size={16} className="animate-spin" />
                           : <Send size={16} />}
@@ -352,6 +419,8 @@ export function BotInboxSection({ password }) {
           </section>
         </div>
       )}
+
+      <Lightbox src={zoom} onClose={() => setZoom("")} />
     </>
   );
 }

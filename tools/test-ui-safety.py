@@ -163,9 +163,6 @@ for m in missing[:6]:
 # هیچ فایلی نباید چیزی export کند که تعریف نکرده
 broken = []
 for name, src in ALL.items():
-    for m in re.finditer(r"^export\s+(?:function|const|class)\s+(\w+)",
-                         src, re.M):
-        pass
     for m in re.finditer(r"import\s+\{([^}]*)\}\s+from\s+[\"'](\.[^\"']+)[\"']",
                          src):
         names = [x.strip().split(" as ")[0] for x in m.group(1).split(",")
@@ -185,7 +182,12 @@ for name, src in ALL.items():
             broken.append(f"{name}: ماژول {m.group(2)} پیدا نشد")
             continue
         for n2 in names:
-            if not re.search(r"export\s+(?:function|const|class|let|var)\s+"
+            # `async` هم بینشان می‌نشیند: `export async function f()`
+            # جاوااسکریپتِ درست است و بدون این، هر تابعِ async که
+            # export شود «export نشده» گزارش می‌شد — یعنی یک هشدار
+            # دروغ که هشدارهای واقعی را بی‌ارزش می‌کند.
+            if not re.search(r"export\s+(?:async\s+)?"
+                             r"(?:function|const|class|let|var)\s+"
                              + re.escape(n2) + r"\b", tsrc):
                 broken.append(f"{name}: {n2} در {m.group(2)} export نشده")
 

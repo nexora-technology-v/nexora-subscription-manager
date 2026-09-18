@@ -4,16 +4,16 @@
  * از App.jsx جدا شد؛ آن فایل ۱۱۴۰۰ خط بود و پیداکردن یک کامپوننت
  * در آن عملاً ناممکن.
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useDebouncedChange } from "../../lib/hooks";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, Ban, ChevronLeft, Loader2, Package, RefreshCw, Search, Send, Users, Wallet, X,
+  AlertTriangle, Ban, ChevronLeft, Loader2, Package, RefreshCw, Send, Users, Wallet, X,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { isoToJalaliLabel } from "../../ui/jalali";
 import { daysLeft, errText, faNum, fmtBytes, fmtDate } from "../../lib/format";
-import { Avatar, EmptyState, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile, StatusPill } from "../../ui/index";
+import { Avatar, EmptyState, FilterBar, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile, StatusPill } from "../../ui/index";
 
 // فیلترهای بخش کاربران — کلیدها باید عیناً با _USER_FILTERS در
 // backend/app.py بخوانند.
@@ -51,29 +51,50 @@ export function BotUsersSection({ password }) {
   const [detail, setDetail] = useState(null);
   const [msgTo, setMsgTo] = useState(null);
   const [loading, setLoading] = useState(true);
+  // «در حال جستجو» با «هنوز چیزی نیامده» یکی نیست. اولی نباید
+  // فهرست را پاک کند؛ اسکلت فقط برای دومی است.
+  const [busy, setBusy] = useState(false);
+  const seq = useRef(0);
 
   const load = async (opts = {}) => {
     const query = opts.q !== undefined ? opts.q : q;
     const f = opts.filter || filter;
     const s = opts.sort || sort;
     const off = opts.offset !== undefined ? opts.offset : offset;
-    setLoading(true);
+
+    // شماره‌ی درخواست: تایپِ سریع یعنی چند درخواستِ هم‌زمان، و
+    // پاسخ‌ها لزوماً به ترتیب نمی‌آیند. بدون این، پاسخِ کوتاه‌ترِ
+    // یک عبارتِ قدیمی‌تر روی نتیجه‌ی تازه می‌نشست و فهرست با چیزی
+    // که در فیلد نوشته شده جور درنمی‌آمد.
+    const mine = ++seq.current;
+    setBusy(true);
     try {
       const p = new URLSearchParams({
         q: query, filter: f, sort: s, offset: off, limit: PAGE,
       });
+      // شمارشِ فیلترها به عبارتِ جستجو ربطی ندارد — همان عددها را
+      // برمی‌گرداند. ولی یازده کوئریِ `EXISTS` است و روی ۲۵ هزار
+      // کاربر ۳۶ میلی‌ثانیه از هر ضربه‌ی کیبورد را می‌خورد. پس
+      // موقع تایپ نمی‌خواهیمش و عددهای قبلی را نگه می‌داریم.
+      if (query) p.set("counts", "0");
       const r = await fetch(`${API_URL}/api/admin/bot/users?${p}`,
         { headers: { "X-Admin-Password": password } }).then((x) => x.json());
-      setD({ users: r.users || [], total: r.total || 0, counts: r.counts || {} });
+      if (mine !== seq.current) return;
+      setD((prev) => ({
+        users: r.users || [], total: r.total || 0,
+        counts: r.counts || prev.counts || {},
+      }));
     } catch { /* بی‌صدا */ }
-    finally { setLoading(false); }
+    finally {
+      if (mine === seq.current) { setBusy(false); setLoading(false); }
+    }
   };
   useEffect(() => { load({ offset: 0 }); }, [password]);
 
   // جستجوی زنده — بدون این، ادمین باید هر بار Enter بزند.
   // بارِ اول اجرا نمی‌شود، وگرنه بازکردنِ صفحه دو درخواستِ یکسان
   // می‌زد و فهرست بعد از آمدن دوباره به اسکلت برمی‌گشت.
-  useDebouncedChange(q, 350, () => { setOffset(0); load({ q, offset: 0 }); });
+  useDebouncedChange(q, 250, () => { setOffset(0); load({ q, offset: 0 }); });
 
   const pick = (key) => { setFilter(key); setOffset(0); load({ filter: key, offset: 0 }); };
   const pickSort = (key) => { setSort(key); setOffset(0); load({ sort: key, offset: 0 }); };
@@ -117,64 +138,20 @@ export function BotUsersSection({ password }) {
         </div>
       )}
 
-      <div className="fx-card p-4 mb-4">
-        <div className="fx-search mb-3" style={{ width: "auto" }}>
-          <Search size={14} style={{ color: "var(--muted)" }} />
-          <input placeholder="نام، یوزرنیم، آیدی عددی یا شماره تماس..." value={q}
-            onChange={(e) => setQ(e.target.value)} />
-          {q && (
-            <button title="پاک‌کردن جستجو" onClick={() => setQ("")} className="shrink-0">
-              <X size={13} style={{ color: "var(--muted)" }} />
-            </button>
-          )}
-        </div>
+      {/* جستجو، فیلتر، مرتب‌سازی — سه کنترل، نه هفده دکمه.
+          اندازه‌گیری و دلیلش بالای `Menu` در `ui/index.jsx`.
 
-        {/* یک ردیف، نه دو تا.
-            اندازه‌گیری: یازده چیپ روی دو ردیف می‌رفت و ۷۳ پیکسل
-            ارتفاع می‌گرفت — با شش چیپِ مرتب‌سازی یعنی ۱۷ دکمه در
-            یک نوار.
-
-            و فیلتری که هیچ نتیجه‌ای ندارد نشان داده نمی‌شود: دکمه‌ای
-            که می‌دانیم صفر برمی‌گرداند فقط جا اشغال می‌کند. فیلترِ
-            انتخاب‌شده همیشه می‌ماند، وگرنه با صفرشدن نتیجه از زیر
-            دست کاربر ناپدید می‌شود و راه برگشتی نمی‌ماند. */}
-        <div className="fx-chips mb-3">
-          {USER_FILTERS.map((f) => {
-            const on = filter === f.key;
-            const n = d.counts[f.key];
-            if (!on && n === 0) return null;
-            return (
-              <button key={f.key} onClick={() => pick(f.key)}
-                className="px-2.5 py-1.5 rounded-[9px] text-[13px] transition-all shrink-0"
-                /* بوردرِ شفاف روی حالتِ انتخاب‌شده هم هست: بدون آن
-                   چیپ دو پیکسل کوتاه‌تر می‌شد و کلِ ردیف موقع
-                   انتخاب یک پیکسل بالا و پایین می‌پرید. */
-                style={on
-                  ? { background: "var(--accent-2)", color: "#06090F",
-                      fontWeight: 600, border: "1px solid transparent" }
-                  : { color: "var(--dim)", border: "1px solid var(--border-2)" }}>
-                {f.label}
-                {n !== undefined && (
-                  <span className="mr-1" style={{ opacity: 0.65 }}>({faNum(n)})</span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[12px]" style={{ color: "var(--muted)" }}>مرتب‌سازی:</span>
-          {USER_SORTS.map((s) => (
-            <button key={s.key} onClick={() => pickSort(s.key)}
-              className="px-2 py-1 rounded-[8px] text-[13px] transition-all"
-              style={sort === s.key
-                ? { background: "var(--accent-soft)", color: "var(--accent-2)" }
-                : { color: "var(--muted)" }}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </div>
+          فیلترِ بی‌نتیجه هنوز حذف می‌شود، ولی حالا از *فهرستِ منو*
+          — همان قاعده، جای کم‌هزینه‌تر. فیلترِ انتخاب‌شده همیشه
+          می‌ماند، وگرنه با صفرشدنِ نتیجه از زیرِ دستِ کاربر ناپدید
+          می‌شود و راهِ برگشتی نمی‌ماند. */}
+      <FilterBar
+        q={q} onQ={setQ} busy={busy && !loading}
+        placeholder="نام، یوزرنیم، آیدی عددی یا شماره تماس..."
+        filters={USER_FILTERS.filter(
+          (f) => filter === f.key || d.counts[f.key] !== 0)}
+        filter={filter} onFilter={pick} counts={d.counts}
+        sorts={USER_SORTS} sort={sort} onSort={pickSort} />
 
       {loading ? (
         <PageSkeleton />

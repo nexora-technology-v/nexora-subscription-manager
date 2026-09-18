@@ -1531,6 +1531,23 @@ def update_log(x_admin_password: str = Header(...)):
 BOT_DB = Path(os.getenv("BOT_DB_PATH", str(CONFIG_PATH.parent / "bot.db")))
 
 
+def _row_get(row, key, default=None):
+    """
+    یک ستون از ردیف، وقتی ممکن است اصلاً نباشد.
+
+    `sqlite3.Row` برای کلیدِ ناموجود IndexError می‌دهد، نه None. و
+    ترتیبِ به‌روزرسانی روی سرور همیشه مرتب نیست: پنل تازه می‌شود و
+    ربات هنوز ری‌استارت نشده، پس ستونی که مهاجرتِ ربات می‌سازد
+    هنوز وجود ندارد. بدون این، کلِ صندوق ۵۰۳ می‌شد به‌جای اینکه
+    فقط یک عکس نیاید.
+    """
+    try:
+        v = row[key]
+    except (IndexError, KeyError, TypeError):
+        return default
+    return default if v is None else v
+
+
 def _bot_conn():
     """اتصال فقط‌خواندنی به دیتابیس ربات. اگر نبود، None."""
     if not BOT_DB.exists():
@@ -2392,7 +2409,7 @@ _USER_SORTS = {
 
 @app.get("/api/admin/bot/users")
 def bot_users(q: str = "", limit: int = 50, offset: int = 0,
-              filter: str = "all", sort: str = "new",
+              filter: str = "all", sort: str = "new", counts: int = 1,
               x_admin_password: str = Header(...)):
     """
     کاربران ربات با فیلتر، مرتب‌سازی و آمار هر کاربر.
@@ -2440,19 +2457,33 @@ def bot_users(q: str = "", limit: int = 50, offset: int = 0,
         rows = con.execute(f"{base} ORDER BY {order_sql} LIMIT ? OFFSET ?",
                            params + [limit, offset]).fetchall()
 
-        # شمارش هر فیلتر، تا ادمین بدون کلیک‌کردن بداند هرکدام چندتاست
-        counts = {}
-        for key, cond in _USER_FILTERS.items():
+        # شمارش هر فیلتر، تا ادمین بدون کلیک‌کردن بداند هرکدام چندتاست.
+        #
+        # یک اسکن، نه یازده‌تا — ولی شرط‌ها از همان `_USER_FILTERS`
+        # ساخته می‌شوند، نه یک نسخه‌ی دوم. اگر این‌جا دستی نوشته
+        # می‌شد، همان باگِ همیشگیِ این مخزن بود: یک قاعده، دو جا،
+        # اصلاح در یکی.
+        #
+        # اندازه‌گیری روی ۲۵ هزار کاربر: ۶۱ میلی‌ثانیه → ۳۵.
+        n_counts = {}
+        if counts:
             try:
-                counts[key] = con.execute(
-                    f"SELECT COUNT(*) AS n FROM users u WHERE ({cond})"
-                ).fetchone()["n"]
+                sel = ", ".join(
+                    f'SUM(CASE WHEN ({cond}) THEN 1 ELSE 0 END) AS "{key}"'
+                    for key, cond in _USER_FILTERS.items())
+                row = con.execute(f"SELECT {sel} FROM users u").fetchone()
+                n_counts = {k: int(row[k] or 0) for k in _USER_FILTERS}
             except Exception:
-                counts[key] = 0
+                log.debug("شمارش فیلترها ناموفق", exc_info=True)
+                n_counts = {}
 
-        return {"users": [dict(r) for r in rows], "dbReady": True,
-                "total": total, "offset": offset, "limit": limit,
-                "counts": counts}
+        out = {"users": [dict(r) for r in rows], "dbReady": True,
+               "total": total, "offset": offset, "limit": limit}
+        # وقتی خواسته نشده، کلید اصلاً نمی‌آید — فرانت عددهای قبلی
+        # را نگه می‌دارد. `{}` می‌فرستادیم، همه‌ی چیپ‌ها صفر می‌شدند.
+        if counts:
+            out["counts"] = n_counts
+        return out
     except Exception as e:
         return {"users": [], "dbReady": True, "error": str(e)[:200]}
     finally:
@@ -2814,6 +2845,7 @@ def admin_inbox(user_id: int = None, x_admin_password: str = Header(...)):
             rows = db.chat_list(int(user_id))
             return {"messages": [{
                 "id": r["id"], "from": r["sender"], "body": r["body"],
+                "photo": _row_get(r, "photo") or "",
                 "orderId": r["order_id"], "at": r["created_at"],
                 "read": bool(r["read_at"]),
             } for r in rows]}
@@ -2823,7 +2855,10 @@ def admin_inbox(user_id: int = None, x_admin_password: str = Header(...)):
             "name": r["first_name"] or "", "username": r["username"] or "",
             "avatar": _avatar_url(t["id"], r["user_id"]),
             "unread": int(r["unread"] or 0),
-            "lastBody": (r["last_body"] or "")[:120],
+            # پیامی که فقط عکس است متنِ خالی دارد؛ بدون این، ردیفِ
+            # گفتگو در فهرست خالی می‌ماند و به نظر می‌رسد چیزی نیامده
+            "lastBody": ((r["last_body"] or "")[:120]
+                         or ("📷 عکس" if _row_get(r, "last_photo") else "")),
             "lastAt": r["last_at"] or "",
         } for r in threads],
             "unread": db.chat_unread_for_admin()}
@@ -2842,13 +2877,18 @@ def admin_inbox_send(payload: dict, x_admin_password: str = Header(...)):
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="مشتری مشخص نشده")
     body = str(p.get("body") or "").strip()
-    if not body:
+    raw = p.get("photo")
+    if not body and not raw:
         raise HTTPException(status_code=400, detail="پیام خالی است")
 
     t = _root_tenant_row()
+    # عکس *قبل* از ثبتِ پیام ذخیره می‌شود: اگر فایل ننشیند، پیامی
+    # هم ثبت نشده. برعکسش یعنی ردیفی در گفتگو که به عکسی اشاره
+    # می‌کند که وجود ندارد — و آن، قابِ شکسته‌ی همیشگی است.
+    photo = _chat_photo_save(t["id"], uid, raw) if raw else None
     try:
         db = _bot_db_rw(t)
-        db.chat_add(uid, "admin", body[:2000])
+        db.chat_add(uid, "admin", body[:2000], photo=photo)
         db.chat_mark_read(uid, "admin")
         u = db.get_user_by_id(uid)
     except Exception as e:
@@ -2859,12 +2899,18 @@ def admin_inbox_send(payload: dict, x_admin_password: str = Header(...)):
     if u:
         try:
             h, ctx = _mini_ctx(t)
-            ctx.bot.send(u["tg_id"],
-                         f"💬 <b>پاسخ پشتیبانی</b>\n\n{h.esc(body[:1000])}")
+            cap = f"💬 <b>پاسخ پشتیبانی</b>\n\n{h.esc(body[:900])}" if body \
+                else "💬 <b>پاسخ پشتیبانی</b>"
+            blob = _chat_photo_bytes(photo) if photo else None
+            if blob:
+                ctx.bot.send_photo_bytes(u["tg_id"], blob, filename="photo.jpg",
+                                         caption=cap)
+            else:
+                ctx.bot.send(u["tg_id"], cap)
         except Exception:
             log.debug("ارسال پاسخ در تلگرام ناموفق", exc_info=True)
 
-    return {"ok": True}
+    return {"ok": True, "photo": photo or ""}
 
 
 @app.get("/api/admin/bot/alerts")
@@ -3113,6 +3159,76 @@ def public_avatar(name: str):
         raise HTTPException(status_code=404, detail="پیدا نشد")
     return Response(content=blob, media_type=ctype,
                     headers={"Cache-Control": "public, max-age=600"})
+
+
+#: عکسِ داخل گفتگو.
+#
+#  همان قاعده‌ی عکسِ پروفایل: نامِ فایل تصادفی است و خودش کلیدِ
+#  دسترسی، چون تگِ <img> نمی‌تواند هدرِ احراز هویت بفرستد. نامِ
+#  قابل‌حدس یعنی هر کسی با شمردنِ شناسه‌ها عکس‌های پشتیبانیِ بقیه را
+#  برمی‌دارد.
+#
+#  و حدِ حجم بالاتر از پروفایل است: عکسِ صفحه‌ی گوشی معمولاً از یک
+#  آواتار بزرگ‌تر است و ۵۱۲ کیلوبایت بیشترشان را رد می‌کرد.
+CHAT_DIR = Path(os.getenv("CHAT_DIR", str(CONFIG_PATH.parent / "chat")))
+CHAT_MAX_BYTES = 3 * 1024 * 1024
+
+
+def _chat_photo_save(tid, uid, raw):
+    """base64 → فایل. برمی‌گرداند نشانی، یا خطا می‌دهد."""
+    import base64
+    import secrets as _s
+    raw = str(raw or "")
+    if raw.lstrip().startswith("data:") and "," in raw[:80]:
+        raw = raw.split(",", 1)[1]
+    raw = raw.strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="عکسی فرستاده نشد")
+    if len(raw) > (CHAT_MAX_BYTES * 4) // 3 + 1024:
+        raise HTTPException(status_code=413, detail="حجم عکس بیشتر از ۳ مگابایت است")
+    try:
+        blob = base64.b64decode(raw, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="عکس خوانده نشد")
+    if len(blob) > CHAT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="حجم عکس بیشتر از ۳ مگابایت است")
+    ext, _c = _logo_kind(blob)
+    if not ext:
+        raise HTTPException(status_code=400, detail="فقط PNG، JPEG یا WebP")
+
+    CHAT_DIR.mkdir(parents=True, exist_ok=True)
+    name = f"{int(tid)}_{int(uid)}_{_s.token_hex(12)}.{ext}"
+    (CHAT_DIR / name).write_bytes(blob)
+    return f"/api/public/chat-photo/{name}"
+
+
+def _chat_photo_bytes(url):
+    """بایت‌های عکسِ یک پیام، برای فرستادنش در تلگرام."""
+    name = str(url or "").rsplit("/", 1)[-1]
+    if not name or "\\" in name or ".." in name:
+        return None
+    p = CHAT_DIR / name
+    try:
+        return p.read_bytes() if p.is_file() else None
+    except OSError:
+        return None
+
+
+@app.get("/api/public/chat-photo/{name}")
+def public_chat_photo(name: str):
+    """عکسِ گفتگو. نامِ فایل تصادفی است، پس خودش کلیدِ دسترسی است."""
+    # نامِ آمده از بیرون هرگز مستقیم به مسیر نمی‌چسبد
+    if "/" in name or "\\" in name or ".." in name:
+        raise HTTPException(status_code=404, detail="پیدا نشد")
+    p = CHAT_DIR / name
+    if not p.exists() or not p.is_file():
+        raise HTTPException(status_code=404, detail="پیدا نشد")
+    blob = p.read_bytes()
+    _e, ctype = _logo_kind(blob)
+    if not ctype:
+        raise HTTPException(status_code=404, detail="پیدا نشد")
+    return Response(content=blob, media_type=ctype,
+                    headers={"Cache-Control": "public, max-age=3600"})
 
 
 @app.get("/api/public/logo/{tid}")
@@ -10782,6 +10898,58 @@ def mini_me(tu: tuple = Depends(mini_user)):
     }
 
 
+@app.get("/api/mini/rewards")
+def mini_rewards(tu: tuple = Depends(mini_user)):
+    """
+    سکه و دعوت — هر چیزی که صفحه‌ی پاداش نشان می‌دهد.
+
+    **هیچ عددی این‌جا حساب نمی‌شود.** پله‌ی فعلی و پله‌ی بعدی از
+    `core.coin_progress` می‌آیند — همان تابعی که لحظه‌ی خرید قیمت
+    را کم می‌کند. اگر مینی‌اپ نردبان را خودش می‌ساخت، روزی به کاربر
+    «۳۰٪ تخفیف» نشان می‌داد و صندوق ۲۰٪ کم می‌کرد؛ و حق با صندوق
+    بود، چون پول آن‌جا جابه‌جا می‌شود.
+
+    همین باگ یک‌بار در همین مخزن رخ داد: قیمتِ مینی‌اپ تخفیفِ سکه را
+    نمی‌دید، چون نسخه‌ی دومی از قیمت‌گذاری نوشته شده بود.
+    """
+    t, u = tu
+    h = _bot_handlers()
+    core = h.core
+    try:
+        st = json.loads(t.get("settings") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        st = {}
+    # عیناً همان دسترسی‌ای که ربات دارد (`ctx.s.get("coins")`).
+    # هر شکلِ دیگری این‌جا یعنی مینی‌اپ و ربات یک روز دو نردبانِ
+    # متفاوت نشان می‌دهند.
+    raw = st.get("coins")
+    cs = core.coin_settings(raw)
+    coins = int(u.get("coins") or 0)
+    prog = core.coin_progress(coins, raw)
+
+    bot = _bot_username(t)
+    code = u.get("ref_code") or ""
+    return {
+        "enabled": bool(cs["enabled"]),
+        "coins": coins,
+        "percent": prog["current_percent"],
+        "cost": prog["current_cost"],
+        "next": prog["next"],
+        "maxPercent": int(cs["max_percent"]),
+        # کلِ نردبان، تا کاربر ببیند کجای راه است — نه فقط پله‌ی بعد
+        "tiers": [{"coins": int(x["coins"]),
+                   "percent": min(int(x["percent"]), int(cs["max_percent"]))}
+                  for x in cs["tiers"]],
+        "perReferral": int(cs["per_referral"]),
+        "welcomeBonus": int(cs["welcome_bonus"]),
+        "expireDays": int(cs["expire_days"]),
+        "refCode": code,
+        "refCount": _ref_count(t["id"], u["id"]),
+        "botUsername": bot,
+        "link": f"https://t.me/{bot}?start={code}" if bot and code else "",
+    }
+
+
 @app.get("/api/mini/subs")
 def mini_subs(tu: tuple = Depends(mini_user)):
     """
@@ -11002,6 +11170,7 @@ def mini_inbox(tu: tuple = Depends(mini_user)):
         "unread": unread,
         "messages": [{
             "id": r["id"], "from": r["sender"], "body": r["body"],
+            "photo": _row_get(r, "photo") or "",
             "orderId": r["order_id"], "at": r["created_at"],
             "read": bool(r["read_at"]),
         } for r in rows],
@@ -11137,14 +11306,20 @@ def mini_avatar_clear(tu: tuple = Depends(mini_user)):
 def mini_inbox_send(payload: dict, tu: tuple = Depends(mini_user)):
     """پیام مشتری به پشتیبانی."""
     t, u = tu
-    body = str((payload or {}).get("body") or "").strip()
-    if not body:
+    p = payload or {}
+    body = str(p.get("body") or "").strip()
+    raw = p.get("photo")
+    if not body and not raw:
         raise HTTPException(status_code=400, detail="پیام خالی است")
     if len(body) > 2000:
         raise HTTPException(status_code=400, detail="پیام خیلی بلند است")
+
+    # اول فایل، بعد ردیف — وگرنه پیامی می‌ماند که به عکسِ ناموجود
+    # اشاره می‌کند
+    photo = _chat_photo_save(t["id"], u["id"], raw) if raw else None
     try:
         db = _bot_db_rw(t)
-        db.chat_add(u["id"], "user", body)
+        db.chat_add(u["id"], "user", body, photo=photo)
     except Exception as e:
         log.exception("ثبت پیام مینی‌اپ ناموفق")
         raise HTTPException(status_code=502, detail=f"فرستاده نشد: {str(e)[:120]}")
@@ -11153,13 +11328,19 @@ def mini_inbox_send(payload: dict, tu: tuple = Depends(mini_user)):
     try:
         h, ctx = _mini_ctx(t)
         who = u.get("first_name") or str(u.get("tg_id") or "")
-        ctx.notify_group(
-            f"💬 <b>پیام تازه از {h.esc(who)}</b>\n\n{h.esc(body[:400])}",
-            topic="tickets")
+        head = f"💬 <b>پیام تازه از {h.esc(who)}</b>"
+        cap = f"{head}\n\n{h.esc(body[:400])}" if body else f"{head}\n\n📷 عکس"
+        blob = _chat_photo_bytes(photo) if photo else None
+        if blob:
+            # عکس را خودِ گروه ببیند؛ «عکس فرستاد» بدونِ عکس یعنی
+            # مالک باید پنل را باز کند تا بفهمد موضوع چیست
+            ctx.notify_group(cap, topic="tickets", photo=blob)
+        else:
+            ctx.notify_group(cap, topic="tickets")
     except Exception:
         log.debug("اعلان پیام به گروه ناموفق", exc_info=True)
 
-    return {"ok": True}
+    return {"ok": True, "photo": photo or ""}
 
 
 @app.post("/api/mini/inbox/read")

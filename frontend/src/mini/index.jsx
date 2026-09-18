@@ -25,14 +25,15 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle, ArrowLeft, Camera, Check, ChevronLeft, Clock, Copy,
-  CreditCard, ExternalLink, Gift, Home, Image as ImageIcon, Layers, Link2,
-  Loader2, MessageCircle, Package, Phone, QrCode, RefreshCw, Send, Shield,
-  ShoppingBag, ShoppingCart, Trash2, User, Wallet, Zap,
+  CreditCard, ExternalLink, Gift, Home, Image as ImageIcon, ImagePlus, Layers,
+  Link2, Loader2, MessageCircle, Package, Phone, QrCode, RefreshCw, Send,
+  Coins, Shield, ShoppingBag, ShoppingCart, Trash2, User, Wallet, X, Zap,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
 import { errText, faDate, faNum, toFaDigits as faDigits } from "../lib/format";
-import { Avatar, EmptyState, Skeleton } from "../ui/index";
+import { shrinkImage } from "../lib/image.js";
+import { Avatar, EmptyState, Lightbox, Skeleton } from "../ui/index";
 
 /* آیا این آدرس مینی‌اپ است؟ — نام باید در دامنه‌ی خودِ ماژول هم
    باشد، نه فقط عبور کند. */
@@ -244,23 +245,43 @@ function SubRow({ s, onOpen }) {
 }
 
 /**
- * دعوتِ دوست.
+ * سکه و دعوت.
  *
- * کدِ معرف از قبل برای هر کاربر ساخته می‌شد، ولی فقط در منوی ربات
- * دیده می‌شد — یعنی کسی که از مینی‌اپ می‌آمد اصلاً نمی‌دانست چنین
- * چیزی هست.
+ * ── چه چیزی خراب بود ──
  *
- * دکمه‌ی اشتراک‌گذاری از خودِ تلگرام می‌رود (`openTelegramLink` با
- * `share/url`)، چون کاربر همین‌جا داخل تلگرام است و بیرون‌بردنش به
- * مرورگر یعنی گم‌شدنِ مسیر.
+ * نسخه‌ی قبلی یک جعبه‌ی خاکستری بود با کد و دو دکمه. سه چیزِ لازم
+ * را نمی‌گفت و کاربر هیچ دلیلی برای زدنِ دکمه نداشت:
+ *
+ *   • **چند سکه دارم؟** هیچ‌جای مینی‌اپ عددِ سکه دیده نمی‌شد، با
+ *     اینکه `me.coins` از قبل می‌آمد.
+ *   • **سکه به چه دردی می‌خورد؟** نردبانِ تخفیف اصلاً نشان داده
+ *     نمی‌شد — نه پله‌ی فعلی، نه پله‌ی بعد.
+ *   • **دعوت چه سودی دارد؟** «سکه می‌گیرید» بدونِ عدد، وعده نیست.
+ *
+ * ── و نکته‌ای که نباید شکسته شود ──
+ *
+ * هیچ‌کدام از این عددها این‌جا حساب نمی‌شوند. همه از
+ * `/api/mini/rewards` می‌آیند که خودش `core.coin_progress` را صدا
+ * می‌زند — همان تابعی که لحظه‌ی خرید قیمت را کم می‌کند. اگر نردبان
+ * این‌جا دوباره ساخته می‌شد، روزی «۳۰٪» نشان می‌داد و صندوق ۲۰٪ کم
+ * می‌کرد، و حق با صندوق بود.
  */
-function InviteCard({ me }) {
+function RewardCard({ me, rw, onShare }) {
   const [copied, setCopied] = useState(false);
-  const bot = String(me?.botUsername || "").replace(/^@/, "");
-  const code = me?.refCode || "";
-  if (!bot || !code) return null;
+  const link = rw?.link || "";
+  const code = rw?.refCode || me?.refCode || "";
+  if (!code || rw?.enabled === false) return null;
 
-  const link = `https://t.me/${bot}?start=${code}`;
+  const coins = Number(rw?.coins ?? me?.coins ?? 0);
+  const pct = Number(rw?.percent || 0);
+  const nxt = rw?.next || null;
+  // نوارِ پیشرفت بینِ پله‌ی فعلی و پله‌ی بعد، نه بینِ صفر و بعد:
+  // کسی که ۹۵ سکه دارد و پله‌اش ۸۰ بوده باید ببیند نزدیک است
+  const from = Number(rw?.cost || 0);
+  const to = Number(nxt?.coins || 0);
+  const fill = nxt && to > from
+    ? Math.max(4, Math.min(100, Math.round(((coins - from) / (to - from)) * 100)))
+    : 100;
 
   const copy = () => {
     try { navigator.clipboard?.writeText(link); } catch { /* بی‌صدا */ }
@@ -269,53 +290,100 @@ function InviteCard({ me }) {
     setTimeout(() => setCopied(false), 1800);
   };
 
-  const share = () => {
-    const w = tg();
-    const text = "با این لینک وارد شو و اشتراکت رو بگیر 👇";
-    const url = `https://t.me/share/url?url=${encodeURIComponent(link)}`
-              + `&text=${encodeURIComponent(text)}`;
-    buzz("light");
-    if (w?.openTelegramLink) w.openTelegramLink(url);
-    else window.open(url, "_blank", "noopener");
-  };
-
   return (
     <div className="mn-sec">
-      <div className="mn-sec-head mb-1">
-        <div>
-          <h2>دعوت از دوستان</h2>
-          <p>
-            {me.refCount > 0
-              ? <>تا حالا {faNum(me.refCount)} نفر با لینک شما آمده‌اند.</>
-              : <>لینک خودتان را بفرستید؛ با هر عضوِ تازه سکه می‌گیرید.</>}
-          </p>
+      <div className="mn-rw">
+        <div className="mn-rw-top">
+          <div className="mn-rw-coins">
+            <Coins size={17} />
+            <b>{faNum(coins)}</b>
+            <span>سکه</span>
+          </div>
+          {pct > 0 && (
+            <span className="mn-rw-now">{faNum(pct)}٪ تخفیف فعال</span>
+          )}
         </div>
+
+        {/* راهِ رسیدن به پله‌ی بعد — عددِ دقیق، نه «بیشتر جمع کنید» */}
+        <div className="mn-rw-bar" role="img"
+          aria-label={nxt
+            ? `${faNum(nxt.need)} سکه تا ${faNum(nxt.percent)} درصد تخفیف`
+            : "بالاترین پله"}>
+          <span style={{ width: `${fill}%` }} />
+        </div>
+        <p className="mn-rw-hint">
+          {nxt ? (
+            <>
+              <b>{faNum(nxt.need)}</b> سکه تا <b>{faNum(nxt.percent)}٪</b> تخفیف
+            </>
+          ) : pct > 0 ? (
+            <>بالاترین پله را دارید — {faNum(pct)}٪ از خرید بعدی کم می‌شود</>
+          ) : (
+            <>با جمع‌کردن سکه، تخفیفِ خریدهای بعدی‌تان باز می‌شود</>
+          )}
+        </p>
+
+        {/* نردبان، تا معلوم باشد آخرش کجاست */}
+        {(rw?.tiers || []).length > 0 && (
+          <div className="mn-rw-ladder">
+            {rw.tiers.map((x) => {
+              const on = coins >= x.coins;
+              return (
+                <div key={x.coins} className={`mn-rw-step${on ? " on" : ""}`}>
+                  <b>{faNum(x.percent)}٪</b>
+                  <span>{faNum(x.coins)} سکه</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      <div className="mn-invite">
-        <span className="mn-invite-code" dir="ltr">{code}</span>
-        <div className="mn-invite-acts">
-          <button className="mn-act" onClick={copy}>
-            {copied ? <Check size={15} /> : <Copy size={15} />}
-            {copied ? "کپی شد" : "کپی لینک"}
-          </button>
-          <button className="mn-act" onClick={share}>
-            <Send size={15} /> فرستادن
+      <div className="mn-rw-inv">
+        <div className="mn-rw-inv-head">
+          <Gift size={15} />
+          <div>
+            <b>دوستتان را دعوت کنید</b>
+            <p>
+              {rw?.perReferral > 0
+                ? <>با اولین خریدِ هر دوست، <b>{faNum(rw.perReferral)} سکه</b> می‌گیرید
+                    {rw?.welcomeBonus > 0
+                      ? <> و خودش هم {faNum(rw.welcomeBonus)} سکه</>
+                      : null}.</>
+                : <>لینک خودتان را بفرستید تا دوستتان هم عضو شود.</>}
+            </p>
+          </div>
+        </div>
+
+        {rw?.refCount > 0 && (
+          <div className="mn-rw-count">
+            <b>{faNum(rw.refCount)}</b> نفر با لینک شما آمده‌اند
+          </div>
+        )}
+
+        <div className="mn-rw-code">
+          <span dir="ltr">{code}</span>
+          <button onClick={copy} aria-label="کپی لینک">
+            {copied ? <Check size={14} /> : <Copy size={14} />}
           </button>
         </div>
+
+        <button className="mn-rw-share" onClick={onShare}>
+          <Send size={15} /> فرستادن به دوستان
+        </button>
       </div>
     </div>
   );
 }
 
 
-function HomeView({ me, subs, onOpen, onBuy, onAll }) {
+function HomeView({ me, subs, rw, onOpen, onBuy, onAll, onShare }) {
   const recent = (subs || []).slice(0, 3);
   return (
     <>
       <Balance me={me} />
 
-      <InviteCard me={me} />
+      <RewardCard me={me} rw={rw} onShare={onShare} />
 
       <div className="mn-sec">
         <div className="mn-sec-head">
@@ -704,10 +772,14 @@ function SettingsView({ me, onSave, onAvatar, onDropAvatar, onTopUp,
  * صندوق‌اند. سه جای جدا یعنی سه نشان و سه صدا و سه جا برای از هم
  * پاشیدن.
  */
-function InboxView({ msgs, busy, onSend, support, channel }) {
+function InboxView({ msgs, busy, onSend, support, channel, onZoom }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [err, setErr] = useState("");
+  // عکسِ انتخاب‌شده ولی هنوز نفرستاده، به شکل dataURL
+  const [photo, setPhoto] = useState("");
+  const [shrinking, setShrinking] = useState(false);
+  const photoRef = useRef(null);
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -759,15 +831,36 @@ function InboxView({ msgs, busy, onSend, support, channel }) {
     };
   }, []);
 
+  /* عکسِ انتخاب‌شده، پیش از فرستادن.
+     نشان‌دادنش لازم است: بدونِ پیش‌نمایش، کاربر نمی‌داند کدام عکس
+     را برداشته و تنها راهِ فهمیدنش فرستادنش است. */
+  const pickPhoto = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setErr("");
+    if (!/^image\//.test(f.type || "")) { setErr("فقط عکس"); return; }
+    setShrinking(true);
+    try {
+      const out = await shrinkImage(f);
+      if (out.bytes > 3 * 1024 * 1024) {
+        setErr("حجم عکس بیشتر از ۳ مگابایت است"); return;
+      }
+      setPhoto(out.data);
+      buzz("ok");
+    } catch (e2) { setErr(e2.message || "عکس خوانده نشد"); }
+    finally { setShrinking(false); }
+  };
+
   const send = async () => {
     const body = text.trim();
-    if (!body || sending) return;
+    if ((!body && !photo) || sending) return;
     setSending(true); setErr("");
     try {
-      await onSend(body);
-      setText("");
+      await onSend(body, photo);
+      setText(""); setPhoto("");
     } catch (e) {
-      // متن در کادر می‌ماند — کاربر دوباره تایپ نکند
+      // متن و عکس در کادر می‌مانند — کاربر دوباره انتخابشان نکند
       setErr(e.message);
     } finally { setSending(false); }
   };
@@ -803,9 +896,21 @@ function InboxView({ msgs, busy, onSend, support, channel }) {
         ) : (msgs || []).map((m) => (
           <div key={m.id}
             className={`mn-msg ${m.from === "user" ? "me" : m.from === "system" ? "sys" : "them"}`
-              + `${m.pending ? " pending" : ""}${m.failed ? " failed" : ""}`}>
+              + `${m.pending ? " pending" : ""}${m.failed ? " failed" : ""}`
+              /* کلاسِ صریح، نه `:has()`: اگر مرورگرِ وب‌ویو آن را
+                 نشناسد کلِ قاعده بی‌صدا می‌افتد و قابِ ۱۱ پیکسلی
+                 برمی‌گردد. */
+              + `${m.photo ? " pic" : ""}`}>
             {m.from === "system" && <Shield size={13} className="mn-msg-ico" />}
-            <span className="mn-msg-body">{m.body}</span>
+            {m.photo && (
+              /* کلیک‌کردنی، چون عکسِ ۲۲۰ پیکسلیِ یک خطای برنامه
+                 خوانده نمی‌شود و کاربر باید بتواند بزرگش کند */
+              <button className="mn-msg-photo" onClick={() => onZoom?.(m.photo)}
+                aria-label="بزرگ‌کردن عکس">
+                <img src={m.photo} alt="" loading="lazy" />
+              </button>
+            )}
+            {m.body && <span className="mn-msg-body">{m.body}</span>}
             <span className="mn-msg-at">
               {m.at ? faDigits(String(m.at).slice(11, 16)) : ""}
               {m.pending && " · در حال رفتن"}
@@ -820,13 +925,31 @@ function InboxView({ msgs, busy, onSend, support, channel }) {
         <div className="mn-pay-err"><AlertTriangle size={14} /><span>{err}</span></div>
       )}
 
+      {/* عکسِ آماده‌ی ارسال — بالای نوار، با راهِ برداشتنش */}
+      {photo && (
+        <div className="mn-chat-att">
+          <img src={photo} alt="عکس انتخاب‌شده" />
+          <button onClick={() => setPhoto("")} aria-label="برداشتن عکس">
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
       <div className="mn-chat-bar">
-        <textarea ref={boxRef} rows={1} dir="auto" value={text} placeholder="پیامتان را بنویسید…"
+        <button className="mn-clip" onClick={() => photoRef.current?.click()}
+          disabled={sending || shrinking} aria-label="فرستادن عکس"
+          title="فرستادن عکس">
+          {shrinking ? <Loader2 size={17} className="animate-spin" /> : <ImagePlus size={17} />}
+        </button>
+        <input ref={photoRef} type="file" accept="image/*" className="hidden"
+          onChange={pickPhoto} />
+        <textarea ref={boxRef} rows={1} dir="auto" value={text}
+          placeholder={photo ? "توضیحی برای عکس… (اختیاری)" : "پیامتان را بنویسید…"}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
           }} />
-        <button onClick={send} disabled={sending || !text.trim()}
+        <button onClick={send} disabled={sending || (!text.trim() && !photo)}
           aria-label="فرستادن">
           {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
         </button>
@@ -1095,6 +1218,11 @@ export default function Mini() {
   const [msgs, setMsgs] = useState(null);
   const [unread, setUnread] = useState(0);
   const [toast, setToast] = useState(null);
+  // عکسی که تمام‌صفحه باز است
+  const [zoom, setZoom] = useState("");
+  // سکه، نردبانِ تخفیف و کدِ دعوت — همه از سرور، هیچ‌کدام این‌جا
+  // حساب نمی‌شوند
+  const [rw, setRw] = useState(null);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -1111,6 +1239,11 @@ export default function Mini() {
       api("/api/mini/inbox")
         .then((x) => { setMsgs(x.messages || []); setUnread(x.unread || 0); })
         .catch(() => { /* نشان عوض نمی‌شود، بقیه‌ی اپ کار می‌کند */ });
+      // همین‌طور پاداش‌ها: سرورِ قدیمی این مسیر را ندارد و کارتِ
+      // سکه فقط نشان داده نمی‌شود — بقیه‌ی اپ باید کار کند
+      api("/api/mini/rewards")
+        .then(setRw)
+        .catch(() => setRw(null));
     } catch (e) {
       setErr(e.message);
     } finally { setBusy(false); }
@@ -1279,6 +1412,25 @@ export default function Mini() {
     return () => { alive = false; clearInterval(id); };
   }, [load, tab]);
 
+  /**
+   * فرستادنِ لینکِ دعوت.
+   *
+   * از داخلِ خودِ تلگرام می‌رود (`openTelegramLink`)، نه مرورگر:
+   * کاربر همین حالا داخل تلگرام است و بیرون‌بردنش یعنی گم‌شدنِ
+   * مسیر و برنگشتن.
+   */
+  const shareInvite = useCallback(() => {
+    const link = rw?.link;
+    if (!link) return;
+    const w = tg();
+    const text = "با این لینک وارد شو و اشتراکت رو بگیر 👇";
+    const url = `https://t.me/share/url?url=${encodeURIComponent(link)}`
+              + `&text=${encodeURIComponent(text)}`;
+    buzz("light");
+    if (w?.openTelegramLink) w.openTelegramLink(url);
+    else window.open(url, "_blank", "noopener");
+  }, [rw]);
+
   const saveProfile = async (body) => {
     await api("/api/mini/profile", { method: "POST", body });
     const m = await api("/api/mini/me");
@@ -1307,13 +1459,16 @@ export default function Mini() {
    * هیچ چیزی روی صفحه نمی‌آمد. روی اینترنتِ موبایل یعنی یکی دو
    * ثانیه سکوت، و کاربر دوباره می‌زد.
    */
-  const sendMsg = async (body) => {
+  const sendMsg = async (body, photo) => {
     const temp = `tmp-${Date.now()}`;
     const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+    // حبابِ موقت خودِ dataURL را نشان می‌دهد؛ تا پاسخِ سرور بیاید
+    // عکس همان‌جاست و کاربر فکر نمی‌کند نرفته
     setMsgs((prev) => [...(prev || []),
-      { id: temp, from: "user", body, at: now, pending: true }]);
+      { id: temp, from: "user", body, photo: photo || "", at: now, pending: true }]);
     try {
-      await api("/api/mini/inbox/send", { method: "POST", body: { body } });
+      await api("/api/mini/inbox/send",
+        { method: "POST", body: { body, ...(photo ? { photo } : {}) } });
       const x = await api("/api/mini/inbox");
       setMsgs(x.messages || []);
       setUnread(x.unread || 0);
@@ -1550,7 +1705,7 @@ export default function Mini() {
             onDropAvatar={dropAvatar} onTopUp={topUp}
             support={me?.support} channel={me?.channel} />
         ) : view === "chat" ? (
-          <InboxView msgs={msgs} busy={busy} onSend={sendMsg}
+          <InboxView msgs={msgs} busy={busy} onSend={sendMsg} onZoom={setZoom}
             support={me?.support} channel={me?.channel} />
         ) : view === "subs" ? (
           (subs || []).length === 0 ? (
@@ -1564,8 +1719,9 @@ export default function Mini() {
         ) : (
           <>
             <PendingOrders orders={orders} />
-            <HomeView me={me} subs={subs} onOpen={setDetail} onAll={() => setTab("subs")}
-              onBuy={() => setTab("buy")} />
+            <HomeView me={me} subs={subs} rw={rw} onOpen={setDetail}
+              onAll={() => setTab("subs")} onBuy={() => setTab("buy")}
+              onShare={shareInvite} />
           </>
         )}
         </div>
@@ -1604,6 +1760,8 @@ export default function Mini() {
           <ChevronLeft size={16} />
         </button>
       )}
+
+      <Lightbox src={zoom} onClose={() => setZoom("")} />
 
       <PaySheet pay={pay} me={me}
         onConfirm={confirmPay}

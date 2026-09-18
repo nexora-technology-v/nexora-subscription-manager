@@ -2115,6 +2115,143 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .mn-chat-bar button:active { transform: scale(.93); }
 .mn-chat-bar button:disabled { opacity: .45; }
 
+/* ── عکس در گفتگو ──
+   بیشترِ چیزی که مشتری در پشتیبانی می‌خواهد بگوید یک تصویر است:
+   عکسِ خطای اپلیکیشن، رسید، یا صفحه‌ای که کار نمی‌کند. */
+
+/* دکمه‌ی گیره — داخلِ همان نوار است، پس باید قانونِ دکمه‌ی گردِ
+   آبیِ بالا را پس بزند، وگرنه دو دکمه‌ی یکسان کنار هم می‌نشینند و
+   معلوم نیست کدام می‌فرستد. */
+.mn-chat-bar .mn-clip {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--dim);
+  width: 42px; height: 42px; border-radius: 50%;
+}
+.mn-chat-bar .mn-clip:hover { color: var(--text); border-color: var(--accent-line); }
+
+/* عکسِ انتخاب‌شده ولی هنوز نفرستاده */
+.mn-chat-att {
+  /* `align-self` و `flex: none` هر دو لازم‌اند: `.mn-chat` یک
+     ستونِ فلکس است، پس `inline-block` بلوکی می‌شود و به تمامِ
+     عرض کش می‌آید — و بدتر، فلکس ارتفاعش را می‌فشرد.
+     اندازه‌گیری‌شده: قابِ ۳۵۸×۳۶ دورِ عکسِ ۱۳۲×۸۸، یعنی نصفِ
+     عکس بریده می‌شد. */
+  position: relative; display: inline-block;
+  align-self: flex-start; flex: none;
+  margin-bottom: 8px;
+  border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+}
+.mn-chat-att img {
+  display: block; max-width: 132px; max-height: 92px;
+  object-fit: cover;
+}
+.mn-chat-att > button {
+  position: absolute; top: 4px; inset-inline-end: 4px;
+  /* ۲۲ پیکسل روی گوشی هدفِ کوچکی است و ۲۸ هنوز پیش‌نمایش را
+     نمی‌پوشاند */
+  width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--scrim-4); color: #fff; border: 0;
+}
+
+/* عکسِ داخلِ حباب.
+   `display:block` روی img لازم است: با inline، خطِ پایه‌ی متن زیرِ
+   عکس چند پیکسل فضای سفید می‌سازد که شبیهِ حبابِ ناجور به نظر
+   می‌رسد. */
+.mn-msg-photo {
+  display: block; padding: 0; border: 0; background: none;
+  border-radius: 12px; overflow: hidden;
+  margin-bottom: 6px;
+  max-width: 220px;
+  line-height: 0;
+}
+.mn-msg-photo img {
+  display: block; width: 100%; height: auto;
+  max-height: 260px; object-fit: cover;
+}
+/* حبابِ عکس‌دار لایی نمی‌خواهد.
+   اندازه‌گیری: لایی ۱۱ پیکسلیِ حبابِ متن، دورِ عکسِ ۱۴۶ پیکسلی یک
+   قابِ رنگیِ کلفت می‌ساخت که خودش را نشان می‌داد نه عکس را. */
+.mn-msg.pic { padding: 4px; }
+.mn-msg.pic > .mn-msg-photo { margin-bottom: 0; }
+/* متن و ساعت لایی خودشان را جدا می‌گیرند، وگرنه به لبه می‌چسبند */
+.mn-msg.pic > .mn-msg-body { display: block; padding: 6px 7px 0; }
+.mn-msg.pic > .mn-msg-at { padding: 2px 7px 3px; }
+
+/* ── عکس، تمام‌صفحه — مشترکِ پنل و مینی‌اپ ── */
+.fx-lightbox {
+  position: fixed; inset: 0; z-index: 120;
+  display: grid; place-items: center;
+  padding: 16px;
+  background: var(--scrim-4);
+  backdrop-filter: blur(4px);
+}
+.fx-lightbox img {
+  max-width: 100%; max-height: 100%;
+  border-radius: 12px;
+  object-fit: contain;
+}
+.fx-lightbox-x {
+  position: absolute; top: calc(12px + var(--mn-sa-top)); inset-inline-end: 12px;
+  width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border-2);
+}
+
+/* ── عکسِ گفتگو در پنل ──
+   همان قاعده‌ی مینی‌اپ، فقط کمی بزرگ‌تر: مالک روی صفحه‌ی بزرگ
+   نشسته و لازم نیست برای دیدنِ هر عکس یک‌بار بزرگش کند. */
+.fx-bub-photo {
+  display: block; padding: 0; border: 0; background: none;
+  border-radius: 10px; overflow: hidden;
+  margin-bottom: 6px; max-width: 260px; line-height: 0;
+  cursor: zoom-in;
+}
+/* همان قاعده‌ی مینی‌اپ: قابِ رنگیِ کلفت دورِ عکس، خودش را نشان
+   می‌دهد نه عکس را */
+.fx-bub.pic { padding: 4px; }
+.fx-bub.pic > .fx-bub-photo { margin-bottom: 0; }
+.fx-bub.pic > .fx-bub-text { display: block; padding: 6px 7px 0; }
+.fx-bub.pic > .fx-bub-meta { padding: 2px 7px 3px; }
+.fx-bub-photo img {
+  display: block; width: 100%; height: auto;
+  max-height: 300px; object-fit: cover;
+}
+
+.fx-chat-att {
+  /* همان قاعده‌ی مینی‌اپ: ستونِ فلکس، پس بدونِ `flex: none`
+     ارتفاعِ قاب فشرده می‌شود و عکس بریده */
+  position: relative; display: inline-block;
+  margin: 0 14px 8px; align-self: flex-start; flex: none;
+  border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--border-2); background: var(--surface-2);
+}
+.fx-chat-att img {
+  display: block; max-width: 148px; max-height: 96px; object-fit: cover;
+}
+.fx-chat-att > button {
+  position: absolute; top: 4px; inset-inline-end: 4px;
+  width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--scrim-4); color: #fff; border: 0;
+}
+
+/* دکمه‌ی گیره — قانونِ دکمه‌ی گردِ آبیِ نوار را پس می‌زند، وگرنه دو
+   دکمه‌ی یکسان کنار هم می‌نشینند و معلوم نیست کدام می‌فرستد */
+.fx-chat-bar .fx-clip {
+  flex: none; width: 38px; height: 38px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--dim);
+  transition: color .15s, border-color .15s;
+}
+.fx-chat-bar .fx-clip:hover { color: var(--text); border-color: var(--accent-line); }
+.fx-chat-bar .fx-clip:disabled { opacity: .45; }
+
 /* ── نشانِ خوانده‌نشده روی تب ── */
 .mn-tab-ico { position: relative; display: inline-flex; }
 .mn-badge {
@@ -2673,6 +2810,73 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   -webkit-overflow-scrolling: touch;
 }
 
+/* ── منو و نوارِ فیلتر ──
+   هفده دکمه‌ی فیلتر روی نوار، جایش داخلِ منوست. اندازه‌گیری و
+   دلیلش بالای `Menu` در `ui/index.jsx`. */
+
+.fx-filterbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+
+.fx-menu-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  /* ۳۹ پیکسل، نه ۳۶: قدِ `.fx-search` همین است و دو پیکسل اختلاف
+     روی یک ردیف دیده می‌شود */
+  padding: 0 10px; height: 39px;
+  max-width: 190px;
+  border-radius: 10px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  color: var(--dim); font-size: 13px;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.fx-menu-btn:hover { color: var(--text); border-color: var(--accent-line); }
+.fx-menu-btn:focus-visible { outline: 2px solid var(--accent-edge); outline-offset: 1px; }
+/* دکمه‌ای که فیلترِ فعال دارد — بدونِ این، تنها نشانه‌ی فعال‌بودن
+   چیپِ زیرش بود و روی نوارِ شلوغ دیده نمی‌شد */
+.fx-menu-btn.on {
+  border-color: var(--accent-line); color: var(--accent-2);
+  background: var(--accent-soft);
+}
+
+.fx-menu {
+  position: fixed; z-index: 120;
+  overflow-y: auto; overscroll-behavior: contain;
+  padding: 5px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  box-shadow: 0 1px 0 var(--hair-2) inset, 0 18px 42px -14px var(--scrim-4);
+}
+.fx-menu::-webkit-scrollbar { width: 8px; }
+.fx-menu::-webkit-scrollbar-thumb {
+  background: var(--hair-2); border-radius: 8px;
+}
+
+.fx-menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 0 8px; height: 34px;
+  border-radius: 8px;
+  color: var(--dim); font-size: 13px; text-align: right;
+  transition: background .12s, color .12s;
+}
+.fx-menu-item:hover { background: var(--hair-1); color: var(--text); }
+.fx-menu-item:focus-visible { outline: 2px solid var(--accent-edge); outline-offset: -2px; }
+
+/* چیپِ «این فیلتر فعال است» — تنها چیزی که از نوارِ قدیمی ماند */
+.fx-filter-on {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px 3px 6px;
+  border-radius: 8px; font-size: 12.5px;
+  background: var(--accent-soft); color: var(--accent-2);
+  border: 1px solid var(--accent-line);
+}
+.fx-filter-on > button {
+  display: flex; border-radius: 5px; padding: 2px; margin-inline-start: 1px;
+  opacity: .7; transition: opacity .12s, background .12s;
+}
+.fx-filter-on > button:hover { opacity: 1; background: var(--accent-fill); }
+
 /* نوارِ چیپ — یک ردیف که افقی اسکرول می‌خورد.
    با `flex-wrap` یازده چیپ دو ردیف می‌شد و نوار را دو برابر
    می‌کرد؛ روی صفحه‌ی باریک‌تر سه ردیف. */
@@ -2740,16 +2944,137 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 
 /* دعوتِ دوست */
-.mn-invite {
+/* ── سکه و دعوت ──
+   نسخه‌ی قبلی یک جعبه‌ی خاکستری با کد و دو دکمه بود و سه چیزِ لازم
+   را نمی‌گفت: چند سکه دارم، به چه دردی می‌خورد، و دعوت چه سودی
+   دارد. دلیلِ کامل بالای `RewardCard` در `mini/index.jsx`. */
+
+.mn-rw {
+  border-radius: var(--r-l); padding: 15px 15px 13px;
+  /* رنگِ سکه، نه رنگِ برند: این کارت باید از کارتِ موجودی جدا
+     دیده شود، وگرنه چشم هر دو را یک چیز می‌خواند */
+  background:
+    radial-gradient(120% 120% at 100% 0%,
+                    var(--warn-fill) 0%, transparent 60%),
+    var(--surface-2);
+  border: 1px solid var(--warn-line);
+}
+
+.mn-rw-top {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 12px;
+}
+.mn-rw-coins {
+  display: flex; align-items: baseline; gap: 7px;
+  color: var(--warn);
+}
+.mn-rw-coins > svg { align-self: center; flex: none; }
+.mn-rw-coins > b {
+  font-size: 26px; font-weight: 800; line-height: 1;
+  font-family: var(--num); font-variant-numeric: tabular-nums;
+}
+.mn-rw-coins > span { font-size: 12.5px; color: var(--muted); }
+
+.mn-rw-now {
+  flex: none; padding: 4px 9px; border-radius: 99px;
+  font-size: 11.5px; font-weight: 700;
+  background: var(--ok-soft); color: var(--ok);
+}
+
+.mn-rw-bar {
+  height: 7px; border-radius: 99px; overflow: hidden;
+  background: var(--hair-2);
+}
+.mn-rw-bar > span {
+  display: block; height: 100%; border-radius: 99px;
+  background: linear-gradient(90deg, var(--warn), var(--accent-2));
+  transition: width var(--m-slow, .5s) var(--sp-snappy, ease);
+}
+.mn-rw-hint {
+  margin-top: 8px; font-size: 12.5px; color: var(--dim); line-height: 1.75;
+}
+.mn-rw-hint b { color: var(--text); font-family: var(--num); }
+
+/* نردبان — یک ردیف که افقی اسکرول می‌خورد. با wrap، پنج پله روی
+   گوشی سه ردیف می‌شد و کارت را دو برابر می‌کرد. */
+.mn-rw-ladder {
+  display: flex; gap: 6px; margin-top: 12px;
+  overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none;
+  padding-bottom: 2px;
+}
+.mn-rw-ladder::-webkit-scrollbar { display: none; }
+.mn-rw-step {
+  flex: none; min-width: 62px; text-align: center;
+  padding: 7px 8px; border-radius: 10px;
+  background: var(--hair-1); border: 1px solid transparent;
+}
+.mn-rw-step > b {
+  display: block; font-size: 13px; font-weight: 800;
+  color: var(--muted); font-family: var(--num);
+}
+.mn-rw-step > span {
+  display: block; margin-top: 2px; font-size: 10.5px; color: var(--muted);
+}
+/* پله‌ای که باز شده — رنگ، نه فقط پررنگی: تفاوتِ کم‌رنگ و پررنگ
+   روی صفحه‌ی گوشی در نور روز دیده نمی‌شود */
+.mn-rw-step.on {
+  background: var(--warn-soft); border-color: var(--warn-line);
+}
+.mn-rw-step.on > b { color: var(--warn); }
+.mn-rw-step.on > span { color: var(--dim); }
+
+/* ── بخشِ دعوت ── */
+.mn-rw-inv {
+  margin-top: 10px; padding: 14px;
+  border-radius: var(--r-l);
   background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: var(--r-l); padding: 13px;
 }
-.mn-invite-code {
-  display: block; text-align: center; font-size: 19px; font-weight: 800;
-  letter-spacing: .18em; color: var(--accent-2);
-  font-family: var(--mono); margin-bottom: 11px;
+.mn-rw-inv-head { display: flex; gap: 10px; align-items: flex-start; }
+.mn-rw-inv-head > svg { flex: none; margin-top: 2px; color: var(--accent-2); }
+.mn-rw-inv-head b { font-size: 13.5px; color: var(--text); }
+.mn-rw-inv-head p {
+  margin-top: 4px; font-size: 12.5px; color: var(--muted); line-height: 1.8;
 }
-.mn-invite-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.mn-rw-inv-head p b { color: var(--warn); font-family: var(--num); }
+
+.mn-rw-count {
+  margin-top: 10px; padding: 7px 10px; border-radius: 9px;
+  font-size: 12.5px; color: var(--dim);
+  background: var(--accent-soft);
+}
+.mn-rw-count b { color: var(--accent-2); font-family: var(--num); }
+
+/* کد و دکمه‌ی کپی در یک ردیف: کدِ وسط‌چینِ تنها، دکمه‌ای که آن را
+   کپی می‌کند دو خط پایین‌تر داشت و ربطشان دیده نمی‌شد */
+.mn-rw-code {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px; padding: 8px 8px 8px 12px;
+  border-radius: 10px;
+  background: var(--bg); border: 1px dashed var(--border-2);
+}
+.mn-rw-code > span {
+  flex: 1; min-width: 0; text-align: center;
+  font-size: 17px; font-weight: 800; letter-spacing: .16em;
+  color: var(--accent-2); font-family: var(--num);
+  user-select: all;            /* یک کلیک، کلِ کد انتخاب می‌شود */
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mn-rw-code > button {
+  flex: none; width: 34px; height: 34px; border-radius: 9px;
+  display: grid; place-items: center;
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--dim);
+}
+
+.mn-rw-share {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  width: 100%; margin-top: 10px; height: 42px;
+  border-radius: 12px; border: 0;
+  background: linear-gradient(140deg, var(--accent), var(--cy));
+  color: #06090F; font-size: 13.5px; font-weight: 700;
+  transition: transform var(--m-fast) var(--sp-snappy);
+}
+.mn-rw-share:active { transform: scale(.97); }
 
 /* کارتی که باید قدِ ردیف را پر کند.
    `align-items: start` جلوی کش‌آمدنِ همه را می‌گیرد — که درست است
