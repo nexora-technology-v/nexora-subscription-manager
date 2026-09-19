@@ -1675,6 +1675,10 @@ export function BillingDash({ password }) {
   );
 }
 
+/** یک رقمِ اعشار. بدونِ این، تفریقِ دو عددِ گردشده دنباله‌ی
+    اعشاریِ بلند می‌سازد: «۵۷۸.۵۹۹۹۹۹۹۹۹۹». */
+const round1 = (n) => Math.round((Number(n) || 0) * 10) / 10;
+
 export function BillingGroups({ password }) {
   const { data, loading, reload } = useBilling(password);
   const [open, setOpen] = useState(null);
@@ -1800,13 +1804,18 @@ export function BillingGroups({ password }) {
                   <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
                     <bdi style={{ fontFamily: monoIf(g.name) }}>{g.name}</bdi>
                     {" · "}{faNum(g.configs)} کانفیگ · {faNum(g.usedGB)} گیگ مصرف
-                    {/* چقدرش مالِ دوره‌های ریست‌شده است.
-                        بدونِ این، عددِ گروه ناگهان بزرگ‌تر از مصرفِ
-                        جاری است و معلوم نیست چرا — همان چیزی که
-                        باید قابل دفاع باشد. */}
+                    {/* عددِ مصرف باید قابل توضیح باشد.
+                        «پیش از ریست» اصطلاح بود، نه توضیح — مالک
+                        خودش پرسید یعنی چه. حالا خودِ جمع نوشته
+                        می‌شود و تولتیپ کاملش می‌کند. */}
                     {g.bankedGB > 0 && (
-                      <span style={{ color: "var(--warn)" }}>
-                        {" "}({faNum(g.bankedGB)} گیگ پیش از ریست)
+                      <span style={{ color: "var(--warn)" }}
+                        title={`${faNum(round1(g.usedGB - g.bankedGB))} گیگ از وقتی `
+                          + `شمارنده‌ی این گروه در x-ui صفر شد، به‌علاوه‌ی `
+                          + `${faNum(g.bankedGB)} گیگ که پیش از آن مصرف شده بود. `
+                          + `پنل x-ui هم همین جمع را نشان می‌دهد.`}>
+                        {" "}({faNum(round1(g.usedGB - g.bankedGB))} از آخرین صفرکردن
+                        {" + "}{faNum(g.bankedGB)} قبلش)
                       </span>
                     )}
                   </div>
