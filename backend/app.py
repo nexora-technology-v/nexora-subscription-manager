@@ -5797,6 +5797,55 @@ def _billing_conn():
     return con
 
 
+def _xui_group_banks():
+    """
+    ترافیکی که x-ui خودش برای هر گروه بانک کرده — بایت.
+
+    ── چرا این وجود دارد ──
+
+    3x-ui وقتی ترافیکِ یک گروه را ریست می‌کند، مقدارِ پیش از ریست را
+    در `client_groups.reset_up` و `reset_down` نگه می‌دارد، و
+    **منفی** ذخیره‌اش می‌کند. صفحه‌ی گروه‌های خودِ x-ui این را نشان
+    می‌دهد:
+
+        نمایش = SUM(up + down)  −  (reset_up + reset_down)
+
+    چون آن دو منفی‌اند، تفریق یعنی جمعِ مصرفِ دوره‌های قبل.
+
+    ── چرا لازم شد ──
+
+    اندازه‌گیری روی دیتابیسِ واقعیِ یک سرور، کنارِ اسکرین‌شاتِ خودِ
+    پنلِ x-ui: هر یازده گروه با این فرمول تا کمتر از یک درصد
+    می‌خواندند، و بدونش هفت‌تایشان نمی‌خواندند. «Hossein naji»
+    ۵۷۸ گیگِ جاری داشت و ۴۶۲ گیگِ بانک‌شده — پنلِ x-ui ۱.۰۱ ترابایت
+    می‌گفت و پنلِ ما ۵۷۸ گیگ.
+
+    یعنی تاریخچه‌ای که فکر می‌کردیم x-ui ندارد، دارد — فقط در سطحِ
+    گروه، نه کلاینت.
+    """
+    con, _err = _xui_conn()
+    if not con:
+        return {}
+    out = {}
+    try:
+        cols = {r[1] for r in con.execute("PRAGMA table_info(client_groups)")}
+        if not {"reset_up", "reset_down"} <= cols:
+            return {}
+        for r in con.execute(
+                "SELECT name, reset_up, reset_down FROM client_groups"):
+            # منفی ذخیره می‌شوند، پس منفی‌شان می‌کنیم تا مثبت شود.
+            # `max(0, …)` نگهبان است: اگر روزی x-ui علامت را عوض کند،
+            # نتیجه نباید از مصرفِ واقعی کم کند.
+            bank = -(int(r["reset_up"] or 0) + int(r["reset_down"] or 0))
+            out[(r["name"] or "").strip()] = max(0, bank)
+    except Exception:
+        log.debug("خواندن ترافیک بانک‌شده‌ی گروه ناموفق", exc_info=True)
+        return {}
+    finally:
+        con.close()
+    return out
+
+
 def _read_xui_clients():
     """
     همه‌ی کانفیگ‌ها با گروه و مصرف واقعی.
@@ -7020,12 +7069,19 @@ def _billing_overview_impl():
             G["botOwned"] += 1
         if cl["enable"]:
             G["active"] += 1
-        # جمعِ همه‌ی دوره‌ها، نه فقط دوره‌ی جاری.
+        # مصرفِ *جاری*. بانکِ دوره‌های ریست‌شده بعد از حلقه یک‌جا
+        # اضافه می‌شود، از `client_groups` خودِ x-ui.
         #
-        # با `cl["used"]`، گروهی که کانفیگ‌هایش ریست خورده‌اند
-        # «کم‌مصرف» به نظر می‌رسید — و همان عددی است که مالک روی
-        # کارتِ بدهی می‌بیند.
-        G["used"] += cl["usedTotal"]
+        # چرا `usedTotal` نه: بانکِ خودمان با بانکِ x-ui هم‌پوشانی
+        # دارد. ریستِ گروهی شمارنده‌ی همه‌ی کلاینت‌ها را صفر می‌کند،
+        # پس هم x-ui بانکش می‌کند و هم ردیابِ ما افتِ تک‌تکشان را
+        # می‌بیند. جمع‌کردنِ هر دو یعنی دوبار شمردن.
+        G["used"] += cl["used"]
+        # آنچه ردیابِ خودمان از ریست‌های این کلاینت بانک کرده.
+        # جدا نگه داشته می‌شود چون فقط *وقتی* به کار می‌آید که x-ui
+        # بانکِ خودش را نداشته باشد — وگرنه دوبار شمرده می‌شود.
+        G["ownBank"] = G.get("ownBank", 0) + max(
+            0, int(cl.get("usedTotal") or 0) - int(cl.get("used") or 0))
         G["quota"] += cl["totalGB"]
 
         bill_it, why = _billable_config(cl)
@@ -7066,11 +7122,11 @@ def _billing_overview_impl():
                 # چون در این مدل واسطه بابت چیزی که مصرف شده پول می‌دهد،
                 # نه بابت سقفی که خریده.
                 #
-                # و «مصرف واقعی» یعنی جمعِ همه‌ی دوره‌ها. با عددِ
-                # پس‌از‌ریست، واسطه‌ای که ریست می‌زند بابتِ نصفِ چیزی
-                # که فروخته پول می‌داد — و ریست دستِ خودش است.
-                used_gb = cl["usedTotal"] / (1024 ** 3)
-                G["due"] += round(used_gb * G["perGb"])
+                # مبلغش این‌جا حساب نمی‌شود: مصرفِ گروه هنوز کامل
+                # نیست — بانکِ دوره‌های ریست‌شده بعد از حلقه اضافه
+                # می‌شود. این‌جا فقط علامت می‌گذاریم که این گروه
+                # حجمی است.
+                G["perGbBillable"] = True
             else:
                 amount, price, per_dev, extra = _line_amount(
                     gb, G["rates"], months, cl.get("limitIp"))
@@ -7109,7 +7165,59 @@ def _billing_overview_impl():
                 "unpriced": 0, "unpricedWhy": {},
                 "estimated": 0,
                 "botOwned": 0,
+                # ── این نه قلم از قلم افتاده بودند ──
+                #
+                # این شاخه برای گروهی است که در x-ui ساخته شده ولی
+                # هنوز کانفیگی ندارد. شکلش باید *دقیقاً* همان شکلِ
+                # شاخه‌ی بالا باشد، وگرنه کدِ بعدی که روی هر گروه
+                # می‌چرخد به کلیدِ نبوده می‌خورد.
+                #
+                # و می‌خورد: `if g["billable"] and not g["periodStart"]`
+                # با KeyError می‌افتاد و **کلِ صفحه‌ی حسابداری** پیام
+                # «محاسبه ناموفق» می‌داد — فقط چون یک گروهِ خالی
+                # قابلِ‌صورتحساب علامت خورده بود.
+                "periodDays": conf.get("period_days") or 30,
+                "periodStart": conf.get("period_start"),
+                "settledUntil": conf.get("settled_until"),
+                "unsettledPayments": 0,
+                "since": _bill_since(conf)[0],
+                "skipped": 0, "skippedWhy": {},
+                "settledSkipped": 0,
+                "sources": {},
             }
+
+    # ── ترافیکِ بانک‌شده‌ی گروه ──
+    #
+    # x-ui وقتی ترافیکِ یک گروه را ریست می‌کند، مقدارِ پیش از ریست را
+    # در `client_groups` نگه می‌دارد. صفحه‌ی گروه‌های خودش هم همین را
+    # نشان می‌دهد، پس عددِ ما باید با آن یکی باشد — مالک همان‌جا
+    # راستی‌آزمایی می‌کند.
+    #
+    # اندازه‌گیری روی دیتابیسِ واقعی: بدونِ این، هفت گروه از یازده
+    # با پنلِ x-ui نمی‌خواندند. «Hossein naji» ۵۷۸ گیگ نشان داده
+    # می‌شد در حالی که x-ui ۱.۰۱ ترابایت می‌گفت.
+    banks = _xui_group_banks()
+    have_xui_bank = bool(banks)
+    for g in groups.values():
+        # x-ui اگر بانکِ خودش را داشته باشد، همان معتبر است: کامل
+        # است و مالک می‌تواند با صفحه‌ی خودِ x-ui راستی‌آزمایی کند.
+        #
+        # نسخه‌های قدیمی‌ترِ 3x-ui ستون‌های `reset_up/reset_down` را
+        # ندارند. آن‌جا تنها تاریخچه‌ای که هست همان است که ردیابِ
+        # خودمان دیده.
+        #
+        # هرگز هر دو با هم: ریستِ گروهی شمارنده‌ی همه‌ی کلاینت‌ها را
+        # صفر می‌کند، پس هر دو همان یک اتفاق را ثبت می‌کنند.
+        own = int(g.pop("ownBank", 0) or 0)
+        g["bankedBytes"] = int(banks.get(g["key"], 0)) if have_xui_bank else own
+        g["bankedFrom"] = "x-ui" if have_xui_bank else "panel"
+        g["used"] += g["bankedBytes"]
+
+    # و حالا که مصرفِ گروه کامل است، مبلغِ نرخِ حجمی از رویش ساخته
+    # می‌شود — نه کلاینت‌به‌کلاینت، که بانک را نمی‌دید.
+    for g in groups.values():
+        if g.pop("perGbBillable", False) and g.get("perGb"):
+            g["due"] += round((g["used"] / (1024 ** 3)) * g["perGb"])
 
     out = sorted(groups.values(), key=lambda g: (-g["billable"], -g["configs"]))
     # داشبورد این را می‌خواند. تا امروز فقط endpoint دیگری آن را
@@ -7123,6 +7231,9 @@ def _billing_overview_impl():
         if not (g.get("settledUntil") or "").strip():
             g["unsettledPayments"] = int(g.get("paidAll") or 0)
         g["usedGB"] = round(g["used"] / (1024 ** 3), 1)
+        # چقدرش مالِ دوره‌های ریست‌شده است — رابط فقط وقتی نشانش
+        # می‌دهد که صفر نباشد
+        g["bankedGB"] = round(g.get("bankedBytes", 0) / (1024 ** 3), 1)
         g["quotaGB"] = round(g["quota"] / (1024 ** 3), 1) if g["quota"] > 1024 else g["quota"]
 
         # نام‌های مترادف.
@@ -7925,7 +8036,11 @@ def billing_invoice(group_key: str, start: str = "",
             "email": cl["email"],
             "gb": gb,
             "gbLabel": "∞" if gb == 0 else str(gb),
-            "usedGB": round(cl["usedTotal"] / (1024 ** 3), 1),
+            # مصرفِ همین کلاینت، همان‌طور که پنلِ x-ui نشانش
+            # می‌دهد. بانکِ ریست در سطحِ *گروه* ثبت شده و به کلاینتِ
+            # مشخصی نمی‌چسبد، پس روی ردیف پخش نمی‌شود — جمعِ گروه
+            # آن را جدا اضافه می‌کند.
+            "usedGB": round(cl["used"] / (1024 ** 3), 1),
             "usagePct": pct,
             "limitIp": cl.get("limitIp") or 0,
             "createdJalali": created_j,
@@ -7958,7 +8073,19 @@ def billing_invoice(group_key: str, start: str = "",
     lines.sort(key=lambda x: (x.get("createdGregorian") or "9999", x["email"]))
 
     quota_gb = sum(l["gb"] for l in lines)
-    used_gb = round(sum(l["usedGB"] for l in lines), 1)
+    # مصرفِ کلِ فاکتور = جمعِ ردیف‌ها + بانکِ ریستِ گروه.
+    #
+    # ردیف‌ها مصرفِ *جاریِ* هر کلاینت را می‌گویند (همان که پنلِ x-ui
+    # برای همان کلاینت نشان می‌دهد)، ولی بانک در سطحِ گروه ثبت شده
+    # و به کلاینتِ مشخصی نمی‌چسبد. پس یک‌بار این‌جا اضافه می‌شود —
+    # همان قاعده‌ی داشبورد، تا دو صفحه دو عدد ندهند.
+    _ibanks = _xui_group_banks()
+    if _ibanks:
+        _ibank = _ibanks.get(group_key, 0)
+    else:
+        _ibank = sum(max(0, int(c.get("usedTotal") or 0) - int(c.get("used") or 0))
+                     for c in clients if c["group"] == group_key)
+    used_gb = round(sum(l["usedGB"] for l in lines) + _ibank / (1024 ** 3), 1)
     configs = len(lines)
     renewals = sum(l["renewals"] for l in lines)
 
@@ -9161,7 +9288,7 @@ def billing_period(group_key: str, start: str = "", end: str = "",
                 "date": created_g, "dateJalali": created_j,
                 "price": price, "priceWhy": price_why,
                 "amount": price or 0,
-                "usedGB": round(cl["usedTotal"] / (1024 ** 3), 1),
+                "usedGB": round(cl["used"] / (1024 ** 3), 1),
             })
 
         # تعداد از همان جایی می‌آید که صورتحساب کلی می‌شمارد.
@@ -9190,10 +9317,26 @@ def billing_period(group_key: str, start: str = "", end: str = "",
     new_total = sum(x["amount"] for x in new_configs)
     ren_total = sum(x["amount"] for x in renewals)
 
-    # نرخ حجمی: بر اساس مصرف کل گروه در دوره
+    # نرخ حجمی: بر اساس مصرف کل گروه.
+    #
+    # همان فرمولِ داشبورد: مصرفِ جاری به‌اضافه‌ی بانکی که خودِ x-ui
+    # در `client_groups` نگه داشته. اگر این دو صفحه دو فرمول داشته
+    # باشند، روزی دو عدد می‌دهند و همان می‌شود موضوعِ بحث.
+    #
+    # `usedTotal` این‌جا به کار نمی‌رود: بانکِ خودمان با بانکِ x-ui
+    # هم‌پوشانی دارد و جمعِ هر دو یعنی دوبار شمردن.
     gb_total = 0
     if per_gb:
-        used = sum(c["usedTotal"] for c in clients if c["group"] == group_key)
+        mine = [c for c in clients if c["group"] == group_key]
+        used = sum(c["used"] for c in mine)
+        # همان قاعده‌ی داشبورد: بانکِ x-ui اگر بود، وگرنه آنچه
+        # خودمان دیده‌ایم. دو فرمول یعنی دو عدد و یک بحث.
+        _banks = _xui_group_banks()
+        if _banks:
+            used += _banks.get(group_key, 0)
+        else:
+            used += sum(max(0, int(c.get("usedTotal") or 0)
+                            - int(c.get("used") or 0)) for c in mine)
         gb_total = round(used / (1024 ** 3) * per_gb)
 
     due = gb_total if per_gb else (new_total + ren_total)
@@ -12395,14 +12538,14 @@ def portal_configs(t: dict = Depends(portal_tenant)):
             # نماینده همان عددی را ببیند که روی صورتحسابش می‌آید،
             # وگرنه سرِ همین عدد بحث می‌شود. درصد روی دوره‌ی جاری
             # می‌ماند، چون آن نسبتِ سهمیه است نه مصرفِ تاریخی.
-            "usedGB": round(cl["usedTotal"] / (1024 ** 3), 1),
+            "usedGB": round(cl["used"] / (1024 ** 3), 1),
             # بایتِ خام هم می‌رود، نه فقط گیگِ گردشده.
             #
             # تصمیمِ «برگشت اعتبار هنگام حذف» با used <= 0 گرفته
             # می‌شود. اگر رابط با usedGB قضاوت کند، مصرفِ چند
             # مگابایتی به ۰٫۰ گرد می‌شود و دیالوگ وعده‌ی برگشتی
             # می‌دهد که بک‌اند انجامش نمی‌دهد — دو جا، دو جواب.
-            "used": int(cl["usedTotal"] or 0),
+            "used": int(cl["used"] or 0),
             "usagePct": _usage_percent(cl["used"], cl["totalGB"]),
             "devices": cl.get("limitIp") or 0,
             "createdJalali": cj, "createdGregorian": cg,
@@ -13990,15 +14133,13 @@ def portal_stats(t: dict = Depends(portal_tenant)):
         raise HTTPException(status_code=400, detail=err)
 
     mine = [c for c in clients if (c.get("group") or "") == group]
-    # نماینده همان مصرفی را ببیند که روی صورتحسابش می‌آید
-    _with_total_usage(mine)
     now_ms = _epoch_ms(datetime.now())
 
     active = expired = soon = nearq = overq = never = 0
     used_b = quota_b = 0
     unlimited_q = 0
     for c in mine:
-        used_b += c.get("usedTotal") or 0
+        used_b += c.get("used") or 0
         q = c.get("totalGB") or 0
         if q > 0:
             quota_b += q

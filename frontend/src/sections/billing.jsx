@@ -1800,6 +1800,15 @@ export function BillingGroups({ password }) {
                   <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
                     <bdi style={{ fontFamily: monoIf(g.name) }}>{g.name}</bdi>
                     {" · "}{faNum(g.configs)} کانفیگ · {faNum(g.usedGB)} گیگ مصرف
+                    {/* چقدرش مالِ دوره‌های ریست‌شده است.
+                        بدونِ این، عددِ گروه ناگهان بزرگ‌تر از مصرفِ
+                        جاری است و معلوم نیست چرا — همان چیزی که
+                        باید قابل دفاع باشد. */}
+                    {g.bankedGB > 0 && (
+                      <span style={{ color: "var(--warn)" }}>
+                        {" "}({faNum(g.bankedGB)} گیگ پیش از ریست)
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>

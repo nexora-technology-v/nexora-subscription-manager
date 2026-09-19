@@ -2702,6 +2702,150 @@ check("صفحه‌های حسابداری خودشان تازه می‌شوند"
 
 
 # ═══════════════════════════════════════════════════════════
+head("ترافیک · بانکِ ریستِ گروه، همان عددی که x-ui نشان می‌دهد")
+
+# چرا این بخش: 3x-ui وقتی ترافیکِ یک گروه را ریست می‌کند، مقدارِ
+# پیش از ریست را در `client_groups.reset_up/reset_down` نگه می‌دارد
+# و **منفی** ذخیره‌اش می‌کند. صفحه‌ی گروه‌های خودش این را نشان
+# می‌دهد:
+#
+#     نمایش = SUM(up + down) − (reset_up + reset_down)
+#
+# پنلِ ما این ستون‌ها را نمی‌خواند، پس فقط مصرفِ دوره‌ی جاری را
+# می‌گفت. روی دیتابیسِ واقعیِ یک سرور: «Hossein naji» ۵۷۸ گیگ نشان
+# داده می‌شد در حالی که پنلِ x-ui ۱.۰۱ ترابایت می‌گفت — و مالک
+# همان‌جا راستی‌آزمایی می‌کند.
+#
+# هفت گروه از یازده این‌طور بودند. با این اصلاح هر یازده‌تا تا
+# کمتر از یک درصد خواندند.
+
+import tempfile as _tfb                                   # noqa: E402
+import sqlite3 as _sqb                                    # noqa: E402
+import time as _tmb                                       # noqa: E402
+import os as _osb                                         # noqa: E402
+from pathlib import Path as _Pb                            # noqa: E402
+
+_GBb = 1024 ** 3
+_bdir = _Pb(_tfb.mkdtemp(prefix="nx-bankx-"))
+_old_xb = _osb.environ.get("XUI_DB_PATH", "")
+_old_bb = app.BILLING_DB
+try:
+    _xpb = _bdir / "x-ui.db"
+    _osb.environ["XUI_DB_PATH"] = str(_xpb)
+    app.BILLING_DB = _bdir / "bill.db"
+    _bx = _sqb.connect(str(_xpb))
+    # شکلِ واقعیِ 3x-ui: reset_up/reset_down روی خودِ گروه
+    _bx.executescript("""
+        CREATE TABLE clients (email TEXT, total_gb INTEGER, expiry_time INTEGER,
+                              enable INTEGER, created_at INTEGER, group_name TEXT,
+                              reset INTEGER DEFAULT 0, limit_ip INTEGER DEFAULT 0);
+        CREATE TABLE client_traffics (id INTEGER PRIMARY KEY, inbound_id INTEGER,
+                                      email TEXT, up INTEGER, down INTEGER,
+                                      expiry_time INTEGER, enable INTEGER);
+        CREATE TABLE client_groups (id INTEGER PRIMARY KEY, name TEXT,
+                                    reset_up INTEGER DEFAULT 0,
+                                    reset_down INTEGER DEFAULT 0);
+    """)
+    # گروهِ «g1»: ۵۰۰ گیگ جاری، و ۵۰۰ گیگ بانک‌شده (منفی ذخیره شده)
+    _bx.execute("INSERT INTO client_groups (id,name,reset_up,reset_down) "
+                "VALUES (1,'g1',?,?)", (-100 * _GBb, -400 * _GBb))
+    # گروهِ «g2»: بدونِ ریست
+    _bx.execute("INSERT INTO client_groups (id,name,reset_up,reset_down) "
+                "VALUES (2,'g2',0,0)")
+    for _em, _g, _gb in (("a1", "g1", 300), ("a2", "g1", 200), ("b1", "g2", 70)):
+        _bx.execute("INSERT INTO clients VALUES (?,?,0,1,?,?,0,0)",
+                    (_em, 500 * _GBb, int(_tmb.time() * 1000) - 60 * 86400000, _g))
+        _bx.execute("INSERT INTO client_traffics "
+                    "(inbound_id,email,up,down,expiry_time,enable) "
+                    "VALUES (1,?,0,?,0,1)", (_em, int(_gb * _GBb)))
+    _bx.commit()
+
+    _bb = app._billing_conn()
+    for _g in ("g1", "g2"):
+        _bb.execute("INSERT OR REPLACE INTO group_config "
+                    "(group_key, billable, rates, period_start, per_gb) "
+                    "VALUES (?, 1, '[]', date('now','-60 days'), 1000)", (_g,))
+    _bb.commit()
+    _bb.close()
+
+    _banks = app._xui_group_banks()
+    check("بانکِ منفیِ x-ui به مثبت تبدیل می‌شود",
+          _banks.get("g1") == 500 * _GBb,
+          f"{(_banks.get('g1') or 0) / _GBb:.0f} GB — منفی ذخیره می‌شود")
+    check("و گروهِ بدونِ ریست صفر می‌ماند", _banks.get("g2") == 0)
+
+    _ovb = app.billing_overview(x_admin_password=app._INTERNAL_PW)
+    _g1 = [x for x in _ovb["groups"] if x["key"] == "g1"][0]
+    _g2 = [x for x in _ovb["groups"] if x["key"] == "g2"][0]
+
+    # ۳۰۰ + ۲۰۰ جاری، ۵۰۰ بانک ⇒ ۱۰۰۰
+    check("مصرفِ گروه = جاری + بانک", abs(_g1["usedGB"] - 1000) < 1,
+          f"{_g1['usedGB']} GB — بدونِ بانک ۵۰۰ می‌شد")
+    check("و رابط می‌داند چقدرش بانک است",
+          abs(_g1.get("bankedGB", 0) - 500) < 1, str(_g1.get("bankedGB")))
+    check("گروهِ بدونِ ریست دست‌نخورده می‌ماند",
+          abs(_g2["usedGB"] - 70) < 1, f"{_g2['usedGB']} GB")
+
+    # مهم‌ترین سطر: مبلغِ نرخِ حجمی روی عددِ کامل
+    check("بدهیِ نرخِ حجمی روی مصرفِ کامل حساب می‌شود",
+          _g1["due"] == 1000 * 1000,
+          f"{_g1['due']:,} — بدونِ بانک ۵۰۰٬۰۰۰ می‌شد")
+
+    # و صورتحسابِ دوره همان عدد
+    _perb = app.billing_period("g1", x_admin_password=app._INTERNAL_PW)
+    check("صورتحسابِ دوره همان عددِ داشبورد را می‌دهد",
+          (_perb.get("totals") or {}).get("due") == _g1["due"],
+          f"دوره {(_perb.get('totals') or {}).get('due')} ≠ داشبورد {_g1['due']}")
+
+    # ردیفِ کلاینت مصرفِ *خودش* را می‌گوید، نه سهمی از بانک
+    _clb = app.billing_clients(group="g1", x_admin_password=app._INTERNAL_PW)
+    _a1 = [x for x in _clb["clients"] if x["email"] == "a1"][0]
+    check("ردیفِ کلاینت مصرفِ خودش را می‌گوید",
+          abs(_a1["usedGB"] - 300) < 1,
+          f"{_a1['usedGB']} GB — بانک در سطحِ گروه است و به کلاینت نمی‌چسبد")
+
+    # ── گروهِ خالیِ قابل‌صورتحساب نباید کلِ صفحه را بیندازد ──
+    #
+    # شاخه‌ی «گروهی که هنوز کانفیگ ندارد» نُه کلید کم داشت و
+    # `g["periodStart"]` با KeyError می‌افتاد — یعنی کلِ حسابداری
+    # پیام «محاسبه ناموفق» می‌داد.
+    _bx.execute("INSERT INTO client_groups (id,name,reset_up,reset_down) "
+                "VALUES (3,'empty',0,0)")
+    _bx.commit()
+    _bb2 = app._billing_conn()
+    _bb2.execute("INSERT OR REPLACE INTO group_config "
+                 "(group_key, billable, rates, period_start) "
+                 "VALUES ('empty', 1, '[]', NULL)")
+    _bb2.commit()
+    _bb2.close()
+    _ov2 = app.billing_overview(x_admin_password=app._INTERNAL_PW)
+    check("گروهِ خالیِ قابل‌صورتحساب صفحه را نمی‌اندازد",
+          _ov2.get("ready") is not False,
+          str(_ov2.get("error"))[:90])
+    check("و خودش هم در فهرست می‌آید",
+          any(x["key"] == "empty" for x in _ov2.get("groups", [])))
+
+    _bx.close()
+finally:
+    if _old_xb:
+        _osb.environ["XUI_DB_PATH"] = _old_xb
+    else:
+        _osb.environ.pop("XUI_DB_PATH", None)
+    app.BILLING_DB = _old_bb
+
+# ── قاعده‌ها در کد بمانند ──
+check("بانکِ گروه فقط یک جا خوانده می‌شود",
+      _APSRC.count("def _xui_group_banks(") == 1)
+_OVSRC = _APSRC.split("def _billing_overview_impl(")[1].split("\ndef ")[0]
+check("داشبورد بانک را اضافه می‌کند",
+      "_xui_group_banks()" in _OVSRC,
+      "بدونش هفت گروه از یازده با پنلِ x-ui نمی‌خواندند")
+check("و مصرفِ گروه دوبار شمرده نمی‌شود",
+      'G["used"] += cl["used"]' in _OVSRC,
+      "`usedTotal` بانکِ خودمان است و با بانکِ x-ui هم‌پوشانی دارد")
+
+
+# ═══════════════════════════════════════════════════════════
 head("ترافیک · کاربری که در چند اینباند است")
 
 # چرا این بخش: `client_traffics` یک ردیف به ازای هر (اینباند، ایمیل)
@@ -2964,9 +3108,16 @@ try:
 
     _inv = app.billing_invoice("g1", x_admin_password=_PWt)
     _line = (_inv.get("lines") or [{}])[0]
-    check("صورتحساب هم همان جمع را می‌برد روی فاکتور",
-          abs(_line.get("usedGB", 0) - 950) < 1,
+    # ردیف، مصرفِ *همان کلاینت* را می‌گوید — همان عددی که پنلِ x-ui
+    # برای او نشان می‌دهد. بانکِ ریست در سطحِ گروه است و به کلاینتِ
+    # مشخصی نمی‌چسبد، پس روی ردیف پخش نمی‌شود.
+    check("ردیفِ صورتحساب مصرفِ خودِ کلاینت را می‌گوید",
+          abs(_line.get("usedGB", 0) - 450) < 1,
           f"{_line.get('usedGB')} GB")
+    # ولی جمعِ فاکتور بانک را دارد، وگرنه با داشبورد نمی‌خواند
+    check("و جمعِ فاکتور بانکِ ریست را هم دارد",
+          abs((_inv.get("totals") or {}).get("usedGB", 0) - 950) < 1,
+          f"{(_inv.get('totals') or {}).get('usedGB')} GB")
 
     _per = app.billing_period("g1", x_admin_password=_PWt)
     check("و صورتحسابِ دوره هم",
@@ -3021,9 +3172,19 @@ for _fn, _lbl in (("_billable_config", "قاعده‌ی «به کار افتاد
     check(f"{_lbl} از جمعِ مصرف می‌خواند", "usedTotal" in _body,
           "با `used` خام، ریست عدد را می‌خورد")
 
-check("نرخِ حجمی روی جمع حساب می‌شود",
-      'used_gb = cl["usedTotal"]' in _APSRC,
+# نرخِ حجمی دیگر کلاینت‌به‌کلاینت حساب نمی‌شود: مصرفِ گروه تا بعد
+# از حلقه کامل نیست، چون بانکِ ریست آن‌جا اضافه می‌شود.
+check("نرخِ حجمی از مصرفِ کاملِ گروه حساب می‌شود",
+      'g["due"] += round((g["used"] / (1024 ** 3)) * g["perGb"])' in _APSRC,
       "ریست‌زدن نباید راهِ نصف‌پرداختن باشد")
+# ترتیب مهم است: بانک باید *پیش از* ساختنِ مبلغ اضافه شده باشد،
+# وگرنه مبلغ روی عددِ ناقص حساب می‌شود.
+_OVIMPL = _APSRC.split("def _billing_overview_impl(")[1]
+_i_bank = _OVIMPL.find('g["used"] += g["bankedBytes"]')
+_i_due = _OVIMPL.find('g["due"] += round((g["used"] / (1024 ** 3)) * g["perGb"])')
+check("بانک پیش از ساختنِ مبلغ اضافه می‌شود",
+      0 < _i_bank < _i_due,
+      f"bank@{_i_bank} due@{_i_due} — مبلغ روی عددِ ناقص حساب می‌شد")
 check("و برگشتِ اعتبار هم",
       '(cl or {}).get("usedTotal")' in _APSRC,
       "ریست، بعد حذف، یعنی پولِ ساخت کامل برمی‌گشت")
