@@ -2702,6 +2702,109 @@ check("صفحه‌های حسابداری خودشان تازه می‌شوند"
 
 
 # ═══════════════════════════════════════════════════════════
+head("ترافیک · کاربری که در چند اینباند است")
+
+# چرا این بخش: `client_traffics` یک ردیف به ازای هر (اینباند، ایمیل)
+# دارد، نه یک ردیف به ازای هر کاربر. کاربری که هم روی XHTTP است و
+# هم روی TCP+Vision — همان چیدمانی که خودِ این پروژه پیشنهاد
+# می‌دهد — دو ردیف دارد.
+#
+# کدِ قبلی روی هم می‌نوشت و فقط آخرین ردیف می‌ماند.
+#
+# اندازه‌گیری روی دادهٔ واقعیِ یک سرور: گروه‌هایی که کاربرانشان یک
+# اینباند داشتند دقیق می‌خواندند، و بقیه کم می‌آمدند — «yaser» ۴۳۵
+# گیگ مصرف داشت و پنل ۱۱۱ نشان می‌داد. روی صورتحساب یعنی همه‌ی
+# مصرف‌ها کمتر از واقعیت.
+
+import tempfile as _tfi                                   # noqa: E402
+import sqlite3 as _sqi                                    # noqa: E402
+import time as _tmi                                       # noqa: E402
+import os as _osi                                         # noqa: E402
+from pathlib import Path as _Pi                            # noqa: E402
+
+_GBi = 1024 ** 3
+_idir = _Pi(_tfi.mkdtemp(prefix="nx-inbx-"))
+_old_xi = _osi.environ.get("XUI_DB_PATH", "")
+_old_bi = app.BILLING_DB
+try:
+    _xpi = _idir / "x-ui.db"
+    _osi.environ["XUI_DB_PATH"] = str(_xpi)
+    app.BILLING_DB = _idir / "bill.db"
+    _ix = _sqi.connect(str(_xpi))
+    _ix.executescript("""
+        CREATE TABLE clients (email TEXT, total_gb INTEGER, expiry_time INTEGER,
+                              enable INTEGER, created_at INTEGER, group_name TEXT,
+                              reset INTEGER DEFAULT 0, limit_ip INTEGER DEFAULT 0);
+        CREATE TABLE client_traffics (id INTEGER PRIMARY KEY, inbound_id INTEGER,
+                                      email TEXT, up INTEGER, down INTEGER,
+                                      expiry_time INTEGER, enable INTEGER);
+        CREATE TABLE client_groups (id INTEGER PRIMARY KEY, name TEXT);
+    """)
+    _ix.execute("INSERT INTO client_groups (id,name) VALUES (1,'g1')")
+    # یکی در یک اینباند، یکی در دو، یکی در چهار
+    _plan = (("solo", [60]), ("duo", [90, 70]), ("quad", [40, 35, 30, 25]))
+    for _em, _legs in _plan:
+        _ix.execute("INSERT INTO clients VALUES (?,?,0,1,?,'g1',0,0)",
+                    (_em, 500 * _GBi, int(_tmi.time() * 1000)))
+        for _i2, _gb in enumerate(_legs, 1):
+            _ix.execute("INSERT INTO client_traffics "
+                        "(inbound_id,email,up,down,expiry_time,enable) "
+                        "VALUES (?,?,0,?,0,1)", (_i2, _em, int(_gb * _GBi)))
+    _ix.commit()
+
+    _icls, _ik, _ierr = app._read_xui_clients()
+    _by = {c["email"]: c["used"] / _GBi for c in (_icls or [])}
+
+    check("کاربرِ تک‌اینباند درست خوانده می‌شود",
+          abs(_by.get("solo", 0) - 60) < 1, f"{_by.get('solo', 0):.0f} GB")
+    check("کاربرِ دو-اینباندی جمع می‌شود، نه آخرین ردیف",
+          abs(_by.get("duo", 0) - 160) < 1,
+          f"{_by.get('duo', 0):.0f} GB — پیش از این ۷۰ بود (فقط ردیف آخر)")
+    check("و چهار-اینباندی هم",
+          abs(_by.get("quad", 0) - 130) < 1,
+          f"{_by.get('quad', 0):.0f} GB — پیش از این ۲۵ بود")
+    check("جمعِ گروه با واقعیت می‌خواند",
+          abs(sum(_by.values()) - 350) < 1, f"{sum(_by.values()):.0f} GB")
+
+    # انقضا: دورترین، نه آخرین ردیف. کاربر تا وقتی یک اینباندش باز
+    # است وصل می‌شود.
+    _ix.execute("DELETE FROM client_traffics")
+    _ix.execute("DELETE FROM clients")
+    _ix.execute("INSERT INTO clients VALUES ('x1',?,0,1,?,'g1',0,0)",
+                (100 * _GBi, int(_tmi.time() * 1000)))
+    _ix.execute("INSERT INTO client_traffics "
+                "(inbound_id,email,up,down,expiry_time,enable) "
+                "VALUES (1,'x1',0,0,5000,0)")
+    _ix.execute("INSERT INTO client_traffics "
+                "(inbound_id,email,up,down,expiry_time,enable) "
+                "VALUES (2,'x1',0,0,9000,1)")
+    _ix.commit()
+    _c2 = [c for c in (app._read_xui_clients()[0] or []) if c["email"] == "x1"]
+    check("دورترین انقضا برداشته می‌شود",
+          _c2 and _c2[0]["expiry"] == 9000,
+          str(_c2[0]["expiry"]) if _c2 else "ردیفی نیامد")
+
+    _ix.close()
+finally:
+    if _old_xi:
+        _osi.environ["XUI_DB_PATH"] = _old_xi
+    else:
+        _osi.environ.pop("XUI_DB_PATH", None)
+    app.BILLING_DB = _old_bi
+
+# ── قاعده در کد بماند ──
+_TRSRC = _APSRC.split("def _read_xui_clients(")[1].split("\ndef ")[0]
+check("ترافیک جمع می‌شود، نه جایگزین",
+      'cur["up"] += up' in _TRSRC and 'traffic[r["email"]] = dict(r)' not in _TRSRC,
+      "یک ردیف به ازای هر اینباند — جایگزینی یعنی بقیه دور ریخته می‌شوند")
+
+_UWSRC2 = _io.open("tools/usage-why.py", encoding="utf-8").read()
+check("ابزارِ تشخیص هم جمع می‌کند",
+      "traffic.get(em, 0) +" in _UWSRC2,
+      "وگرنه ابزار عددی می‌گوید که پنل نمی‌گوید")
+
+
+# ═══════════════════════════════════════════════════════════
 head("مسیر x-ui · کدام فایل، وقتی چندتا هست")
 
 # چرا این بخش: نصب‌های واقعی بیش از یک `x-ui.db` دارند — نصبِ

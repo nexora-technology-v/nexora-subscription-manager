@@ -5817,14 +5817,45 @@ def _read_xui_clients():
         tables = {r["name"] for r in con.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
 
-        # مصرف واقعی — تنها جایی که عدد درست دارد
+        # مصرف واقعی — تنها جایی که عدد درست دارد.
+        #
+        # **جمع، نه جایگزینی.** `client_traffics` یک ردیف به ازای هر
+        # (اینباند، ایمیل) دارد، نه یک ردیف به ازای هر کاربر. کاربری
+        # که هم روی XHTTP است و هم روی TCP+Vision — یعنی همان
+        # چیدمانی که خودِ این پروژه پیشنهاد می‌دهد — دو ردیف دارد.
+        #
+        # کدِ قبلی `traffic[email] = dict(r)` می‌نوشت، پس فقط
+        # *آخرین* ردیف می‌ماند و بقیه دور ریخته می‌شد.
+        #
+        # اندازه‌گیری روی دادهٔ واقعیِ یک سرور: گروه‌هایی که
+        # کاربرانشان یک اینباند داشتند دقیق می‌خواندند (dastani،
+        # Pelleaval، sajjad)، و بقیه به نسبتِ تعدادِ اینباند کم
+        # می‌آمدند — «yaser» ۴۳۵ گیگ مصرف داشت و پنل ۱۱۱ نشان
+        # می‌داد.
+        #
+        # روی صورتحساب یعنی همه‌ی مصرف‌ها کمتر از واقعیت.
         traffic = {}
         if "client_traffics" in tables:
             try:
                 for r in con.execute(
                     "SELECT email, up, down, expiry_time, enable FROM client_traffics"
                 ):
-                    traffic[r["email"]] = dict(r)
+                    em = r["email"]
+                    up = int(r["up"] or 0)
+                    down = int(r["down"] or 0)
+                    exp = int(r["expiry_time"] or 0)
+                    cur = traffic.get(em)
+                    if cur is None:
+                        traffic[em] = {"up": up, "down": down,
+                                       "expiry_time": exp,
+                                       "enable": bool(r["enable"])}
+                    else:
+                        cur["up"] += up
+                        cur["down"] += down
+                        # دورترین انقضا، و «فعال» اگر حتی یکی فعال باشد:
+                        # کاربر تا وقتی یک اینباندش باز است وصل می‌شود
+                        cur["expiry_time"] = max(cur["expiry_time"], exp)
+                        cur["enable"] = cur["enable"] or bool(r["enable"])
             except Exception as e:
                 return None, None, f"خواندن client_traffics ناموفق: {str(e)[:110]}"
 

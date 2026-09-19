@@ -246,13 +246,26 @@ def main():
     # ---- 4. per-client comparison ----
     head("4. What x-ui holds vs what the panel will report")
 
+    # Sum, do not overwrite: client_traffics has one row per (inbound,
+    # email), so a client on two inbounds has two rows. Keeping only the
+    # last one is what made the panel disagree with the x-ui panel.
     traffic = {}
+    legs = {}
     try:
         for r in xcon.execute("SELECT email, up, down FROM client_traffics"):
-            traffic[r["email"]] = int((r["up"] or 0) + (r["down"] or 0))
+            em = r["email"]
+            traffic[em] = traffic.get(em, 0) + int((r["up"] or 0) + (r["down"] or 0))
+            legs[em] = legs.get(em, 0) + 1
     except sqlite3.Error as e:
         print(f"  {R}cannot read client_traffics: {e}{X}")
         return 1
+
+    multi = sum(1 for n in legs.values() if n > 1)
+    if multi:
+        print(f"  {D}{multi} of {len(legs)} clients appear on more than one "
+              f"inbound;{X}")
+        print(f"  {D}their rows are summed (before 1.66.3 only the last row "
+              f"counted).{X}")
 
     rows = []
     try:
