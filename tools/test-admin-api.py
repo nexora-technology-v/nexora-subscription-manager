@@ -2702,6 +2702,153 @@ check("صفحه‌های حسابداری خودشان تازه می‌شوند"
 
 
 # ═══════════════════════════════════════════════════════════
+head("مصرف · همه‌ی صفحه‌ها یک عدد می‌گویند")
+
+# چرا این بخش جداست: نسخه‌ی قبل جمعِ مصرف را فقط در
+# `billing_clients` حساب کرد و بقیه‌ی صفحه‌های حسابداری همان عددِ
+# پس‌از‌ریست را برمی‌داشتند — دقیقاً همان «یک قاعده، دو جا، اصلاح
+# در یکی» که این مخزن اسم دارد رویش.
+#
+# این‌جا *هر* سطحی که مصرف را نشان می‌دهد یا رویش پول حساب می‌کند
+# با هم سنجیده می‌شود.
+
+import tempfile as _tft                                   # noqa: E402
+import sqlite3 as _sqt                                    # noqa: E402
+import time as _tmt                                       # noqa: E402
+import os as _ost                                         # noqa: E402
+from pathlib import Path as _Pt                            # noqa: E402
+
+_GBt = 1024 ** 3
+_tdir = _Pt(_tft.mkdtemp(prefix="nx-totx-"))
+_old_xt = _ost.environ.get("XUI_DB_PATH", "")
+_old_bt = app.BILLING_DB
+try:
+    _xp = _tdir / "x-ui.db"
+    _ost.environ["XUI_DB_PATH"] = str(_xp)
+    app.BILLING_DB = _tdir / "bill.db"
+    _tx = _sqt.connect(str(_xp))
+    _tx.executescript("""
+        CREATE TABLE clients (email TEXT, total_gb INTEGER, expiry_time INTEGER,
+                              enable INTEGER, created_at INTEGER, group_name TEXT,
+                              reset INTEGER DEFAULT 0, limit_ip INTEGER DEFAULT 0);
+        CREATE TABLE client_traffics (email TEXT, up INTEGER, down INTEGER,
+                                      expiry_time INTEGER, enable INTEGER);
+        CREATE TABLE client_groups (id INTEGER PRIMARY KEY, name TEXT);
+    """)
+    _tx.execute("INSERT INTO client_groups (id,name) VALUES (1,'g1')")
+    _tx.execute("INSERT INTO clients VALUES ('u1', ?, 0, 1, ?, 'g1', 0, 0)",
+                (500 * _GBt, int(_tmt.time() * 1000) - 40 * 86400000))
+    _tx.execute("INSERT INTO client_traffics VALUES ('u1', 0, 0, 0, 1)")
+    _tx.commit()
+
+    # نرخِ حجمی، تا اثرِ پولیِ ریست هم سنجیده شود
+    _tb = app._billing_conn()
+    _tb.execute("INSERT OR REPLACE INTO group_config "
+                "(group_key, billable, rates, period_start, per_gb) "
+                "VALUES ('g1', 1, '[]', date('now','-40 days'), 1000)")
+    _tb.commit()
+    _tb.close()
+
+    def _tuse(gb, reset=None):
+        _tx.execute("UPDATE client_traffics SET down=? WHERE email='u1'",
+                    (int(gb * _GBt),))
+        if reset is not None:
+            _tx.execute("UPDATE clients SET reset=? WHERE email='u1'", (reset,))
+        _tx.commit()
+        # پنل نگاه می‌کند — همان کاری که تازه‌سازیِ خودکار می‌کند
+        app.billing_overview(x_admin_password=app._INTERNAL_PW)
+
+    _tuse(500)
+    _tuse(0, reset=1)
+    _tuse(450)
+
+    _PWt = app._INTERNAL_PW
+    _ov = app.billing_overview(x_admin_password=_PWt)
+    _g1 = [x for x in _ov["groups"] if x["key"] == "g1"][0]
+    check("داشبورد حسابداری جمعِ مصرف را می‌گوید",
+          abs(_g1["usedGB"] - 950) < 1,
+          f"{_g1['usedGB']} GB — با عددِ پس‌از‌ریست ۴۵۰ می‌شد")
+
+    # مهم‌ترین سطر: نرخِ حجمی روی جمع حساب شود، نه دوره‌ی جاری.
+    # وگرنه ریست‌زدن راهِ نصف‌پرداختن است — و ریست دستِ نماینده است.
+    check("و بدهیِ نرخِ حجمی روی همان جمع حساب می‌شود",
+          _g1["due"] == 950000, f"{_g1['due']:,} — با ۴۵۰ گیگ ۴۵۰٬۰۰۰ می‌شد")
+
+    _cl = app.billing_clients(x_admin_password=_PWt)
+    _c1 = [x for x in _cl["clients"] if x["email"] == "u1"][0]
+    check("فهرستِ مرجع دوره‌ی جاری را جدا نگه می‌دارد",
+          abs(_c1["usedGB"] - 450) < 1, f"{_c1['usedGB']} GB")
+    check("و جمع را هم می‌دهد", abs(_c1["usedTotalGB"] - 950) < 1,
+          f"{_c1['usedTotalGB']} GB")
+
+    _inv = app.billing_invoice("g1", x_admin_password=_PWt)
+    _line = (_inv.get("lines") or [{}])[0]
+    check("صورتحساب هم همان جمع را می‌برد روی فاکتور",
+          abs(_line.get("usedGB", 0) - 950) < 1,
+          f"{_line.get('usedGB')} GB")
+
+    _per = app.billing_period("g1", x_admin_password=_PWt)
+    check("و صورتحسابِ دوره هم",
+          (_per.get("totals") or {}).get("due") == 950000,
+          str((_per.get("totals") or {}).get("due")))
+
+    # ── قاعده‌ی «هرگز به کار نیفتاده» ──
+    #
+    # کانفیگی که مصرف داشته، ریست خورده، و بعد غیرفعال شده، نباید
+    # «ساخته شده ولی هرگز به کار نیفتاده» شمرده شود — وگرنه کاملاً
+    # از صورتحساب بیرون می‌افتد.
+    _tx.execute("UPDATE clients SET enable=0, reset=2 WHERE email='u1'")
+    _tx.execute("UPDATE client_traffics SET down=0 WHERE email='u1'")
+    _tx.commit()
+    app.billing_overview(x_admin_password=_PWt)
+    _cls, _k2, _e2 = app._read_xui_clients()
+    app._with_total_usage(_cls)
+    _one = [c for c in _cls if c["email"] == "u1"][0]
+    _ok2, _why2 = app._billable_config(_one)
+    check("کانفیگِ ریست‌شده و غیرفعال از صورتحساب بیرون نمی‌افتد",
+          _ok2, _why2)
+
+    # و برعکسش هنوز کار کند: کانفیگی که واقعاً هیچ‌وقت کار نکرده
+    _tx.execute("INSERT INTO clients VALUES ('u2', ?, 0, 0, ?, 'g1', 0, 0)",
+                (100 * _GBt, int(_tmt.time() * 1000)))
+    _tx.execute("INSERT INTO client_traffics VALUES ('u2', 0, 0, 0, 0)")
+    _tx.commit()
+    app.billing_overview(x_admin_password=_PWt)
+    _cls2, _k3, _e3 = app._read_xui_clients()
+    app._with_total_usage(_cls2)
+    _u2 = [c for c in _cls2 if c["email"] == "u2"][0]
+    _ok3, _why3 = app._billable_config(_u2)
+    check("ولی کانفیگی که واقعاً کار نکرده هنوز حساب نمی‌شود",
+          not _ok3, _why3)
+
+    _tx.close()
+finally:
+    if _old_xt:
+        _ost.environ["XUI_DB_PATH"] = _old_xt
+    else:
+        _ost.environ.pop("XUI_DB_PATH", None)
+    app.BILLING_DB = _old_bt
+
+# ── هیچ سطحِ پولی نباید مستقیم `used` بخواند ──
+#
+# فهرستِ صریح، چون این دقیقاً همان جایی است که یک‌بار از هم دور
+# افتاد. هر کدام از این‌ها که به `cl["used"]` برگردد، یعنی همان
+# باگ برگشته.
+for _fn, _lbl in (("_billable_config", "قاعده‌ی «به کار افتاده»"),
+                  ("billing_clients", "فهرستِ مرجع")):
+    _body = _APSRC.split(f"def {_fn}(")[1].split("\ndef ")[0]
+    check(f"{_lbl} از جمعِ مصرف می‌خواند", "usedTotal" in _body,
+          "با `used` خام، ریست عدد را می‌خورد")
+
+check("نرخِ حجمی روی جمع حساب می‌شود",
+      'used_gb = cl["usedTotal"]' in _APSRC,
+      "ریست‌زدن نباید راهِ نصف‌پرداختن باشد")
+check("و برگشتِ اعتبار هم",
+      '(cl or {}).get("usedTotal")' in _APSRC,
+      "ریست، بعد حذف، یعنی پولِ ساخت کامل برمی‌گشت")
+
+
+# ═══════════════════════════════════════════════════════════
 head("سکه · همان نردبانی که صندوق به کار می‌برد")
 
 # چرا این بخش: صفحه‌ی «سکه و دعوت» پنل عددها را جایی می‌نوشت که

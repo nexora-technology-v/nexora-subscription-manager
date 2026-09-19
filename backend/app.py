@@ -5856,6 +5856,13 @@ def _read_xui_clients():
                 continue
             t = traffic.get(em, {})
             r["used"] = int((t.get("up") or 0) + (t.get("down") or 0))
+            # مصرفِ جمع‌شده‌ی همه‌ی دوره‌ها. این‌جا فقط پایه‌اش گذاشته
+            # می‌شود (برابرِ دوره‌ی جاری)؛ `_attach_total_usage` مقدارِ
+            # دوره‌های ریست‌شده را رویش می‌گذارد.
+            #
+            # چرا همیشه ست می‌شود: تا هیچ صداکننده‌ای مجبور نباشد
+            # `.get()` بنویسد و هیچ‌کدام بی‌صدا به `used` برنگردند.
+            r["usedTotal"] = r["used"]
             if not r.get("expiry"):
                 r["expiry"] = int(t.get("expiry_time") or 0)
             out.append(r)
@@ -6733,6 +6740,58 @@ def _gb_of(total):
     return total // (1024 ** 3) if total > 1024 else total
 
 
+def _attach_total_usage(bcon, clients):
+    """
+    مصرفِ دوره‌های ریست‌شده را روی کلاینت‌ها می‌گذارد.
+
+    x-ui با ریستِ ترافیک عدد را صفر می‌کند و تاریخچه‌ای ندارد، پس
+    `client_seen.used_before` تنها جایی است که آن مصرف باقی مانده.
+
+    **این تنها راهِ رسیدن به مصرفِ واقعی است.** نسخه‌ی قبل این جمع را
+    فقط در `billing_clients` حساب می‌کرد و بقیه‌ی صفحه‌های حسابداری —
+    از جمله بدهیِ نرخِ حجمی — همان عددِ پس‌از‌ریست را برمی‌داشتند.
+    یعنی همان «یک قاعده، دو جا، اصلاح در یکی».
+    """
+    if not clients:
+        return
+    before = {}
+    try:
+        before = {r["email"]: int(r["used_before"] or 0) for r in bcon.execute(
+            "SELECT email, used_before FROM client_seen")}
+    except Exception:
+        # ستون هنوز ساخته نشده (نصبِ تازه، پیش از اولین ثبت).
+        # این‌جا *برنمی‌گردیم*: قرارِ این تابع این است که بعد از
+        # اجرایش هر کلاینت `usedTotal` داشته باشد. برگشتنِ زودهنگام
+        # یعنی صداکننده روی کلیدِ نبوده KeyError می‌گیرد — و آن،
+        # یک صفحه‌ی خالی است به‌جای یک عددِ بدونِ جمع.
+        log.debug("خواندن مصرف پیشین ناموفق", exc_info=True)
+    for cl in clients:
+        cl["usedTotal"] = int(cl.get("used") or 0) + before.get(cl.get("email"), 0)
+
+
+def _with_total_usage(clients):
+    """
+    `_attach_total_usage`، ولی خودش اتصالِ حسابداری را باز و بسته
+    می‌کند.
+
+    برای مسیرهایی که اتصالِ باز ندارند (پنلِ نماینده). شکستِ باز‌کردن
+    بی‌صداست: `usedTotal` از پیش برابرِ `used` است، پس بدترین حالت
+    همان رفتارِ قبلی است، نه کرش.
+    """
+    if not clients:
+        return clients
+    try:
+        bcon = _billing_conn()
+    except Exception:
+        log.debug("اتصال حسابداری برای جمعِ مصرف باز نشد", exc_info=True)
+        return clients
+    try:
+        _attach_total_usage(bcon, clients)
+    finally:
+        bcon.close()
+    return clients
+
+
 def _billable_config(cl):
     """
     آیا این کانفیگ باید نرخ بگیرد؟ برمی‌گرداند: (بله/خیر, دلیل)
@@ -6749,7 +6808,13 @@ def _billable_config(cl):
     نگاه می‌کردیم، هر کانفیگی با تمام‌شدن دوره‌اش از صورت‌حساب بیرون
     می‌افتاد — دقیقاً همان چیزی که مالک هشدار داد.
     """
-    used = int(cl.get("used") or 0)
+    # جمعِ همه‌ی دوره‌ها، نه دوره‌ی جاری.
+    #
+    # وگرنه کانفیگی که مصرف داشته و بعد ریست خورده، «ساخته شده ولی
+    # هرگز به کار نیفتاده» شمرده می‌شد و کاملاً از صورتحساب بیرون
+    # می‌افتاد. یعنی ریست‌زدن راهِ نپرداختن می‌شد — و ریست دستِ خودِ
+    # نماینده است.
+    used = int(cl.get("usedTotal") or cl.get("used") or 0)
     enabled = bool(cl.get("enable"))
 
     if enabled:
@@ -6814,6 +6879,10 @@ def _billing_overview_impl():
         # این‌طور از امروز به بعد یک کف واقعی برای «از کی می‌شناسیمش»
         # داریم، بدون اینکه مدیر کاری بکند.
         seen = _record_seen(bcon, clients)
+        # و مصرفِ دوره‌های ریست‌شده را روی همین کلاینت‌ها بگذار.
+        # *بعد* از `_record_seen` است، چون همان تابع است که ریستِ
+        # همین لحظه را تشخیص می‌دهد و `used_before` را به‌روز می‌کند.
+        _attach_total_usage(bcon, clients)
     finally:
         bcon.close()
 
@@ -6874,7 +6943,12 @@ def _billing_overview_impl():
             G["botOwned"] += 1
         if cl["enable"]:
             G["active"] += 1
-        G["used"] += cl["used"]
+        # جمعِ همه‌ی دوره‌ها، نه فقط دوره‌ی جاری.
+        #
+        # با `cl["used"]`، گروهی که کانفیگ‌هایش ریست خورده‌اند
+        # «کم‌مصرف» به نظر می‌رسید — و همان عددی است که مالک روی
+        # کارتِ بدهی می‌بیند.
+        G["used"] += cl["usedTotal"]
         G["quota"] += cl["totalGB"]
 
         bill_it, why = _billable_config(cl)
@@ -6914,7 +6988,11 @@ def _billing_overview_impl():
                 # نرخ حجمی: بر اساس مصرف واقعی، نه پلن.
                 # چون در این مدل واسطه بابت چیزی که مصرف شده پول می‌دهد،
                 # نه بابت سقفی که خریده.
-                used_gb = cl["used"] / (1024 ** 3)
+                #
+                # و «مصرف واقعی» یعنی جمعِ همه‌ی دوره‌ها. با عددِ
+                # پس‌از‌ریست، واسطه‌ای که ریست می‌زند بابتِ نصفِ چیزی
+                # که فروخته پول می‌داد — و ریست دستِ خودش است.
+                used_gb = cl["usedTotal"] / (1024 ** 3)
                 G["due"] += round(used_gb * G["perGb"])
             else:
                 amount, price, per_dev, extra = _line_amount(
@@ -7667,6 +7745,9 @@ def billing_invoice(group_key: str, start: str = "",
 
     bcon = _billing_conn()
     try:
+        # مصرفِ دوره‌های ریست‌شده. بدونِ این، همان عددِ پس‌از‌ریست
+        # روی فاکتور می‌رود.
+        _attach_total_usage(bcon, clients)
         row = bcon.execute("SELECT * FROM group_config WHERE group_key=?",
                            (group_key,)).fetchone()
         conf = dict(row) if row else {}
@@ -7748,6 +7829,9 @@ def billing_invoice(group_key: str, start: str = "",
         due += amount
         expiry_j, expiry_g = _to_jalali(cl.get("expiry"))
         days = _duration_days(cl.get("createdAt"), cl.get("expiry"))
+        # درصد روی *دوره‌ی جاری* می‌ماند: «۱۹۰٪ از سهمیه» عددِ
+        # بی‌معنایی است. ولی گیگابایتِ نمایشی جمعِ همه‌ی دوره‌هاست،
+        # چون همان است که مشتری واقعاً مصرف کرده.
         pct = _usage_percent(cl["used"], cl["totalGB"])
 
         # وضعیت هر ردیف — برای بخش «نیازمند بررسی دستی»
@@ -7764,7 +7848,7 @@ def billing_invoice(group_key: str, start: str = "",
             "email": cl["email"],
             "gb": gb,
             "gbLabel": "∞" if gb == 0 else str(gb),
-            "usedGB": round(cl["used"] / (1024 ** 3), 1),
+            "usedGB": round(cl["usedTotal"] / (1024 ** 3), 1),
             "usagePct": pct,
             "limitIp": cl.get("limitIp") or 0,
             "createdJalali": created_j,
@@ -8905,6 +8989,7 @@ def billing_period(group_key: str, start: str = "", end: str = "",
 
     bcon = _billing_conn()
     try:
+        _attach_total_usage(bcon, clients)
         row = bcon.execute("SELECT * FROM group_config WHERE group_key=?",
                            (group_key,)).fetchone()
         conf = dict(row) if row else {}
@@ -8999,7 +9084,7 @@ def billing_period(group_key: str, start: str = "", end: str = "",
                 "date": created_g, "dateJalali": created_j,
                 "price": price, "priceWhy": price_why,
                 "amount": price or 0,
-                "usedGB": round(cl["used"] / (1024 ** 3), 1),
+                "usedGB": round(cl["usedTotal"] / (1024 ** 3), 1),
             })
 
         # تعداد از همان جایی می‌آید که صورتحساب کلی می‌شمارد.
@@ -9031,7 +9116,7 @@ def billing_period(group_key: str, start: str = "", end: str = "",
     # نرخ حجمی: بر اساس مصرف کل گروه در دوره
     gb_total = 0
     if per_gb:
-        used = sum(c["used"] for c in clients if c["group"] == group_key)
+        used = sum(c["usedTotal"] for c in clients if c["group"] == group_key)
         gb_total = round(used / (1024 ** 3) * per_gb)
 
     due = gb_total if per_gb else (new_total + ren_total)
@@ -9129,13 +9214,11 @@ def billing_clients(
         except Exception:
             log.debug("ثبت دیدن در فهرست مرجع ناموفق", exc_info=True)
             seen = {}
-        # مصرفِ دوره‌های ریست‌شده. بدون این، عددِ مصرف بعد از هر
-        # ریست از صفر شروع می‌شود و آنچه قبلش بوده گم می‌شود.
-        try:
-            before = {r["email"]: int(r["used_before"] or 0) for r in bcon.execute(
-                "SELECT email, used_before FROM client_seen")}
-        except Exception:
-            before = {}
+        # مصرفِ دوره‌های ریست‌شده — از همان هسته‌ای که بقیه‌ی
+        # صفحه‌های حسابداری هم از آن می‌گذرند. نسخه‌ی قبل این‌جا
+        # دیکشنریِ خودش را می‌ساخت و بقیه هیچ، که شد «یک قاعده، دو
+        # جا، اصلاح در یکی» — همان باگی که این مخزن اسم دارد رویش.
+        _attach_total_usage(bcon, clients)
         since_of = {k: _bill_since(v)[0] for k, v in cfg.items()}
     finally:
         bcon.close()
@@ -9217,8 +9300,8 @@ def billing_clients(
         # دوره‌ها. درصد روی دوره‌ی جاری می‌ماند — «۱۹۰٪ از سهمیه»
         # عدد بی‌معنایی است — ولی جمع باید دیده شود، چون همان است
         # که مشتری واقعاً مصرف کرده.
-        reset_before = before.get(cl["email"], 0)
-        used_total = used + reset_before
+        used_total = cl["usedTotal"]
+        reset_before = used_total - used
         pct = _usage_percent(used, cl["totalGB"])
 
         if not exp:
@@ -12159,6 +12242,10 @@ def portal_configs(t: dict = Depends(portal_tenant)):
     clients, _known, err = _read_xui_clients()
     if clients is None:
         raise HTTPException(status_code=400, detail=err)
+    # مصرفِ دوره‌های ریست‌شده. این‌جا هم لازم است، وگرنه نماینده
+    # عددی می‌بیند که با صورتحسابش نمی‌خواند — و سرِ همان عدد بحث
+    # می‌شود.
+    _with_total_usage(clients)
 
     # لینک اشتراک هر کانفیگ.
     #
@@ -12177,14 +12264,17 @@ def portal_configs(t: dict = Depends(portal_tenant)):
             "email": cl["email"],
             "gb": gb,
             "gbLabel": "نامحدود" if gb == 0 else f"{gb} GB",
-            "usedGB": round(cl["used"] / (1024 ** 3), 1),
+            # نماینده همان عددی را ببیند که روی صورتحسابش می‌آید،
+            # وگرنه سرِ همین عدد بحث می‌شود. درصد روی دوره‌ی جاری
+            # می‌ماند، چون آن نسبتِ سهمیه است نه مصرفِ تاریخی.
+            "usedGB": round(cl["usedTotal"] / (1024 ** 3), 1),
             # بایتِ خام هم می‌رود، نه فقط گیگِ گردشده.
             #
             # تصمیمِ «برگشت اعتبار هنگام حذف» با used <= 0 گرفته
             # می‌شود. اگر رابط با usedGB قضاوت کند، مصرفِ چند
             # مگابایتی به ۰٫۰ گرد می‌شود و دیالوگ وعده‌ی برگشتی
             # می‌دهد که بک‌اند انجامش نمی‌دهد — دو جا، دو جواب.
-            "used": int(cl["used"] or 0),
+            "used": int(cl["usedTotal"] or 0),
             "usagePct": _usage_percent(cl["used"], cl["totalGB"]),
             "devices": cl.get("limitIp") or 0,
             "createdJalali": cj, "createdGregorian": cg,
@@ -13080,7 +13170,13 @@ def portal_config_delete(email: str, t: dict = Depends(portal_tenant)):
     email = str(email or "").strip()
     cl, _live, uuid, ib = _portal_live(t, email)
 
-    used = int((cl or {}).get("used") or 0)
+    # «هیچ مصرفی نشده» یعنی **هیچ‌وقت**، نه از آخرین ریست.
+    #
+    # بدونِ این، نماینده می‌توانست ترافیک را ریست کند و بعد کانفیگ
+    # را پاک کند تا پولِ ساختش کامل برگردد — در حالی که مشتری حجمش
+    # را مصرف کرده بود و ریست هم دستِ خودِ نماینده است.
+    _with_total_usage([cl] if cl else [])
+    used = int((cl or {}).get("usedTotal") or 0)
     billable, why = _billable_config(cl or {})
 
     # مبلغی که موقع ساخت گرفته شد — اگر هنوز چیزی مصرف نشده،
@@ -13766,16 +13862,20 @@ def portal_stats(t: dict = Depends(portal_tenant)):
         raise HTTPException(status_code=400, detail=err)
 
     mine = [c for c in clients if (c.get("group") or "") == group]
+    # نماینده همان مصرفی را ببیند که روی صورتحسابش می‌آید
+    _with_total_usage(mine)
     now_ms = _epoch_ms(datetime.now())
 
     active = expired = soon = nearq = overq = never = 0
     used_b = quota_b = 0
     unlimited_q = 0
     for c in mine:
-        used_b += c.get("used") or 0
+        used_b += c.get("usedTotal") or 0
         q = c.get("totalGB") or 0
         if q > 0:
             quota_b += q
+            # درصد روی دوره‌ی جاری: «رو به اتمام» یعنی سهمیه‌ی همین
+            # دوره دارد تمام می‌شود، نه اینکه تاریخاً چقدر مصرف شده
             pct = (c.get("used") or 0) * 100.0 / q
             if pct >= 100:
                 overq += 1
