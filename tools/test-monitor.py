@@ -310,8 +310,41 @@ MF = _ilu.module_from_spec(_msp)
 _msp.loader.exec_module(MF)
 
 SLEEPS = []
-_real_sleep = MF.time.sleep
-MF.time.sleep = lambda n: SLEEPS.append(n)
+
+
+# فقط خوابِ خودِ مانیتور شمرده شود.
+#
+# `MF.time` خودِ ماژولِ استاندارد است، نه کپی‌اش. عوض‌کردنِ
+# `MF.time.sleep` آن را برای کلِ پردازه عوض می‌کند — و
+# `subprocess.run(..., timeout=…)` در انتظارِ پایانِ فرمان یک
+# حلقه‌ی پس‌رفتِ نمایی می‌زند (۰.۰۰۰۵ تا ۰.۰۵). پس هر بار که
+# `network()` دستورِ `ss` را صدا می‌زد، ده‌ها خواب به حساب
+# مانیتور نوشته می‌شد که مالِ خودش نبود.
+#
+# روی ماشینی که `ss` ندارد این دیده نمی‌شد و تست سبز بود؛ روی
+# رانرِ CI که دارد، قرمز. یعنی دروازه‌ای که به‌شکلِ تصادفی
+# اتهام می‌زد.
+class _TimeShim:
+    def __init__(self, real):
+        self._real = real
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+    def sleep(self, n):
+        SLEEPS.append(n)
+
+
+_real_time = MF.time
+MF.time = _TimeShim(_real_time)
+
+# خودِ همین را می‌سنجیم: خوابی که مانیتور نکرده، شمرده نشود.
+# با شیوه‌ی قبلی این روی هر سکویی قرمز می‌شود، نه فقط روی
+# رانری که `ss` دارد — یعنی اتهام دیگر تصادفی نیست.
+_real_time.sleep(0)
+check("شمارنده فقط خوابِ خودِ مانیتور را می‌شمرد", not SLEEPS,
+      "خوابِ subprocess هم به حسابش نوشته می‌شد")
+SLEEPS.clear()
 
 MF._CACHE.clear()
 SLEEPS.clear()
@@ -334,7 +367,7 @@ SLEEPS.clear()
 MF.network(sample=({}, {}))
 check("network هم همین‌طور", not SLEEPS, str(SLEEPS))
 
-MF.time.sleep = _real_sleep
+MF.time = _real_time
 
 head("بخش‌های گران دوباره اجرا نمی‌شوند")
 
