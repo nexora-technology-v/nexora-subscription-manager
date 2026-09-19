@@ -1094,6 +1094,119 @@ if _noorder:
 
 
 # ═══════════════════════════════════════════════════════════
+#  تنظیماتِ مستاجر: هر دو جهت
+#
+#  برگه‌اش: docs/specs/2026-09-19-reminders-and-settings-seam.md
+#
+#  این همان درزی است که باگِ سکه از آن آمد: پنل
+#  `settings.coins_per_referral` می‌نوشت و ربات
+#  `settings.coins.per_referral` می‌خواند. هیچ خطایی نداد — عدد
+#  فقط هیچ‌وقت نرسید.
+#
+#  یک‌بار دستی مرورش کردیم و هشت کلید پیدا شد (`BOT_BEHAVIOUR` در
+#  texts.jsx از همان‌جا آمد). ولی آن مرور فقط handlers.py را دید،
+#  و `reminders` که در run.py خوانده می‌شود جا ماند — تا نسخه‌ی
+#  ۱.۷۱.۰ هیچ راهی برای خاموش‌کردنِ یادآوری‌ها نبود.
+#
+#  پس این‌بار به‌جای مرورِ دستی، دروازه.
+# ═══════════════════════════════════════════════════════════
+head("تنظیمات مستاجر: پنل می‌نویسد، ربات می‌خواند")
+
+_RUN_PY = rd("bot", "run.py")
+
+# جهتِ اول: ربات می‌خواند، کسی باید بنویسد.
+#
+# `ctx.s.get(...)` در handlers و `cfg.get(...)` در run — دو شکلِ
+# رسیدن به همان دیکشنری.
+_reads = set(re.findall(r'ctx\.s\.get\(\s*"([a-z_0-9]+)"', HANDLERS))
+_reads |= set(re.findall(r'cfg\.get\(\s*"([a-z_0-9]+)"', _RUN_PY))
+
+# کلیدهایی که نصب‌کننده یا خودِ بک‌اند می‌گذارند و پنل فیلد ندارد
+_SETTINGS_OK = {"brand", "apps", "configs", "clients", "topics"}
+
+_FRONT = "\n".join(
+    rd(*p.split("/")) for p in [
+        "frontend/src/sections/bot/texts.jsx",
+        "frontend/src/sections/bot/coins.jsx",
+        "frontend/src/sections/bot/connection.jsx",
+        "frontend/src/sections/bot/discounts.jsx",
+        "frontend/src/sections/bot/themes.jsx",
+    ])
+
+_unwritten = sorted(
+    k for k in _reads
+    if k not in _SETTINGS_OK
+    and not re.search(rf'["\']{k}["\']', _FRONT)
+    and not re.search(rf'\b{k}\s*:', _FRONT))
+
+check("هر کلیدی که ربات می‌خواند، پنل راهی برای نوشتنش دارد",
+      not _unwritten,
+      f"{len(_unwritten)} کلید بی‌فیلد" if _unwritten
+      else f"{len(_reads)} کلید سنجیده شد")
+if _unwritten:
+    bullets([f"{k} — ربات می‌خواند، هیچ صفحه‌ای نمی‌نویسد" for k in _unwritten])
+
+# جهتِ دوم — خطرناک‌تر: پنل می‌نویسد و هیچ‌کس نمی‌خواند.
+#
+# این سمت بی‌صداست: مالک عدد می‌گذارد، «ذخیره شد» می‌بیند، و هیچ
+# اتفاقی نمی‌افتد.
+_BOT_ALL = HANDLERS + _RUN_PY + rd("bot", "core.py") + rd("bot", "db.py")
+
+_writes = set()
+for _m in re.finditer(r'upS\(\s*\{\s*([a-z_][a-z_0-9]*)\s*:', _FRONT):
+    _writes.add(_m.group(1))
+for _m in re.finditer(r'\bsettings:\s*\{\s*\.\.\.[a-z.]+,\s*([a-z_][a-z_0-9]*)\s*:',
+                      _FRONT):
+    _writes.add(_m.group(1))
+
+_unread = sorted(k for k in _writes
+                 if not re.search(rf'"{k}"', _BOT_ALL)
+                 and not re.search(rf'"{k}"', APP_PY))
+
+check("هر کلیدی که پنل می‌نویسد، جایی خوانده می‌شود",
+      not _unread,
+      f"{len(_unread)} کلیدِ مرده" if _unread
+      else f"{len(_writes)} کلید سنجیده شد")
+if _unread:
+    bullets([f"{k} — پنل می‌نویسد، هیچ‌کس نمی‌خواند" for k in _unread])
+
+# کارتی که تعریف شده ولی سوار نیست، «فیلد» نیست.
+#
+# دروازه‌ی بالا فقط می‌بیند که کلید در فایل هست. اگر کسی
+# `<Reminders />` را از JSX بردارد و خودِ تابع را جا بگذارد، کلید
+# هنوز در فایل دیده می‌شود ولی مالک هیچ‌وقت آن فیلد را نمی‌بیند.
+#
+# جاروی شکستن دقیقاً همین را نشان داد: برداشتنِ سوارشدنِ کارت،
+# هیچ دروازه‌ای را قرمز نکرد.
+_orphans = []
+for _rel in ["frontend/src/sections/bot/texts.jsx",
+             "frontend/src/sections/bot/coins.jsx",
+             "frontend/src/sections/bot/discounts.jsx",
+             "frontend/src/sections/bot/connection.jsx"]:
+    _src = _nocomment(rd(*_rel.split("/")))
+    for _m in re.finditer(r"^(export\s+)?function\s+([A-Z][A-Za-z0-9_]*)\s*\(",
+                          _src, re.M):
+        _exported, _name = _m.group(1), _m.group(2)
+        if _exported:
+            continue          # از بیرون سوار می‌شود (App.jsx)
+        if re.search(rf"<{_name}[\s/>]", _src):
+            continue
+        _orphans.append(f"{_rel.split('/')[-1]}:{_name}")
+
+check("هر کارتی که ساخته شده، جایی سوار هم هست", not _orphans,
+      f"{len(_orphans)} کارتِ یتیم" if _orphans
+      else "کارتِ تعریف‌شده‌ی بی‌مصرف نداریم")
+if _orphans:
+    bullets([f"{x} — تعریف شده، هیچ‌جا سوار نشده" for x in _orphans])
+
+# و آستانه‌ها واقعاً از تنظیمات بیایند، نه از ثابتِ ماژول
+check("آستانه‌های یادآوری از تنظیمات خوانده می‌شوند",
+      "def expiry_steps(" in _RUN_PY and "def traffic_pct(" in _RUN_PY
+      and "for day, flag in steps" in _RUN_PY,
+      "ثابتِ ماژول یعنی مالک نمی‌تواند عوضش کند")
+
+
+# ═══════════════════════════════════════════════════════════
 print(f"\n{D}{'─' * 54}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

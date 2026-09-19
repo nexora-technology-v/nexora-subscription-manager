@@ -3625,18 +3625,27 @@ def send_expiry_notice(tenant, bot, sub, days_left):
     else:
         head = f"⏰ <b>{core.fa(days_left)} روز تا پایان اشتراک</b>"
 
-    tpl = ctx.s.get("expiry_text")
-    if tpl:
-        txt = (tpl.replace("{days}", str(max(days_left, 0)))
-                  .replace("{plan}", esc(str(sub.get("plan_name") or ""))))
-        return ctx.bot.send(
-            sub["tg_id"] if "tg_id" in sub.keys() else sub.get("tg_id"),
-            txt, keyboard=kb([[("♻️ تمدید اشتراک", "buy")], [("‹ منو", "menu")]]))
-
     # sub گاهی sqlite3.Row است و .get ندارد — با یک dict ساده کار
     # می‌کنیم تا sub_label بتواند مثل بقیه‌جا رفتارش را انجام دهد
     srow = {k: sub[k] for k in sub.keys()} if hasattr(sub, "keys") else dict(sub)
     label = ctx.sub_label(srow)
+
+    # دکمه مستقیم همین اشتراک را تمدید می‌کند، نه «خرید» کلی —
+    # وگرنه کاربر دوباره باید حدس بزند کدام را انتخاب کند.
+    #
+    # این یک خط قبلاً فقط در مسیرِ پیش‌فرض بود و مسیرِ متنِ سفارشی
+    # `"buy"` می‌داد. یعنی هر مالکی که متن را عوض می‌کرد، بی‌آنکه
+    # بداند دکمه‌ی هدفمند را هم از دست می‌داد.
+    renew_cb = f"renew:{srow['id']}" if srow.get("id") else "mysubs"
+    renew_kb = kb([[(f"🔄 تمدید · {label}", renew_cb)],
+                   [("‹ منوی اصلی", "menu")]])
+
+    tpl = ctx.s.get("expiry_text")
+    if tpl:
+        txt = (tpl.replace("{days}", str(max(days_left, 0)))
+                  .replace("{plan}", esc(str(srow.get("plan_name") or "")))
+                  .replace("{label}", esc(label)))
+        return ctx.bot.send(srow.get("tg_id"), txt, keyboard=renew_kb)
 
     txt = F.join(
         head,
@@ -3647,13 +3656,8 @@ def send_expiry_notice(tenant, bot, sub, days_left):
             " — لازم نیست چیزی را دوباره اضافه کنید.",
         ),
     )
-    # دکمه مستقیم همین اشتراک را تمدید می‌کند، نه «خرید» کلی —
-    # وگرنه کاربر دوباره باید حدس بزند کدام را انتخاب کند.
-    renew_cb = f"renew:{srow['id']}" if srow.get("id") else "mysubs"
     try:
-        bot.send(sub["tg_id"], txt,
-                 keyboard=kb([[(f"🔄 تمدید · {label}", renew_cb)],
-                              [("‹ منوی اصلی", "menu")]]))
+        bot.send(sub["tg_id"], txt, keyboard=renew_kb)
     except TelegramError as e:
         log.warning("یادآوری ارسال نشد (%s): %s", sub["tg_id"], e)
 
@@ -3676,6 +3680,21 @@ def send_traffic_notice(tenant, bot, sub, used_gb, total_gb):
 
     srow = {k: sub[k] for k in sub.keys()} if hasattr(sub, "keys") else dict(sub)
     label = ctx.sub_label(srow)
+
+    # مثل `expiry_text` — همان سازوکار، تا مالک مجبور نشود یکی را
+    # بتواند عوض کند و دیگری را نه.
+    tpl = (ctx.s.get("reminders") or {}).get("traffic_text")
+    if tpl:
+        txt = (tpl.replace("{used}", core.fa(used_gb))
+                  .replace("{total}", core.fmt_gb(total_gb))
+                  .replace("{left}", core.fa(left_gb))
+                  .replace("{pct}", core.fa(pct))
+                  .replace("{plan}", esc(str(srow.get("plan_name") or "")))
+                  .replace("{label}", esc(label)))
+        renew_cb = f"renew:{srow['id']}" if srow.get("id") else "mysubs"
+        return bot.send(srow.get("tg_id"), txt,
+                        keyboard=kb([[(f"🔄 تمدید · {label}", renew_cb)],
+                                     [("‹ منوی اصلی", "menu")]]))
 
     txt = F.join(
         F.title(f"{core.fa(pct)}٪ از حجمتان مصرف شده", "📊"),

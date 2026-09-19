@@ -83,6 +83,9 @@ def fake_notice(tenant, bot, sub, days_left):
 
 
 RUN.Bot = FakeBot
+# نسخه‌ی واقعی را نگه می‌داریم: بدونش صدازدنِ آن در آخرِ فایل همین
+# قلابی را صدا می‌زند و متنِ واقعی هرگز ساخته نمی‌شود.
+REAL_EXPIRY = handlers.send_expiry_notice
 handlers.send_expiry_notice = fake_notice
 
 
@@ -207,6 +210,69 @@ DB.save_tenant_settings(tid, {**DB.tenant_settings(tid),
 
 
 # ═══════════════════════════════════════════════════════════
+head("آستانه‌ها را مالک تعیین می‌کند")
+
+# تا ۱.۷۱.۰ این عددها ثابتِ ماژول بودند: مالکی که می‌خواست ۱۴ روز
+# مانده هم خبر بدهد، هیچ راهی نداشت.
+
+
+def set_rem(**kw):
+    cfg = DB.tenant_settings(tid)
+    DB.save_tenant_settings(tid, {**cfg, "reminders": {**(cfg.get("reminders") or {}),
+                                                       "enabled": True, **kw}})
+
+
+set_rem(days=[14, 3, 1])
+far14 = new_sub(12, 100440)
+SENT.clear()
+tick()
+check("عددِ سفارشیِ اسلات واقعاً اثر می‌کند", len(sent_for(far14)) == 1,
+      "۱۲ روز مانده و آستانه ۱۴ — با عددِ پیش‌فرضِ ۷ هیچ پیامی نمی‌رفت")
+
+# اسلاتِ اول خاموش، دومی ۳ روز. پنج روز مانده یعنی هیچ آستانه‌ای
+# رد نشده — با پیش‌فرضِ ۷ حتماً پیام می‌رفت.
+set_rem(days=[0, 3, 0])
+mid = new_sub(5, 100441)
+SENT.clear()
+tick()
+check("اسلاتِ صفر خاموش است", not sent_for(mid),
+      "۵ روز مانده و اسلاتِ ۷ خاموش — با پیش‌فرض پیام می‌رفت")
+set_exp(mid, 2)
+SENT.clear()
+tick()
+check("ولی اسلاتِ روشن سرِ جایش است", len(sent_for(mid)) == 1,
+      "صفر یعنی همان یک آستانه خاموش، نه همه")
+SENT.clear()
+tick()
+check("و همان یک‌بار", not sent_for(mid), "پرچم بسته می‌ماند")
+
+set_rem(days=[0, 0, 0])
+none3 = new_sub(2, 100442)
+SENT.clear()
+tick()
+check("هر سه اسلاتِ صفر یعنی یادآوریِ انقضا خاموش", not SENT,
+      f"{len(SENT)} پیام")
+
+set_rem(days=[7, 3, 1])
+
+# ── آستانه‌ی حجم ──
+check("درصدِ پیش‌فرض ۸۰ می‌ماند",
+      RUN.traffic_pct({}) == 80 and RUN.traffic_pct({"reminders": {}}) == 80)
+check("عددِ سفارشی خوانده می‌شود",
+      RUN.traffic_pct({"reminders": {"traffic_pct": 95}}) == 95)
+check("صفر یعنی هشدارِ حجم خاموش",
+      RUN.traffic_pct({"reminders": {"traffic_pct": 0}}) == 0)
+check("عددِ بی‌معنی به پیش‌فرض برمی‌گردد",
+      RUN.traffic_pct({"reminders": {"traffic_pct": 500}}) == 80
+      and RUN.traffic_pct({"reminders": {"traffic_pct": "x"}}) == 80,
+      "۵۰۰٪ یعنی هشدار هیچ‌وقت نمی‌رود — بی‌صدا")
+
+check("فهرستِ خراب هم ربات را نمی‌خواباند",
+      RUN.expiry_steps({"reminders": {"days": "۷"}}) == RUN.EXPIRY_STEPS
+      and RUN.expiry_steps({"reminders": {"days": [None, "x"]}}) == (),
+      "تنظیماتِ دستکاری‌شده نباید زمان‌بند را بشکند")
+
+
 head("تمدید، یادآوری‌ها را برای دوره‌ی تازه باز می‌کند")
 
 SRC = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -250,6 +316,11 @@ class FakeXUI:
 class FakeCtx:
     def __init__(self, bot, tenant):
         self.xui = FakeXUI()
+        # `Ctx` واقعی تنظیماتِ مستاجر را در `.s` دارد و کدِ ربات از
+        # آن می‌خواند. قلابی‌ای که نداشته باشد، تستی می‌سازد که سبز
+        # است و در عمل AttributeError می‌دهد.
+        self.s = DB.tenant_settings(tenant["id"]) if tenant else {}
+        self.bot = bot
 
 
 def fake_traffic_notice(tenant, bot, sub, used_gb, total_gb):
@@ -258,6 +329,15 @@ def fake_traffic_notice(tenant, bot, sub, used_gb, total_gb):
 
 REAL_NOTICE = handlers.send_traffic_notice
 t_row = DB.get_tenant(tid)
+
+# برابریِ قلابی با اصل: هر چیزی که کدِ ربات روی Ctx صدا می‌زند باید
+# روی قلابی هم باشد. قلابی‌ای که یکی را نداشته باشد، تستِ سبزی
+# می‌سازد که در عمل AttributeError است.
+for _attr in ("s", "xui", "bot"):
+    check(f"Ctx‌ِ قلابی «{_attr}» دارد",
+          hasattr(FakeCtx(None, t_row), _attr),
+          "وگرنه تستِ سبز چیزی را تضمین می‌کند که در عمل خطا می‌دهد")
+
 handlers.Ctx = FakeCtx
 handlers.send_traffic_notice = fake_traffic_notice
 
@@ -354,6 +434,36 @@ check("بعد از تمدید دوباره هشدار می‌دهد", len(tsent_
 
 
 
+head("آستانه‌ی حجم را هم مالک تعیین می‌کند")
+
+# از راهِ خودِ زمان‌بند، نه صدازدنِ مستقیمِ تابع: تا وقتی این نبود،
+# برگرداندنِ مقایسه به `TRAFFIC_WARN_PCT` هیچ دروازه‌ای را قرمز
+# نمی‌کرد.
+set_rem(traffic_pct=95)
+d.exec("UPDATE subscriptions SET notified_80p=0 WHERE tenant_id=? AND id=?",
+       (tid, heavy))
+TSENT.clear()
+tick_traffic()
+check("آستانه‌ی ۹۵٪ یعنی ۸۴٪ هنوز هشدار نمی‌گیرد", not tsent_for(heavy),
+      f"{len(tsent_for(heavy))} هشدار — با ثابتِ ۸۰ حتماً می‌رفت")
+
+set_rem(traffic_pct=80)
+TSENT.clear()
+tick_traffic()
+check("و با ۸۰٪ همان لحظه می‌رود", len(tsent_for(heavy)) == 1)
+
+set_rem(traffic_pct=0)
+d.exec("UPDATE subscriptions SET notified_80p=0 WHERE tenant_id=? AND id=?",
+       (tid, heavy))
+TSENT.clear()
+tick_traffic()
+check("و صفر یعنی هیچ‌کس هشدارِ حجم نمی‌گیرد", not TSENT, f"{len(TSENT)} هشدار")
+
+set_rem(traffic_pct=80)
+d.exec("UPDATE subscriptions SET notified_80p=0 WHERE tenant_id=? AND id=?",
+       (tid, heavy))
+
+
 head("متن هشدار واقعاً ساخته می‌شود")
 
 # تست‌های بالا send_traffic_notice را قلابی کرده‌اند، پس اگر خودِ متن
@@ -393,6 +503,50 @@ check("تگ‌های HTML باز و بسته‌اند",
       and body.count("<blockquote") == body.count("</blockquote>"),
       "تلگرام پیام با تگ ناقص را اصلاً نمی‌فرستد")
 
+handlers.Ctx = RenderCtx
+
+head("متنِ سفارشی هم دکمه‌ی درست را دارد")
+
+# `expiry_text` از قبل بود ولی مسیرش دکمه‌ی «خرید» کلی می‌داد، نه
+# تمدیدِ همین اشتراک — در حالی که کامنتِ خودِ کد در مسیرِ پیش‌فرض
+# می‌گوید چرا این غلط است. یک قاعده، دو جا، اصلاح در یکی.
+_cfg = DB.tenant_settings(tid)
+DB.save_tenant_settings(tid, {**_cfg, "expiry_text":
+                              "⏰ {days} روز مانده از {label}"})
+_t2 = DB.get_tenant(tid)
+RENDER.clear()
+_esub = d.q("SELECT s.*, u.tg_id FROM subscriptions s JOIN users u"
+            " ON u.id=s.user_id WHERE s.tenant_id=? AND s.id=?",
+            (tid, heavy), one=True)
+REAL_EXPIRY(_t2, CaptureBot(), _esub, 3)
+check("متنِ سفارشیِ انقضا اعمال می‌شود",
+      RENDER and "۳ روز مانده" not in RENDER[0][0]
+      and "3 روز مانده" in RENDER[0][0],
+      RENDER[0][0][:40] if RENDER else "—")
+check("و جای‌گذارِ {label} پر می‌شود",
+      RENDER and "{label}" not in RENDER[0][0])
+check("و دکمه‌اش همین اشتراک را هدف می‌گیرد",
+      RENDER and f"renew:{heavy}" in str(RENDER[0][1]),
+      "قبلاً «buy» می‌داد: فهرستِ کلِ پلن‌ها و حدس‌زدنِ دوباره")
+
+DB.save_tenant_settings(tid, {**_cfg, "expiry_text": ""})
+
+# ── متنِ حجم ──
+_cfg = DB.tenant_settings(tid)
+DB.save_tenant_settings(tid, {
+    **_cfg, "reminders": {**(_cfg.get("reminders") or {}), "enabled": True,
+                          "traffic_text": "{pct}٪ رفت · {left} گیگ مانده از {total}"}})
+_t3 = DB.get_tenant(tid)
+RENDER.clear()
+REAL_NOTICE(_t3, CaptureBot(), _esub, 42.0, 50)
+_body = RENDER[0][0] if RENDER else ""
+check("متنِ سفارشیِ حجم اعمال می‌شود", "رفت" in _body, _body[:50])
+check("و همه‌ی جای‌گذارها پر می‌شوند",
+      "{" not in _body, _body[:50])
+check("و دکمه‌اش هم همین اشتراک را هدف می‌گیرد",
+      RENDER and f"renew:{heavy}" in str(RENDER[0][1]))
+
+DB.save_tenant_settings(tid, _cfg)
 handlers.Ctx = FakeCtx
 
 

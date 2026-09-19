@@ -6,10 +6,13 @@
  */
 import React, { useState, useEffect } from "react";
 import {
-  Check, Circle, Loader2, Save,
+  BellRing, Check, Circle, Loader2, Save,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
-import { Field, InfoBox, Msg, NumberInput, PageSkeleton, SectionHead, Toggle } from "../../ui/index";
+import {
+  Field, InfoBox, Msg, NumberInput, NumberStepper, PageSkeleton, SectionHead,
+  Toggle,
+} from "../../ui/index";
 
 export const BOT_TEXTS = [
   { k: "welcome_text", label: "پیام خوش‌آمد",
@@ -68,6 +71,89 @@ export const BOT_BEHAVIOUR = [
         + "می‌کنید این را پر کنید — و حتماً https، چون تلگرام با "
         + "http پیام را اصلاً نمی‌فرستد." },
 ];
+
+/**
+ * یادآوری‌ها: روشن/خاموش، آستانه‌ها، و متنِ هشدارِ حجم.
+ *
+ * چرا این‌جا و نه یک صفحه‌ی جدا: فهرستِ کناریِ بخشِ ربات چهارده قلم
+ * دارد و یکی بیشتر یعنی شلوغ‌تر. متنِ یادآوری هم از قبل همین‌جاست —
+ * زمان‌بندی کنارِ متنی می‌نشیند که فرمانش را می‌دهد.
+ *
+ * چرا سه اسلاتِ ثابت: پرچمِ «فرستاده شد» سه ستونِ مشخص است
+ * (notified_7d/3d/1d). فهرستِ آزاد یعنی ستونِ notified_14d هم لازم
+ * است. سه اسلات که مالک عددشان را عوض می‌کند همان کار را بدونِ
+ * مهاجرت می‌کند. صفر یعنی همان اسلات خاموش.
+ */
+function Reminders({ s, upS }) {
+  const r = { enabled: true, days: [7, 3, 1], traffic_pct: 80,
+              traffic_text: "", ...(s.reminders || {}) };
+  const days = Array.isArray(r.days) ? r.days : [7, 3, 1];
+  const up = (patch) => upS({ reminders: { ...r, days, ...patch } });
+  const setDay = (i, v) => {
+    const next = [days[0] ?? 0, days[1] ?? 0, days[2] ?? 0];
+    next[i] = Number(v) || 0;
+    up({ days: next });
+  };
+
+  const off = !r.enabled;
+
+  return (
+    <div className="fx-card p-4 mt-3">
+      <div className="flex items-start justify-between gap-4 pb-3"
+        style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="min-w-0 flex-1">
+          <div className="text-[14px] font-semibold text-white flex items-center gap-2">
+            <BellRing size={15} style={{ color: "var(--accent-2)" }} />
+            یادآوری‌ها روشن باشند
+          </div>
+          <div className="text-[12px] mt-1 leading-relaxed"
+            style={{ color: "var(--muted)" }}>
+            هم یادآوری نزدیک‌شدن انقضا، هم هشدار پرشدن حجم. خاموش‌کردن
+            یعنی مشتری اولین خبری که می‌گیرد قطع‌شدن است.
+          </div>
+        </div>
+        <div className="shrink-0">
+          <Toggle label="یادآوری‌ها" checked={!!r.enabled}
+            onChange={() => up({ enabled: !r.enabled })} />
+        </div>
+      </div>
+
+      <div style={{ opacity: off ? 0.45 : 1, pointerEvents: off ? "none" : "auto" }}>
+        <div className="pt-3">
+          <Field label="چند روز مانده یادآوری برود"
+            hint="سه نوبت. صفر یعنی آن نوبت فرستاده نشود.">
+            <div className="fx-g3 grid grid-cols-3 gap-3">
+              {[0, 1, 2].map((i) => (
+                <NumberStepper key={i} value={Number(days[i]) || 0}
+                  onChange={(v) => setDay(i, v)} min={0} max={90} unit="روز" />
+              ))}
+            </div>
+          </Field>
+        </div>
+
+        <Field label="هشدار حجم از چند درصد"
+          hint="وقتی مصرف از این درصد رد شود، یک‌بار خبر می‌رود. صفر یعنی این هشدار خاموش.">
+          <NumberStepper value={Number(r.traffic_pct) || 0}
+            onChange={(v) => up({ traffic_pct: v })} min={0} max={100} unit="٪" />
+        </Field>
+
+        <Field label="متن هشدار حجم"
+          hint="خالی بماند، متن پیش‌فرض می‌رود. جای‌گذارها: {used} {total} {left} {pct} {plan} {label}">
+          <textarea className="fx-input" rows={3} value={r.traffic_text || ""}
+            onChange={(e) => up({ traffic_text: e.target.value })}
+            placeholder={"📊 {pct}٪ از حجم {label} مصرف شده.\nباقی‌مانده: {left} گیگ"}
+            style={{ resize: "vertical", lineHeight: 1.9 }} />
+        </Field>
+
+        <InfoBox>
+          عوض‌کردنِ عددِ یک نوبت، کسی را که <b>قبلاً همان نوبت را
+          گرفته</b> دوباره خبر نمی‌کند. سرِ تمدید پرچم‌ها صفر می‌شوند و
+          از آن به بعد عددِ تازه کار می‌کند.
+        </InfoBox>
+      </div>
+    </div>
+  );
+}
 
 export function BotTextsSection({ password }) {
   const [t, setT] = useState(null);
@@ -152,6 +238,11 @@ export function BotTextsSection({ password }) {
         </div>
       ))}
       </div>
+
+      <SectionHead title="یادآوری‌ها"
+        desc="چه وقت به مشتری خبر بدهیم که اشتراکش دارد تمام می‌شود — یا حجمش." />
+
+      <Reminders s={s} upS={upS} />
 
       <SectionHead title="رفتار ربات"
         desc="تنظیم‌هایی که ربات موقع کار می‌خواند — بدون اینها روی مقدار پیش‌فرض می‌ماند." />

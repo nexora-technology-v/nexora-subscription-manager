@@ -317,7 +317,39 @@ def expire_stale_orders():
 
 
 #: آستانه‌های یادآوری انقضا — از دور به نزدیک.
+#: سه اسلاتِ یادآوری، و پرچمی که هر کدام می‌بندد.
+#:
+#: عددها پیش‌فرض‌اند و مالک از پنل عوضشان می‌کند. نامِ ستون‌ها
+#: دیگر معنای عددی ندارند — «اسلاتِ اول/دوم/سوم»اند. سه اسلاتِ
+#: ثابت ماند چون پرچم سه ستونِ مشخص است؛ فهرستِ آزاد یعنی
+#: `notified_14d` هم لازم است، یا یک جدولِ تازه.
 EXPIRY_STEPS = ((7, "notified_7d"), (3, "notified_3d"), (1, "notified_1d"))
+EXPIRY_FLAGS = tuple(f for _d, f in EXPIRY_STEPS)
+
+
+def expiry_steps(cfg):
+    """
+    آستانه‌های یادآوری برای این مستاجر.
+
+    صفر یعنی همان اسلات خاموش — نه همه‌ی یادآوری‌ها. برای خاموشیِ
+    کامل `reminders.enabled` هست.
+
+    مرتب‌سازیِ نزولی فقط برای خواناییِ لاگ است؛ منطقِ «هر آستانه‌ای
+    که مشتری از آن رد شده با یک پیام بسته می‌شود» به ترتیب وابسته
+    نیست.
+    """
+    days = (cfg.get("reminders") or {}).get("days")
+    if not isinstance(days, (list, tuple)):
+        return EXPIRY_STEPS
+    out = []
+    for i, flag in enumerate(EXPIRY_FLAGS):
+        try:
+            d = int(days[i]) if i < len(days) else 0
+        except (TypeError, ValueError):
+            d = 0
+        if d > 0:
+            out.append((d, flag))
+    return tuple(sorted(out, key=lambda x: -x[0]))
 
 
 def send_expiry_reminders():
@@ -334,6 +366,11 @@ def send_expiry_reminders():
         d = db.TenantDB(t["id"])
         cfg = db.tenant_settings(t["id"])
         if cfg.get("reminders", {}).get("enabled") is False:
+            continue
+
+        # هر سه اسلات خاموش یعنی این مستاجر یادآوریِ انقضا نمی‌خواهد
+        steps = expiry_steps(cfg)
+        if not steps:
             continue
 
         tg = Bot(t["bot_token"])
@@ -354,7 +391,7 @@ def send_expiry_reminders():
             # می‌شد و همان پیام دوباره می‌رفت — سه «فقط یک روز مانده»
             # در سه ساعت. پس هر آستانه‌ای که کاربر از آن رد شده با
             # همان یک پیام بسته می‌شود.
-            inside = [flag for day, flag in EXPIRY_STEPS if left <= day]
+            inside = [flag for day, flag in steps if left <= day]
             if not inside or all(s[f] for f in inside):
                 continue
 
@@ -373,7 +410,21 @@ def send_expiry_reminders():
 
 
 #: از چند درصد مصرف هشدار بدهیم.
+#: درصدِ پیش‌فرضِ هشدارِ حجم. مالک از پنل عوضش می‌کند؛ صفر یعنی
+#: این هشدار برای آن مستاجر خاموش است.
 TRAFFIC_WARN_PCT = 80
+
+
+def traffic_pct(cfg):
+    """آستانه‌ی هشدارِ حجم — صفر یعنی خاموش."""
+    v = (cfg.get("reminders") or {}).get("traffic_pct")
+    if v is None or v == "":
+        return TRAFFIC_WARN_PCT
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        return TRAFFIC_WARN_PCT
+    return v if 0 <= v <= 100 else TRAFFIC_WARN_PCT
 
 
 def send_traffic_warnings():
@@ -392,6 +443,10 @@ def send_traffic_warnings():
             continue
         cfg = db.tenant_settings(t["id"])
         if cfg.get("reminders", {}).get("enabled") is False:
+            continue
+
+        want = traffic_pct(cfg)
+        if not want:
             continue
 
         d = db.TenantDB(t["id"])
@@ -424,7 +479,7 @@ def send_traffic_warnings():
                 continue
             used_gb = round(sum(pair) / (1024 ** 3), 1)
             total_gb = s["gb"] or 0
-            if not total_gb or used_gb * 100 < TRAFFIC_WARN_PCT * total_gb:
+            if not total_gb or used_gb * 100 < want * total_gb:
                 continue
 
             try:

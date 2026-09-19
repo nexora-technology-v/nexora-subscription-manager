@@ -170,7 +170,7 @@ export const WORKSPACES = {
           { key: "bot-coins", label: "سکه و دعوت", icon: Gift },
           { key: "bot-discounts", label: "کدهای تخفیف", icon: Tag },
           { key: "bot-affiliates", label: "همکاری در فروش", icon: Coins },
-          { key: "bot-texts", label: "متن‌ها", icon: MessageCircle },
+          { key: "bot-texts", label: "متن‌ها و یادآوری‌ها", icon: MessageCircle },
           { key: "bot-preview", label: "پیش‌نمایش ربات", icon: Eye },
           { key: "bot-stats", label: "آمار و قیف", icon: TrendingUp },
           { key: "bot-backup", label: "بک‌آپ ربات", icon: Database },
