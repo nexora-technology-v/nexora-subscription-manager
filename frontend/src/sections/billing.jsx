@@ -1675,10 +1675,6 @@ export function BillingDash({ password }) {
   );
 }
 
-/** یک رقمِ اعشار. بدونِ این، تفریقِ دو عددِ گردشده دنباله‌ی
-    اعشاریِ بلند می‌سازد: «۵۷۸.۵۹۹۹۹۹۹۹۹۹». */
-const round1 = (n) => Math.round((Number(n) || 0) * 10) / 10;
-
 export function BillingGroups({ password }) {
   const { data, loading, reload } = useBilling(password);
   const [open, setOpen] = useState(null);
@@ -1803,21 +1799,14 @@ export function BillingGroups({ password }) {
                       با جداکننده‌ها عوض نکند. */}
                   <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
                     <bdi style={{ fontFamily: monoIf(g.name) }}>{g.name}</bdi>
+                    {/* عددِ مصرف، همان کلِ مصرف. بدونِ پرانتز و توضیح.
+                        دو نسخه‌ی قبل این‌جا تفکیکِ «چقدرش پیش از
+                        ریست بوده» نوشته می‌شد — که توضیحِ پیاده‌سازی
+                        بود، نه چیزی که مالک لازم دارد. حالا که عدد
+                        با پنلِ x-ui یکی است، چیزی برای توضیح نمانده.
+
+                        هر کسی تفکیک بخواهد: `nexora usage-why`. */}
                     {" · "}{faNum(g.configs)} کانفیگ · {faNum(g.usedGB)} گیگ مصرف
-                    {/* عددِ مصرف باید قابل توضیح باشد.
-                        «پیش از ریست» اصطلاح بود، نه توضیح — مالک
-                        خودش پرسید یعنی چه. حالا خودِ جمع نوشته
-                        می‌شود و تولتیپ کاملش می‌کند. */}
-                    {g.bankedGB > 0 && (
-                      <span style={{ color: "var(--warn)" }}
-                        title={`${faNum(round1(g.usedGB - g.bankedGB))} گیگ از وقتی `
-                          + `شمارنده‌ی این گروه در x-ui صفر شد، به‌علاوه‌ی `
-                          + `${faNum(g.bankedGB)} گیگ که پیش از آن مصرف شده بود. `
-                          + `پنل x-ui هم همین جمع را نشان می‌دهد.`}>
-                        {" "}({faNum(round1(g.usedGB - g.bankedGB))} از آخرین صفرکردن
-                        {" + "}{faNum(g.bankedGB)} قبلش)
-                      </span>
-                    )}
                   </div>
                 </div>
               </div>
