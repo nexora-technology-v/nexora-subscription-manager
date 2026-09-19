@@ -539,7 +539,25 @@ def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
     _reply(ctx, chat_id, message_id, "\n".join(lines), kb(rows))
 
 
-def card_order(ctx, user, plan_id, use_coins=False, renew_sub_id=None):
+def find_discount(ctx, code, plan_id=None):
+    """
+    کدِ تخفیفِ همین مستاجر. برمی‌گرداند (خطا, درصد, ردیف).
+
+    **جست‌وجو همیشه با `tenant_id`.** بدونش مشتریِ یک نماینده کدِ
+    نماینده‌ی دیگر را استفاده می‌کند و تخفیفش از جیبِ اشتباه می‌رود.
+
+    خودِ سنجش در `core.validate_discount` است تا ربات و مینی‌اپ و
+    پنل یک قاعده داشته باشند — نه سه نسخه که روزی از هم دور بیفتند.
+    """
+    if not str(code or "").strip():
+        return "کد وارد نشده", 0, None
+    row = ctx.db.get_discount(code)
+    err, pct = core.validate_discount(dict(row) if row else None, plan_id)
+    return err, pct, (dict(row) if row else None)
+
+
+def card_order(ctx, user, plan_id, use_coins=False, renew_sub_id=None,
+               discount_code=None):
     """
     ساختِ سفارشِ کارتی: قیمت، رزروِ سکه، و انتخابِ کارت.
 
@@ -560,8 +578,16 @@ def card_order(ctx, user, plan_id, use_coins=False, renew_sub_id=None):
         return False, "no_plan"
 
     cs = ctx.s.get("coins")
+    # کدِ تخفیف پیش از سکه اعمال می‌شود — ترتیبش در
+    # `core.price_order` است و عوض نمی‌شود، وگرنه قیمت‌های امروز و
+    # دیروز قابلِ مقایسه نیستند.
+    derr, dpct, _drow = find_discount(ctx, discount_code, plan_id) \
+        if discount_code else (None, 0, None)
+    if derr:
+        return False, {"why": "discount", "detail": derr}
     pr = core.price_order(p["price"], coins=user["coins"], coin_cfg=cs,
-                          use_coins=bool(use_coins))
+                          use_coins=bool(use_coins),
+                          discount_percent=dpct)
 
     card = core.pick_card(ctx.s.get("cards"))
     if not card:
@@ -571,6 +597,9 @@ def card_order(ctx, user, plan_id, use_coins=False, renew_sub_id=None):
     order = ctx.db.create_order(
         user["id"], plan_id, p["price"], pr["final"],
         coins_used=pr["coins_used"], ttl_minutes=ttl,
+        # کد روی خودِ سفارش می‌نشیند، نه با ارجاع: ماه‌ها بعد باید
+        # بشود گفت این مبلغ چرا این بوده، حتی اگر کد حذف شده باشد
+        discount_pct=dpct, discount_code=(discount_code or None) if dpct else None,
         # اگر تمدید است، مقصد از همین‌جا ثبت می‌شود — وگرنه provision
         # نمی‌داند کدام اشتراک را باید تمدید کند و کانفیگ تازه می‌سازد
         kind=("renew" if renew_sub_id else "new"),
@@ -670,7 +699,8 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins,
                [("✖️ لغو سفارش", f"cancel:{order['id']}")]]))
 
 
-def wallet_purchase(ctx, user, plan_id, renew_sub_id=None):
+def wallet_purchase(ctx, user, plan_id, renew_sub_id=None,
+                    discount_code=None):
     """
     خریدِ اشتراک از کیف پول — بدونِ هیچ پوسته‌ی تلگرامی.
 
@@ -698,19 +728,35 @@ def wallet_purchase(ctx, user, plan_id, renew_sub_id=None):
     if not p:
         return {"ok": False, "why": "no_plan"}
 
+    # کدِ تخفیف — همان اعتبارسنجِ مسیرِ کارت، تا دو مسیر یک قاعده
+    # داشته باشند. بدونِ این، کدی که در ربات کار می‌کرد از کیف پول
+    # رد می‌شد و مشتری قیمتِ کامل می‌داد.
+    dpct = 0
+    if discount_code:
+        derr, dpct, _drow = find_discount(ctx, discount_code, plan_id)
+        if derr:
+            return {"ok": False, "why": "discount", "detail": derr, "plan": p}
+    pr = core.price_order(p["price"], discount_percent=dpct)
+    price = pr["final"]
+
     fresh = ctx.db.get_user(user["tg_id"])
-    if fresh["balance"] < p["price"]:
+    if fresh["balance"] < price:
         return {"ok": False, "why": "low_balance", "plan": p,
-                "short": p["price"] - fresh["balance"],
+                "short": price - fresh["balance"],
                 "left": fresh["balance"]}
 
     # کسر اول، سفارش بعد. اگر ترتیب برعکس باشد و کسر نگیرد، یک
     # سفارش بی‌پرداخت می‌ماند که هیچ‌کس بعداً نمی‌فهمد چه بوده.
-    order = ctx.db.create_order(fresh["id"], plan_id, p["price"], p["price"],
+    # `base_amount` قیمتِ پلن می‌ماند و `amount` قیمتِ پرداختی —
+    # تفاوتشان همان تخفیفی است که داده شده، و گزارش‌ها از رویش
+    # حساب می‌کنند.
+    order = ctx.db.create_order(fresh["id"], plan_id, p["price"], price,
                                 paid_from="wallet",
                                 kind=("renew" if renew_sub_id else "new"),
-                                renew_sub_id=renew_sub_id)
-    paid, left = ctx.db.spend_balance(fresh["id"], p["price"], "spend",
+                                renew_sub_id=renew_sub_id,
+                                discount_pct=dpct,
+                                discount_code=(discount_code or None) if dpct else None)
+    paid, left = ctx.db.spend_balance(fresh["id"], price, "spend",
                                       f"خرید {p['name']}", order["id"])
     if not paid:
         # بین خواندن موجودی و این لحظه، پول جای دیگری خرج شده —
@@ -733,7 +779,7 @@ def wallet_purchase(ctx, user, plan_id, renew_sub_id=None):
     ctx.db.close_order(order["id"], "approved")
 
     # فروش با کیف پول هم فروش است — همکار باید سهمش را بگیرد
-    _pay_commission(ctx, fresh, order["id"], p["price"])
+    _pay_commission(ctx, fresh, order["id"])
 
     # و پاداش معرف هم همین‌طور. ربات گفته «هر دوستی که با لینک شما
     # بیاید و خرید کند، N سکه به شما می‌رسد» — حرفی از روشِ پرداخت
@@ -1084,7 +1130,7 @@ def _free_email(ctx, user, prefix, limit=30):
 ORDER_BUSY = "این سفارش همین حالا در حال پردازش است"
 
 
-def _pay_commission(ctx, user, order_id, amount):
+def _pay_commission(ctx, user, order_id):
     """
     ثبت پورسانت همکار فروش برای یک فروش موفق.
 
@@ -1093,14 +1139,26 @@ def _pay_commission(ctx, user, order_id, amount):
     بود از خریدهای کیف‌پولی و تمدیدهای خودکارِ همان مشتری سهمی
     نمی‌گرفت.
 
+    **مبلغ از خودِ سفارش خوانده می‌شود، نه از صداکننده.**
+
+    سه صداکننده سه پایه می‌دادند: دو تا `plan["price"]` و یکی
+    `order["amount"]`. تا وقتی تخفیفی در کار نبود هر سه یک عدد
+    می‌شدند و تفاوت دیده نمی‌شد — ولی با کد تخفیف، آن دو روی پولی
+    پورسانت می‌دهند که هرگز دریافت نشده.
+
+    پورسانت سهمی از *درآمد* است. پس پایه‌اش `amount` است، یعنی
+    آنچه مشتری واقعاً پرداخت کرده.
+
     ثبت دوباره ممکن نیست: جدول روی (مستاجر، سفارش) یکتاست، پس اگر
     تاییدی دو بار اجرا شود پورسانت دو بار حساب نمی‌شود.
 
     خطا این‌جا نباید تحویل کانفیگ را متوقف کند؛ فروش انجام شده و
     مشتری منتظر است.
     """
+    row = ctx.db.get_order(order_id)
+    amount = int((row or {}).get("amount") or 0)
     try:
-        res = DB.record_commission(ctx.tid, user["id"], order_id, amount or 0)
+        res = DB.record_commission(ctx.tid, user["id"], order_id, amount)
     except Exception:
         log.debug("ثبت پورسانت ناموفق", exc_info=True)
         return None
@@ -1213,7 +1271,7 @@ def approve_order(ctx, order_id, admin_tg_id):
 
     # پورسانت همکار فروش — بعد از ساخت موفق کانفیگ، چون تا وقتی
     # کانفیگ تحویل نشده فروشی اتفاق نیفتاده
-    _pay_commission(ctx, user, order_id, order["amount"] or 0)
+    _pay_commission(ctx, user, order_id)
 
     # سکه هنگام ثبت سفارش رزرو شده — این‌جا فقط نوعش را ثبت می‌کنیم
     # که در تاریخچه «خرج‌شده» دیده شود، نه «رزرو».
@@ -3643,7 +3701,7 @@ def auto_renew_subscription(tenant, bot, sub):
         # تمدید خودکار هم فروش است — همکار باید سهمش را بگیرد.
         # قبلاً فقط مسیر کارت پورسانت ثبت می‌کرد، پس همکاری که مشتری
         # آورده بود از تمدیدهای خودکار او هیچ نمی‌گرفت.
-        _pay_commission(ctx, user, order["id"], plan["price"])
+        _pay_commission(ctx, user, order["id"])
 
         # همان استدلال برای پاداش معرف. چون «یک پاداش برای هر دوست»
         # است، اگر خرید اولش قبلاً پاداش داده باشد این‌جا بی‌اثر است —

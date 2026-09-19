@@ -2932,6 +2932,163 @@ def admin_inbox_send(payload: dict, x_admin_password: str = Header(...)):
     return {"ok": True, "photo": photo or ""}
 
 
+# ═══════════════════════════════════════════════════════════
+#  کد تخفیف
+#
+#  برگه‌اش: docs/specs/2026-09-19-discount-and-trial-winback.md
+#
+#  جدول، اعتبارسنج و ستون‌های سفارش از قبل بودند و **هیچ‌جا صدا زده
+#  نمی‌شدند** — قابلیتی نیمه‌کاره که `CLAUDE.md` هشدارش را داده بود.
+#  این‌جا فقط وصل می‌شود؛ منطقِ اعتبار همان `core.validate_discount`
+#  می‌ماند تا ربات و پنل یک قاعده داشته باشند.
+# ═══════════════════════════════════════════════════════════
+
+def _disc_code(raw):
+    """
+    کد را یکدست می‌کند: بزرگ، بدونِ فاصله.
+
+    مشتری « nowruz » می‌نویسد و مالک «NOWRUZ» ساخته. بدونِ یکدست‌سازی
+    این دو یکی نمی‌شوند و کد «پیدا نشد» می‌گیرد — که از نبودنِ کد
+    بدتر است، چون مالک مطمئن است ساخته‌اش.
+    """
+    return str(raw or "").strip().upper()[:40]
+
+
+@app.get("/api/admin/bot/discounts")
+def bot_discounts(x_admin_password: str = Header(...)):
+    """کدهای تخفیفِ مالک، با اینکه هرکدام چقدر کار کرده."""
+    check_auth(x_admin_password)
+    t = _root_tenant_row()
+    con = _bot_conn()
+    if not con:
+        return {"ready": False, "discounts": []}
+    try:
+        rows = [dict(r) for r in con.execute(
+            "SELECT * FROM discounts WHERE tenant_id=? ORDER BY id DESC",
+            (t["id"],))]
+        # چقدر تخفیف واقعاً داده شده — از خودِ سفارش‌ها، نه از
+        # شمارنده. شمارنده می‌گوید چند بار، این می‌گوید چقدر.
+        given = {}
+        for r in con.execute(
+            "SELECT discount_code AS c, COUNT(*) n, "
+            "       COALESCE(SUM(base_amount - amount),0) s "
+            "  FROM orders WHERE tenant_id=? AND status='approved' "
+            "   AND discount_code IS NOT NULL AND discount_code<>'' "
+            " GROUP BY discount_code", (t["id"],)
+        ):
+            given[_disc_code(r["c"])] = {"orders": int(r["n"] or 0),
+                                         "toman": int(r["s"] or 0)}
+        plans = {r["id"]: r["name"] for r in con.execute(
+            "SELECT id, name FROM plans WHERE tenant_id=?", (t["id"],))}
+    except Exception as e:
+        log.exception("خواندن کدهای تخفیف ناموفق")
+        raise HTTPException(status_code=503, detail=f"خوانده نشد: {str(e)[:120]}")
+    finally:
+        con.close()
+
+    out = []
+    for r in rows:
+        g = given.get(_disc_code(r.get("code")), {})
+        out.append({
+            "id": r["id"], "code": r.get("code") or "",
+            "percent": int(r.get("percent") or 0),
+            "maxUses": int(r.get("max_uses") or 0),
+            "usedCount": int(r.get("used_count") or 0),
+            "planId": r.get("plan_id"),
+            "planName": plans.get(r.get("plan_id")) if r.get("plan_id") else None,
+            "expiresAt": r.get("expires_at"),
+            "active": bool(r.get("is_active")),
+            "createdAt": r.get("created_at"),
+            # از سفارش‌های تاییدشده — «چند بار» و «چقدر»
+            "paidOrders": g.get("orders", 0),
+            "givenToman": g.get("toman", 0),
+        })
+    return {"ready": True, "discounts": out,
+            "plans": [{"id": k, "name": v} for k, v in plans.items()]}
+
+
+@app.post("/api/admin/bot/discounts")
+def bot_discount_save(payload: dict, x_admin_password: str = Header(...)):
+    """ساخت یا ویرایشِ یک کد."""
+    check_auth(x_admin_password)
+    p = payload or {}
+    code = _disc_code(p.get("code"))
+    if not code:
+        raise HTTPException(status_code=400, detail="کد خالی است")
+    # فقط حروف و رقم: کدی که فاصله یا کاراکترِ عجیب داشته باشد،
+    # مشتری نمی‌تواند درست تایپش کند
+    if not _re.fullmatch(r"[A-Z0-9_-]{2,40}", code):
+        raise HTTPException(
+            status_code=400,
+            detail="کد فقط حروف انگلیسی، رقم، خط تیره و زیرخط — بین ۲ تا ۴۰ نویسه")
+    try:
+        pct = int(p.get("percent") or 0)
+    except (TypeError, ValueError):
+        pct = 0
+    if not 1 <= pct <= 100:
+        raise HTTPException(status_code=400, detail="درصد باید بین ۱ تا ۱۰۰ باشد")
+
+    try:
+        max_uses = max(0, int(p.get("maxUses") or 0))
+    except (TypeError, ValueError):
+        max_uses = 0
+    plan_id = p.get("planId")
+    try:
+        plan_id = int(plan_id) if plan_id else None
+    except (TypeError, ValueError):
+        plan_id = None
+    expires = str(p.get("expiresAt") or "").strip()[:19] or None
+    active = 1 if p.get("active", True) else 0
+    did = p.get("id")
+
+    t = _root_tenant_row()
+    con = _bot_rw()
+    try:
+        if did:
+            con.execute(
+                "UPDATE discounts SET code=?, percent=?, max_uses=?, plan_id=?, "
+                "expires_at=?, is_active=? WHERE tenant_id=? AND id=?",
+                (code, pct, max_uses, plan_id, expires, active, t["id"], int(did)))
+        else:
+            con.execute(
+                "INSERT INTO discounts (tenant_id, code, percent, max_uses, "
+                "plan_id, expires_at, is_active) VALUES (?,?,?,?,?,?,?)",
+                (t["id"], code, pct, max_uses, plan_id, expires, active))
+        con.commit()
+    except Exception as e:
+        # یکتاییِ (مستاجر، کد) در خودِ جدول است — پیامش باید بگوید
+        # چه شده، نه «خطای دیتابیس»
+        if "UNIQUE" in str(e).upper():
+            raise HTTPException(status_code=409,
+                                detail=f"کد «{code}» از قبل وجود دارد")
+        log.exception("ذخیره‌ی کد تخفیف ناموفق")
+        raise HTTPException(status_code=502, detail=f"ذخیره نشد: {str(e)[:120]}")
+    finally:
+        con.close()
+    return {"ok": True, "code": code}
+
+
+@app.delete("/api/admin/bot/discounts/{did}")
+def bot_discount_delete(did: int, x_admin_password: str = Header(...)):
+    """
+    حذفِ کد.
+
+    سفارش‌هایی که با آن ساخته شده‌اند دست‌نخورده می‌مانند: کد و درصد
+    روی خودِ سفارش ثبت شده، نه با ارجاع. پس فاکتورِ ماه پیش بعد از
+    حذفِ کد هم همان عدد را می‌دهد.
+    """
+    check_auth(x_admin_password)
+    t = _root_tenant_row()
+    con = _bot_rw()
+    try:
+        con.execute("DELETE FROM discounts WHERE tenant_id=? AND id=?",
+                    (t["id"], int(did)))
+        con.commit()
+    finally:
+        con.close()
+    return {"ok": True}
+
+
 @app.get("/api/admin/bot/alerts")
 def admin_alerts(x_admin_password: str = Header(...)):
     """
@@ -11584,7 +11741,9 @@ def mini_buy(payload: dict, tu: tuple = Depends(mini_user)):
 
     h, ctx = _mini_ctx(t)
     try:
-        r = h.wallet_purchase(ctx, u, pid)
+        r = h.wallet_purchase(
+            ctx, u, pid,
+            discount_code=(payload or {}).get("discountCode"))
     except Exception as e:
         log.exception("خرید مینی‌اپ ناموفق")
         raise HTTPException(status_code=502, detail=f"خرید ناموفق: {str(e)[:140]}")
@@ -11594,6 +11753,9 @@ def mini_buy(payload: dict, tu: tuple = Depends(mini_user)):
                 "plan": pl["name"]}
 
     why = r.get("why")
+    if why == "discount":
+        raise HTTPException(status_code=400,
+                            detail=r.get("detail") or "کد تخفیف معتبر نیست")
     if why == "low_balance":
         raise HTTPException(
             status_code=402,
@@ -11835,6 +11997,34 @@ def mini_inbox_read(tu: tuple = Depends(mini_user)):
     return {"ok": True}
 
 
+@app.post("/api/mini/discount")
+def mini_discount_check(payload: dict, tu: tuple = Depends(mini_user)):
+    """
+    کد را بسنج و بگو چقدر کم می‌کند — بدونِ ساختنِ سفارش.
+
+    **هیچ قیمتی این‌جا حساب نمی‌شود.** `core.price_order` همان
+    تابعی است که لحظه‌ی خرید هم صدا زده می‌شود؛ اگر این‌جا دوباره
+    نوشته می‌شد، روزی مشتری یک عدد می‌دید و عددِ دیگری پرداخت
+    می‌کرد.
+
+    و ظرفیت این‌جا مصرف **نمی‌شود** — فقط سنجیده می‌شود. مصرف سرِ
+    تایید است.
+    """
+    t, u = tu
+    p = payload or {}
+    pl = _mini_plan(t, p)
+    h, ctx = _mini_ctx(t)
+
+    err, pct, _row = h.find_discount(ctx, p.get("code"), pl["id"])
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+
+    pr = h.core.price_order(int(pl["price"] or 0), discount_percent=pct)
+    return {"ok": True, "percent": pct,
+            "price": pr["final"], "off": pr["code_discount"],
+            "base": int(pl["price"] or 0)}
+
+
 @app.post("/api/mini/order")
 def mini_order(payload: dict, tu: tuple = Depends(mini_user)):
     """
@@ -11854,12 +12044,18 @@ def mini_order(payload: dict, tu: tuple = Depends(mini_user)):
 
     try:
         ok, r = h.card_order(ctx, u, pl["id"],
-                             use_coins=bool((payload or {}).get("useCoins")))
+                             use_coins=bool((payload or {}).get("useCoins")),
+                             discount_code=(payload or {}).get("discountCode"))
     except Exception as e:
         log.exception("ساخت سفارش مینی‌اپ ناموفق")
         raise HTTPException(status_code=502, detail=f"ساخت سفارش نشد: {str(e)[:140]}")
 
     if not ok:
+        # خطای کد را همان‌طور که هست بگو: «ظرفیت تمام شده» و «منقضی
+        # شده» دو چیزِ متفاوتند و مشتری باید بداند کدام است.
+        if isinstance(r, dict) and r.get("why") == "discount":
+            raise HTTPException(status_code=400,
+                                detail=r.get("detail") or "کد تخفیف معتبر نیست")
         if r == "no_card":
             raise HTTPException(
                 status_code=409,

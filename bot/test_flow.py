@@ -1222,6 +1222,139 @@ check("هیچ‌جای handlers خام approved نمی‌نویسد",
       "برای تاییدِ سفارش از ctx.db.close_order استفاده کنید")
 
 
+# ═══════════════════════════════════════════════════════════
+#  کد تخفیف
+#
+#  برگه‌اش: docs/specs/2026-09-19-discount-and-trial-winback.md
+#
+#  جدول `discounts` و `core.validate_discount` از قبل بودند و
+#  **صفر بار** صدا زده می‌شدند. حالا که وصل شده‌اند، این‌ها را
+#  نگه می‌داریم.
+# ═══════════════════════════════════════════════════════════
+section("کد تخفیف")
+
+import re as _redc                                            # noqa: E402
+
+_dctx = H.Ctx(bot, tenant)
+_other = db.create_tenant("دیگری", bot_token="9:TEST", owner_tg_id=888)
+
+D.exec("INSERT INTO discounts (tenant_id,code,percent,max_uses,is_active) "
+       "VALUES (?,'HALF',50,2,1)", (tid,))
+D.exec("INSERT INTO discounts (tenant_id,code,percent,max_uses,is_active) "
+       "VALUES (?,'DEAD',30,0,0)", (tid,))
+db.TenantDB(_other).exec(
+    "INSERT INTO discounts (tenant_id,code,percent,max_uses,is_active) "
+    "VALUES (?,'FOREIGN',90,0,1)", (_other,))
+
+_e, _p, _r = H.find_discount(_dctx, "half")
+check("کد بدونِ توجه به بزرگ و کوچک پیدا می‌شود", _p == 50, f"{_p}٪")
+_e, _p, _r = H.find_discount(_dctx, " HALF ")
+check("و فاصله‌ی اضافه اذیت نمی‌کند", _p == 50, f"{_p}٪")
+_e, _p, _r = H.find_discount(_dctx, "FOREIGN")
+check("کدِ مستاجرِ دیگر پیدا نمی‌شود", _p == 0 and bool(_e),
+      "وگرنه تخفیفِ مشتری از جیبِ نماینده‌ی دیگر می‌رود")
+_e, _p, _r = H.find_discount(_dctx, "DEAD")
+check("کدِ خاموش رد می‌شود", _p == 0 and bool(_e), str(_e))
+_e, _p, _r = H.find_discount(_dctx, "")
+check("کدِ خالی خطا می‌دهد، نه صد درصد تخفیف", _p == 0 and bool(_e), str(_e))
+
+# ترتیب عمدی است: اول کد، بعد سکه. جابه‌جا شدنش یعنی عددِ امروز با
+# عددِ دیروز قابل مقایسه نیست، بی‌آنکه چیزی خطا بدهد.
+_pr = core.price_order(200_000, coins=40, use_coins=True,
+                       coin_cfg={"tiers": [{"coins": 20, "percent": 10}]},
+                       discount_percent=25)
+check("کد اول اعمال می‌شود، بعد سکه",
+      _pr["code_discount"] == 50_000 and _pr["coin_discount"] == 15_000,
+      f"کد {_pr['code_discount']} · سکه {_pr['coin_discount']}")
+
+
+def _mk_disc_order():
+    return D.create_order(D.get_user(555)["id"], plan["id"],
+                          200_000, 100_000,
+                          discount_pct=50, discount_code="HALF")["id"]
+
+
+def _disc_used():
+    r = D.q("SELECT used_count FROM discounts WHERE tenant_id=? AND code='HALF'",
+            (tid,), one=True)
+    return int(r["used_count"]) if r else -1
+
+
+# ظرفیت سرِ *تایید* مصرف می‌شود، نه سرِ ساخت — وگرنه سه نفر که
+# صفحه‌ی پرداخت را باز کردند و رفتند، کد را تمام می‌کنند.
+_o1, _o2, _o3 = _mk_disc_order(), _mk_disc_order(), _mk_disc_order()
+check("ساختِ سفارش ظرفیت نمی‌سوزاند", _disc_used() == 0, str(_disc_used()))
+D.close_order(_o1, "approved")
+D.close_order(_o2, "approved")
+check("هر تایید یک ظرفیت برمی‌دارد", _disc_used() == 2, str(_disc_used()))
+D.close_order(_o3, "approved")
+check("و از سقف رد نمی‌شود", _disc_used() == 2, str(_disc_used()))
+check("ولی قیمتِ سفارشِ روی مرز عوض نمی‌شود",
+      int(D.get_order(_o3)["amount"]) == 100_000,
+      "سقف ابزارِ بازاریابی است، نه بهانه‌ی گرفتنِ مبلغی جز آنچه گفته‌ایم")
+
+D.exec("UPDATE discounts SET used_count=0, max_uses=1 "
+       "WHERE tenant_id=? AND code='HALF'", (tid,))
+_o4 = _mk_disc_order()
+D.close_order(_o4, "rejected", "تست")
+check("سفارشِ ردشده ظرفیت نمی‌سوزاند", _disc_used() == 0, str(_disc_used()))
+
+_HSRC = io.open("bot/handlers.py", encoding="utf-8").read()
+_DBSRC = io.open("bot/db.py", encoding="utf-8").read()
+
+check("ظرفیت فقط در close_order برداشته می‌شود",
+      _DBSRC.count("SET used_count = used_count + 1") == 1,
+      "هر جای دیگری یعنی یک مسیر فراموشش می‌کند — سه بار افتاده")
+
+# ── پایه‌ی پورسانت ──
+#
+# تا وقتی تخفیفی نبود، «قیمتِ پلن» و «مبلغِ پرداختی» یک عدد بودند و
+# سه صداکننده‌ی _pay_commission هر کدام یکی را می‌دادند بی‌آنکه فرقی
+# دیده شود. با کد تخفیف این دو از هم جدا می‌شوند و پورسانت روی پولی
+# داده می‌شود که هرگز نرسیده.
+_pc = _HSRC.split("def _pay_commission(")[1].split("\ndef ")[0]
+check("پورسانت مبلغ را از خودِ سفارش می‌خواند",
+      "ctx.db.get_order(order_id)" in _pc,
+      "پایه یک جا تعیین شود، نه سه جا")
+_calls = _redc.findall(r"(?<!def )_pay_commission\(([^)]*)\)", _HSRC)
+check("و هیچ صداکننده‌ای مبلغ پاس نمی‌دهد",
+      all(len(a.split(",")) == 3 for a in _calls),
+      " | ".join(a for a in _calls if len(a.split(",")) != 3) or f"{len(_calls)} صداکننده")
+
+check("هر دو هسته‌ی خرید از core.price_order می‌گذرند",
+      _HSRC.count("core.price_order(") >= 2, "قیمت یک هسته دارد")
+
+# ═══════════════════════════════════════════════════════════
+#  پیگیریِ کسی که تست گرفته و نخریده
+# ═══════════════════════════════════════════════════════════
+section("پیگیری تست")
+
+_RSRC = io.open("bot/run.py", encoding="utf-8").read()
+_wb = _RSRC.split("def trial_winback(")[1].split("\ndef ")[0]
+
+# «نخریده» یعنی هیچ سفارشِ approvedِ غیرِتست. مبلغ کافی نیست: تستِ
+# صفر تومانی و سفارشِ صددرصد تخفیف‌خورده هر دو صفرند ولی یکی تبدیل
+# است و دیگری نه — و تستِ رایگان خودش یک سفارشِ approved می‌سازد.
+check("پیگیری فقط به کسی می‌رود که خریدِ پولی نکرده",
+      "COALESCE(p.is_trial, 0) = 0" in _wb,
+      "وگرنه به مشتریِ فعلی هم تخفیف می‌دهیم")
+check("و فقط یک‌بار",
+      "u.trial_followup_at IS NULL" in _wb
+      and "SET trial_followup_at=CURRENT_TIMESTAMP" in _wb,
+      "بدونِ پرچم، هر ساعت یک پیامِ تبلیغاتی می‌رود")
+check("پرچم چه پیام برود چه نرود زده می‌شود",
+      _wb.index("SET trial_followup_at") > _wb.index("log.debug(\"ارسال پیگیری"),
+      "کسی که بلاک کرده وگرنه هر ساعت یک کدِ تازه می‌گیرد")
+check("کدش یک‌بارمصرف و زمان‌دار است",
+      "max_uses, expires_at, is_active) VALUES (?,?,?,1,?,1)" in _wb,
+      "کدِ مشترک را یک نفر در گروه می‌گذارد و همه استفاده می‌کنند")
+check("خاموش بودن یعنی هیچ",
+      'wb.get("enabled")' in _wb and "continue" in _wb)
+check("زمان‌بند صدایش می‌زند",
+      "trial_winback()" in _RSRC.split("def scheduler_loop(")[1],
+      "تابعی که هیچ‌کس صدا نمی‌زند، قابلیت نیست")
+
+
 os.unlink(tmp)
 
 print(f"\n{'═' * 52}")

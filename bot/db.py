@@ -322,6 +322,15 @@ def _migrate(con):
         ("users", "affiliate_id", "INTEGER"),
         # اینباندهای هر پلن — خالی یعنی از تنظیم سراسری پیروی کن
         ("plans", "inbound_ids", "TEXT"),
+        # کِی برای این کاربر پیگیریِ تست فرستادیم.
+        #
+        # بدونِ پرچم، هر دورِ زمان‌بند دوباره می‌فرستد — و کسی که
+        # نخریده هر ساعت یک پیامِ تبلیغاتی می‌گیرد، که بدتر از
+        # نفرستادن است.
+        #
+        # تاریخ است نه بولین: بعداً می‌شود گفت کِی فرستاده شد و
+        # نرخِ تبدیل را حساب کرد.
+        ("users", "trial_followup_at", "TEXT"),
         # عکسِ پیام — نشانیِ فایل، نه خودِ بایت‌ها.
         #
         # بیشترِ چیزی که مشتری در پشتیبانی می‌خواهد بگوید یک تصویر
@@ -777,6 +786,21 @@ class TenantDB:
                 (admin_tg_id, reason, self.tid, order_id))
             return bool(cur.rowcount)
 
+    def get_discount(self, code):
+        """
+        کدِ همین مستاجر — یا None.
+
+        شرطِ `tenant_id` اختیاری نیست: بدونش مشتریِ یک نماینده کدِ
+        نماینده‌ی دیگر را استفاده می‌کند و تخفیفش از جیبِ اشتباه
+        می‌رود.
+        """
+        code = str(code or "").strip().upper()[:40]
+        if not code:
+            return None
+        return self.q(
+            "SELECT * FROM discounts WHERE tenant_id=? AND UPPER(code)=?",
+            (self.tid, code), one=True)
+
     def attach_receipt(self, order_id, rtype, rfile, rtext):
         """
         ثبت رسید روی سفارش — فقط اگر هنوز در انتظار پرداخت باشد.
@@ -973,6 +997,32 @@ class TenantDB:
                 (status, note, self.tid, order_id, from_status))
             if not cur.rowcount:
                 return False, 0
+
+            # ── ظرفیتِ کدِ تخفیف ──
+            #
+            # این‌جا، چون این تنها جایی است که سفارش `approved`
+            # می‌شود — کارت، کیف پول، تمدید خودکار و مینی‌اپ همه از
+            # همین رد می‌شوند. هر جای دیگری یعنی یک مسیر فراموش
+            # می‌شود؛ همان اشتباهی که در این مخزن سه بار افتاد.
+            #
+            # و داخلِ همین تراکنش: ادعای وضعیت قفلِ نوشتن را گرفته،
+            # پس دو تاییدِ هم‌زمان نمی‌توانند هر دو ظرفیت بردارند.
+            #
+            # اگر ظرفیت تمام شده باشد، **قیمتِ سفارش عوض نمی‌شود**.
+            # سقف ابزارِ بازاریابی است؛ گرفتنِ مبلغی غیر از آنچه به
+            # مشتری گفته‌ایم نیست.
+            if status == "approved":
+                dcode = c.execute(
+                    "SELECT discount_code FROM orders WHERE tenant_id=? AND id=?",
+                    (self.tid, order_id)).fetchone()
+                dcode = (dcode["discount_code"] if dcode else "") or ""
+                if dcode.strip():
+                    c.execute(
+                        """UPDATE discounts
+                              SET used_count = used_count + 1
+                            WHERE tenant_id=? AND UPPER(code)=?
+                              AND (max_uses = 0 OR used_count < max_uses)""",
+                        (self.tid, dcode.strip().upper()))
 
             if status not in self.REFUND_ON:
                 return True, 0

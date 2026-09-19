@@ -382,7 +382,7 @@ check("خرید با کیف پول صدایش می‌زند",
       "_pay_commission(ctx, fresh, order[\"id\"]" in SRC,
       "قبلاً هیچ پورسانتی نمی‌داد")
 check("تمدید خودکار صدایش می‌زند",
-      "_pay_commission(ctx, user, order[\"id\"], plan[\"price\"])" in SRC,
+      "_pay_commission(ctx, user, order[\"id\"])" in SRC,
       "قبلاً هیچ پورسانتی نمی‌داد")
 check("هر سه مسیر پوشش داده شدند",
       SRC.count("_pay_commission(") >= 4,

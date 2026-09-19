@@ -27,7 +27,9 @@ import {
   AlertTriangle, ArrowLeft, Camera, Check, ChevronLeft, Clock, Copy,
   CreditCard, ExternalLink, Gift, Home, Image as ImageIcon, ImagePlus, Layers,
   Link2, Loader2, MessageCircle, Package, Phone, QrCode, RefreshCw, Send,
-  Coins, Plus, Shield, ShoppingBag, ShoppingCart, Trash2, User, Wallet, X, Zap,
+  Coins, Plus, Shield, ShoppingBag, ShoppingCart, Tag as TagIcon, Trash2,
+  User, Wallet,
+  X, Zap,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -1006,18 +1008,44 @@ function InboxView({ msgs, busy, onSend, support, channel, onZoom }) {
  * دیگر، این مقایسه را از جلوی چشمش برمی‌دارد.
  */
 function PaySheet({ pay, me, rw, onClose, onConfirm, onTopUp,
-                   onCard, onReceipt, onTopupStart, onCoins }) {
+                   onCard, onReceipt, onTopupStart, onCoins, onDiscount }) {
   const fileRef = useRef(null);
   const [amt, setAmt] = useState(0);
+  const [showCode, setShowCode] = useState(false);
+  const [codeText, setCodeText] = useState("");
+  const [codeErr, setCodeErr] = useState("");
+  const [checking, setChecking] = useState(false);
   if (!pay) return null;
   const isTopup = !!pay.topup;
   const p = pay.plan;
   const bal = Number(me?.balance || 0);
-  const price = isTopup ? 0 : Number(p?.price || 0);
+  /* قیمتِ تخفیف‌خورده از **سرور** می‌آید، نه از حسابِ این‌جا.
+     `/api/mini/discount` خودش `core.price_order` را صدا می‌زند —
+     همان تابعی که لحظه‌ی خرید هم اجرا می‌شود. اگر این‌جا دوباره
+     حساب می‌شد، روزی مشتری یک عدد می‌دید و عددِ دیگری می‌پرداخت. */
+  const base = isTopup ? 0 : Number(p?.price || 0);
+  const price = isTopup ? 0 : Number(pay.discount?.price ?? base);
   const after = bal - price;
   const short = price - bal;
   const busy = pay.state === "busy";
   const enough = after >= 0;
+
+  /* سنجیدنِ کد پیش از خرید — بدونِ ساختنِ سفارش و بدونِ مصرفِ
+     ظرفیت. مصرف سرِ تایید است. */
+  const applyCode = async () => {
+    const c = codeText.trim();
+    if (!c || checking) return;
+    setChecking(true); setCodeErr("");
+    try {
+      const r = await onDiscount(c, p?.id);
+      setShowCode(false); setCodeText("");
+      if (!r) setCodeErr("کد اعمال نشد");
+    } catch (e) {
+      // پیامِ خودِ سرور: «ظرفیت تمام شده» و «منقضی شده» دو چیزِ
+      // متفاوتند و مشتری باید بداند کدام است
+      setCodeErr(e.message);
+    } finally { setChecking(false); }
+  };
   // سکه فقط وقتی معنی دارد که پله‌ای باز شده باشد و خریدِ واقعی
   // باشد، نه شارژ
   const canCoins = !isTopup && !!rw && rw.enabled !== false
@@ -1209,6 +1237,43 @@ function PaySheet({ pay, me, rw, onClose, onConfirm, onTopUp,
             </span>
             <Coins size={15} />
           </button>
+        )}
+
+        {/* کد تخفیف.
+            بسته می‌ماند تا کسی که کد ندارد با یک کادرِ خالی روبه‌رو
+            نشود — ولی یک خطِ کوتاه می‌گوید که چنین چیزی هست. */}
+        {!isTopup && (
+          pay.discount ? (
+            <div className="mn-pay-disc on">
+              <TagIcon size={14} />
+              <span className="mn-pay-disc-txt">
+                <b dir="ltr">{pay.discount.code}</b>
+                <i>{faNum(pay.discount.percent)}٪ · {faNum(pay.discount.off)} تومان کمتر</i>
+              </span>
+              <button onClick={() => onDiscount(null)} disabled={busy}
+                aria-label="برداشتن کد">
+                <X size={13} />
+              </button>
+            </div>
+          ) : showCode ? (
+            <div className="mn-pay-disc">
+              <input dir="ltr" value={codeText} placeholder="NOWRUZ"
+                autoCapitalize="characters" autoCorrect="off"
+                onChange={(e) => { setCodeText(e.target.value.toUpperCase()); setCodeErr(""); }}
+                onKeyDown={(e) => { if (e.key === "Enter") applyCode(); }} />
+              <button className="mn-pay-disc-go" onClick={applyCode}
+                disabled={busy || checking || !codeText.trim()}>
+                {checking ? <Loader2 size={14} className="animate-spin" /> : "اعمال"}
+              </button>
+            </div>
+          ) : (
+            <button className="mn-pay-disc-open" onClick={() => setShowCode(true)}>
+              <TagIcon size={13} /> کد تخفیف دارم
+            </button>
+          )
+        )}
+        {codeErr && (
+          <div className="mn-pay-err"><AlertTriangle size={14} /><span>{codeErr}</span></div>
         )}
 
         {/* کیف پول وقتی پول هست، وگرنه کارت. هر دو همیشه در دسترس‌اند
@@ -1492,6 +1557,26 @@ export default function Mini() {
     else window.open(url, "_blank", "noopener");
   }, [rw]);
 
+  /**
+   * اعمال یا برداشتنِ کد تخفیف.
+   *
+   * سرور می‌سنجد و قیمتِ تازه را می‌دهد؛ این‌جا هیچ حسابی نمی‌شود.
+   * `null` یعنی بردار.
+   */
+  const applyDiscount = useCallback(async (code, planId) => {
+    if (!code) {
+      setPay((x) => (x ? { ...x, discount: null } : x));
+      return null;
+    }
+    const r = await api("/api/mini/discount",
+      { method: "POST", body: { code, planId } });
+    const d = { code: code.trim().toUpperCase(), percent: r.percent,
+                price: r.price, off: r.off };
+    setPay((x) => (x ? { ...x, discount: d } : x));
+    buzz("ok");
+    return d;
+  }, []);
+
   const saveProfile = async (body) => {
     await api("/api/mini/profile", { method: "POST", body });
     const m = await api("/api/mini/me");
@@ -1573,7 +1658,9 @@ export default function Mini() {
     setPay((x) => ({ ...x, state: "busy" }));
     try {
       const r = await api("/api/mini/buy", {
-        method: "POST", body: { planId: pay.plan.id },
+        method: "POST",
+        body: { planId: pay.plan.id,
+                ...(pay.discount ? { discountCode: pay.discount.code } : {}) },
       });
       buzz("ok");
       setPay({ plan: pay.plan, state: "done", left: r.left });
@@ -1641,13 +1728,15 @@ export default function Mini() {
       setPay((x) => ({ ...x, state: "busy" }));
       try {
         const r = await api("/api/mini/order", {
-          /* سکه، اگر مشتری انتخابش کرده باشد.
+          /* سکه و کد تخفیف، اگر مشتری انتخابشان کرده باشد.
              بک‌اند `useCoins` را از قبل می‌پذیرفت و به
              `handlers.card_order` می‌داد — همان هسته‌ای که ربات هم
              از آن رد می‌شود. ولی مینی‌اپ هیچ‌وقت نمی‌فرستادش، پس
              مشتری‌ای که سکه داشت از این‌جا قیمتِ کامل می‌داد و
              سکه‌هایش عملاً بی‌مصرف بودند. */
-          method: "POST", body: { planId: pay.plan.id, useCoins: !!pay.useCoins },
+          method: "POST",
+          body: { planId: pay.plan.id, useCoins: !!pay.useCoins,
+                  ...(pay.discount ? { discountCode: pay.discount.code } : {}) },
         });
         buzz("ok");
         setPay((x) => ({ ...x, state: "ask", step: "card",
@@ -1831,6 +1920,7 @@ export default function Mini() {
       <Lightbox src={zoom} onClose={() => setZoom("")} />
 
       <PaySheet pay={pay} me={me} rw={rw}
+        onDiscount={applyDiscount}
         onCoins={(v) => setPay((x) => (x ? { ...x, useCoins: v } : x))}
         onConfirm={confirmPay}
         onTopUp={topUp}

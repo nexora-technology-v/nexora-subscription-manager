@@ -15,6 +15,7 @@
 import contextlib
 import logging
 import os
+import secrets
 import signal
 import sys
 import threading
@@ -25,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from bot import db, core, handlers
-from bot.tg import Bot, TelegramError
+from bot.tg import Bot, TelegramError, kb
 
 log = logging.getLogger("nexora.bot")
 
@@ -556,6 +557,121 @@ def process_panel_approvals():
                 pass
 
 
+def trial_winback():
+    """
+    یک پیام، یک‌بار، به کسی که تست گرفته و نخریده.
+
+    برگه‌اش: docs/specs/2026-09-19-discount-and-trial-winback.md
+
+    چرا این کار وجود دارد: سخت‌ترین قدم را برداشته — نصب کرده و وصل
+    شده — و بعد رها شده. تا امروز هیچ‌کس سراغش نمی‌رفت.
+
+    سه شرط، و هر سه لازم‌اند:
+
+      • تست گرفته باشد
+      • **هیچ خریدِ پولی نکرده باشد** — وگرنه به مشتریِ فعلی تخفیف
+        می‌دهیم، که هم ضرر است هم بی‌معنا
+      • قبلاً پیگیری نشده باشد (`trial_followup_at`)
+
+    کدش مخصوصِ خودش است: سقفِ یک استفاده و انقضای کوتاه. کدِ مشترک
+    را یک نفر در گروه می‌گذارد و همه استفاده می‌کنند.
+    """
+    for t in db.all_tenants(active_only=True):
+        if not t["bot_token"]:
+            continue
+        try:
+            cfg = db.tenant_settings(t["id"])
+            wb = cfg.get("winback") or {}
+            if not wb.get("enabled"):
+                continue
+
+            pct = int(wb.get("percent") or 0)
+            if not 1 <= pct <= 100:
+                continue
+            after_h = int(wb.get("after_hours") or 24)
+            valid_h = int(wb.get("valid_hours") or 72)
+
+            d = db.TenantDB(t["id"])
+            # کسی که تستش تمام شده، نخریده، و پیگیری نشده.
+            #
+            # «نخریده» یعنی هیچ سفارشِ approvedِ غیرِتست — نه
+            # «مبلغش صفر نیست»: تستِ صفر تومانی و سفارشِ صددرصد
+            # تخفیف‌خورده هر دو صفرند ولی یکی تبدیل است و دیگری نه.
+            rows = d.q(
+                """SELECT u.id, u.tg_id, u.first_name
+                     FROM users u
+                    WHERE u.tenant_id = ?
+                      AND COALESCE(u.trial_used, 0) = 1
+                      AND u.trial_followup_at IS NULL
+                      AND NOT EXISTS (
+                            SELECT 1 FROM orders o
+                              JOIN plans p ON p.id = o.plan_id
+                             WHERE o.user_id = u.id
+                               AND o.status = 'approved'
+                               AND COALESCE(p.is_trial, 0) = 0)
+                      AND EXISTS (
+                            SELECT 1 FROM subscriptions s
+                             WHERE s.user_id = u.id
+                               AND s.expires_at IS NOT NULL
+                               AND s.expires_at < datetime('now', ?))
+                    LIMIT 40""",
+                (t["id"], f"-{after_h} hours"))
+            if not rows:
+                continue
+
+            tg = Bot(t["bot_token"])
+            app_url = ""
+            try:
+                app_url = handlers.miniapp_url(handlers.Ctx(tg, dict(t))) or ""
+            except Exception:
+                app_url = ""
+
+            for r in rows:
+                # کدِ یک‌بارمصرفِ خودش
+                code = f"BACK{secrets.token_hex(3).upper()}"
+                try:
+                    d.exec(
+                        "INSERT INTO discounts (tenant_id, code, percent, "
+                        "max_uses, expires_at, is_active) VALUES (?,?,?,1,?,1)",
+                        (t["id"], code, pct,
+                         (datetime.now() + timedelta(hours=valid_h))
+                         .strftime("%Y-%m-%d %H:%M:%S")))
+                except Exception:
+                    log.debug("ساخت کد پیگیری ناموفق", exc_info=True)
+                    continue
+
+                name = (r["first_name"] or "").strip()
+                text = (wb.get("text") or "").strip() or (
+                    "تستتان تمام شد 🙂\n\n"
+                    "اگر راضی بودید، این کد {pct}٪ تخفیف دارد:\n"
+                    "<code>{code}</code>\n\n"
+                    "فقط تا {hours} ساعت آینده و یک‌بار قابل استفاده است."
+                )
+                text = (text.replace("{name}", name)
+                            .replace("{pct}", core.fa(pct))
+                            .replace("{code}", code)
+                            .replace("{hours}", core.fa(valid_h)))
+
+                keys = None
+                if app_url:
+                    keys = kb([[("🛒 دیدن پلن‌ها", app_url, "web_app")]])
+                try:
+                    tg.send(r["tg_id"], text, keyboard=keys)
+                except Exception:
+                    log.debug("ارسال پیگیری ناموفق (کاربر %s)", r["id"],
+                              exc_info=True)
+
+                # پرچم چه پیام رفته باشد چه نه: اگر فقط سرِ موفقیت
+                # بزنیم، کاربری که بلاک کرده هر ساعت دوباره امتحان
+                # می‌شود و یک کدِ تازه می‌گیرد.
+                d.exec("UPDATE users SET trial_followup_at=CURRENT_TIMESTAMP "
+                       "WHERE tenant_id=? AND id=?", (t["id"], r["id"]))
+
+            log.info("پیگیری تست برای %s کاربر (مستاجر %s)", len(rows), t["id"])
+        except Exception:
+            log.exception("پیگیری تست ناموفق (مستاجر %s)", t["id"])
+
+
 def scheduler_loop():
     """
     زمان‌بند ساده و بدون وابستگی خارجی.
@@ -580,6 +696,7 @@ def scheduler_loop():
             if now - last["reminders"] > 3600:
                 send_expiry_reminders()
                 send_traffic_warnings()
+                trial_winback()
                 last["reminders"] = now
 
             if now - last["renew"] > 3600:

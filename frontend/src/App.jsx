@@ -17,6 +17,7 @@ import { BillingClients, BillingDash, BillingGroups, BillingInvoice, BillingPaym
 import { BotAffiliates } from "./sections/bot/affiliates";
 import { BotBackupSection } from "./sections/bot/backup";
 import { BotCoinsSection } from "./sections/bot/coins";
+import { BotDiscountsSection } from "./sections/bot/discounts";
 import { BotSection } from "./sections/bot/connection";
 import { BotInboundsSection } from "./sections/bot/inbounds";
 import { BotOrdersSection } from "./sections/bot/orders";
@@ -495,6 +496,7 @@ export default function App() {
           {active === "bot-users" && <BotUsersSection password={password} />}
           {active === "bot-report" && <BotReportSection password={password} />}
           {active === "bot-coins" && <BotCoinsSection password={password} />}
+          {active === "bot-discounts" && <BotDiscountsSection password={password} />}
           {active === "bot-affiliates" && <BotAffiliates password={password} />}
           {active === "bill-dash" && <BillingDash password={password} />}
           {active === "bill-groups" && <BillingGroups password={password} />}

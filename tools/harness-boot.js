@@ -409,6 +409,25 @@
     refCode: "NX7K2M", refCount: 3, botUsername: "nexora_vpn_bot",
     link: "https://t.me/nexora_vpn_bot?start=NX7K2M"
   };
+  /* کدهای تخفیف. با فهرستِ خالی، صفحه شاخه‌ی «هنوز کدی ساخته
+     نشده» را می‌گیرد و هیچ‌وقت ردیفِ واقعی دیده نمی‌شود. */
+  var D_CODES = { ready: true,
+    plans: [{ id: 1, name: "یک‌ماهه" }, { id: 2, name: "سه‌ماهه" }],
+    discounts: [
+      { id: 1, code: "NOWRUZ", percent: 25, maxUses: 100, usedCount: 37,
+        planId: null, planName: null, expiresAt: "1405-01-15",
+        active: true, paidOrders: 37, givenToman: 1110000 },
+      { id: 2, code: "WELCOME10", percent: 10, maxUses: 0, usedCount: 212,
+        planId: null, planName: null, expiresAt: null,
+        active: true, paidOrders: 212, givenToman: 2544000 },
+      { id: 3, code: "TRIAL-A7K2", percent: 30, maxUses: 1, usedCount: 1,
+        planId: 1, planName: "یک‌ماهه", expiresAt: "1404-07-02",
+        active: true, paidOrders: 1, givenToman: 36000 },
+      { id: 4, code: "OLDSALE", percent: 50, maxUses: 20, usedCount: 20,
+        planId: null, planName: null, expiresAt: null,
+        active: false, paidOrders: 20, givenToman: 1200000 },
+    ] };
+
   var GB = 1024 * 1024 * 1024;
   var M_SUBS = { subs: mk(3, function (i) {
     var tot = [50 * GB, 100 * GB, 50 * 1024 * 1024][i];
@@ -550,7 +569,9 @@
     return { ok: true, name: M_ME.name, phone: M_ME.phone || "" };
   }
 
-  function byPath(u, body) {
+  // `method` هم لازم است: مسیرهایی که هم GET دارند و هم POST و
+  // هم DELETE (مثل کدهای تخفیف) بدونش نمی‌توانند فرق بگذارند.
+  function byPath(u, body, method) {
     if (u.indexOf("/aff/login") >= 0) {
       var ac = String((body || {}).code || "").toUpperCase();
       if (ac !== "AFF1") { var ae2 = new Error("کد یا رمز نادرست است"); ae2.status = 401; throw ae2; }
@@ -692,6 +713,18 @@
     if (u.indexOf("/mini/orders") >= 0) return M_ORDERS;
     if (u.indexOf("/mini/order") >= 0) return miniOrder(body);
     if (u.indexOf("/mini/buy") >= 0) return miniBuy(body);
+    if (u.indexOf("/admin/bot/discounts") >= 0) {
+      if (method === "DELETE") return { ok: true };
+      if (method === "POST") return { ok: true, code: (body || {}).code };
+      return D_CODES;
+    }
+    if (u.indexOf("/mini/discount") >= 0) {
+      var dc = String((body || {}).code || "").toUpperCase();
+      if (dc !== "NOWRUZ") {
+        var de = new Error("کد تخفیف پیدا نشد"); de.status = 400; throw de;
+      }
+      return { ok: true, percent: 25, price: 90000, off: 30000, base: 120000 };
+    }
     if (u.indexOf("/mini/rewards") >= 0) return M_REWARDS;
     if (u.indexOf("/mini/me") >= 0) return M_ME;
     if (u.indexOf("/mini/subs") >= 0) return M_SUBS;
@@ -750,7 +783,7 @@
     // کسی نمی‌فهمد آن حالت چه شکلی است.
     var data, status = 200;
     try {
-      data = byPath(u, body);
+      data = byPath(u, body, String((opt && opt.method) || "GET").toUpperCase());
     } catch (e) {
       status = e.status || 500;
       data = { detail: e.message || "خطا" };

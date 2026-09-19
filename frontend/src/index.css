@@ -3003,6 +3003,52 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 
 /* دعوتِ دوست */
+/* کد تخفیف در برگه‌ی پرداخت.
+   بسته می‌ماند تا کسی که کد ندارد با کادرِ خالی روبه‌رو نشود. */
+.mn-pay-disc-open {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 10px; padding: 8px 2px;
+  color: var(--accent-2); font-size: 12.5px;
+}
+
+.mn-pay-disc {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  margin-bottom: 10px; padding: 7px 8px 7px 12px;
+  border-radius: 13px;
+  background: var(--surface-2); border: 1px solid var(--border);
+}
+.mn-pay-disc input {
+  flex: 1; min-width: 0; background: none; border: 0;
+  color: var(--text); font-size: 14px; font-weight: 700;
+  letter-spacing: .1em; font-family: var(--num);
+}
+.mn-pay-disc input:focus { outline: none; }
+.mn-pay-disc-go {
+  flex: none; height: 32px; padding: 0 14px; border-radius: 9px;
+  background: var(--accent); color: #06090F;
+  font-size: 12.5px; font-weight: 700; border: 0;
+}
+.mn-pay-disc-go:disabled { opacity: .45; }
+
+/* کدِ اعمال‌شده */
+.mn-pay-disc.on {
+  border-color: var(--ok-line); background: var(--ok-soft);
+  padding: 11px 13px;
+}
+.mn-pay-disc.on > svg { flex: none; color: var(--ok); }
+.mn-pay-disc-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mn-pay-disc-txt b {
+  font-size: 13px; color: var(--text); letter-spacing: .08em;
+  font-family: var(--num);
+}
+.mn-pay-disc-txt i {
+  font-style: normal; font-size: 11.5px; color: var(--ok);
+}
+.mn-pay-disc.on > button {
+  flex: none; margin-inline-start: auto; padding: 5px;
+  border-radius: 7px; color: var(--muted); display: flex;
+}
+
 /* انتخابِ «سکه‌هایم را خرج کن» در برگه‌ی پرداخت */
 .mn-pay-coins {
   display: flex; align-items: center; gap: 10px; width: 100%;
