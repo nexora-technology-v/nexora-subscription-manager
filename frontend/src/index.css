@@ -2300,6 +2300,42 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .fx-chat-bar .fx-clip:hover { color: var(--text); border-color: var(--accent-line); }
 .fx-chat-bar .fx-clip:disabled { opacity: .45; }
 
+/* ── پاسخ‌های آماده ──
+
+   یک نوارِ افقیِ باریک بالای کادرِ تایپ. چرا افقی و اسکرول‌شونده و
+   نه چند سطر: ارتفاعِ این نوار از ارتفاعِ گفتگو کم می‌شود، و
+   گفتگویی که کوتاه‌تر شود یعنی مالک باید بیشتر اسکرول کند تا
+   بفهمد مشتری چه گفته. */
+.fx-quick {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px 0;
+}
+.fx-quick-i { color: var(--muted); flex: none; }
+.fx-quick-row {
+  display: flex; gap: 6px; overflow-x: auto; flex: 1 1 auto; min-width: 0;
+  padding-bottom: 6px;
+  scrollbar-width: none;
+}
+.fx-quick-row::-webkit-scrollbar { display: none; }
+.fx-quick-chip {
+  flex: none; white-space: nowrap;
+  padding: 5px 11px; border-radius: 99px; font-size: 12px;
+  color: var(--dim); background: var(--surface-2);
+  border: 1px solid var(--border);
+  transition: color .15s, border-color .15s, background .15s;
+}
+.fx-quick-chip:hover:not(:disabled) {
+  color: var(--text); border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.fx-quick-chip:disabled { opacity: .45; }
+.fx-quick-edit {
+  flex: none; width: 26px; height: 26px; border-radius: 8px;
+  display: grid; place-items: center;
+  color: var(--muted); transition: color .15s, background .15s;
+}
+.fx-quick-edit:hover { color: var(--accent-2); background: var(--accent-soft); }
+
 /* ── نشانِ خوانده‌نشده روی تب ── */
 .mn-tab-ico { position: relative; display: inline-flex; }
 .mn-badge {

@@ -270,7 +270,6 @@ check("و سرورهای تانل گرید گرفته‌اند",
       "minmax(300px,1fr)" in ALL.get("sections/tunnel.jsx", ""))
 
 print(f"\n{D}{'─' * 46}{X}")
-color = G if not _fail else R
 # ═══════════════════════════════════════════════════════════
 head("فهرست بلند باید صفحه‌بندی شود، نه اینکه همه‌اش ریخته شود")
 
@@ -1263,6 +1262,41 @@ check("صفحه‌ی اشتراک شبحِ خاکستری را کنار می‌�
       "آیکونِ یکسان برای همه، هیچ نمی‌گوید")
 
 
+# ═══════════════════════════════════════════════════════════
+head("پاسخ‌های آماده در صندوق")
+
+_INBOX = ALL.get("sections/bot/inbox.jsx", "")
+
+_defs = re.search(r"export const QUICK_DEFAULTS = \[(.*?)\n\];", _INBOX, re.S)
+check("پاسخ‌های پیش‌فرض وجود دارند", bool(_defs),
+      "ردیفِ خالی یعنی مالک نمی‌فهمد این‌جا قرار بوده چه باشد")
+
+_body = _defs.group(1) if _defs else ""
+_titles = re.findall(r'title:\s*"([^"]+)"', _body)
+check("هر پاسخ هم عنوان دارد هم متن",
+      len(_titles) >= 4 and len(_titles) == _body.count("body:"),
+      f"{len(_titles)} عنوان · {_body.count('body:')} متن")
+
+# دکمه باید *درج* کند، نه بفرستد: جوابِ آماده تقریباً همیشه یک جمله
+# کم دارد، و پیامی که ناقص رفته برنمی‌گردد.
+_uq = re.search(r"const useQuick = \(body\) => \{(.*?)\n  \};", _INBOX, re.S)
+check("کلیک، متن را در کادر می‌گذارد و نمی‌فرستد",
+      bool(_uq) and "send(" not in _uq.group(1),
+      "دکمه‌ای که خودش بفرستد، آن یک جمله را برای همیشه حذف می‌کند")
+check("و چیپ‌ها روی همین تابع سوارند",
+      "onClick={() => useQuick(r.body)}" in _INBOX)
+
+# جای‌گذاری که پرکننده ندارد، وسطِ جمله سوراخ می‌گذارد
+_fq = re.search(r"const fillQuick = \(body\) => \{(.*?)\n  \};", _INBOX, re.S)
+_filled = set(re.findall(r"\\\{([a-z_]+)\\\}", _fq.group(1))) if _fq else set()
+_offered = set(re.findall(r"\{([a-z_]+)\}", _body))
+check("هر جای‌گذاری که در متن‌ها آمده، پر هم می‌شود",
+      _offered <= _filled,
+      f"بی‌پرکننده: {sorted(_offered - _filled)}" if _offered - _filled
+      else f"{len(_filled)} جای‌گذار")
+
+
+color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))
 print()
 sys.exit(1 if _fail else 0)

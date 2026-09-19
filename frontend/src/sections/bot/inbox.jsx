@@ -15,12 +15,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, ArrowDown, Check, CheckCheck, ImagePlus, Loader2,
-  MessageCircle, RefreshCw, Search, Send, Shield, X,
+  MessageCircle, Pencil, Plus, RefreshCw, Search, Send, Shield, Trash2, X, Zap,
 } from "lucide-react";
 
 import { API_URL } from "../../lib/constants";
 import { errText, faNum, toFaDigits } from "../../lib/format";
-import { Avatar, EmptyState, Lightbox, PageSkeleton, SectionHead } from "../../ui/index";
+import {
+  Avatar, EmptyState, Field, Lightbox, Modal, PageSkeleton, SectionHead,
+} from "../../ui/index";
 import { shrinkImage } from "../../lib/image.js";
 
 async function call(path, password, opt = {}) {
@@ -36,6 +38,37 @@ async function call(path, password, opt = {}) {
   if (!res.ok) throw new Error(errText(j.detail, "درخواست ناموفق بود"));
   return j;
 }
+
+/* ── پاسخ‌های آماده ──
+
+   همان ده جوابی که هر روز تایپ می‌شوند. مالک عوضشان می‌کند؛ اینها
+   فقط نقطه‌ی شروع‌اند تا صندوق از روزِ اول خالی نباشد.
+
+   کلیک می‌کند و متن **داخلِ کادر می‌نشیند**، نه اینکه مستقیم برود.
+   جوابِ آماده تقریباً همیشه یک جمله کم دارد — و دکمه‌ای که خودش
+   بفرستد یعنی آن جمله هیچ‌وقت اضافه نمی‌شود. */
+
+export const QUICK_DEFAULTS = [
+  { title: "لینک را کپی کنید",
+    body: "سلام {name} 🙂\nلینکِ اشتراکتان را از بخش «اشتراک‌های من» "
+        + "کپی کنید و در برنامه از گزینه‌ی افزودن از کلیپ‌بورد واردش کنید." },
+  { title: "نصب برنامه",
+    body: "برای نصب، از بخش «آموزش نصب» در ربات برنامه‌ی مخصوصِ "
+        + "دستگاهتان را بگیرید. سه قدم است و کمتر از دو دقیقه." },
+  { title: "رسید تایید شد",
+    body: "رسیدتان تایید شد ✅\nاشتراکتان همین حالا فعال شد — "
+        + "لینکش را برایتان فرستادیم." },
+  { title: "رسید نامشخص",
+    body: "تصویرِ رسید واضح نیست. لطفاً یک عکسِ روشن‌تر یا متنِ "
+        + "پیامکِ بانک را بفرستید تا سریع بررسی کنیم." },
+  { title: "قطعی موقت",
+    body: "قطعیِ موقتِ شبکه است و در حالِ رفعش هستیم. چند دقیقه "
+        + "دیگر دوباره وصل شوید 🙏" },
+  { title: "سرعت کم",
+    body: "لطفاً یک‌بار سرورِ دیگری را از داخلِ برنامه امتحان کنید. "
+        + "اگر باز هم کند بود، ساعتِ دقیق و نامِ سرور را بگویید." },
+];
+
 
 /* ── زمان ──
    ساعت روی پیام، و روزِ آن بالای گروه. تاریخِ کامل روی هر پیام،
@@ -73,6 +106,10 @@ export function BotInboxSection({ password }) {
   const [photo, setPhoto] = useState("");
   const [shrinking, setShrinking] = useState(false);
   const [zoom, setZoom] = useState("");
+  // پاسخ‌های آماده و ویرایشگرشان
+  const [quick, setQuick] = useState(null);
+  const [brand, setBrand] = useState({});
+  const [editQ, setEditQ] = useState(null);
 
   const logRef = useRef(null);
   const endRef = useRef(null);
@@ -95,6 +132,21 @@ export function BotInboxSection({ password }) {
     } catch (e) { setErr(e.message); }
   }, [password]);
 
+  // پاسخ‌های آماده از تنظیمات می‌آیند. اگر چیزی ذخیره نشده باشد،
+  // پیش‌فرض‌ها نشان داده می‌شوند — نه یک ردیفِ خالی که مالک نفهمد
+  // این‌جا قرار بوده چه باشد.
+  const loadQuick = useCallback(async () => {
+    try {
+      const j = await call("/api/admin/bot/settings", password);
+      const st = (j.tenant?.settings && typeof j.tenant.settings === "object"
+                  && !Array.isArray(j.tenant.settings)) ? j.tenant.settings : {};
+      setBrand(st);
+      const q0 = Array.isArray(st.quick_replies) ? st.quick_replies : null;
+      setQuick(q0 && q0.length ? q0 : QUICK_DEFAULTS);
+    } catch { setQuick(QUICK_DEFAULTS); }
+  }, [password]);
+
+  useEffect(() => { loadQuick(); }, [loadQuick]);
   useEffect(() => { loadThreads(); }, [loadThreads]);
   useEffect(() => { if (open) { setMsgs(null); loadThread(open); } }, [open, loadThread]);
 
@@ -181,6 +233,37 @@ export function BotInboxSection({ password }) {
       boxRef.current?.focus();
     } catch (e2) { setErr(e2.message || "عکس خوانده نشد"); }
     finally { setShrinking(false); }
+  };
+
+  /**
+   * متنِ پاسخِ آماده، با جای‌گذارهای پرشده.
+   *
+   * فقط سه جای‌گذار، و هر سه از داده‌ای می‌آیند که این صفحه واقعاً
+   * دارد. جای‌گذاری که داده‌اش نیست، خالی چاپ می‌شود — و جمله‌ای
+   * که وسطش سوراخ دارد از نبودش بدتر است.
+   */
+  const fillQuick = (body) => {
+    const th = (threads || []).find((t) => t.userId === open);
+    return String(body || "")
+      .replace(/\{name\}/g, (th?.name || "").trim() || "دوست عزیز")
+      .replace(/\{brand\}/g, brand.brand || "")
+      .replace(/\{support\}/g, brand.support_username || "");
+  };
+
+  /** درج در کادر، نه ارسال. تقریباً همیشه یک جمله باید اضافه شود. */
+  const useQuick = (body) => {
+    const t = fillQuick(body);
+    setText((prev) => (prev.trim() ? `${prev.replace(/\s+$/, "")}\n${t}` : t));
+    boxRef.current?.focus();
+  };
+
+  const saveQuick = async (rows) => {
+    setQuick(rows);
+    try {
+      await call("/api/admin/bot/settings", password,
+                 { method: "PUT", body: { settings: { ...brand, quick_replies: rows } } });
+      setBrand((b) => ({ ...b, quick_replies: rows }));
+    } catch (e) { setErr(e.message); }
   };
 
   const send = async () => {
@@ -377,6 +460,29 @@ export function BotInboxSection({ password }) {
                   </div>
                 )}
 
+                {/* پاسخ‌های آماده.
+                    بالای کادر و نه داخلِ منو: چیزی که هر روز ده بار
+                    استفاده می‌شود نباید یک کلیکِ اضافه داشته باشد. */}
+                <div className="fx-quick">
+                  <Zap size={13} className="fx-quick-i" aria-hidden="true" />
+                  <div className="fx-quick-row">
+                    {(quick || []).map((r, i) => (
+                      <button key={`${r.title}-${i}`} type="button"
+                        className="fx-quick-chip" disabled={busy}
+                        title={fillQuick(r.body)}
+                        onClick={() => useQuick(r.body)}>
+                        {r.title}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="fx-quick-edit"
+                    onClick={() => setEditQ((quick || []).map((x) => ({ ...x })))}
+                    title="ویرایش پاسخ‌های آماده"
+                    aria-label="ویرایش پاسخ‌های آماده">
+                    <Pencil size={12} />
+                  </button>
+                </div>
+
                 <footer className="fx-chat-bar">
                   <button className="fx-clip" onClick={() => photoRef.current?.click()}
                     disabled={busy || shrinking} aria-label="فرستادن عکس"
@@ -418,6 +524,63 @@ export function BotInboxSection({ password }) {
             )}
           </section>
         </div>
+      )}
+
+      {editQ && (
+        <Modal title="پاسخ‌های آماده" onClose={() => setEditQ(null)} width="560px">
+          <p className="text-[12.5px] mb-3" style={{ color: "var(--muted)" }}>
+            جای‌گذارها: <code>{"{name}"}</code> نامِ مشتری ·{" "}
+            <code>{"{brand}"}</code> نامِ برند · <code>{"{support}"}</code>{" "}
+            یوزرنیمِ پشتیبانی
+          </p>
+
+          {editQ.map((r, i) => (
+            <div key={i} className="fx-card p-3 mb-2">
+              <div className="flex items-center gap-2 mb-2">
+                <input className="fx-input" value={r.title}
+                  placeholder="عنوانِ دکمه"
+                  onChange={(e) => setEditQ(editQ.map(
+                    (x, j) => (j === i ? { ...x, title: e.target.value } : x)))} />
+                <button type="button" className="fx-ico-btn shrink-0"
+                  onClick={() => setEditQ(editQ.filter((_x, j) => j !== i))}
+                  title="حذف" aria-label="حذف این پاسخ">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+              <textarea className="fx-input" rows={2} value={r.body}
+                placeholder="متنِ پاسخ"
+                onChange={(e) => setEditQ(editQ.map(
+                  (x, j) => (j === i ? { ...x, body: e.target.value } : x)))}
+                style={{ resize: "vertical", lineHeight: 1.9 }} />
+            </div>
+          ))}
+
+          <div className="flex items-center justify-between gap-2 mt-3">
+            <button type="button" className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5"
+              onClick={() => setEditQ([...editQ, { title: "", body: "" }])}>
+              <Plus size={13} /> پاسخ تازه
+            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" className="fx-btn-g px-3 py-2 text-[13px]"
+                onClick={() => setEditQ(QUICK_DEFAULTS.map((x) => ({ ...x })))}>
+                بازگرداندن پیش‌فرض‌ها
+              </button>
+              <button type="button" className="fx-btn px-4 py-2 text-[13px]"
+                onClick={() => {
+                  /* ردیفِ بی‌عنوان یا بی‌متن، چیپی می‌سازد که یا
+                     دیده نمی‌شود یا هیچ درج نمی‌کند. */
+                  const rows = editQ
+                    .map((x) => ({ title: (x.title || "").trim(),
+                                   body: (x.body || "").trim() }))
+                    .filter((x) => x.title && x.body);
+                  saveQuick(rows.length ? rows : QUICK_DEFAULTS);
+                  setEditQ(null);
+                }}>
+                ذخیره
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       <Lightbox src={zoom} onClose={() => setZoom("")} />
