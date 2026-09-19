@@ -2702,6 +2702,96 @@ check("صفحه‌های حسابداری خودشان تازه می‌شوند"
 
 
 # ═══════════════════════════════════════════════════════════
+head("پاسخ پشتیبانی · ربات شلوغ نشود")
+
+# چرا این بخش: تا امروز **متنِ کاملِ پاسخ** در گفتگوی ربات هم نوشته
+# می‌شد. یعنی هر مکالمه دو بار وجود داشت — یک‌بار در مینی‌اپ و
+# یک‌بار در ربات — و ربات پر می‌شد از چیزی که مشتری همان‌جا داشت.
+#
+# ولی حذفِ کامل هم غلط است: مشتری‌ای که مینی‌اپ را باز نکند هرگز
+# نمی‌فهمد جواب آمده.
+#
+# پس یک خطِ کوتاه با دکمه، و فقط وقتی خبرِ خوانده‌نشده‌ای از قبل
+# نمانده باشد.
+
+import tempfile as _tfq                                   # noqa: E402
+import sqlite3 as _sqq                                    # noqa: E402
+from pathlib import Path as _Pq                            # noqa: E402
+
+_qdir = _Pq(_tfq.mkdtemp(prefix="nx-quiet-"))
+_old_botq = app.BOT_DB
+try:
+    _qdb = _qdir / "bot.db"
+    _qc = _sqq.connect(str(_qdb))
+    import sys as _sysq
+    _sysq.path.insert(0, ".")
+    from bot import db as _BDq
+    _qc.executescript(_BDq.SCHEMA)
+    _BDq._migrate(_qc)
+    _qc.execute("INSERT INTO tenants (id,name,bot_token,settings) "
+                "VALUES (1,'owner','1:x','{}')")
+    _qc.execute("INSERT INTO users (id,tenant_id,tg_id,first_name) "
+                "VALUES (1,1,5550001,'مریم')")
+    _qc.commit()
+    _qc.close()
+    app.BOT_DB = _qdb
+
+    # جاسوس روی ارسال — هیچ شبکه‌ای در کار نیست
+    _sentq = []
+    _hq = app._bot_handlers()
+    _old_botcls = _hq.Bot
+
+    class _FakeBotQ:
+        def __init__(self, *a, **k):
+            pass
+
+        def send(self, chat_id, text, keyboard=None, **k):
+            _sentq.append(str(text))
+            return {"ok": True}
+
+        def send_photo_bytes(self, chat_id, data, **k):
+            _sentq.append(str(k.get("caption") or ""))
+            return {"ok": True}
+
+    _hq.Bot = _FakeBotQ
+    try:
+        for _i in range(1, 6):
+            app.admin_inbox_send({"userId": 1, "body": f"پاسخ {_i}"},
+                                 x_admin_password=app._INTERNAL_PW)
+
+        check("پنج پاسخِ پشت‌سرهم یک خبر می‌دهد، نه پنج‌تا",
+              len(_sentq) == 1, f"{len(_sentq)} پیام در ربات")
+        check("و متنِ پاسخ در ربات نوشته نمی‌شود",
+              _sentq and "پاسخ ۱" not in _sentq[0] and "پاسخ 1" not in _sentq[0],
+              "مکالمه نباید دو جا تکرار شود")
+
+        # مشتری می‌خواند → چرخه از نو
+        app.mini_inbox_read((app._root_tenant_row(),
+                             {"id": 1, "tg_id": 5550001, "first_name": "مریم"}))
+        _before = len(_sentq)
+        app.admin_inbox_send({"userId": 1, "body": "پاسخ تازه"},
+                             x_admin_password=app._INTERNAL_PW)
+        check("بعد از خواندن، خبرِ تازه می‌آید",
+              len(_sentq) == _before + 1,
+              "وگرنه مشتری هیچ‌وقت از پاسخِ بعدی خبردار نمی‌شود")
+
+        # و همه‌ی پاسخ‌ها در مینی‌اپ هستند
+        _boxq = app.mini_inbox((app._root_tenant_row(),
+                                {"id": 1, "tg_id": 5550001, "first_name": "مریم"}))
+        check("هر شش پاسخ در صندوقِ مینی‌اپ هست",
+              len(_boxq.get("messages") or []) == 6,
+              f"{len(_boxq.get('messages') or [])} پیام")
+    finally:
+        _hq.Bot = _old_botcls
+finally:
+    app.BOT_DB = _old_botq
+
+check("متنِ پاسخ دیگر در ربات نوشته نمی‌شود",
+      'f"💬 <b>پاسخ پشتیبانی</b>' not in _APSRC,
+      "مکالمه یک جا باشد، نه دو جا")
+
+
+# ═══════════════════════════════════════════════════════════
 head("ترافیک · بانکِ ریستِ گروه، همان عددی که x-ui نشان می‌دهد")
 
 # چرا این بخش: 3x-ui وقتی ترافیکِ یک گروه را ریست می‌کند، مقدارِ

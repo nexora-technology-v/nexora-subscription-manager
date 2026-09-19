@@ -2895,20 +2895,39 @@ def admin_inbox_send(payload: dict, x_admin_password: str = Header(...)):
         log.exception("ثبت پاسخ ناموفق")
         raise HTTPException(status_code=502, detail=f"فرستاده نشد: {str(e)[:120]}")
 
-    # و در خودِ تلگرام هم برسد: مشتری ممکن است مینی‌اپ را باز نکند.
+    # ── خبردادن در تلگرام، بدونِ شلوغ‌کردنِ ربات ──
+    #
+    # تا امروز **متنِ کاملِ پاسخ** در گفتگوی ربات هم نوشته می‌شد.
+    # نتیجه‌اش این بود که هر مکالمه دو بار وجود داشت — یک‌بار در
+    # مینی‌اپ و یک‌بار در ربات — و ربات پر می‌شد از چیزی که مشتری
+    # همان‌جا در مینی‌اپ داشت.
+    #
+    # ولی حذفِ کامل هم درست نیست: مشتری‌ای که مینی‌اپ را باز نکند
+    # هیچ‌وقت نمی‌فهمد جواب آمده.
+    #
+    # پس: یک خطِ کوتاه با دکمه‌ی بازکردنِ مینی‌اپ، و **فقط وقتی
+    # خبرِ خوانده‌نشده‌ای از قبل نمانده باشد**. اگر پشتیبانی پنج
+    # پیامِ پشت‌سرهم بدهد، مشتری یک خبر می‌گیرد نه پنج‌تا؛ و تا
+    # نخواندشان، خبرِ تازه‌ای نمی‌آید.
     if u:
         try:
-            h, ctx = _mini_ctx(t)
-            cap = f"💬 <b>پاسخ پشتیبانی</b>\n\n{h.esc(body[:900])}" if body \
-                else "💬 <b>پاسخ پشتیبانی</b>"
-            blob = _chat_photo_bytes(photo) if photo else None
-            if blob:
-                ctx.bot.send_photo_bytes(u["tg_id"], blob, filename="photo.jpg",
-                                         caption=cap)
-            else:
-                ctx.bot.send(u["tg_id"], cap)
+            db2 = _bot_db_rw(t)
+            pending = int(db2.chat_unread_for_user(uid) or 0)
         except Exception:
-            log.debug("ارسال پاسخ در تلگرام ناموفق", exc_info=True)
+            pending = 1        # نمی‌دانیم — پس ساکت می‌مانیم
+        # پیامِ همین لحظه خودش یکی از نخوانده‌هاست؛ بیشتر از یک یعنی
+        # از قبل هم خبری بوده که مشتری هنوز ندیده
+        if pending <= 1:
+            try:
+                h, ctx = _mini_ctx(t)
+                app_url = h.miniapp_url(ctx)
+                note = ("💬 پاسخ پشتیبانی برایتان آمد."
+                        + ("" if app_url else "\n\nبرای دیدنش /start را بزنید."))
+                keys = h.kb([[("💬 دیدنِ پاسخ", app_url, "web_app")]]) \
+                    if app_url else None
+                ctx.bot.send(u["tg_id"], note, keyboard=keys)
+            except Exception:
+                log.debug("خبرِ پاسخ در تلگرام ناموفق", exc_info=True)
 
     return {"ok": True, "photo": photo or ""}
 
