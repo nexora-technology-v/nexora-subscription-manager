@@ -5474,10 +5474,29 @@ def _xui_db_path():
     if env and Path(env).exists():
         return Path(env)
 
-    # ۳. مسیرهای رایج — اولین موجود
+    # ۳. مسیرهای رایج — تازه‌ترین، نه اولینِ فهرست.
+    #
+    # چرا این‌طور شد: نصب‌های واقعی بیش از یک `x-ui.db` دارند. نصبِ
+    # دوباره، مهاجرت از یک مسیر به مسیر دیگر، یا بک‌آپی که کنارش
+    # مانده — و فهرستِ بالا اولینِ موجود را برمی‌داشت.
+    #
+    # نتیجه‌اش بی‌صدا بود و از بیرون شبیهِ خرابیِ حسابداری: پنل عددِ
+    # یک فایلِ مرده را می‌خواند که هیچ‌وقت عوض نمی‌شد، و مالک
+    # می‌دید مصرف «آپدیت نمی‌شود» و با پنلِ خودِ x-ui هم نمی‌خواند.
+    #
+    # x-ui هر چند ثانیه روی فایلِ زنده می‌نویسد، پس تازه‌ترین
+    # `mtime` همان فایلِ زنده است. این حدس نیست؛ قابلِ سنجش است.
+    found = []
     for p in XUI_CANDIDATES:
-        if Path(p).exists():
-            return Path(p)
+        pp = Path(p)
+        try:
+            if pp.exists():
+                found.append((pp.stat().st_mtime, pp))
+        except OSError:
+            continue
+    if found:
+        found.sort(key=lambda x: x[0], reverse=True)
+        return found[0][1]
 
     # هیچ‌کدام پیدا نشد — مسیری که کاربر انتظار دارد را برمی‌گردانیم
     # تا پیام خطا به همان اشاره کند، نه به یک مسیر پیش‌فرض گیج‌کننده.
@@ -5486,6 +5505,33 @@ def _xui_db_path():
     if env:
         return Path(env)
     return Path(XUI_CANDIDATES[0])
+def _xui_db_candidates():
+    """
+    همه‌ی فایل‌های `x-ui.db` که پیدا می‌شوند، با زمانِ آخرین نوشتن.
+
+    برای تشخیص هم هست و هم برای هشدار: وقتی بیش از یکی هست، یعنی
+    ممکن است پنل به فایلِ اشتباه نگاه کند — و آن خرابی بی‌صداست.
+    """
+    out = []
+    seen = set()
+    for p in XUI_CANDIDATES:
+        pp = Path(p)
+        try:
+            if not pp.exists():
+                continue
+            key = str(pp.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            st = pp.stat()
+            out.append({"path": str(pp), "mtime": st.st_mtime,
+                        "size": st.st_size})
+        except OSError:
+            continue
+    out.sort(key=lambda d: d["mtime"], reverse=True)
+    return out
+
+
 BILLING_DB = Path(os.getenv("BILLING_DB_PATH", str(CONFIG_PATH.parent / "billing.db")))
 
 
@@ -9563,6 +9609,57 @@ def billing_diagnose(x_admin_password: str = Header(...)):
               else "متغیر سرویس" if env and str(path) == env
               else "جستجوی خودکار")
     step("مسیر انتخابی", True, f"{path}  (از {source})")
+
+    # ── بیش از یک x-ui.db روی سرور ──
+    #
+    # این خرابیِ بی‌صداست و از بیرون شبیهِ «حسابداری آپدیت نمی‌شود»
+    # دیده می‌شود: پنل عددِ یک فایلِ مرده را می‌خواند که هیچ‌وقت
+    # عوض نمی‌شود، و مالک می‌بیند مصرف با پنلِ خودِ x-ui نمی‌خواند.
+    #
+    # نصبِ دوباره، مهاجرت از مسیری به مسیرِ دیگر، یا بک‌آپی که کنارش
+    # مانده — هر سه این حالت را می‌سازند.
+    cands = _xui_db_candidates()
+    if len(cands) > 1:
+        import time as _t
+        now = _t.time()
+        lines = []
+        for c in cands:
+            age = now - c["mtime"]
+            if age < 120:
+                when = "همین حالا"
+            elif age < 3600:
+                when = f"{int(age // 60)} دقیقه پیش"
+            elif age < 86400:
+                when = f"{int(age // 3600)} ساعت پیش"
+            else:
+                when = f"{int(age // 86400)} روز پیش"
+            mark = " ← انتخاب‌شده" if c["path"] == str(path) else ""
+            lines.append(f"{c['path']} (آخرین نوشتن: {when}){mark}")
+        # تازه‌ترین فایل همان است که x-ui رویش می‌نویسد
+        live_is_chosen = cands[0]["path"] == str(path)
+        step("چند فایل x-ui پیدا شد", live_is_chosen,
+             " · ".join(lines),
+             "" if live_is_chosen else
+             "فایلِ انتخاب‌شده تازه‌ترین نیست. مسیر درست را در «تنظیمات و "
+             "بک‌آپ» دستی بگذارید، یا فایل‌های اضافه را کنار ببرید.")
+
+    # ── فایلِ انتخاب‌شده اصلاً تازه است؟ ──
+    #
+    # x-ui هر چند ثانیه ترافیک را می‌نویسد. فایلی که ساعت‌هاست
+    # دست‌نخورده مانده یعنی x-ui رویش نمی‌نویسد — چه بک‌آپ باشد، چه
+    # نصبی که دیگر اجرا نمی‌شود.
+    try:
+        import time as _t2
+        age2 = _t2.time() - path.stat().st_mtime
+        fresh = age2 < 6 * 3600
+        step("فایل تازه نوشته شده", fresh,
+             (f"{int(age2 // 60)} دقیقه پیش" if age2 < 3600
+              else f"{int(age2 // 3600)} ساعت پیش"),
+             "" if fresh else
+             "x-ui روی این فایل نمی‌نویسد. احتمالاً فایلِ درست جای دیگری "
+             "است — روی سرور بزنید: nexora usage-why")
+    except OSError:
+        pass
 
     if manual and not Path(manual).exists():
         step("مسیر دستی", False, f"{manual} وجود ندارد",

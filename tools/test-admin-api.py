@@ -2702,6 +2702,84 @@ check("صفحه‌های حسابداری خودشان تازه می‌شوند"
 
 
 # ═══════════════════════════════════════════════════════════
+head("مسیر x-ui · کدام فایل، وقتی چندتا هست")
+
+# چرا این بخش: نصب‌های واقعی بیش از یک `x-ui.db` دارند — نصبِ
+# دوباره، مهاجرت، یا بک‌آپی که کنارش مانده. انتخاب «اولینِ فهرست»
+# بود، پس پنل می‌توانست عددِ یک فایلِ مرده را بخواند که هیچ‌وقت عوض
+# نمی‌شود.
+#
+# از بیرون شبیهِ «حسابداری آپدیت نمی‌شود» دیده می‌شد و با پنلِ خودِ
+# x-ui هم نمی‌خواند — و هیچ‌جا نمی‌گفت چرا.
+
+import tempfile as _tfp                                   # noqa: E402
+import os as _osp                                         # noqa: E402
+import time as _tmp2                                      # noqa: E402
+from pathlib import Path as _Pp                            # noqa: E402
+
+_pdir = _Pp(_tfp.mkdtemp(prefix="nx-xpath-"))
+_old_c = app.XUI_CANDIDATES
+_old_e = _osp.environ.get("XUI_DB_PATH", "")
+try:
+    _osp.environ.pop("XUI_DB_PATH", None)
+    _dead = _pdir / "dead.db"
+    _live = _pdir / "live.db"
+    _dead.write_bytes(b"x" * 100)
+    _live.write_bytes(b"x" * 100)
+    # مرده: ۹ روز پیش. زنده: همین حالا.
+    _t9 = _tmp2.time() - 9 * 86400
+    _osp.utime(_dead, (_t9, _t9))
+
+    # مرده عمداً اولِ فهرست است — همان چیزی که روی سرور پیش می‌آید
+    app.XUI_CANDIDATES = [str(_dead), str(_live)]
+    _pick = app._xui_db_path()
+    check("تازه‌ترین فایل انتخاب می‌شود، نه اولینِ فهرست",
+          str(_pick) == str(_live),
+          f"{_Pp(_pick).name} — x-ui هر چند ثانیه روی فایلِ زنده می‌نویسد")
+
+    _cands = app._xui_db_candidates()
+    check("و همه‌ی نامزدها قابل دیدن‌اند", len(_cands) == 2,
+          f"{len(_cands)} فایل — بدون این، انتخاب بی‌صدا می‌ماند")
+    check("و مرتب‌اند: تازه‌ترین اول",
+          _cands and _cands[0]["path"] == str(_live))
+
+    # یکی که باشد، همان
+    app.XUI_CANDIDATES = [str(_dead)]
+    check("با یک فایل، همان برمی‌گردد",
+          str(app._xui_db_path()) == str(_dead))
+
+    # هیچ‌کدام نباشد، اولینِ فهرست برمی‌گردد تا پیام خطا معنا داشته باشد
+    app.XUI_CANDIDATES = [str(_pdir / "nope-a.db"), str(_pdir / "nope-b.db")]
+    check("و وقتی هیچ‌کدام نیست، پیام خطا به مسیرِ مورد انتظار اشاره می‌کند",
+          str(app._xui_db_path()) == str(_pdir / "nope-a.db"))
+
+    # مسیرِ صریح همیشه بر حدس مقدم است
+    _osp.environ["XUI_DB_PATH"] = str(_dead)
+    app.XUI_CANDIDATES = [str(_live)]
+    check("مسیرِ صریحِ سرویس بر حدس مقدم است",
+          str(app._xui_db_path()) == str(_dead),
+          "وگرنه تنظیمِ دستیِ مالک بی‌اثر می‌شد")
+finally:
+    app.XUI_CANDIDATES = _old_c
+    if _old_e:
+        _osp.environ["XUI_DB_PATH"] = _old_e
+    else:
+        _osp.environ.pop("XUI_DB_PATH", None)
+
+# ── ابزارِ تشخیص همان قاعده را داشته باشد ──
+#
+# اگر دو قاعده باشند، ابزار فایلی را نام می‌برد که پنل نمی‌خواند —
+# که از گزارش‌نکردن بدتر است.
+_UWSRC = _io.open("tools/usage-why.py", encoding="utf-8").read()
+check("ابزارِ usage-why هم تازه‌ترین را برمی‌دارد",
+      "_find_newest(XUI_PATHS)" in _UWSRC,
+      "دو قاعده یعنی ابزار فایلِ اشتباه را نام می‌برد")
+check("و تشخیصِ پنل چند-فایل‌بودن را گزارش می‌کند",
+      "_xui_db_candidates()" in _APSRC.split("def billing_diagnose")[1][:3000],
+      "انتخابِ بی‌صدا همان چیزی است که این باگ را ماه‌ها پنهان نگه داشت")
+
+
+# ═══════════════════════════════════════════════════════════
 head("مصرف · همه‌ی صفحه‌ها یک عدد می‌گویند")
 
 # چرا این بخش جداست: نسخه‌ی قبل جمعِ مصرف را فقط در

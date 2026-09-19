@@ -939,6 +939,20 @@ PY
     fi
     ;;
 
+  usage-why)
+    # چرا عددِ مصرف این است — نسخه‌ی پنل، وضعیتِ ردیابیِ ریست، و
+    # مصرفِ هر کانفیگ کنارِ آنچه از دوره‌های ریست‌شده بانک شده.
+    # هیچ رمز، نام مشتری یا شماره‌ای چاپ نمی‌شود، پس خروجی
+    # قابل فرستادن است.
+    if [ -f "$INSTALL_DIR/tools/usage-why.py" ]; then
+      shift
+      python3 "$INSTALL_DIR/tools/usage-why.py" "$@"
+    else
+      err "tools/usage-why.py پیدا نشد — اول nexora update بزنید"
+      exit 1
+    fi
+    ;;
+
   import-topups)
     # شارژهای اعتبارِ نماینده‌ها که پیش از نسخه‌ی ۱.۲۷ فقط در دفتر
     # اعتبار می‌نشستند و به حسابداری نمی‌رسیدند. بدون آرگومان فقط
@@ -1222,6 +1236,7 @@ PYEOF
     echo -e "  ${C_WHITE}nexora bot${C_RESET}                    ${C_DIM}manage the Telegram bot${C_RESET}"
     echo -e "  ${C_WHITE}nexora doctor${C_RESET}                 ${C_DIM}check and auto-fix common problems${C_RESET}"
     echo -e "  ${C_WHITE}nexora billing-why${C_RESET}            ${C_DIM}why a config shows as having no rate${C_RESET}"
+    echo -e "  ${C_WHITE}nexora usage-why${C_RESET}              ${C_DIM}why the usage figure is what it is${C_RESET}"
     echo -e "  ${C_WHITE}nexora import-topups${C_RESET}          ${C_DIM}bring old prepaid top-ups into the books${C_RESET}"
     echo -e "  ${C_WHITE}nexora repair-orders${C_RESET}          ${C_DIM}fix wallet order statuses written before 1.34${C_RESET}"
     echo -e "  ${C_WHITE}nexora repair-referrals${C_RESET}       ${C_DIM}pay referral coins wallet buys never paid${C_RESET}"
