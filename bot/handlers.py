@@ -496,8 +496,29 @@ def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
                       back_kb("buy"))
 
     cs = ctx.s.get("coins")
-    pr = core.price_order(p["price"], coins=user["coins"], coin_cfg=cs, use_coins=True)
+
+    # کدِ در دست، هر بار از نو سنجیده می‌شود.
+    #
+    # ظرفیت ممکن است بین دیدنِ این صفحه و زدنِ دکمه تمام شده باشد؛
+    # قیمتی که نشان می‌دهیم باید همان باشد که گرفته می‌شود.
+    dcode = ctx.db.held_discount(user["tg_id"])
+    dpct, dwhy, dbad = 0, None, ""
+    if dcode:
+        dwhy, dpct, _ = find_discount(ctx, dcode, plan_id)
+        if not dpct:
+            # بی‌صدا دور انداختنش یعنی قیمت بی‌توضیح به حالتِ اول
+            # برمی‌گردد و مشتری فکر می‌کند کد را اشتباه زده.
+            dbad, dcode = dcode, ""
+            ctx.db.set_held_discount(user["tg_id"], None)
+
+    pr = core.price_order(p["price"], coins=user["coins"], coin_cfg=cs,
+                          use_coins=True, discount_percent=dpct)
     has_coin_discount = pr["coin_discount"] > 0
+
+    # قیمتِ «بدون سکه ولی با کد» — پایه‌ی دکمه‌ی خریدِ ساده و سنجشِ
+    # کفایتِ کیف پول. بدونش مشتری‌ای که کد زده هنوز قیمتِ کامل را
+    # روی دکمه می‌بیند و کیف پولش «کافی نیست» اعلام می‌شود.
+    plain = core.price_order(p["price"], discount_percent=dpct)
 
     ips = p["ip_limit"]
     days = p["days"]
@@ -513,7 +534,14 @@ def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
     if p.get("description"):
         lines += ["", F.i(p["description"])]
 
+    if dwhy:
+        lines += ["", F.quote(f"🎟 کدِ <code>{esc(dbad)}</code> اعمال نشد — "
+                              f"{esc(dwhy)}")]
+
     rows = []
+    if dpct:
+        lines += ["", f"🎟 کد <code>{esc(dcode)}</code> — "
+                      f"{core.fa(dpct)}٪ تخفیف"]
     if has_coin_discount:
         # قیمت قبلی خط‌خورده کنار قیمت جدید: مشتری خودش مقدار
         # صرفه‌جویی را می‌بیند، که از نوشتن «۲۰٪ تخفیف» قوی‌تر است.
@@ -524,11 +552,20 @@ def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
         rows.append([(f"🪙 خرید با تخفیف — {core.toman(pr['final'])} تومان",
                       f"chk:{plan_id}:1")])
     else:
-        lines += ["", "💰 " + F.price(core.toman(p["price"]))]
+        lines += ["", "💰 " + F.price(
+            core.toman(plain["final"]),
+            old=(core.toman(p["price"]) if dpct else None))]
 
-    rows.append([(f"💳 خرید — {core.toman(p['price'])} تومان", f"chk:{plan_id}:0")])
+    rows.append([(f"💳 خرید — {core.toman(plain['final'])} تومان",
+                  f"chk:{plan_id}:0")])
 
-    if user["balance"] >= p["price"]:
+    # دکمه‌ی کد: یا برای واردکردنش، یا برای برداشتنش. هر دو حالت
+    # دیده می‌شود — کدی که روی قیمت اثر دارد و یادِ کسی نیست، همان
+    # مسیرِ خرابِ بی‌صداست.
+    rows.append([("✖️ برداشتن کد تخفیف", f"dscx:{plan_id}")] if dcode
+                else [("🎟 کد تخفیف دارم", f"dsc:{plan_id}")])
+
+    if user["balance"] >= plain["final"]:
         lines.append("")
         lines.append(F.quote(
             "👛 موجودی کیف پولتان برای این خرید کافی است — با پرداخت از "
@@ -537,6 +574,62 @@ def show_plan_detail(ctx, user, chat_id, message_id, plan_id):
 
     rows.append([("‹ بازگشت", "buy")])
     _reply(ctx, chat_id, message_id, "\n".join(lines), kb(rows))
+
+
+def ask_discount(ctx, user, chat_id, message_id, plan_id):
+    """پرسیدنِ کد. پاسخش در `handle_discount` می‌آید."""
+    p = ctx.db.get_plan(plan_id)
+    if not p:
+        return _reply(ctx, chat_id, message_id,
+                      "این پلن دیگر در دسترس نیست.\n\n"
+                      "از لیست، یکی از پلن‌های فعال را انتخاب کنید.",
+                      back_kb("buy"))
+    ctx.db.set_state(user["tg_id"], "await_discount", {"plan": int(plan_id)})
+    return _reply(ctx, chat_id, message_id,
+                  "🎟 <b>کد تخفیف</b>\n\n"
+                  "کدتان را همین‌جا بفرستید.\n\n"
+                  "<blockquote>اگر کدی ندارید، برگردید و بدون آن "
+                  "خرید کنید.</blockquote>",
+                  kb([[("‹ بازگشت", f"plan:{plan_id}")]]))
+
+
+def drop_discount(ctx, user, chat_id, message_id, plan_id):
+    """برداشتنِ کد — و برگشت به همان صفحه با قیمتِ بی‌تخفیف."""
+    ctx.db.set_held_discount(user["tg_id"], None)
+    return show_plan_detail(ctx, user, chat_id, message_id, int(plan_id))
+
+
+def handle_discount(ctx, msg, user, sdata):
+    """
+    کدی که مشتری فرستاده.
+
+    سنجش همان‌جایی است که مینی‌اپ هم از آن رد می‌شود
+    (`find_discount` → `core.validate_discount`) — نه نسخه‌ی دومی
+    که روزی از اولی دور بیفتد.
+    """
+    chat_id = (msg.get("chat") or {}).get("id")
+    code = (msg.get("text") or "").strip()
+    pid = int(sdata.get("plan") or 0)
+
+    if not code:
+        return ctx.bot.send(chat_id, "کد را به‌صورت متن بفرستید.",
+                            keyboard=kb([[("‹ بازگشت", f"plan:{pid}")]]))
+
+    err, pct, _row = find_discount(ctx, code, pid or None)
+    if not pct:
+        # «ظرفیت تمام شده» و «منقضی شده» دو چیزِ متفاوتند و مشتری
+        # باید بداند کدام — وگرنه کدِ درست را هم دوباره می‌زند.
+        return ctx.bot.send(
+            chat_id,
+            f"❌ {esc(err or 'کد تخفیف معتبر نیست')}\n\n"
+            "اگر کد دیگری دارید بفرستید، یا برگردید.",
+            keyboard=kb([[("‹ بازگشت", f"plan:{pid}")]]))
+
+    ctx.db.set_held_discount(user["tg_id"], code)
+    ctx.db.clear_state(user["tg_id"])
+    fresh = ctx.db.get_user(user["tg_id"]) or user
+    ctx.bot.send(chat_id, f"✅ کد پذیرفته شد — <b>{core.fa(pct)}٪</b> تخفیف")
+    return show_plan_detail(ctx, fresh, chat_id, None, pid)
 
 
 def find_discount(ctx, code, plan_id=None):
@@ -632,8 +725,11 @@ def card_order(ctx, user, plan_id, use_coins=False, renew_sub_id=None,
 def checkout(ctx, user, chat_id, message_id, plan_id, use_coins,
              renew_sub_id=None):
     """ساخت سفارش و نمایش اطلاعات کارت — پوسته‌ی `card_order`."""
+    # پوسته فقط کد را می‌برد؛ قیمت همان‌جایی حساب می‌شود که برای
+    # مینی‌اپ هم حساب می‌شود.
+    held = ctx.db.held_discount(user["tg_id"])
     ok, r = card_order(ctx, user, plan_id, use_coins=use_coins,
-                       renew_sub_id=renew_sub_id)
+                       renew_sub_id=renew_sub_id, discount_code=held or None)
     if not ok:
         if r == "no_plan":
             return _reply(ctx, chat_id, message_id,
@@ -656,6 +752,10 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins,
 
     order, p, card, pr, ttl = (r["order"], r["plan"], r["card"],
                                r["price"], r["ttl"])
+    # کد داخلِ سفارش ثبت شد؛ ماندنش روی کاربر یعنی خریدِ بعدی هم
+    # بی‌آنکه مشتری بخواهد تخفیف می‌گیرد.
+    if held:
+        ctx.db.set_held_discount(user["tg_id"], None)
     ctx.db.set_state(user["tg_id"], "await_receipt", {"order_id": order["id"]})
 
     holder = esc(card.get("holder") or "—")
@@ -669,12 +769,14 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins,
         f"<i>{core.fmt_gb(p['gb'])} · {core.fmt_days(p['days'])}</i>",
         "",
     ]
+    if pr["code_discount"] or pr["coin_discount"]:
+        lines.append(f"قیمت: <s>{core.toman(p['price'])}</s> تومان")
+    if pr["code_discount"]:
+        lines.append(f"🎟 کد تخفیف: {core.fa(pr['code_percent'])}٪ "
+                     f"({core.toman(pr['code_discount'])} تومان)")
     if pr["coin_discount"]:
-        lines += [
-            f"قیمت: <s>{core.toman(p['price'])}</s> تومان",
-            f"🪙 تخفیف سکه: {core.fa(pr['coin_percent'])}٪ "
-            f"({core.fa(pr['coins_used'])} سکه)",
-        ]
+        lines.append(f"🪙 تخفیف سکه: {core.fa(pr['coin_percent'])}٪ "
+                     f"({core.fa(pr['coins_used'])} سکه)")
     lines += [
         f"💰 قابل پرداخت: <b>{core.toman(pr['final'])} تومان</b>",
         "",
@@ -807,9 +909,14 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
 
     این‌جا فقط پیام ساخته می‌شود؛ هیچ پولی این‌جا جابه‌جا نمی‌شود.
     """
-    r = wallet_purchase(ctx, user, plan_id, renew_sub_id=renew_sub_id)
+    held = ctx.db.held_discount(user["tg_id"])
+    r = wallet_purchase(ctx, user, plan_id, renew_sub_id=renew_sub_id,
+                        discount_code=held or None)
 
     if r["ok"]:
+        # خرج شد — دیگر روی کاربر نمی‌ماند.
+        if held:
+            ctx.db.set_held_discount(user["tg_id"], None)
         _reply(ctx, chat_id, message_id,
                f"✅ <b>{core.toman(r['spent'])}</b> تومان از کیف پولتان کم شد.\n\n"
                "اشتراک آماده است — همین پایین برایتان فرستادیم.", None)
@@ -819,6 +926,15 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
     if why == "no_plan":
         return _reply(ctx, chat_id, message_id,
                       "این پلن دیگر در دسترس نیست.", back_kb("buy"))
+
+    if why == "discount":
+        # کد بین دیدنِ صفحه و زدنِ دکمه از کار افتاد. برش می‌داریم و
+        # می‌گوییم چه شد — نه اینکه خرید بی‌توضیح نشود.
+        ctx.db.set_held_discount(user["tg_id"], None)
+        return _reply(ctx, chat_id, message_id,
+                      f"🎟 {esc(r.get('detail') or 'کد تخفیف معتبر نیست')}\n\n"
+                      "کد برداشته شد. دوباره امتحان کنید.",
+                      kb([[("‹ بازگشت", f"plan:{plan_id}")]]))
 
     if why == "low_balance":
         return _reply(ctx, chat_id, message_id,
@@ -3196,6 +3312,8 @@ def _on_message(ctx, msg):
         return handle_receipt(ctx, msg, user, sdata)
     if state == "await_ticket":
         return handle_ticket(ctx, msg, user)
+    if state == "await_discount":
+        return handle_discount(ctx, msg, user, sdata)
 
     if text == "/menu":
         return ctx.bot.send(chat["id"], welcome_text(ctx, user),
@@ -3259,6 +3377,10 @@ def _on_callback(ctx, cq):
             rid = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
             return checkout(ctx, user, chat_id, mid, pid, use_coins,
                             renew_sub_id=rid)
+        if action == "dsc":
+            return ask_discount(ctx, user, chat_id, mid, int(arg))
+        if action == "dscx":
+            return drop_discount(ctx, user, chat_id, mid, int(arg))
         if action == "wpay":
             parts = arg.split(":")
             rid = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else None

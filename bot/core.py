@@ -127,12 +127,17 @@ def price_order(plan_price, *, coins=0, coin_cfg=None, use_coins=False,
     """
     base = int(plan_price)
     price = base
-    breakdown = {"base": base, "code_discount": 0, "coin_discount": 0,
-                 "reseller_discount": 0, "coins_used": 0, "coin_percent": 0}
+    # `code_percent` کنارِ مبلغش می‌آید تا صداکننده مجبور نشود از
+    # روی دو عدد دوباره درصد را حساب کند — همان‌جا که گرد‌کردن
+    # عددی می‌سازد که با آنچه به مشتری گفته‌ایم یکی نیست.
+    breakdown = {"base": base, "code_discount": 0, "code_percent": 0,
+                 "coin_discount": 0, "reseller_discount": 0,
+                 "coins_used": 0, "coin_percent": 0}
 
     if discount_percent > 0:
         d = price * int(discount_percent) // 100
         breakdown["code_discount"] = d
+        breakdown["code_percent"] = int(discount_percent)
         price -= d
 
     if use_coins and coins > 0:

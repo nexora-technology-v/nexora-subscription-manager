@@ -1325,6 +1325,133 @@ check("هر دو هسته‌ی خرید از core.price_order می‌گذرند"
       _HSRC.count("core.price_order(") >= 2, "قیمت یک هسته دارد")
 
 # ═══════════════════════════════════════════════════════════
+#  کد تخفیف از داخلِ خودِ ربات
+#
+#  برگه‌اش: docs/specs/2026-09-19-discount-in-bot.md
+#
+#  در ۱.۶۹.۰ کد فقط از مینی‌اپ قابل واردکردن بود — و در همان
+#  نسخه پیگیریِ تست ساخته شد که کد را **در تلگرام** می‌فرستد.
+#  یعنی ربات کدی می‌فرستاد که خودش قبولش نمی‌کرد.
+#
+#  این‌ها از راه `dispatch` سنجیده می‌شوند، نه با خواندنِ متنِ
+#  کد: دکمه‌ای که در روتر وصل نشده باشد، این‌جا خودش را نشان
+#  می‌دهد.
+# ═══════════════════════════════════════════════════════════
+section("کد تخفیف در ربات")
+
+_bd = D.get_user(555)
+D.exec("UPDATE users SET balance=500000, held_discount=NULL "
+       "WHERE tenant_id=? AND tg_id=555", (tid,))
+D.exec("UPDATE discounts SET used_count=0, max_uses=9 "
+       "WHERE tenant_id=? AND code='HALF'", (tid,))
+
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(555, f"plan:{plan['id']}"))
+check("صفحه‌ی پلن دکمه‌ی کد تخفیف دارد", "کد تخفیف دارم" in str(SENT[-1]),
+      "کدی که راهِ واردکردن ندارد، قابلیت نیست")
+
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(555, f"dsc:{plan['id']}"))
+check("دکمه کار می‌کند و کد را می‌پرسد", "کدتان را همین‌جا بفرستید" in last(),
+      "دکمه‌ی بی‌جواب از نبودِ دکمه بدتر است")
+check("و حالت عوض می‌شود",
+      D.get_user(555)["state"] == "await_discount",
+      str(D.get_user(555)["state"]))
+
+SENT.clear()
+H.dispatch(tenant, bot, up_msg(555, "NOPE"))
+check("کدِ اشتباه دلیلش را می‌گوید", "پیدا نشد" in last(), last()[:40])
+check("و کدِ بی‌اعتبار نگه داشته نمی‌شود", not D.held_discount(555))
+
+SENT.clear()
+H.dispatch(tenant, bot, up_msg(555, " half "))
+check("کد با فاصله و حروفِ کوچک پذیرفته می‌شود",
+      D.held_discount(555) == "HALF", repr(D.held_discount(555)))
+def _btn_labels(entry):
+    """برچسبِ همه‌ی دکمه‌های یک پیام — فقط دکمه‌ها، نه متن."""
+    raw = (entry or {}).get("kb")
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    return [b.get("text", "")
+            for row in ((raw or {}).get("inline_keyboard") or [])
+            for b in row]
+
+
+_buy = [b for b in _btn_labels(SENT[-1]) if "خرید" in b]
+check("و قیمتِ تازه روی خودِ دکمه می‌نشیند",
+      bool(_buy) and all(core.toman(200_000) not in b for b in _buy)
+      and any(core.toman(100_000) in b for b in _buy),
+      " · ".join(_buy) or "دکمه‌ی خریدی نبود")
+
+# ── کارت ──
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(555, f"chk:{plan['id']}:0"))
+_o = D.q("SELECT id, amount, base_amount, discount_pct, discount_code "
+         "FROM orders WHERE tenant_id=? AND user_id=? ORDER BY id DESC LIMIT 1",
+         (tid, _bd["id"]), one=True)
+check("خریدِ کارتی کد را با خود می‌برد",
+      int(_o["amount"]) == 100_000 and int(_o["discount_pct"]) == 50,
+      f"{_o['amount']} تومان · {_o['discount_pct']}٪")
+check("و پایه‌ی سفارش قیمتِ پلن می‌ماند",
+      int(_o["base_amount"]) == 200_000,
+      "تفاوتِ این دو همان تخفیفی است که گزارش‌ها از رویش حساب می‌کنند")
+check("کد بعد از ساختِ سفارش برداشته می‌شود", not D.held_discount(555),
+      "ماندنش یعنی خریدِ بعدی هم بی‌آنکه بخواهد تخفیف می‌گیرد")
+
+# ── کیف پول ──
+D.close_order(_o["id"], "rejected", "تست")
+D.set_held_discount(555, "HALF")
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(555, f"wpay:{plan['id']}"))
+_w = D.q("SELECT amount, discount_pct, paid_from FROM orders "
+         "WHERE tenant_id=? AND user_id=? ORDER BY id DESC LIMIT 1",
+         (tid, _bd["id"]), one=True)
+check("خریدِ کیف پولی هم کد را با خود می‌برد",
+      int(_w["amount"]) == 100_000 and _w["paid_from"] == "wallet",
+      f"{_w['amount']} تومان · {_w['paid_from']}")
+check("و آن‌جا هم کد می‌ماند نمی‌ماند", not D.held_discount(555))
+
+# ── کدی که بین دیدنِ صفحه و زدنِ دکمه از کار افتاد ──
+D.exec("INSERT INTO discounts (tenant_id,code,percent,max_uses,used_count,"
+       "is_active) VALUES (?,'SPENT',40,1,1,1)", (tid,))
+D.set_held_discount(555, "SPENT")
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(555, f"plan:{plan['id']}"))
+check("کدِ پرشده بی‌صدا دور انداخته نمی‌شود",
+      "ظرفیت این کد تمام شده" in str(SENT[-1]),
+      "قیمتی که بی‌توضیح به حالتِ اول برگردد یعنی مشتری فکر می‌کند اشتباه زده")
+check("و از دستِ کاربر برداشته می‌شود", not D.held_discount(555))
+
+# ── دکمه‌ی برداشتن ──
+D.set_held_discount(555, "HALF")
+SENT.clear()
+H.dispatch(tenant, bot, up_cb(555, f"dscx:{plan['id']}"))
+check("دکمه‌ی برداشتنِ کد کار می‌کند", not D.held_discount(555))
+check("و قیمت به حالتِ اول برمی‌گردد", core.toman(200_000) in str(SENT[-1]))
+
+# ── پوسته هنوز پوسته است ──
+_sh = _HSRC.split("def checkout(")[1].split("\ndef ")[0]
+check("پوسته‌ی کارت خودش قیمت حساب نمی‌کند",
+      "core.price_order(" not in _sh and "create_order(" not in _sh,
+      "قیمت همان‌جایی حساب شود که برای مینی‌اپ حساب می‌شود")
+_wh = _HSRC.split("def wallet_pay(")[1].split("\ndef ")[0]
+check("پوسته‌ی کیف پول هم", "core.price_order(" not in _wh
+      and "spend_balance(" not in _wh)
+
+check("کدِ مستاجرِ دیگر از این مسیر هم پیدا نمی‌شود",
+      H.find_discount(_dctx, "FOREIGN")[1] == 0,
+      "همان اعتبارسنج، پس همان قاعده")
+
+_RS = io.open("bot/run.py", encoding="utf-8").read()
+check("پیامِ پیگیری می‌گوید کد را کجا باید زد",
+      "کد تخفیف دارم" in _RS,
+      "کدی که فرستاده می‌شود باید راهِ استفاده‌اش هم گفته شود")
+check("و دکمه‌اش حتی بدونِ مینی‌اپ هم هست",
+      'kb([[("🛒 دیدن پلن‌ها", "buy")]])' in _RS,
+      "مستاجرِ بی‌مینی‌اپ وگرنه کدی می‌فرستد که مشتری راهی به پلن‌ها ندارد")
+
+
+# ═══════════════════════════════════════════════════════════
 #  پیگیریِ کسی که تست گرفته و نخریده
 # ═══════════════════════════════════════════════════════════
 section("پیگیری تست")

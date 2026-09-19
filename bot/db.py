@@ -331,6 +331,14 @@ def _migrate(con):
         # تاریخ است نه بولین: بعداً می‌شود گفت کِی فرستاده شد و
         # نرخِ تبدیل را حساب کرد.
         ("users", "trial_followup_at", "TEXT"),
+        # کدِ تخفیفی که مشتری وارد کرده ولی هنوز خرید نکرده.
+        #
+        # چرا ستونِ خودش و نه `state_data`: وسطِ همین مسیر حالت به
+        # `await_receipt` عوض می‌شود و هر چه در state_data بود
+        # می‌رود. و چرا نه داخلِ callback_data: تلگرام ۶۴ بایت سقف
+        # دارد و کد تا ۴۰ کاراکتر مجاز است — `wpay:{plan}:{sub}:{code}`
+        # به ۵۹ بایت می‌رسد. کار می‌کند تا روزی که نکند.
+        ("users", "held_discount", "TEXT"),
         # عکسِ پیام — نشانیِ فایل، نه خودِ بایت‌ها.
         #
         # بیشترِ چیزی که مشتری در پشتیبانی می‌خواهد بگوید یک تصویر
@@ -669,6 +677,21 @@ class TenantDB:
 
     def clear_state(self, tg_id):
         self.set_state(tg_id, None, {})
+
+    # ---------- کدِ تخفیفِ در دست ----------
+    #
+    # «در دست» یعنی وارد شده ولی هنوز خرج نشده. سرِ ساختِ سفارش
+    # داخلِ خودِ سفارش ثبت می‌شود و از این‌جا برداشته — ماندنش یعنی
+    # خریدِ بعدی هم بی‌آنکه مشتری بخواهد تخفیف بگیرد.
+    def set_held_discount(self, tg_id, code):
+        self.exec(
+            "UPDATE users SET held_discount=? WHERE tenant_id=? AND tg_id=?",
+            ((str(code).strip().upper() if code else None), self.tid, tg_id))
+
+    def held_discount(self, tg_id):
+        r = self.q("SELECT held_discount FROM users WHERE tenant_id=? AND tg_id=?",
+                   (self.tid, tg_id), one=True)
+        return ((r or {}).get("held_discount") or "").strip()
 
     # ---------- سکه ----------
     def spend_coins(self, user_id, amount, kind, note=None, order_id=None):

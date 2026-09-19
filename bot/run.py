@@ -645,6 +645,7 @@ def trial_winback():
                     "تستتان تمام شد 🙂\n\n"
                     "اگر راضی بودید، این کد {pct}٪ تخفیف دارد:\n"
                     "<code>{code}</code>\n\n"
+                    "موقعِ خرید، دکمه‌ی «🎟 کد تخفیف دارم» را بزنید.\n"
                     "فقط تا {hours} ساعت آینده و یک‌بار قابل استفاده است."
                 )
                 text = (text.replace("{name}", name)
@@ -652,9 +653,11 @@ def trial_winback():
                             .replace("{code}", code)
                             .replace("{hours}", core.fa(valid_h)))
 
-                keys = None
-                if app_url:
-                    keys = kb([[("🛒 دیدن پلن‌ها", app_url, "web_app")]])
+                # دکمه همیشه هست. قبلاً فقط وقتی مینی‌اپ تنظیم
+                # شده بود دکمه می‌آمد — یعنی مستاجرِ بی‌مینی‌اپ کدی
+                # می‌فرستاد و مشتری هیچ راهی به صفحه‌ی پلن‌ها نداشت.
+                keys = (kb([[("🛒 دیدن پلن‌ها", app_url, "web_app")]])
+                        if app_url else kb([[("🛒 دیدن پلن‌ها", "buy")]]))
                 try:
                     tg.send(r["tg_id"], text, keyboard=keys)
                 except Exception:
