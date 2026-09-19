@@ -2300,6 +2300,105 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .fx-chat-bar .fx-clip:hover { color: var(--text); border-color: var(--accent-line); }
 .fx-chat-bar .fx-clip:disabled { opacity: .45; }
 
+/* ===== کانال ===== */
+.ch-grid { grid-template-columns: 1fr; }
+@media (min-width: 1100px) { .ch-grid { grid-template-columns: 1.3fr 1fr; } }
+
+.ch-addr {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap;
+}
+.ch-addr-in { width: 200px; font-family: var(--mono); text-align: left; }
+
+.ch-tpl { display: flex; gap: 6px; flex-wrap: wrap; }
+.ch-tpl-chip {
+  padding: 6px 12px; border-radius: 99px; font-size: 12.5px;
+  color: var(--dim); background: var(--surface-2);
+  border: 1px solid var(--border);
+  transition: color .15s, border-color .15s, background .15s;
+}
+.ch-tpl-chip:hover {
+  color: var(--text); border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.ch-tools {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+  padding-bottom: 8px; margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.ch-tool {
+  width: 30px; height: 30px; border-radius: 8px;
+  display: grid; place-items: center;
+  color: var(--muted); transition: color .15s, background .15s;
+}
+.ch-tool:hover:not(:disabled) { color: var(--accent-2); background: var(--accent-soft); }
+.ch-tool:disabled { opacity: .45; }
+.ch-tool-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+
+.ch-box { resize: vertical; line-height: 2; font-size: 13.5px; }
+.ch-count { display: flex; justify-content: flex-end; font-size: 11.5px; margin-top: 6px; }
+
+.ch-photo { position: relative; margin-bottom: 8px; }
+.ch-photo img {
+  max-height: 160px; border-radius: 12px; border: 1px solid var(--border);
+  display: block;
+}
+.ch-photo button {
+  position: absolute; top: 6px; inset-inline-end: 6px;
+  width: 26px; height: 26px; border-radius: 8px;
+  display: grid; place-items: center;
+  background: var(--scrim-3); color: #fff;
+}
+
+.ch-bad {
+  display: flex; align-items: flex-start; gap: 6px; margin-top: 8px;
+  font-size: 12px; color: var(--danger);
+}
+
+.ch-actions {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px;
+}
+.ch-when { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ch-time { width: 76px; text-align: center; font-family: var(--mono); }
+
+/* پیش‌نمایش: شکلِ حبابِ تلگرام، تا مالک بتواند تصور کند در کانال
+   چه می‌بیند. */
+.ch-prev {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 14px; padding: 12px 14px;
+  font-size: 13.5px; line-height: 2; white-space: pre-wrap; word-break: break-word;
+}
+.ch-prev-img { max-width: 100%; border-radius: 10px; margin-bottom: 8px; display: block; }
+.ch-code { font-family: var(--mono); background: var(--scrim-2); padding: 1px 5px; border-radius: 5px; }
+.ch-spoiler { background: var(--scrim-4); border-radius: 4px; color: transparent; }
+.ch-spoiler:hover { color: inherit; background: var(--scrim-1); }
+.ch-quote {
+  display: block; border-inline-start: 3px solid var(--accent-2);
+  padding-inline-start: 10px; color: var(--dim);
+}
+.ch-link { color: var(--accent-2); text-decoration: underline; }
+
+.ch-row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px; border-bottom: 1px solid var(--border);
+}
+.ch-row:last-child { border-bottom: none; }
+.ch-row-body { font-size: 13px; color: var(--text); line-height: 1.9; }
+.ch-row-meta {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 5px; font-size: 11.5px; color: var(--muted);
+}
+.ch-row-err { margin-top: 5px; font-size: 12px; color: var(--danger); }
+.ch-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 99px; font-size: 11px;
+  background: var(--surface-3); color: var(--dim);
+}
+.ch-tag.ok { background: var(--ok-soft); color: var(--ok); }
+.ch-tag.wait { background: var(--warn-soft); color: var(--warn); }
+.ch-tag.bad { background: var(--danger-soft); color: var(--danger); }
+
 /* ── پاسخ‌های آماده ──
 
    یک نوارِ افقیِ باریک بالای کادرِ تایپ. چرا افقی و اسکرول‌شونده و

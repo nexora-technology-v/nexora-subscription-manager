@@ -689,6 +689,38 @@
           plan: "شش ماهه", at: "2026-09-17 11:30", waitedMin: 6, hasPhoto: true },
       ],
     };
+    if (u.indexOf("/admin/channel/check") >= 0) {
+      /* همان قاعده‌ای که بک‌اند دارد، فقط برای دیدنِ صفحه:
+         تگِ بازمانده و سقفِ کپشن. */
+      var cb = String((body || {}).body || "");
+      var probs = [];
+      var opens = (cb.match(/<(b|i|u|s|code|blockquote|tg-spoiler)>/g) || []).length;
+      var closes = (cb.match(/<\/(b|i|u|s|code|blockquote|tg-spoiler)>/g) || []).length;
+      if (opens > closes) probs.push("تگی بسته نشده");
+      var lim = (body || {}).photo ? 1024 : 4096;
+      if (cb.length > lim) probs.push("متن " + cb.length + " کاراکتر است؛ سقف " + lim);
+      return { ok: !probs.length, problems: probs, limit: lim };
+    }
+    if (u.indexOf("/admin/channel/post") >= 0) {
+      if (method === "DELETE") return { ok: true };
+      return { ok: true, post: { id: 99, status: (body || {}).at ? "queued" : "sent" } };
+    }
+    if (u.indexOf("/admin/channel") >= 0) {
+      return {
+        target: "@nexora_vpn",
+        limits: { text: 4096, caption: 1024 },
+        posts: [
+          { id: 3, body: "📦 <b>پلن‌های نکسورا</b>\n\n• استاندارد — ۲۵۰,۰۰۰ تومان",
+            status: "sent", photo: null, sent_at: "2026-09-18 10:02",
+            message_id: 812 },
+          { id: 2, body: "⏰ <b>اشتراکتان دارد تمام می‌شود؟</b> تمدید یک دکمه است.",
+            status: "queued", photo: "x.jpg", scheduled_at: "2026-09-21 10:00" },
+          { id: 1, body: "🔌 وصل نمی‌شوید؟ یک سرورِ دیگر را امتحان کنید.",
+            status: "failed", photo: null, created_at: "2026-09-17 21:40",
+            error: "ربات در کانال نیست — اول اضافه‌اش کنید و ادمینش کنید" },
+        ],
+      };
+    }
     if (u.indexOf("/admin/bot/inbox/send") >= 0) {
       /* پیام واقعاً اضافه شود.
          با `{ok:true}` خالی، حبابِ خوش‌بینانه بعد از خواندنِ دوباره

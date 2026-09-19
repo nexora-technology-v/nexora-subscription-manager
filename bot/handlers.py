@@ -3615,6 +3615,151 @@ def do_reject(ctx, order_id, admin_tg_id, reason):
 #  توابع زمان‌بند
 # ═══════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════
+#  کانال
+#
+#  برگه: docs/specs/2026-09-19-channel.md
+# ═══════════════════════════════════════════════════════════
+
+#: سقفِ تلگرام. پیامِ متنی ۴۰۹۶، ولی کپشنِ عکس فقط ۱۰۲۴ —
+#: متنی که بدونِ عکس می‌رفت، با افزودنِ عکس رد می‌شود.
+TG_TEXT_LIMIT = 4096
+TG_CAPTION_LIMIT = 1024
+
+
+def channel_target(ctx):
+    """
+    کجا پست شود.
+
+    `channel_id` تنظیمِ خودش را دارد و `force_channel` فقط
+    پیش‌فرضش است: کانالِ عضویتِ اجباری لزوماً همان کانالی نیست که
+    محتوا در آن می‌رود.
+    """
+    ch = str(ctx.s.get("channel_id") or "").strip()
+    if not ch:
+        ch = str(ctx.s.get("force_channel") or "").strip()
+    if not ch:
+        return ""
+    # کانالِ خصوصی یوزرنیم ندارد و با شناسه‌ی عددیِ منفی کار می‌کند
+    if ch.lstrip("-").isdigit():
+        return ch
+    return ch if ch.startswith("@") else "@" + ch.lstrip("@")
+
+
+def channel_limit(has_photo):
+    return TG_CAPTION_LIMIT if has_photo else TG_TEXT_LIMIT
+
+
+def channel_problems(body, has_photo=False):
+    """
+    هر چه مانعِ رفتنِ این پست است — پیش از فرستادنش.
+
+    اعتبارسنجِ HTML همان `fmt.check` است که `tg.send` هم از آن رد
+    می‌شود. نسخه‌ی دومی نوشته نمی‌شود: یک قاعده در دو جا، پرتکرارترین
+    باگِ این مخزن.
+    """
+    out = []
+    text = str(body or "")
+    if not text.strip():
+        out.append("متنِ پست خالی است")
+    cap = channel_limit(has_photo)
+    if len(text) > cap:
+        out.append(f"متن {core.fa(len(text))} کاراکتر است؛ سقف "
+                   f"{core.fa(cap)}" + (" (چون عکس دارد)" if has_photo else ""))
+    try:
+        from fmt import check as _fmt_check
+        out += _fmt_check(text)
+    except ImportError:
+        pass
+    return out
+
+
+def channel_photo_save(blob, ext=".jpg"):
+    """
+    عکس را کنارِ دیتابیسِ ربات ذخیره می‌کند و نامش را برمی‌گرداند.
+
+    نام تصادفی است، پس خودش کلیدِ دسترسی است — مثل عکسِ گفتگو.
+    """
+    import secrets as _sc
+    d = core.channel_photo_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    name = _sc.token_hex(16) + (ext if ext.startswith(".") else "." + ext)
+    (d / name).write_bytes(blob)
+    return name
+
+
+def channel_photo_bytes(name):
+    """
+    بایت‌های عکسِ یک پست.
+
+    نامِ آمده از بیرون هرگز مستقیم به مسیر نمی‌چسبد.
+    """
+    n = str(name or "").rsplit("/", 1)[-1]
+    if not n or "\\" in n or ".." in n:
+        return None
+    p = core.channel_photo_dir() / n
+    try:
+        return p.read_bytes() if p.is_file() else None
+    except OSError:
+        return None
+
+
+def channel_send(ctx, post, photo_bytes=None):
+    """
+    ارسالِ یک پست. برمی‌گرداند (ok, message_id یا دلیلِ خطا).
+
+    تنها مسیرِ رفتنِ پست به کانال — پنل و زمان‌بند هر دو از همین
+    می‌گذرند، پس ادعا و سنجش و پیامِ خطا یک جا می‌مانند.
+    """
+    where = channel_target(ctx)
+    if not where:
+        return False, "آدرس کانال تنظیم نشده است"
+
+    body = str(post.get("body") or "")
+    bad = channel_problems(body, has_photo=bool(photo_bytes))
+    if bad:
+        return False, " · ".join(bad[:3])
+
+    try:
+        if photo_bytes:
+            r = ctx.bot.send_photo_bytes(where, photo_bytes, filename="post.jpg",
+                                         caption=body)
+        else:
+            r = ctx.bot.send(where, body, preview=True)
+        return True, int((r or {}).get("message_id") or 0)
+    except Exception as e:
+        # یک شاخه، و تشخیص از روی *متن* نه از روی کلاسِ استثنا.
+        #
+        # `handlers` با `from tg import TelegramError` برمی‌دارد و
+        # `run.py` با `from bot.tg import …` — دو شیءِ کلاسِ جدا که
+        # فقط اسمشان یکی است. با `except TelegramError` خطا از
+        # شاخه‌ی مخصوصش رد می‌شد و مالک متنِ خامِ انگلیسی را می‌دید.
+        return False, channel_error(e)
+
+
+def channel_error(e):
+    """
+    خطای تلگرام به زبانی که مالک بتواند کاری با آن بکند.
+
+    `Forbidden: bot is not a member of the channel chat` به کسی
+    نمی‌گوید باید چه کند.
+    """
+    d = str(getattr(e, "description", "") or e)
+    low = d.lower()
+    if "not a member" in low or "chat not found" in low:
+        return ("ربات در کانال نیست — اول اضافه‌اش کنید و ادمینش کنید، "
+                "بعد دوباره بفرستید")
+    if "not enough rights" in low or "need administrator" in low:
+        return "ربات در کانال هست ولی اجازه‌ی ارسالِ پیام ندارد"
+    if "chat_write_forbidden" in low:
+        return "ارسال در این کانال برای ربات بسته است"
+    if "too many requests" in low or "retry after" in low:
+        return "تلگرام موقتاً محدودمان کرده — چند دقیقه دیگر دوباره بفرستید"
+    if "message is too long" in low:
+        return "متن برای تلگرام بلند است"
+    return d[:200] or "ارسال ناموفق بود"
+
+
 def send_expiry_notice(tenant, bot, sub, days_left):
     """یادآوری نزدیک‌شدن انقضا با دکمه‌ی تمدید."""
     ctx = Ctx(bot, tenant)

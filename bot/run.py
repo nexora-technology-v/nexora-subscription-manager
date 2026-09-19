@@ -730,6 +730,59 @@ def trial_winback():
             log.exception("پیگیری تست ناموفق (مستاجر %s)", t["id"])
 
 
+def send_due_posts():
+    """
+    پست‌های کانال که وقتشان رسیده.
+
+    برگه: docs/specs/2026-09-19-channel.md
+
+    ادعا پیش از ارسال — «همین حالا بفرست» در پنل و این حلقه
+    می‌توانند هم‌زمان یک پست را بردارند. پستِ تکراری در کانال،
+    برخلاف پیامِ تکراری، جلوی چشمِ همه می‌ماند.
+
+    تاخیر هم دیده می‌شود: اگر ربات پایین بوده و پست دیر رفته،
+    در لاگ می‌آید. پستی که ساعتی دیر رفته و هیچ نشانی ندارد،
+    دفعه‌ی بعد هم دیر می‌رود و کسی نمی‌فهمد.
+    """
+    for t in db.all_tenants(active_only=True):
+        if not t["bot_token"]:
+            continue
+        try:
+            d = db.TenantDB(t["id"])
+            due = d.q(
+                """SELECT id, body, photo, scheduled_at FROM channel_posts
+                    WHERE tenant_id=? AND status='queued' AND claimed_at IS NULL
+                      AND scheduled_at IS NOT NULL
+                      AND scheduled_at <= datetime('now', 'localtime')
+                    ORDER BY scheduled_at LIMIT 10""",
+                (t["id"],))
+            if not due:
+                continue
+
+            tg = Bot(t["bot_token"])
+            ctx = handlers.Ctx(tg, dict(t))
+            for p in due:
+                if not d.channel_claim(p["id"]):
+                    continue        # کسِ دیگری برش داشت
+                blob = None
+                if p.get("photo"):
+                    try:
+                        blob = handlers.channel_photo_bytes(p["photo"])
+                    except Exception:
+                        blob = None
+                ok, res = handlers.channel_send(ctx, dict(p), photo_bytes=blob)
+                d.channel_done(p["id"], message_id=(res if ok else None),
+                               error=(None if ok else res))
+                if ok:
+                    late = core.mins_since(p["scheduled_at"])
+                    if late and late > 10:
+                        log.warning("پست %s با %s دقیقه تاخیر رفت", p["id"], late)
+                else:
+                    log.warning("پستِ کانال نرفت (%s): %s", p["id"], res)
+        except Exception:
+            log.exception("ارسال پست‌های کانال ناموفق (مستاجر %s)", t["id"])
+
+
 def scheduler_loop():
     """
     زمان‌بند ساده و بدون وابستگی خارجی.
@@ -745,6 +798,12 @@ def scheduler_loop():
             if now - last["orders"] > 120:
                 expire_stale_orders()
                 last["orders"] = now
+
+            # پستِ زمان‌بندی‌شده نباید ساعت‌ها دیر برود؛ دقیقه‌ای
+            # یک‌بار کافی است و تقریباً هیچ هزینه‌ای ندارد.
+            if now - last.get("posts", 0) > 60:
+                send_due_posts()
+                last["posts"] = now
 
             # تاییدهای پنل را سریع‌تر بررسی می‌کنیم — مشتری منتظر است
             if now - last.get("panel", 0) > 20:

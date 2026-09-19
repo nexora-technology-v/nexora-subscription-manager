@@ -231,6 +231,33 @@ CREATE TABLE IF NOT EXISTS discounts (
     UNIQUE(tenant_id, code)
 );
 
+-- ═══ پست‌های کانال ═══
+--
+-- برگه: docs/specs/2026-09-19-channel.md
+--
+-- `claimed_at` برای ادعای اتمی است: «همین حالا» از بک‌اند می‌رود و
+-- زمان‌بندی‌شده را زمان‌بندِ ربات برمی‌دارد. بدونِ ادعا، اگر دو دورِ
+-- زمان‌بند هم‌پوشانی کنند یک پست دو بار در کانال می‌نشیند — و پستِ
+-- تکراری در کانال، برخلاف پیامِ تکراری، جلوی چشمِ همه می‌ماند.
+--
+-- `error` خالی نمی‌ماند وقتی ارسال شکست بخورد. پستی که نرفته و
+-- نمی‌گوید چرا، همان مسیرِ خرابِ بی‌صداست.
+CREATE TABLE IF NOT EXISTS channel_posts (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id    INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    body         TEXT NOT NULL DEFAULT '',
+    photo        TEXT,                       -- نامِ فایل، نه خودِ بایت‌ها
+    status       TEXT DEFAULT 'draft',       -- draft|queued|sent|failed
+    scheduled_at TEXT,
+    claimed_at   TEXT,
+    sent_at      TEXT,
+    message_id   INTEGER,
+    error        TEXT,
+    created_at   TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS ix_chpost_due
+    ON channel_posts(tenant_id, status, scheduled_at);
+
 -- ═══ تیکت پشتیبانی ═══
 CREATE TABLE IF NOT EXISTS tickets (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -594,7 +621,7 @@ class TenantDB:
     # جداولی که باید حتماً با tenant_id فیلتر شوند
     SCOPED = {"users", "plans", "orders", "subscriptions",
               "coin_tx", "wallet_tx", "discounts", "tickets", "events",
-              "chat_messages"}
+              "chat_messages", "channel_posts"}
 
     def __init__(self, tenant_id: int):
         if not isinstance(tenant_id, int) or tenant_id <= 0:
@@ -677,6 +704,60 @@ class TenantDB:
 
     def clear_state(self, tg_id):
         self.set_state(tg_id, None, {})
+
+    # ---------- پست‌های کانال ----------
+    def channel_posts(self, limit=50):
+        return self.q(
+            "SELECT * FROM channel_posts WHERE tenant_id=? "
+            "ORDER BY COALESCE(sent_at, scheduled_at, created_at) DESC, id DESC "
+            "LIMIT ?", (self.tid, int(limit)))
+
+    def channel_post(self, pid):
+        return self.q("SELECT * FROM channel_posts WHERE tenant_id=? AND id=?",
+                      (self.tid, int(pid)), one=True)
+
+    def channel_add(self, body, photo=None, scheduled_at=None, status="draft"):
+        pid = self.exec(
+            "INSERT INTO channel_posts (tenant_id, body, photo, status, "
+            "scheduled_at) VALUES (?,?,?,?,?)",
+            (self.tid, body or "", photo or None, status, scheduled_at or None))
+        return self.channel_post(pid)
+
+    def channel_claim(self, pid):
+        """
+        ادعای اتمی پیش از ارسال.
+
+        زمان‌بند و دکمه‌ی «همین حالا بفرست» می‌توانند هم‌زمان یک پست
+        را بردارند. پستِ تکراری در کانال جلوی چشمِ همه می‌ماند، پس
+        اول ادعا، بعد ارسال — مثل `claim_order`.
+        """
+        with conn() as c:
+            cur = c.execute(
+                "UPDATE channel_posts SET claimed_at=CURRENT_TIMESTAMP "
+                # `failed` هم هست: پستی که یک‌بار نرفته باید بشود
+                # دوباره فرستادش. بدونِ آن، ادعا پس‌دادن در
+                # `channel_done` بی‌اثر بود.
+                "WHERE tenant_id=? AND id=? "
+                "AND status IN ('draft','queued','failed') "
+                "AND claimed_at IS NULL",
+                (self.tid, int(pid)))
+            return bool(cur.rowcount)
+
+    def channel_done(self, pid, message_id=None, error=None):
+        """نتیجه‌ی ارسال. شکست هم ثبت می‌شود، با دلیلش."""
+        if error:
+            # ادعا پس داده می‌شود تا تلاشِ دوباره ممکن بماند
+            self.exec(
+                "UPDATE channel_posts SET status='failed', error=?, "
+                "claimed_at=NULL WHERE tenant_id=? AND id=?",
+                (str(error)[:400], self.tid, int(pid)))
+        else:
+            self.exec(
+                "UPDATE channel_posts SET status='sent', error=NULL, "
+                "message_id=?, sent_at=CURRENT_TIMESTAMP "
+                "WHERE tenant_id=? AND id=?",
+                (message_id, self.tid, int(pid)))
+        return self.channel_post(pid)
 
     # ---------- کدِ تخفیفِ در دست ----------
     #

@@ -5,7 +5,7 @@
  * در آن عملاً ناممکن.
  */
 import {
-  Activity, AlertTriangle, Apple, Bell, Bot, Clock, Coins, CreditCard, Database, DollarSign, Eye, FileText, Gift, HelpCircle, Key, Layers, LayoutGrid, Link2, MessageCircle, MessageSquare, Monitor, Network, Package, Power, Send, Server, ShieldCheck, Sliders, Smartphone, Tag, TrendingUp, Users, Video, Wallet, XCircle, Zap,
+  Activity, AlertTriangle, Apple, Bell, Bot, Clock, Coins, CreditCard, Database, DollarSign, Eye, FileText, Gift, HelpCircle, Key, Layers, LayoutGrid, Link2, MessageCircle, MessageSquare, Monitor, Megaphone, Network, Package, Power, Send, Server, ShieldCheck, Sliders, Smartphone, Tag, TrendingUp, Users, Video, Wallet, XCircle, Zap,
 } from "lucide-react";
 
 export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8100";
@@ -128,6 +128,20 @@ export const WORKSPACES = {
         items: [
           { key: "bill-portal", label: "نماینده‌ها و دسترسی", icon: Users },
           { key: "res-inbounds", label: "اینباند نماینده‌ها", icon: Network },
+        ],
+      },
+    ],
+  },
+  channel: {
+    key: "channel",
+    label: "کانال",
+    shortLabel: "کانال",
+    icon: Megaphone,
+    groups: [
+      {
+        title: "محتوا",
+        items: [
+          { key: "channel", label: "نوشتن و زمان‌بندی", icon: Megaphone },
         ],
       },
     ],

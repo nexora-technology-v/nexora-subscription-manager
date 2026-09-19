@@ -1124,14 +1124,21 @@ _reads |= set(re.findall(r'cfg\.get\(\s*"([a-z_0-9]+)"', _RUN_PY))
 # کلیدهایی که نصب‌کننده یا خودِ بک‌اند می‌گذارند و پنل فیلد ندارد
 _SETTINGS_OK = {"brand", "apps", "configs", "clients", "topics"}
 
-_FRONT = "\n".join(
-    rd(*p.split("/")) for p in [
-        "frontend/src/sections/bot/texts.jsx",
-        "frontend/src/sections/bot/coins.jsx",
-        "frontend/src/sections/bot/connection.jsx",
-        "frontend/src/sections/bot/discounts.jsx",
-        "frontend/src/sections/bot/themes.jsx",
-    ])
+# هر صفحه‌ای که تنظیماتِ ربات را می‌خواند یا می‌نویسد، خودش پیدا
+# می‌شود. فهرستِ دستی یعنی صفحه‌ی تازه از دیدِ دروازه پنهان است —
+# و دقیقاً همین یک‌بار اتفاق افتاد: صفحه‌ی «کانال» ساخته شد و
+# `channel_id` در هیچ‌کدام از پنج فایلِ فهرست نبود.
+_SECT = os.path.join(ROOT, "frontend", "src", "sections")
+_front_files = []
+for _b, _d, _f in os.walk(_SECT):
+    for _n in _f:
+        if not _n.endswith(".jsx"):
+            continue
+        _p = os.path.join(_b, _n)
+        _src = io.open(_p, encoding="utf-8").read()
+        if "/api/admin/bot/settings" in _src:
+            _front_files.append(_src)
+_FRONT = "\n".join(_front_files)
 
 _unwritten = sorted(
     k for k in _reads
@@ -1159,8 +1166,15 @@ for _m in re.finditer(r'\bsettings:\s*\{\s*\.\.\.[a-z.]+,\s*([a-z_][a-z_0-9]*)\s
                       _FRONT):
     _writes.add(_m.group(1))
 
+#: تنظیم‌هایی که فقط خودِ پنل مصرفشان می‌کند — ربات نمی‌بیندشان و
+#: نباید هم ببیند. هر قلم دلیلش را همراه دارد.
+_PANEL_ONLY = {
+    "quick_replies": "پاسخ‌های آماده‌ی صندوق — پنل می‌نویسد و پنل می‌خواند",
+}
+
 _unread = sorted(k for k in _writes
-                 if not re.search(rf'"{k}"', _BOT_ALL)
+                 if k not in _PANEL_ONLY
+                 and not re.search(rf'"{k}"', _BOT_ALL)
                  and not re.search(rf'"{k}"', APP_PY))
 
 check("هر کلیدی که پنل می‌نویسد، جایی خوانده می‌شود",

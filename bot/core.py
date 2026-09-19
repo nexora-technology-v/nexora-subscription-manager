@@ -6,7 +6,9 @@
 """
 
 import json
+import os
 import random
+from pathlib import Path
 from datetime import datetime, timedelta
 
 
@@ -293,6 +295,37 @@ def plan_line(p):
     """یک خط توصیف پلن برای دکمه."""
     parts = [fmt_gb(p["gb"]), fmt_days(p["days"])]
     return f"{p['name']} — {' · '.join(parts)} — {toman(p['price'])} تومان"
+
+
+def mins_since(when):
+    """چند دقیقه از یک زمانِ محلی گذشته. نامعتبر → None."""
+    if not when:
+        return None
+    try:
+        t = datetime.fromisoformat(str(when).replace("T", " ").strip())
+    except (ValueError, TypeError):
+        return None
+    return max(0, int((datetime.now() - t).total_seconds() // 60))
+
+
+def channel_photo_dir():
+    """
+    پوشه‌ی عکسِ پست‌های کانال.
+
+    **یک تعریف، دو مصرف‌کننده:** بک‌اند این‌جا می‌نویسد و زمان‌بندِ
+    ربات از همین‌جا می‌خواند. اگر هر کدام پیش‌فرضِ خودش را داشت،
+    اولین باری که مسیرها از هم جدا می‌شدند عکس بی‌صدا حذف می‌شد و
+    پست بدونِ عکس در کانال می‌نشست — و کسی هم خطایی نمی‌دید.
+
+    کنارِ دیتابیسِ ربات می‌نشیند، چون آن تنها مسیری است که هر دو
+    پردازه قطعاً بر سرش توافق دارند.
+    """
+    d = os.getenv("CHANNEL_DIR")
+    if d:
+        return Path(d)
+    db = os.getenv("BOT_DB_PATH") or os.getenv("BOT_DB")
+    base = Path(db).parent if db else Path(__file__).resolve().parent.parent / "data"
+    return base / "channel"
 
 
 def days_left(expires_at):

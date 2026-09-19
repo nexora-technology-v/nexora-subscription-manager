@@ -2832,6 +2832,146 @@ def _bot_db_rw(t):
     return h.DB.TenantDB(t["id"])
 
 
+# ═══════════════════════════════════════════════════════════
+#  کانال
+#
+#  برگه: docs/specs/2026-09-19-channel.md
+#
+#  هیچ‌کدام از این مسیرها خودشان پست نمی‌فرستند: همه از
+#  `handlers.channel_send` رد می‌شوند، همان که زمان‌بند هم از آن
+#  می‌گذرد. اگر این‌جا نسخه‌ی دومی نوشته شود، روزی یکی‌شان اصلاح
+#  می‌شود و دیگری نه.
+# ═══════════════════════════════════════════════════════════
+
+def _channel_photo_store(raw):
+    """base64 → فایل، در همان پوشه‌ای که ربات از آن می‌خواند."""
+    import base64
+    raw = str(raw or "")
+    if raw.lstrip().startswith("data:") and "," in raw[:80]:
+        raw = raw.split(",", 1)[1]
+    raw = raw.strip()
+    if not raw:
+        return None
+    if len(raw) > (CHAT_MAX_BYTES * 4) // 3 + 1024:
+        raise HTTPException(status_code=413, detail="حجم عکس بیشتر از ۳ مگابایت است")
+    try:
+        blob = base64.b64decode(raw, validate=True)
+    except Exception:
+        raise HTTPException(status_code=400, detail="عکس خوانده نشد")
+    if len(blob) > CHAT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="حجم عکس بیشتر از ۳ مگابایت است")
+    ext, _c = _logo_kind(blob)
+    if not ext:
+        raise HTTPException(status_code=400, detail="فقط تصویر پذیرفته می‌شود")
+    h, _ctx = _mini_ctx(_root_tenant_row())
+    return h.channel_photo_save(blob, ext=ext)
+
+
+@app.get("/api/admin/channel")
+def admin_channel(x_admin_password: str = Header(...)):
+    """وضعیت کانال و پست‌ها."""
+    check_auth(x_admin_password)
+    t = _root_tenant_row()
+    try:
+        h, ctx = _mini_ctx(t)
+        db = _bot_db_rw(t)
+        return {
+            "target": h.channel_target(ctx),
+            "limits": {"text": h.TG_TEXT_LIMIT, "caption": h.TG_CAPTION_LIMIT},
+            "posts": [dict(r) for r in db.channel_posts()],
+        }
+    except Exception as e:
+        log.exception("خواندن کانال ناموفق")
+        raise HTTPException(status_code=503, detail=f"کانال خوانده نشد: {str(e)[:120]}")
+
+
+@app.post("/api/admin/channel/check")
+def admin_channel_check(payload: dict, x_admin_password: str = Header(...)):
+    """
+    سنجشِ متن پیش از ارسال.
+
+    **پنل اعتبارسنجِ خودش را ندارد.** همین‌جا `fmt.check` صدا زده
+    می‌شود — همان که `tg.send` هم از آن رد می‌شود. نسخه‌ی
+    جاواسکریپتی یعنی روزی یکی اصلاح می‌شود و دیگری نه.
+    """
+    check_auth(x_admin_password)
+    p = payload or {}
+    try:
+        h, _ctx = _mini_ctx(_root_tenant_row())
+        bad = h.channel_problems(p.get("body") or "", has_photo=bool(p.get("photo")))
+        return {"ok": not bad, "problems": bad,
+                "limit": h.channel_limit(bool(p.get("photo")))}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"سنجش ناموفق: {str(e)[:120]}")
+
+
+@app.post("/api/admin/channel/post")
+def admin_channel_post(payload: dict, x_admin_password: str = Header(...)):
+    """
+    ساختِ پست: همین حالا بفرست، یا برای زمانی بگذار.
+
+    زمان‌دار فقط ذخیره می‌شود و زمان‌بندِ ربات برش می‌دارد؛ «همین
+    حالا» از همین‌جا می‌رود، مثل پاسخِ صندوق.
+    """
+    check_auth(x_admin_password)
+    p = payload or {}
+    body = str(p.get("body") or "")
+    when = str(p.get("at") or "").strip()
+    t = _root_tenant_row()
+
+    try:
+        h, ctx = _mini_ctx(t)
+        db = _bot_db_rw(t)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"ربات در دسترس نیست: {str(e)[:120]}")
+
+    photo_name = _channel_photo_store(p.get("photo")) if p.get("photo") else None
+
+    bad = h.channel_problems(body, has_photo=bool(photo_name))
+    if bad:
+        raise HTTPException(status_code=400, detail=" · ".join(bad[:3]))
+
+    if when:
+        row = db.channel_add(body, photo=photo_name, scheduled_at=when,
+                             status="queued")
+        return {"ok": True, "post": dict(row), "queued": True}
+
+    row = db.channel_add(body, photo=photo_name, status="draft")
+    if not db.channel_claim(row["id"]):
+        raise HTTPException(status_code=409, detail="این پست همین حالا در حال ارسال است")
+
+    blob = h.channel_photo_bytes(photo_name) if photo_name else None
+    ok, res = h.channel_send(ctx, dict(row), photo_bytes=blob)
+    out = db.channel_done(row["id"], message_id=(res if ok else None),
+                          error=(None if ok else res))
+    if not ok:
+        raise HTTPException(status_code=502, detail=str(res)[:200])
+    return {"ok": True, "post": dict(out)}
+
+
+@app.delete("/api/admin/channel/post/{pid}")
+def admin_channel_delete(pid: int, x_admin_password: str = Header(...)):
+    """حذفِ پستِ زمان‌بندی‌شده یا نافرجام. پستِ رفته پاک نمی‌شود."""
+    check_auth(x_admin_password)
+    t = _root_tenant_row()
+    try:
+        db = _bot_db_rw(t)
+        row = db.channel_post(pid)
+        if not row:
+            raise HTTPException(status_code=404, detail="پست پیدا نشد")
+        if row.get("status") == "sent":
+            raise HTTPException(
+                status_code=409,
+                detail="این پست رفته است — از خودِ کانال پاکش کنید")
+        db.exec("DELETE FROM channel_posts WHERE tenant_id=? AND id=?",
+                (t["id"], int(pid)))
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"حذف ناموفق: {str(e)[:120]}")
+
+
 @app.get("/api/admin/bot/inbox")
 def admin_inbox(user_id: int = None, x_admin_password: str = Header(...)):
     """

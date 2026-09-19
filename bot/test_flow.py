@@ -1482,6 +1482,146 @@ check("زمان‌بند صدایش می‌زند",
       "تابعی که هیچ‌کس صدا نمی‌زند، قابلیت نیست")
 
 
+# ═══════════════════════════════════════════════════════════
+#  کانال
+#
+#  برگه: docs/specs/2026-09-19-channel.md
+# ═══════════════════════════════════════════════════════════
+section("کانال")
+
+_csent = []
+
+
+class _ChanBot:
+    def send(self, chat_id, text, keyboard=None, **k):
+        _csent.append({"to": chat_id, "text": text, "photo": None})
+        return {"message_id": 900 + len(_csent)}
+
+    def send_photo_bytes(self, chat_id, data, filename="p.jpg", caption=None, **k):
+        _csent.append({"to": chat_id, "text": caption, "photo": len(data)})
+        return {"message_id": 900 + len(_csent)}
+
+
+_cfg0 = db.tenant_settings(tid)
+db.save_tenant_settings(tid, {**_cfg0, "channel_id": "nexora_news"})
+_ct = db.get_tenant(tid)
+_cctx = H.Ctx(_ChanBot(), _ct)
+
+check("آدرس کانال از تنظیماتِ خودش می‌آید",
+      H.channel_target(_cctx) == "@nexora_news",
+      H.channel_target(_cctx))
+db.save_tenant_settings(tid, {**_cfg0, "force_channel": "@joinme"})
+check("و اگر نبود، کانالِ عضویتِ اجباری",
+      H.channel_target(H.Ctx(_ChanBot(), db.get_tenant(tid))) == "@joinme",
+      "کانالِ محتوا لزوماً همان کانالِ عضویت نیست، ولی پیش‌فرضِ خوبی است")
+db.save_tenant_settings(tid, {**_cfg0, "channel_id": "-1001234567890"})
+check("کانالِ خصوصی با شناسه‌ی عددی کار می‌کند",
+      H.channel_target(H.Ctx(_ChanBot(), db.get_tenant(tid))) == "-1001234567890",
+      "کانالِ خصوصی یوزرنیم ندارد")
+db.save_tenant_settings(tid, {**_cfg0, "channel_id": "nexora_news"})
+_ct = db.get_tenant(tid)
+_cctx = H.Ctx(_ChanBot(), _ct)
+
+# سقف با وجودِ عکس عوض می‌شود — متنی که بدونِ عکس می‌رفت، با عکس رد
+# می‌شود. اگر این‌جا نگیریمش، تلگرام می‌گیرد و مالک نمی‌فهمد چرا.
+check("سقفِ کپشن از سقفِ متن کمتر است",
+      H.channel_limit(True) == 1024 and H.channel_limit(False) == 4096,
+      f"{H.channel_limit(False)} / {H.channel_limit(True)}")
+_long = "ا" * 2000
+check("متنِ بلند بدونِ عکس مشکلی ندارد", not H.channel_problems(_long))
+check("ولی همان با عکس جلویش گرفته می‌شود",
+      bool(H.channel_problems(_long, has_photo=True)),
+      "وگرنه تلگرام ردش می‌کند و دلیلش به مالک نمی‌رسد")
+
+# اعتبارسنج همان `fmt.check` است، نه نسخه‌ی دوم
+check("HTML خراب پیش از ارسال گرفته می‌شود",
+      bool(H.channel_problems("<b>باز مانده"))
+      and bool(H.channel_problems("<blink>x</blink>")),
+      "تلگرام پیامِ با تگِ خراب را اصلاً نمی‌فرستد")
+check("و HTML سالم رد نمی‌شود",
+      not H.channel_problems("<b>سالم</b> و <i>مرتب</i>"))
+check("متنِ خالی پست نمی‌شود", bool(H.channel_problems("")))
+
+_CH = io.open("bot/handlers.py", encoding="utf-8").read()
+check("پنل و زمان‌بند یک هسته دارند",
+      _CH.count("def channel_send(") == 1
+      and 'from fmt import check as _fmt_check' in _CH,
+      "اعتبارسنجِ دوم یعنی روزی یکی اصلاح می‌شود و دیگری نه")
+
+_APP = io.open("backend/app.py", encoding="utf-8").read()
+check("بک‌اند خودش پست نمی‌فرستد",
+      "h.channel_send(" in _APP and "sendMessage" not in _APP.split(
+          "def admin_channel_post(")[1].split("\n@app.")[0],
+      "همه از یک هسته رد شوند")
+
+# ── ادعا و ارسال ──
+_p1 = D.channel_add("<b>سلام</b> کانال")
+check("ادعا یک‌بار برنده می‌شود",
+      D.channel_claim(_p1["id"]) and not D.channel_claim(_p1["id"]),
+      "پستِ تکراری در کانال جلوی چشمِ همه می‌ماند")
+_ok, _mid = H.channel_send(_cctx, dict(_p1))
+_row = D.channel_done(_p1["id"], message_id=_mid if _ok else None,
+                      error=None if _ok else _mid)
+check("پست می‌رود و شناسه‌اش ثبت می‌شود",
+      _ok and _row["status"] == "sent" and int(_row["message_id"]) > 0,
+      f"{_row['status']} · {_row['message_id']}")
+check("و به همان کانال", _csent[-1]["to"] == "@nexora_news", _csent[-1]["to"])
+
+# ── عکس: همان پوشه برای هر دو پردازه ──
+_name = H.channel_photo_save(b"\xff\xd8\xff" + b"x" * 40)
+check("عکس همان‌جایی خوانده می‌شود که نوشته شده",
+      H.channel_photo_bytes(_name) is not None,
+      "بک‌اند می‌نویسد و زمان‌بندِ ربات می‌خواند — دو پیش‌فرضِ جدا یعنی "
+      "عکس بی‌صدا نمی‌رود")
+check("و مسیرِ پوشه یک تعریف دارد",
+      io.open("bot/core.py", encoding="utf-8").read()
+      .count("def channel_photo_dir(") == 1)
+check("نامِ دستکاری‌شده به بیرونِ پوشه نمی‌رسد",
+      H.channel_photo_bytes("../../secret") is None
+      and H.channel_photo_bytes("") is None)
+
+_p2 = D.channel_add("کپشن", photo=_name)
+D.channel_claim(_p2["id"])
+_ok2, _ = H.channel_send(_cctx, dict(_p2),
+                         photo_bytes=H.channel_photo_bytes(_name))
+check("پستِ عکس‌دار به‌صورت عکس می‌رود",
+      _ok2 and _csent[-1]["photo"] is not None)
+
+# ── شکست ──
+class _BadBot(_ChanBot):
+    def send(self, *a, **k):
+        raise H.TelegramError(
+            "Forbidden: bot is not a member of the channel chat")
+
+
+_p3 = D.channel_add("سلام")
+D.channel_claim(_p3["id"])
+_ok3, _why = H.channel_send(H.Ctx(_BadBot(), _ct), dict(_p3))
+_r3 = D.channel_done(_p3["id"], error=None if _ok3 else _why)
+check("خطای تلگرام به زبانِ آدمیزاد ترجمه می‌شود",
+      "ادمین" in _why and "Forbidden" not in _why, _why)
+check("و دلیلش ذخیره می‌شود", _r3["status"] == "failed" and bool(_r3["error"]),
+      "پستی که نرفته و نمی‌گوید چرا، همان مسیرِ خرابِ بی‌صداست")
+check("پستِ نافرجام دوباره قابلِ تلاش است", D.channel_claim(_p3["id"]),
+      "وگرنه ادعا پس‌دادن بی‌اثر است و پست برای همیشه گیر می‌کند")
+
+db.save_tenant_settings(tid, {k: v for k, v in _cfg0.items()
+                              if k not in ("channel_id", "force_channel")})
+_noaddr = H.channel_send(H.Ctx(_ChanBot(), db.get_tenant(tid)), {"body": "x"})
+check("بی‌آدرس، پست نمی‌رود و می‌گوید چرا",
+      _noaddr[0] is False and "آدرس" in _noaddr[1], str(_noaddr[1]))
+
+_RUN = io.open("bot/run.py", encoding="utf-8").read()
+check("زمان‌بند پست‌های سررسیده را برمی‌دارد",
+      "def send_due_posts(" in _RUN
+      and "send_due_posts()" in _RUN.split("def scheduler_loop(")[1],
+      "تابعی که کسی صدا نمی‌زند، قابلیت نیست")
+check("و پیش از ارسال ادعا می‌کند",
+      "channel_claim(" in _RUN.split("def send_due_posts(")[1].split("\ndef ")[0])
+
+db.save_tenant_settings(tid, _cfg0)
+
+
 os.unlink(tmp)
 
 print(f"\n{'═' * 52}")

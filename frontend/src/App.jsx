@@ -16,6 +16,7 @@ import { API_URL, WORKSPACES, WS_MODES } from "./lib/constants";
 import { BillingClients, BillingDash, BillingGroups, BillingInvoice, BillingPayments, BillingPeriod, BillingSettings } from "./sections/billing";
 import { BotAffiliates } from "./sections/bot/affiliates";
 import { BotBackupSection } from "./sections/bot/backup";
+import { ChannelSection } from "./sections/channel";
 import { BotCoinsSection } from "./sections/bot/coins";
 import { BotDiscountsSection } from "./sections/bot/discounts";
 import { BotSection } from "./sections/bot/connection";
@@ -495,6 +496,7 @@ export default function App() {
           {active === "bot-inbox" && <BotInboxSection password={password} />}
           {active === "bot-users" && <BotUsersSection password={password} />}
           {active === "bot-report" && <BotReportSection password={password} />}
+          {active === "channel" && <ChannelSection password={password} />}
           {active === "bot-coins" && <BotCoinsSection password={password} />}
           {active === "bot-discounts" && <BotDiscountsSection password={password} />}
           {active === "bot-affiliates" && <BotAffiliates password={password} />}
