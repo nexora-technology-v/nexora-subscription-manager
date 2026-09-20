@@ -2301,14 +2301,30 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .fx-chat-bar .fx-clip:disabled { opacity: .45; }
 
 /* ===== کانال ===== */
+/* ظرفِ سنجش. فقط دورِ خودِ گرید، نه دورِ کلِ صفحه:
+   `container-type: inline-size` — مثل `transform` — برای فرزندانِ
+   `position: fixed` یک containing block می‌سازد. همان دامی که
+   `.fx-anim` یک‌بار ساخت و تقویمِ شمسی را بیرونِ دید انداخت. تقویم
+   از راه portal روی body می‌نشیند و فرار می‌کند، ولی هر چیزِ
+   fixedِ تازه‌ای که این تو گذاشته شود باید همین کار را بکند. */
+.ch-wrap { container-type: inline-size; }
+
 .ch-grid { grid-template-columns: 1fr; }
-@media (min-width: 1100px) { .ch-grid { grid-template-columns: 1.3fr 1fr; } }
+
+/* آستانه از روی اندازه‌گیری: زیرِ ۱۰۴۰ پیکسلِ *صحنه*، دو ستون یعنی
+   کادرِ نوشتن زیرِ ۵۶۰ و پیش‌نمایش زیرِ ۴۳۰ — هر دو خفه. */
+@container (min-width: 1040px) {
+  .ch-grid { grid-template-columns: 1.25fr 1fr; }
+}
 
 .ch-addr {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 14px; flex-wrap: wrap;
 }
-.ch-addr-in { width: 200px; font-family: var(--mono); text-align: left; }
+.ch-addr-in {
+  flex: 1 1 180px; min-width: 0; max-width: 260px;
+  font-family: var(--mono); text-align: left;
+}
 
 .ch-tpl { display: flex; gap: 6px; flex-wrap: wrap; }
 .ch-tpl-chip {

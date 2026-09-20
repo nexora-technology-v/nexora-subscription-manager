@@ -324,7 +324,8 @@ export function ChannelSection({ password }) {
         </div>
       </div>
 
-      <div className="ch-grid grid gap-3 mt-3">
+      <div className="ch-wrap mt-3">
+      <div className="ch-grid grid gap-3">
         <div className="fx-card p-4">
           <div className="ch-tools">
             {MARKS.map((m) => (
@@ -424,6 +425,8 @@ export function ChannelSection({ password }) {
             </div>
           </div>
         )}
+      </div>
+
       </div>
 
       <SectionHead title="پست‌ها" desc="آنچه رفته، آنچه در نوبت است، و آنچه نرفته." />
