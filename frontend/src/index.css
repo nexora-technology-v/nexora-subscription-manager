@@ -2300,6 +2300,46 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .fx-chat-bar .fx-clip:hover { color: var(--text); border-color: var(--accent-line); }
 .fx-chat-bar .fx-clip:disabled { opacity: .45; }
 
+/* ===== گزارشِ کدهای تخفیف ===== */
+
+/* auto-fit با minmax، نه چهار ستونِ ثابت: این کارت داخلِ صفحه‌ای
+   است که عرضش با باز و بسته‌شدنِ منو عوض می‌شود. */
+.dc-kpis {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+.dc-kpi {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 10px 12px;
+}
+.dc-kpi span {
+  display: block; font-size: 19px; font-weight: 700; color: var(--text);
+  font-family: var(--num); line-height: 1.3;
+}
+.dc-kpi i {
+  display: block; font-style: normal; font-size: 11.5px;
+  color: var(--muted); margin-top: 2px;
+}
+.dc-kpi.warn span { color: var(--warn); }
+
+.dc-top {
+  border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+}
+.dc-top-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 9px 12px; font-size: 12.5px; color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.dc-top-row:last-child { border-bottom: none; }
+.dc-top-row b { color: var(--text); font-size: 13px; flex: 0 0 auto; }
+
+.dc-wb {
+  background: var(--accent-wash); border: 1px solid var(--accent-line);
+  border-radius: 12px; padding: 10px 13px;
+  font-size: 12.5px; line-height: 2; color: var(--dim);
+}
+.dc-wb b { color: var(--text); }
+
 /* ===== کانال ===== */
 /* ظرفِ سنجش. فقط دورِ خودِ گرید، نه دورِ کلِ صفحه:
    `container-type: inline-size` — مثل `transform` — برای فرزندانِ

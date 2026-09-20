@@ -412,6 +412,22 @@
   /* کدهای تخفیف. با فهرستِ خالی، صفحه شاخه‌ی «هنوز کدی ساخته
      نشده» را می‌گیرد و هیچ‌وقت ردیفِ واقعی دیده نمی‌شود. */
   var D_CODES = { ready: true,
+    /* گزارش با عددِ واقع‌نما، نه صفر: با صفر، صفحه شاخه‌ی «هنوز
+       استفاده نشده» را می‌گیرد و خودِ گزارش هیچ‌وقت دیده نمی‌شود. */
+    report: {
+      total: { orders: 270, sales: 47250000, given: 4890000, codes: 4 },
+      top: [
+        { code: "WELCOME10", orders: 212, sales: 38160000, given: 2544000,
+          lastAt: "2026-09-19 21:40" },
+        { code: "NOWRUZ", orders: 37, sales: 6660000, given: 1110000,
+          lastAt: "2026-09-18 11:02" },
+        { code: "OLDSALE", orders: 20, sales: 2400000, given: 1200000,
+          lastAt: "2026-08-30 09:15" },
+        { code: "BACKE2FD35", orders: 1, sales: 30000, given: 36000,
+          lastAt: "2026-09-17 19:05" },
+      ],
+      winback: { sent: 14, used: 1, orders: 1, sales: 30000, given: 36000 },
+    },
     plans: [{ id: 1, name: "یک‌ماهه" }, { id: 2, name: "سه‌ماهه" }],
     discounts: [
       { id: 1, code: "NOWRUZ", percent: 25, maxUses: 100, usedCount: 37,

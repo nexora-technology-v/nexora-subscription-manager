@@ -705,6 +705,84 @@ class TenantDB:
     def clear_state(self, tg_id):
         self.set_state(tg_id, None, {})
 
+    # ---------- گزارشِ کدهای تخفیف ----------
+    def discount_report(self):
+        """
+        سه چیزی که مالک واقعاً می‌پرسد: چقدر تخفیف دادم، کدام کد
+        فروش آورد، و پیگیریِ تست جواب داد یا نه.
+
+        **هیچ عددِ تازه‌ای ساخته نمی‌شود.** تفاوتِ `base_amount` و
+        `amount` روی خودِ سفارش، همان تخفیفی است که داده شده.
+
+        دو قاعده‌ی خودِ مخزن این‌جا هم هست:
+
+        • **تست خرید نیست.** سفارشِ پلنِ تست با مبلغ صفر ثبت
+          می‌شود؛ نشمردنش با `is_trial` است نه با مبلغ، چون سفارشِ
+          صددرصد تخفیف‌خورده هم صفر است ولی تبدیل است.
+
+        • **«فروش» با «درآمد» یکی نیست.** این‌جا فروش شمرده می‌شود
+          — سفارشی که از کیف پول پرداخت شده هم فروش است، هرچند پولِ
+          تازه‌ای با آن نرسیده. ستون همین را می‌گوید و ادعای درآمد
+          نمی‌کند.
+        """
+        base = """FROM orders o
+                  LEFT JOIN plans p ON p.id = o.plan_id
+                 WHERE o.tenant_id = ?
+                   AND o.status = 'approved'
+                   AND COALESCE(p.is_trial, 0) = 0
+                   AND o.discount_code IS NOT NULL
+                   AND TRIM(o.discount_code) <> ''"""
+
+        tot = self.q(
+            "SELECT COUNT(*) AS orders, "
+            "       COALESCE(SUM(o.amount),0) AS sales, "
+            "       COALESCE(SUM(o.base_amount - o.amount),0) AS given, "
+            "       COUNT(DISTINCT UPPER(TRIM(o.discount_code))) AS codes "
+            + base, (self.tid,), one=True) or {}
+
+        top = self.q(
+            "SELECT UPPER(TRIM(o.discount_code)) AS code, "
+            "       COUNT(*) AS orders, "
+            "       COALESCE(SUM(o.amount),0) AS sales, "
+            "       COALESCE(SUM(o.base_amount - o.amount),0) AS given, "
+            "       MAX(o.reviewed_at) AS last_at "
+            + base +
+            " GROUP BY UPPER(TRIM(o.discount_code)) "
+            " ORDER BY sales DESC LIMIT 8", (self.tid,))
+
+        # ── پیگیریِ تست ──
+        #
+        # کدهای `BACK…` را `trial_winback` می‌سازد، هر کدام برای یک
+        # نفر. پس «چندتا ساخته شده» یعنی به چند نفر پیام رفته، و
+        # «چندتا استفاده شده» یعنی چند نفر برگشتند.
+        wb = self.q(
+            "SELECT COUNT(*) AS sent, "
+            "       COALESCE(SUM(CASE WHEN used_count > 0 THEN 1 ELSE 0 END),0) "
+            "         AS used "
+            "  FROM discounts WHERE tenant_id=? AND code LIKE 'BACK%'",
+            (self.tid,), one=True) or {}
+
+        wbm = self.q(
+            "SELECT COUNT(*) AS orders, "
+            "       COALESCE(SUM(o.amount),0) AS sales, "
+            "       COALESCE(SUM(o.base_amount - o.amount),0) AS given "
+            + base + " AND o.discount_code LIKE 'BACK%'",
+            (self.tid,), one=True) or {}
+
+        return {
+            "total": {k: int(tot.get(k) or 0)
+                      for k in ("orders", "sales", "given", "codes")},
+            "top": [{"code": r["code"], "orders": int(r["orders"] or 0),
+                     "sales": int(r["sales"] or 0),
+                     "given": int(r["given"] or 0),
+                     "lastAt": r["last_at"] or ""} for r in top],
+            "winback": {"sent": int(wb.get("sent") or 0),
+                        "used": int(wb.get("used") or 0),
+                        "orders": int(wbm.get("orders") or 0),
+                        "sales": int(wbm.get("sales") or 0),
+                        "given": int(wbm.get("given") or 0)},
+        }
+
     # ---------- پست‌های کانال ----------
     def channel_posts(self, limit=50):
         return self.q(

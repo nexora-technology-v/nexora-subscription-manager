@@ -3336,7 +3336,19 @@ def bot_discounts(x_admin_password: str = Header(...)):
             "paidOrders": g.get("orders", 0),
             "givenToman": g.get("toman", 0),
         })
-    return {"ready": True, "discounts": out,
+    # گزارش به همین پاسخ می‌چسبد، نه یک مسیرِ تازه: صفحه از قبل
+    # این را صدا می‌زند و دو درخواست برای یک صفحه یعنی دو جای
+    # خطا.
+    #
+    # اگر گزارش نیامد، فهرست باید بیاید — نبودِ گزارش نباید کلِ
+    # صفحه را از کار بیندازد.
+    try:
+        report = _bot_db_rw(t).discount_report()
+    except Exception:
+        log.exception("گزارش کدهای تخفیف ناموفق")
+        report = None
+
+    return {"ready": True, "discounts": out, "report": report,
             "plans": [{"id": k, "name": v} for k, v in plans.items()]}
 
 

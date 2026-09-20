@@ -221,6 +221,86 @@ function WinBack({ password }) {
   );
 }
 
+/**
+ * گزارشِ کدها.
+ *
+ * تا امروز تنها بازخوردِ مالک `used_count` بود: «چند بار». این
+ * می‌گوید **چقدر** — و مهم‌تر، پیگیریِ تست جواب داد یا نه.
+ *
+ * هیچ عددی این‌جا حساب نمی‌شود؛ همه از `discount_report` می‌آید که
+ * تفاوتِ `base_amount` و `amount` روی خودِ سفارش را می‌خواند.
+ */
+function Report({ r }) {
+  if (!r) return null;
+  const t = r.total || {};
+  const w = r.winback || {};
+  if (!t.orders && !w.sent) {
+    return (
+      <InfoBox>
+        هنوز هیچ کدی استفاده نشده. وقتی اولین سفارش با کد تایید شود،
+        این‌جا می‌بینید چقدر تخفیف داده‌اید و کدام کد فروش آورده.
+      </InfoBox>
+    );
+  }
+  return (
+    <>
+      <div className="dc-kpis">
+        <div className="dc-kpi">
+          <span>{faNum(t.orders || 0)}</span>
+          <i>سفارش با کد</i>
+        </div>
+        <div className="dc-kpi">
+          <span>{faNum(t.sales || 0)}</span>
+          <i>فروش، تومان</i>
+        </div>
+        <div className="dc-kpi warn">
+          <span>{faNum(t.given || 0)}</span>
+          <i>تخفیف داده‌شده</i>
+        </div>
+        <div className="dc-kpi">
+          <span>{faNum(t.codes || 0)}</span>
+          <i>کدِ استفاده‌شده</i>
+        </div>
+      </div>
+
+      {/* «فروش» عمداً نوشته شده، نه «درآمد»: سفارشی که از کیف پول
+          پرداخت شده فروش هست ولی پولِ تازه‌ای با آن نرسیده — آن
+          پول موقعِ شارژ رسیده. */}
+      <div className="text-[11.5px] mt-2" style={{ color: "var(--muted)" }}>
+        فروش، نه درآمد: خریدِ از کیف پول هم شمرده می‌شود چون پولش
+        موقعِ شارژ رسیده. سفارش‌های پلنِ تست شمرده نمی‌شوند.
+      </div>
+
+      {(r.top || []).length > 0 && (
+        <div className="dc-top mt-3">
+          {(r.top || []).map((x) => (
+            <div key={x.code} className="dc-top-row">
+              <b className="fx-idnum" dir="ltr">{x.code}</b>
+              <span>{faNum(x.orders)} سفارش</span>
+              <span>فروش {faNum(x.sales)}</span>
+              <span style={{ color: "var(--warn)" }}>
+                تخفیف {faNum(x.given)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {w.sent > 0 && (
+        <div className="dc-wb mt-3">
+          <b>پیگیریِ تست:</b>{" "}
+          برای <b>{faNum(w.sent)}</b> نفر کد رفت،{" "}
+          <b>{faNum(w.used)}</b> نفر استفاده {w.used === 1 ? "کرد" : "کردند"}
+          {w.sales > 0 && <> و <b>{faNum(w.sales)}</b> تومان فروش آورد</>}.
+          {w.sent > 0 && w.used === 0 && (
+            <> هنوز کسی برنگشته — شاید درصد یا متنش را عوض کنید.</>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
 export function BotDiscountsSection({ password }) {
   const [d, setD] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -275,6 +355,13 @@ export function BotDiscountsSection({ password }) {
         } />
 
       <Msg msg={msg} />
+
+      <div className="fx-card p-4 mb-4">
+        <div className="text-[14px] font-semibold text-white mb-3">
+          کدها چقدر کار کرده‌اند
+        </div>
+        <Report r={d?.report} />
+      </div>
 
       <WinBack password={password} />
 

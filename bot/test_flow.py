@@ -1747,6 +1747,92 @@ check("پیشنهادها از ماژولِ خالص می‌آیند، نه از
       "منطقی که در مسیرِ API نوشته شود، تست نمی‌شود")
 
 
+# ═══════════════════════════════════════════════════════════
+#  گزارشِ کدهای تخفیف
+#
+#  تا امروز تنها بازخوردِ مالک `used_count` بود: «چند بار». این
+#  می‌گوید **چقدر** — و پیگیریِ تست جواب داد یا نه.
+#
+#  هیچ عددی تازه ساخته نمی‌شود: تفاوتِ base_amount و amount روی
+#  خودِ سفارش، همان تخفیفی است که داده شده.
+# ═══════════════════════════════════════════════════════════
+section("گزارشِ کدهای تخفیف")
+
+_ru = D.get_user(555)["id"]
+_rplan = [p for p in D.plans() if not p.get("is_trial")][0]["id"]
+_rtrial = D.exec(
+    "INSERT INTO plans (tenant_id,name,price,gb,days,is_active,is_trial) "
+    "VALUES (?,'تستِ گزارش',0,1,1,1,1)", (tid,))
+D.exec("DELETE FROM orders WHERE tenant_id=?", (tid,))
+D.exec("DELETE FROM discounts WHERE tenant_id=? AND code LIKE 'BACK%'", (tid,))
+
+
+def _rorder(plan, base, amt, code, status="approved"):
+    return D.exec(
+        "INSERT INTO orders (tenant_id,user_id,plan_id,amount,base_amount,"
+        "status,discount_code) VALUES (?,?,?,?,?,?,?)",
+        (tid, _ru, plan, amt, base, status, code))
+
+
+_rorder(_rplan, 200_000, 140_000, "OFF30")
+_rorder(_rplan, 200_000, 140_000, "OFF30")
+_rorder(_rplan, 200_000, 100_000, "HALFX")
+_rorder(_rplan, 200_000, 140_000, "OFF30", status="rejected")
+_rorder(_rplan, 200_000, 200_000, None)
+_rorder(_rtrial, 0, 0, "OFF30")          # دام: مبلغش صفر است ولی تبدیل نیست
+
+_rep = D.discount_report()
+_t = _rep["total"]
+
+check("فقط سفارشِ تاییدشده‌ی کددار شمرده می‌شود", _t["orders"] == 3,
+      f"{_t['orders']} سفارش — ردشده و بی‌کد نباید بیایند")
+check("سفارشِ پلنِ تست شمرده نمی‌شود",
+      _t["orders"] == 3 and _t["sales"] == 380_000,
+      "تستِ صفرتومانی و سفارشِ صددرصد تخفیف‌خورده هر دو صفرند؛ "
+      "سنجش با is_trial است نه با مبلغ")
+check("تخفیف از تفاوتِ پایه و پرداختی می‌آید", _t["given"] == 220_000,
+      f"{_t['given']} — ۶۰+۶۰+۱۰۰")
+check("و شمارشِ کدها یکتاست", _t["codes"] == 2, str(_t["codes"]))
+
+_top = {x["code"]: x for x in _rep["top"]}
+check("هر کد جدا شمرده می‌شود",
+      _top["OFF30"]["orders"] == 2 and _top["HALFX"]["orders"] == 1,
+      "ردشده در OFF30 نباید بیاید")
+check("و بر اساس فروش مرتب است",
+      [x["code"] for x in _rep["top"]] == ["OFF30", "HALFX"],
+      "مالک می‌خواهد بداند کدام کد بیشتر آورد")
+
+# ── پیگیریِ تست ──
+for _i, _used in ((1, 1), (2, 0), (3, 0)):
+    D.exec("INSERT INTO discounts (tenant_id,code,percent,max_uses,used_count,"
+           "is_active) VALUES (?,?,30,1,?,1)", (tid, f"BACKZ{_i}", _used))
+_rorder(_rplan, 200_000, 140_000, "BACKZ1")
+
+_wb = D.discount_report()["winback"]
+check("پیگیری می‌گوید به چند نفر کد رفت", _wb["sent"] == 3, str(_wb["sent"]))
+check("و چند نفر برگشتند", _wb["used"] == 1, str(_wb["used"]))
+check("و چقدر فروش آورد", _wb["sales"] == 140_000, str(_wb["sales"]))
+check("کدهای پیگیری از کدهای دیگر جدا شمرده می‌شوند",
+      _wb["orders"] == 1 and D.discount_report()["total"]["orders"] == 4,
+      "وگرنه نمی‌شود فهمید کدام فروش از پیگیری آمده")
+
+# ── جداییِ مستاجر ──
+db.TenantDB(_other).exec(
+    "INSERT INTO orders (tenant_id,user_id,plan_id,amount,base_amount,status,"
+    "discount_code) VALUES (?,1,1,9999999,9999999,'approved','OFF30')", (_other,))
+check("گزارشِ یک مستاجر سفارشِ مستاجرِ دیگر را نمی‌بیند",
+      D.discount_report()["total"]["sales"] < 9_000_000,
+      "همان کلاسِ باگی که در این مخزن بارها افتاده")
+
+_DBS = io.open("bot/db.py", encoding="utf-8").read()
+_fn = _DBS.split("def discount_report(")[1].split("\n    def ")[0]
+check("گزارش تستِ رایگان را با is_trial کنار می‌گذارد، نه با مبلغ",
+      "COALESCE(p.is_trial, 0) = 0" in _fn,
+      "سفارشِ صددرصد تخفیف‌خورده هم صفر است ولی تبدیل است")
+check("و فقط سفارشِ تاییدشده را می‌شمارد",
+      "o.status = 'approved'" in _fn)
+
+
 os.unlink(tmp)
 
 print(f"\n{'═' * 52}")
