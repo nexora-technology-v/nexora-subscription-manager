@@ -689,6 +689,37 @@
           plan: "شش ماهه", at: "2026-09-17 11:30", waitedMin: 6, hasPhoto: true },
       ],
     };
+    if (u.indexOf("/admin/channel/suggestions") >= 0) {
+      /* هر سه شکل باید دیده شود: فرصت، فوریت، و خرابی. با فهرستِ
+         خالی صفحه شاخه‌ی «چیزی نیست» را می‌گیرد و سالم به نظر
+         می‌رسد. */
+      return { suggestions: [
+        { id: "failed", kind: "fix", title: "پستِ نافرجام را ببینید",
+          why: "۱ پست فرستاده نشده", body: "" },
+        { id: "disc:OFF30", kind: "draft", title: "اعلامِ کدِ OFF30",
+          why: "کدِ OFF30 ساخته شده و هیچ‌وقت در کانال اعلام نشده",
+          body: "🎟 <b>کدِ تخفیف</b>\n\nکدِ <code>OFF30</code> را موقعِ خرید بزنید و <b>۳۰٪</b> کمتر بپردازید." },
+        { id: "expiry:2026-09-20", kind: "draft", title: "یادآوریِ تمدید",
+          why: "۲۳ اشتراک در هفت روزِ آینده تمام می‌شود",
+          body: "⏰ <b>اشتراکتان دارد تمام می‌شود؟</b>\n\nتمدید یک دکمه است." },
+        { id: "quiet:2026-W38", kind: "draft", title: "یک پستِ آموزشی بگذارید",
+          why: "۹ روز است پستی نگذاشته‌اید",
+          body: "📚 <b>نصب در سه قدم</b>" },
+      ] };
+    }
+    if (u.indexOf("/admin/channel/dismiss") >= 0) return { ok: true };
+    if (u.indexOf("/admin/channel/ai-image") >= 0) {
+      return { ok: true, photo: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" };
+    }
+    if (u.indexOf("/admin/channel/ai") >= 0) {
+      if (method === "POST") {
+        return { ok: true, text: "🎉 <b>تخفیفِ آخر هفته</b>\n\nتا یکشنبه با کدِ <code>OFF30</code> سی درصد کمتر بپردازید." };
+      }
+      return { ready: true, why: "", hasKey: true, model: "demo-1",
+               baseUrl: "https://api.example.test/v1",
+               imageUrl: "https://img.example.test/p/{q}", tone: "صمیمی و کوتاه",
+               enabled: true };
+    }
     if (u.indexOf("/admin/channel/check") >= 0) {
       /* همان قاعده‌ای که بک‌اند دارد، فقط برای دیدنِ صفحه:
          تگِ بازمانده و سقفِ کپشن. */

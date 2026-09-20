@@ -15,13 +15,14 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle, Bold, Calendar, Check, Code, Eraser, Eye, EyeOff, Image as ImageIcon,
-  Italic, Link2, Loader2, Quote, Send, Strikethrough, Trash2, Underline,
+  Italic, Lightbulb, Link2, Loader2, Quote, Send, Settings2, Sparkles,
+  Strikethrough, Trash2, Underline, X,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import {
-  EmptyState, InfoBox, Msg, PageSkeleton, SectionHead,
+  EmptyState, Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, Toggle,
 } from "../ui/index";
 import { JalaliDate } from "../ui/jalali.jsx";
 import { shrinkImage } from "../lib/image.js";
@@ -144,6 +145,12 @@ export function ChannelSection({ password }) {
   const [showPrev, setShowPrev] = useState(true);
   const [addr, setAddr] = useState("");
   const [savingAddr, setSavingAddr] = useState(false);
+  // فاز ۲: پیشنهادها · فاز ۳: هوش مصنوعی
+  const [tips, setTips] = useState([]);
+  const [ai, setAi] = useState(null);
+  const [aiTask, setAiTask] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiCfg, setAiCfg] = useState(null);
 
   const boxRef = useRef(null);
   const fileRef = useRef(null);
@@ -164,6 +171,12 @@ export function ChannelSection({ password }) {
       } catch { plans = []; }
       setCfg({ ...s, plans });
       setAddr(s.channel_id || "");
+      // پیشنهادها و وضعیتِ هوش مصنوعی صفحه را گروگان نمی‌گیرند:
+      // اگر نیامدند، بقیه‌ی بخش باید کار کند.
+      call("/api/admin/channel/suggestions", password)
+        .then((x) => setTips(x.suggestions || [])).catch(() => setTips([]));
+      call("/api/admin/channel/ai", password)
+        .then(setAi).catch(() => setAi({ ready: false, why: "خوانده نشد" }));
     } catch (e) {
       setMsg({ t: "err", m: e.message });
       setData({ posts: [], target: "", limits: { text: 4096, caption: 1024 } });
@@ -259,6 +272,63 @@ export function ChannelSection({ password }) {
     finally { setSavingAddr(false); }
   };
 
+  const dismissTip = async (id) => {
+    setTips((xs) => xs.filter((x) => x.id !== id));
+    try {
+      await call("/api/admin/channel/dismiss", password,
+                 { method: "POST", body: { id } });
+    } catch (e) { setMsg({ t: "err", m: e.message }); }
+  };
+
+  const useTip = (tip) => {
+    if (tip.kind === "fix") {
+      document.querySelector(".ch-posts")?.scrollIntoView({ behavior: "smooth" });
+      return;
+    }
+    setText((p) => (p.trim() ? `${p}\n\n${tip.body}` : tip.body));
+    boxRef.current?.focus();
+  };
+
+  const aiWrite = async () => {
+    if (!aiTask.trim() || aiBusy) return;
+    setAiBusy(true);
+    try {
+      const j = await call("/api/admin/channel/ai", password,
+                           { method: "POST", body: { task: aiTask } });
+      setText((p) => (p.trim() ? `${p}\n\n${j.text}` : j.text));
+      // موضوع پاک نمی‌شود: بعد از نوشتنِ متن معمولاً همان موضوع
+      // برای ساختِ تصویر هم می‌خواهد. پاک‌کردنش دکمه‌ی تصویر را
+      // غیرفعال می‌کرد بی‌آنکه بگوید چرا.
+      boxRef.current?.focus();
+    } catch (e) { setMsg({ t: "err", m: e.message }); }
+    finally { setAiBusy(false); }
+  };
+
+  const aiImage = async () => {
+    if (!aiTask.trim() || aiBusy) return;
+    setAiBusy(true);
+    try {
+      const j = await call("/api/admin/channel/ai-image", password,
+                           { method: "POST", body: { subject: aiTask } });
+      setPhoto(j.photo);
+    } catch (e) { setMsg({ t: "err", m: e.message }); }
+    finally { setAiBusy(false); }
+  };
+
+  const saveAi = async () => {
+    setAiBusy(true);
+    try {
+      await call("/api/admin/bot/settings", password, {
+        method: "PUT",
+        body: { settings: { ...cfg, plans: undefined, ai: aiCfg } },
+      });
+      setAiCfg(null);
+      setMsg({ t: "ok", m: "تنظیمات ذخیره شد" });
+      load();
+    } catch (e) { setMsg({ t: "err", m: e.message }); }
+    finally { setAiBusy(false); }
+  };
+
   const remove = async (pid) => {
     try {
       await call(`/api/admin/channel/post/${pid}`, password, { method: "DELETE" });
@@ -307,6 +377,34 @@ export function ChannelSection({ password }) {
         )}
       </div>
 
+      {/* پیشنهادها بالاتر از قالب‌ها.
+          قالب همیشگی است؛ پیشنهاد *امروز* است و پشتش یک رویدادِ
+          واقعی دارد. هر کارت دلیلش را با عدد می‌گوید، وگرنه
+          می‌شود همان محتوای توخالی که نمی‌خواستیم. */}
+      {tips.length > 0 && (
+        <div className="ch-tips mt-3">
+          {tips.map((t) => (
+            <div key={t.id} className={`ch-tip${t.kind === "fix" ? " fix" : ""}`}>
+              <div className="ch-tip-top">
+                {t.kind === "fix" ? <AlertTriangle size={13} />
+                                  : <Lightbulb size={13} />}
+                <span className="ch-tip-title">{t.title}</span>
+                <button type="button" className="ch-tip-x"
+                  onClick={() => dismissTip(t.id)}
+                  title="این را پیشنهاد نده" aria-label="کنار گذاشتن">
+                  <X size={12} />
+                </button>
+              </div>
+              <div className="ch-tip-why">{t.why}</div>
+              <button type="button" className="ch-tip-go"
+                onClick={() => useTip(t)}>
+                {t.kind === "fix" ? "دیدنش" : "بگذار در کادر"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* قالب‌ها بالای کادرند، نه پایینش: کادرِ خالی است که فلج
           می‌کند، پس اولین چیزی که چشم می‌بیند باید یک نقطه‌ی شروع
           باشد. */}
@@ -321,6 +419,59 @@ export function ChannelSection({ password }) {
               {x.t}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* هوش مصنوعی — چاشنی، نه ستون.
+          اگر تنظیم نشده باشد، دکمه‌ی بی‌جواب نمی‌گذاریم: همان‌جا
+          می‌گوییم چرا و راهِ تنظیمش را نشان می‌دهیم. */}
+      <div className="fx-card p-4 mt-3">
+        <div className="ch-ai-head">
+          <div className="text-[13.5px] font-semibold text-white flex items-center gap-2">
+            <Sparkles size={15} style={{ color: "var(--accent-2)" }} />
+            نوشتن با هوش مصنوعی
+          </div>
+          <button type="button" className="fx-btn-g px-3 py-2 text-[13px]
+            flex items-center gap-1.5"
+            onClick={() => setAiCfg({
+              enabled: !!ai?.enabled, base_url: ai?.baseUrl || "",
+              model: ai?.model || "", api_key: "",
+              image_url: ai?.imageUrl || "", tone: ai?.tone || "",
+            })}>
+            <Settings2 size={13} /> تنظیم
+          </button>
+        </div>
+
+        {ai && !ai.ready ? (
+          <div className="mt-3">
+            <InfoBox>
+              {ai.why} — با «تنظیم» آدرس و مدلِ سرویسِ خودتان را بگذارید.
+              بدونِ این هم بقیه‌ی بخش کامل کار می‌کند.
+            </InfoBox>
+          </div>
+        ) : (
+          <div className="ch-ai-row mt-3">
+            <input className="fx-input" value={aiTask} disabled={aiBusy}
+              onChange={(e) => setAiTask(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") aiWrite(); }}
+              placeholder="دربارهٔ چه بنویسد؟ مثلاً: تخفیفِ آخر هفته" />
+            <button className="fx-btn px-4 py-2.5 text-[13px] flex items-center gap-1.5"
+              onClick={aiWrite} disabled={aiBusy || !aiTask.trim()}>
+              {aiBusy ? <Loader2 size={13} className="animate-spin" />
+                      : <Sparkles size={13} />}
+              بنویس
+            </button>
+            {ai?.imageUrl ? (
+              <button className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5"
+                onClick={aiImage} disabled={aiBusy || !aiTask.trim()}>
+                <ImageIcon size={13} /> تصویر
+              </button>
+            ) : null}
+          </div>
+        )}
+        <div className="text-[11.5px] mt-2" style={{ color: "var(--muted)" }}>
+          نام برند، پلن‌ها و اپ‌های شما خودکار به درخواست اضافه می‌شوند.
+          خروجی را قبل از فرستادن بخوانید — قیمت و وعده را خودتان تایید کنید.
         </div>
       </div>
 
@@ -429,13 +580,72 @@ export function ChannelSection({ password }) {
 
       </div>
 
+      {aiCfg && (
+        <Modal title="سرویسِ هوش مصنوعی" onClose={() => setAiCfg(null)}
+          width="540px">
+          <InfoBox>
+            هر سرویسی که شکلِ <code>/v1/chat/completions</code> را بپذیرد کار
+            می‌کند. کلید روی <b>سرورِ خودتان</b> می‌ماند و در پاسخ‌ها بریده
+            نشان داده می‌شود.
+          </InfoBox>
+
+          <div className="mt-3">
+            <Toggle label="روشن" checked={!!aiCfg.enabled}
+              onChange={(v) => setAiCfg({ ...aiCfg, enabled: v })} />
+          </div>
+
+          <Field label="آدرس سرویس" hint="تا /v1 — بدونِ /chat/completions">
+            <input className="fx-input" dir="ltr" value={aiCfg.base_url}
+              placeholder="https://api.example.com/v1"
+              onChange={(e) => setAiCfg({ ...aiCfg, base_url: e.target.value })}
+              style={{ fontFamily: "var(--mono)", textAlign: "left" }} />
+          </Field>
+
+          <Field label="نام مدل">
+            <input className="fx-input" dir="ltr" value={aiCfg.model}
+              placeholder="gpt-4o-mini"
+              onChange={(e) => setAiCfg({ ...aiCfg, model: e.target.value })}
+              style={{ fontFamily: "var(--mono)", textAlign: "left" }} />
+          </Field>
+
+          <Field label="کلید"
+            hint={ai?.hasKey ? "کلیدی ذخیره شده — خالی بگذارید تا همان بماند"
+                             : "اگر سرویس کلید می‌خواهد"}>
+            <input className="fx-input" dir="ltr" type="password"
+              value={aiCfg.api_key} placeholder={ai?.hasKey ? "••••••" : "sk-…"}
+              onChange={(e) => setAiCfg({ ...aiCfg, api_key: e.target.value })}
+              style={{ fontFamily: "var(--mono)", textAlign: "left" }} />
+          </Field>
+
+          <Field label="لحن" hint="اختیاری — مثلاً: صمیمی و کوتاه، بدون شعار">
+            <input className="fx-input" value={aiCfg.tone}
+              onChange={(e) => setAiCfg({ ...aiCfg, tone: e.target.value })} />
+          </Field>
+
+          <Field label="سرویسِ تصویر"
+            hint="اختیاری. نشانی با {q} به‌جای موضوع — اگر نگذارید، دکمه‌ی تصویر نمی‌آید.">
+            <input className="fx-input" dir="ltr" value={aiCfg.image_url}
+              placeholder="https://example.com/p/{q}?w=1024"
+              onChange={(e) => setAiCfg({ ...aiCfg, image_url: e.target.value })}
+              style={{ fontFamily: "var(--mono)", textAlign: "left" }} />
+          </Field>
+
+          <div className="flex justify-end gap-2 mt-3">
+            <button className="fx-btn-g px-3 py-2 text-[13px]"
+              onClick={() => setAiCfg(null)}>انصراف</button>
+            <button className="fx-btn px-4 py-2 text-[13px]"
+              onClick={saveAi} disabled={aiBusy}>ذخیره</button>
+          </div>
+        </Modal>
+      )}
+
       <SectionHead title="پست‌ها" desc="آنچه رفته، آنچه در نوبت است، و آنچه نرفته." />
 
       {!(data.posts || []).length ? (
         <EmptyState text="هنوز پستی نیست"
           hint="از بالا یکی از قالب‌ها را بردارید و اولین پست را بگذارید." />
       ) : (
-        <div className="fx-card p-0 mt-3">
+        <div className="fx-card p-0 mt-3 ch-posts">
           {(data.posts || []).map((p) => (
             <div key={p.id} className="ch-row">
               <div className="min-w-0 flex-1">

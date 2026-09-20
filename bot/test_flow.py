@@ -1622,6 +1622,131 @@ check("و پیش از ارسال ادعا می‌کند",
 db.save_tenant_settings(tid, _cfg0)
 
 
+# ═══════════════════════════════════════════════════════════
+#  پیشنهادِ پست (فاز ۲) و هوش مصنوعی (فاز ۳)
+#
+#  برگه: docs/specs/2026-09-19-channel.md
+# ═══════════════════════════════════════════════════════════
+section("پیشنهادِ پستِ کانال")
+
+import ideas as _ideas                                       # noqa: E402
+from datetime import datetime as _dtm                         # noqa: E402
+
+_NOW = _dtm(2026, 9, 20, 12, 0, 0)
+_SENT = [{"body": "سلامی دوباره", "status": "sent",
+          "sent_at": "2026-09-19 09:00:00"}]
+
+
+def _ids(**kw):
+    kw.setdefault("posts", _SENT)
+    return [x["id"] for x in _ideas.suggest(now=_NOW, **kw)]
+
+
+check("پنلِ بی‌رویداد پیشنهادِ الکی نمی‌سازد", _ids() == [],
+      "کانالی که هر روز پستِ توخالی دارد، از کانالِ ساکت بدتر است")
+
+_d = {"code": "OFF30", "percent": 30, "is_active": 1}
+check("کدِ اعلام‌نشده پیشنهاد می‌شود",
+      _ids(discounts=[_d]) == ["disc:OFF30"])
+check("ولی کدی که قبلاً در کانال گفته شده، نه",
+      _ids(discounts=[_d],
+           posts=[{"body": "کدِ <code>OFF30</code>", "status": "sent",
+                   "sent_at": "2026-09-19 09:00:00"}]) == [],
+      "سنجش با متنِ پستِ رفته است، نه با پرچمِ جدا که از واقعیت دور می‌افتد")
+check("کدِ پرشده پیشنهاد نمی‌شود",
+      _ids(discounts=[{**_d, "max_uses": 2, "used_count": 2}]) == [],
+      "اعلامِ کدی که کار نمی‌کند، بدتر از نگفتن است")
+check("کدِ منقضی هم نه",
+      _ids(discounts=[{**_d, "expires_at": "2026-09-01 00:00:00"}]) == [])
+check("کدِ خاموش هم نه", _ids(discounts=[{**_d, "is_active": 0}]) == [])
+
+_soon = _ideas.suggest(now=_NOW, posts=_SENT,
+                       discounts=[{**_d, "expires_at": "2026-09-21 12:00:00"}])
+check("کدی که به‌زودی تمام می‌شود، فوریتش در متن می‌آید",
+      "۲۴ ساعت" in _soon[0]["body"], _soon[0]["body"][-40:])
+
+check("پلنِ تازه معرفی می‌شود",
+      _ids(plans=[{"id": 7, "name": "حرفه‌ای", "price": 450000,
+                   "created_at": "2026-09-16 10:00:00"}]) == ["plan:7"])
+check("پلنِ قدیمی نه",
+      _ids(plans=[{"id": 7, "name": "حرفه‌ای", "price": 450000,
+                   "created_at": "2026-01-01 10:00:00"}]) == [])
+
+check("موجِ انقضا پیشنهاد می‌شود", _ids(expiring=23) == ["expiry:2026-09-20"])
+check("ولی دو اشتراک موج نیست", _ids(expiring=2) == [],
+      "هر عددی خبر نیست")
+
+check("پستِ نافرجام اولِ فهرست است و متن ندارد",
+      _ideas.suggest(now=_NOW, posts=[{"body": "x", "status": "failed"}]
+                     + _SENT)[0]["kind"] == "fix",
+      "اشاره است نه پیش‌نویس؛ وگرنه کادر با متنِ خالی پر می‌شود")
+
+check("پیشنهادِ کنارگذاشته‌شده برنمی‌گردد",
+      _ids(expiring=23, dismissed=["expiry:2026-09-20"]) == [])
+
+check("هر پیشنهاد دلیلِ عددی دارد",
+      all(any(c in x["why"] for c in "۰۱۲۳۴۵۶۷۸۹") or "هیچ" in x["why"]
+          for x in _ideas.suggest(now=_NOW, posts=_SENT, expiring=9,
+                                  discounts=[_d])),
+      "«شاید بد نباشد پستی بگذارید» پیشنهاد نیست")
+
+# ── هوش مصنوعی ──
+section("هوش مصنوعی (اختیاری)")
+
+import ai as _ai                                              # noqa: E402
+
+check("خاموش بودن دلیلش را می‌گوید",
+      _ai.why_off(_ai.config({})) == "هوش مصنوعی خاموش است")
+check("و نیمه‌تنظیم هم",
+      _ai.why_off(_ai.config({"ai": {"enabled": True}})) == "آدرس سرویس وارد نشده"
+      and "مدل" in _ai.why_off(_ai.config(
+          {"ai": {"enabled": True, "base_url": "http://x/v1"}})),
+      "دکمه‌ای که کار نکند و نگوید چرا، بدتر از نبودنش است")
+_full = _ai.config({"ai": {"enabled": True, "base_url": "http://x/v1",
+                           "model": "m"}})
+check("تنظیمِ کامل آماده است", _ai.why_off(_full) is None)
+
+# سنجشِ *دلیل*، نه فقط شکست: با برداشتنِ نگهبان هم درخواست شکست
+# می‌خورد (چون آدرسی نیست) و تست سبز می‌ماند. تفاوتِ «همین‌جا رد
+# شد» با «رفت و نرسید» همین است — و دومی یعنی درخواست واقعاً بیرون
+# رفته.
+_off = _ai.write(_ai.config({}), "x")
+check("بدونِ تنظیم همان‌جا رد می‌شود و به شبکه نمی‌رود",
+      _off[0] is False and _off[1] == "هوش مصنوعی خاموش است", str(_off[1]))
+
+check("مارک‌داونِ مدل به تگِ تلگرام تبدیل می‌شود",
+      _ai.clean("```html\n**پررنگ** __زیرخط__\n```")
+      == "<b>پررنگ</b> <u>زیرخط</u>",
+      "تلگرام ** را تگ نمی‌شناسد و پیام خام می‌رود")
+
+_brief = _ai.brand_brief(brand="نکسورا",
+                         plans=[{"name": "استاندارد", "price": 250000}],
+                         apps=[{"name": "Happ"}], support="@s", tone="کوتاه")
+check("بافتِ برند نام و پلن و اپ را دارد",
+      "نکسورا" in _brief and "استاندارد" in _brief and "Happ" in _brief,
+      "بدونِ بافت، خروجی متنِ عمومیِ اینترنتی است")
+_sys, _usr = _ai.prompt("یک پست", _brief)
+check("تگ‌های مجاز به مدل گفته می‌شود", "<tg-spoiler>" in _sys,
+      "تگِ ناشناخته یعنی پیام اصلاً فرستاده نمی‌شود")
+check("و بافت در دستور می‌آید", "نکسورا" in _usr)
+
+check("نشانیِ تصویر بدونِ {q} ساخته نمی‌شود",
+      _ai.image_url(_ai.config({"ai": {"image_url": "https://x/p"}}), "a") is None
+      and _ai.image_url(_ai.config({"ai": {"image_url": "https://x/p/{q}"}}), "a")
+      == "https://x/p/a")
+
+_APP2 = io.open("backend/app.py", encoding="utf-8").read()
+check("کلیدِ هوش مصنوعی در پاسخ‌ها ماسک می‌شود",
+      'ماسک‌کردن کلید هوش مصنوعی ناموفق' in _APP2,
+      "کلید نباید کامل از سرور بیرون برود")
+check("و مقدارِ ماسک‌شده روی کلیدِ واقعی نمی‌نشیند",
+      '_nk.endswith("…")' in _APP2,
+      "وگرنه اولین ذخیره‌ی صفحه، کلید را خراب می‌کند")
+check("پیشنهادها از ماژولِ خالص می‌آیند، نه از خودِ مسیر",
+      "from ideas import suggest" in _APP2 and "def suggest(" not in _APP2,
+      "منطقی که در مسیرِ API نوشته شود، تست نمی‌شود")
+
+
 os.unlink(tmp)
 
 print(f"\n{'═' * 52}")

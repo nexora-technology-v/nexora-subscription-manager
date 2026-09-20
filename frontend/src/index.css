@@ -2317,6 +2317,59 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   .ch-grid { grid-template-columns: 1.25fr 1fr; }
 }
 
+/* ── پیشنهادها ──
+
+   auto-fill با minmax، نه تعداد ستونِ ثابت: تعدادِ پیشنهادها هر
+   روز فرق می‌کند و ستونِ ثابت یا خالی می‌ماند یا خفه می‌شود. و
+   داخلِ همان ظرفِ سنجش است، پس به عرضِ خودِ بخش واکنش می‌دهد نه
+   به عرضِ پنجره. */
+.ch-tips {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+.ch-tip {
+  position: relative;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 14px; padding: 11px 13px;
+}
+.ch-tip.fix { border-color: var(--danger-line); background: var(--danger-wash); }
+.ch-tip-top {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--accent-2);
+}
+.ch-tip.fix .ch-tip-top { color: var(--danger); }
+.ch-tip-title {
+  font-size: 13px; font-weight: 600; color: var(--text);
+  flex: 1 1 auto; min-width: 0;
+}
+.ch-tip-x {
+  flex: none; width: 20px; height: 20px; border-radius: 6px;
+  display: grid; place-items: center; color: var(--muted);
+  transition: color .15s, background .15s;
+}
+.ch-tip-x:hover { color: var(--text); background: var(--scrim-1); }
+.ch-tip-why {
+  font-size: 11.5px; line-height: 1.8; color: var(--muted);
+  margin: 6px 0 9px;
+}
+.ch-tip-go {
+  font-size: 12px; padding: 5px 11px; border-radius: 99px;
+  color: var(--dim); border: 1px solid var(--border-2);
+  transition: color .15s, border-color .15s, background .15s;
+}
+.ch-tip-go:hover {
+  color: var(--text); border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+/* ── هوش مصنوعی ── */
+.ch-ai-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap;
+}
+.ch-ai-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ch-ai-row .fx-input { flex: 1 1 240px; min-width: 0; }
+
 .ch-addr {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 14px; flex-wrap: wrap;

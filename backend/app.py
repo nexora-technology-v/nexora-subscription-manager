@@ -2972,6 +2972,199 @@ def admin_channel_delete(pid: int, x_admin_password: str = Header(...)):
         raise HTTPException(status_code=503, detail=f"حذف ناموفق: {str(e)[:120]}")
 
 
+def _tenant_settings(t):
+    """تنظیماتِ یک مستاجر، همیشه dict."""
+    try:
+        st = json.loads((t or {}).get("settings") or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return st if isinstance(st, dict) else {}
+
+
+def _save_tenant_settings(tid, st):
+    """
+    نوشتنِ کلِ تنظیمات.
+
+    صداکننده باید dictِ کامل را بدهد — همان که از
+    `_tenant_settings` گرفته و دستکاری کرده. نوشتنِ dictِ ناقص
+    یعنی هر چه در آن نیست پاک می‌شود.
+    """
+    con = _bot_rw()
+    try:
+        con.execute("UPDATE tenants SET settings=? WHERE id=?",
+                    (json.dumps(st or {}, ensure_ascii=False), int(tid)))
+        con.commit()
+    finally:
+        con.close()
+
+
+def _channel_ctx():
+    """مستاجرِ ریشه، ربات، و دیتابیسش — سه چیزی که این مسیرها لازم دارند."""
+    t = _root_tenant_row()
+    h, ctx = _mini_ctx(t)
+    return t, h, ctx, _bot_db_rw(t)
+
+
+@app.get("/api/admin/channel/suggestions")
+def admin_channel_suggestions(x_admin_password: str = Header(...)):
+    """
+    پیشنهادِ پست، از روی رویدادهای واقعیِ پنل.
+
+    منطقش در `bot/ideas.py` است و تابعِ خالص — این‌جا فقط ردیف‌ها
+    خوانده می‌شوند. هیچ عددی این‌جا ساخته نمی‌شود.
+    """
+    check_auth(x_admin_password)
+    try:
+        t, h, _ctx, db = _channel_ctx()
+        st = _tenant_settings(t)
+        tid = t["id"]
+
+        plans = db.q("SELECT id, name, price, created_at FROM plans "
+                     "WHERE tenant_id=? AND is_active=1 "
+                     "AND COALESCE(is_trial,0)=0", (tid,))
+        discounts = db.q("SELECT code, percent, max_uses, used_count, "
+                         "expires_at, is_active, created_at FROM discounts "
+                         "WHERE tenant_id=?", (tid,))
+        exp = db.q("SELECT COUNT(*) AS n FROM subscriptions WHERE tenant_id=? "
+                   "AND is_active=1 AND expires_at IS NOT NULL "
+                   "AND expires_at > datetime('now','localtime') "
+                   "AND expires_at <= datetime('now','localtime','+7 days')",
+                   (tid,), one=True)
+        posts = db.q("SELECT body, status, sent_at FROM channel_posts "
+                     "WHERE tenant_id=? ORDER BY id DESC LIMIT 200", (tid,))
+
+        from ideas import suggest          # noqa: PLC0415
+        rows = suggest(
+            plans=plans, discounts=discounts,
+            expiring=int((exp or {}).get("n") or 0),
+            posts=posts,
+            trial_enabled=bool(st.get("trial_enabled")),
+            brand=str(st.get("brand") or ""),
+            dismissed=st.get("channel_dismissed") or [])
+        return {"suggestions": rows}
+    except Exception as e:
+        log.exception("پیشنهادهای کانال ناموفق")
+        raise HTTPException(status_code=503,
+                            detail=f"پیشنهادها خوانده نشد: {str(e)[:120]}")
+
+
+@app.post("/api/admin/channel/dismiss")
+def admin_channel_dismiss(payload: dict, x_admin_password: str = Header(...)):
+    """کنارگذاشتنِ یک پیشنهاد. فهرست در تنظیمات می‌ماند."""
+    check_auth(x_admin_password)
+    sid = str((payload or {}).get("id") or "").strip()
+    if not sid:
+        raise HTTPException(status_code=400, detail="شناسه‌ی پیشنهاد نیامد")
+    try:
+        t = _root_tenant_row()
+        st = _tenant_settings(t)
+        cur = [x for x in (st.get("channel_dismissed") or []) if isinstance(x, str)]
+        if sid not in cur:
+            cur.append(sid)
+        # سقف، تا فهرست بی‌نهایت بزرگ نشود
+        st["channel_dismissed"] = cur[-200:]
+        _save_tenant_settings(t["id"], st)
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"ذخیره نشد: {str(e)[:120]}")
+
+
+@app.get("/api/admin/channel/ai")
+def admin_channel_ai_state(x_admin_password: str = Header(...)):
+    """
+    آیا هوش مصنوعی آماده است — و اگر نه، چرا.
+
+    کلید هرگز برنمی‌گردد؛ فقط اینکه گذاشته شده یا نه.
+    """
+    check_auth(x_admin_password)
+    try:
+        t = _root_tenant_row()
+        from ai import config as _aicfg, why_off   # noqa: PLC0415
+        c = _aicfg(_tenant_settings(t))
+        return {"ready": why_off(c) is None, "why": why_off(c) or "",
+                "hasKey": bool(c["api_key"]), "model": c["model"],
+                "baseUrl": c["base_url"], "imageUrl": c["image_url"],
+                "tone": c["tone"], "enabled": c["enabled"]}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"خوانده نشد: {str(e)[:120]}")
+
+
+@app.post("/api/admin/channel/ai")
+def admin_channel_ai(payload: dict, x_admin_password: str = Header(...)):
+    """
+    نوشتنِ متنِ پست با هوش مصنوعی.
+
+    بافتِ برند — نام، پلن‌ها، اپ‌ها، لحن — خودکار اضافه می‌شود،
+    وگرنه خروجی متنِ عمومیِ اینترنتی است.
+    """
+    check_auth(x_admin_password)
+    task = str((payload or {}).get("task") or "").strip()
+    try:
+        t, _h, _ctx, db = _channel_ctx()
+        st = _tenant_settings(t)
+        from ai import (config as _aicfg, brand_brief, write)   # noqa: PLC0415
+        c = _aicfg(st)
+        plans = db.q("SELECT name, price FROM plans WHERE tenant_id=? "
+                     "AND is_active=1 AND COALESCE(is_trial,0)=0 "
+                     "ORDER BY sort_order, id LIMIT 6", (t["id"],))
+        brief = brand_brief(brand=str(st.get("brand") or ""), plans=plans,
+                            apps=st.get("apps") or [],
+                            support=str(st.get("support_username") or ""),
+                            tone=c["tone"])
+        ok, out = write(c, task, brief)
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.exception("نوشتن با هوش مصنوعی ناموفق")
+        raise HTTPException(status_code=503, detail=str(e)[:160])
+    if not ok:
+        raise HTTPException(status_code=502, detail=out)
+    return {"ok": True, "text": out}
+
+
+@app.post("/api/admin/channel/ai-image")
+def admin_channel_ai_image(payload: dict, x_admin_password: str = Header(...)):
+    """
+    تصویر از سرویسِ تصویرسازِ مالک.
+
+    سرویس با یک نشانی کار می‌کند و `{q}` جای موضوع را می‌گیرد؛
+    اینجا فقط گرفته و ذخیره می‌شود.
+    """
+    check_auth(x_admin_password)
+    subject = str((payload or {}).get("subject") or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="موضوعِ تصویر را بنویسید")
+    try:
+        t, h, _ctx, _db = _channel_ctx()
+        from ai import config as _aicfg, image_url   # noqa: PLC0415
+        url = image_url(_aicfg(_tenant_settings(t)), subject)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e)[:160])
+    if not url:
+        raise HTTPException(
+            status_code=400,
+            detail="نشانیِ سرویسِ تصویر تنظیم نشده — باید {q} داشته باشد")
+
+    import urllib.request as _ur
+    try:
+        with _ur.urlopen(url, timeout=60) as r:
+            blob = r.read(CHAT_MAX_BYTES + 1)
+    except Exception as e:
+        from ai import human_error          # noqa: PLC0415
+        raise HTTPException(status_code=502, detail=human_error(e))
+    if len(blob) > CHAT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="تصویر بیش از ۳ مگابایت است")
+    ext, ctype = _logo_kind(blob)
+    if not ext:
+        raise HTTPException(status_code=502,
+                            detail="آنچه سرویس داد تصویر نبود")
+    import base64 as _b64
+    return {"ok": True,
+            "photo": f"data:{ctype};base64," + _b64.b64encode(blob).decode()}
+
+
 @app.get("/api/admin/bot/inbox")
 def admin_inbox(user_id: int = None, x_admin_password: str = Header(...)):
     """
@@ -3675,6 +3868,21 @@ def bot_settings_get(x_admin_password: str = Header(...)):
                 t[k] = t[k][:6] + "…" if len(str(t[k])) > 8 else "…"
             else:
                 t[k + "_set"] = False
+        # کلیدِ هوش مصنوعی داخلِ settings است، پس از حلقه‌ی رازهای
+        # بالا رد نمی‌شود. جدا ماسکش می‌کنیم.
+        try:
+            _ai = (t.get("settings") or {})
+            if isinstance(_ai, str):
+                _ai = json.loads(_ai or "{}")
+            if isinstance(_ai, dict) and isinstance(_ai.get("ai"), dict):
+                _k = str(_ai["ai"].get("api_key") or "")
+                if _k:
+                    _ai["ai"] = {**_ai["ai"],
+                                 "api_key": (_k[:6] + "…" if len(_k) > 8 else "…")}
+                    t["settings"] = _ai
+        except Exception:
+            log.debug("ماسک‌کردن کلید هوش مصنوعی ناموفق", exc_info=True)
+
         # settings و topics باید همیشه دیکشنری باشند.
         # اگر مقدارشان "null" یا "[]" باشد، json.loads چیزی برمی‌گرداند
         # که دیکشنری نیست و فرانت‌اند روی آن کرش می‌کند.
@@ -3734,6 +3942,26 @@ def bot_settings_put(payload: dict, x_admin_password: str = Header(...)):
             v = payload.get(k)
             if v and not str(v).endswith("…"):
                 con.execute(f"UPDATE tenants SET {k}=? WHERE id=?", (v, tid))
+
+        # کلیدِ ماسک‌شده نباید ذخیره شود.
+        #
+        # صفحه تنظیمات را می‌خواند (با کلیدِ بریده)، چیزِ دیگری را
+        # عوض می‌کند و همان را پس می‌فرستد. بدونِ این نگهبان، همان
+        # ذخیره کلیدِ واقعی را با «sk-ab…» جایگزین می‌کرد و سرویس
+        # بی‌صدا از کار می‌افتاد.
+        _newst = payload.get("settings")
+        if isinstance(_newst, dict) and isinstance(_newst.get("ai"), dict):
+            _nk = str(_newst["ai"].get("api_key") or "")
+            if _nk.endswith("…"):
+                try:
+                    _old = json.loads(con.execute(
+                        "SELECT settings FROM tenants WHERE id=?",
+                        (tid,)).fetchone()["settings"] or "{}")
+                except Exception:
+                    _old = {}
+                _newst["ai"] = {**_newst["ai"],
+                                "api_key": ((_old.get("ai") or {}).get("api_key")
+                                            or "")}
 
         for k in ("topics", "settings"):
             if k in payload and isinstance(payload[k], (dict, list)):
