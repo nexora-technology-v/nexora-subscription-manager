@@ -24,8 +24,15 @@
    * *پیش از* اجرای باندل — عوض می‌کنیم. `main.jsx` بعد از این
    * اسکریپت اجرا می‌شود و همان مسیرِ تازه را می‌بیند.
    */
+  /* پرچم‌های هارنس **پیش از** `replaceState` خوانده می‌شوند.
+     آن یک خط نشانی را عوض می‌کند و `location.search` را خالی
+     می‌گذارد، پس هر چیزی که دیرتر بخواندش هیچ‌وقت نمی‌بیندش. */
+  var Q0 = new URLSearchParams(location.search);
+  var NEW_RESELLER = Q0.get("plans") === "0";
+  var MINI_ACCENT = Q0.get("accent") === "off" ? "" : "#7c5cff";
+
   try {
-    var qs = new URLSearchParams(location.search);
+    var qs = Q0;
     var as = qs.get("as");
     if (as === "portal") history.replaceState({}, "", "/r/hossein");
     else if (as === "mini") history.replaceState({}, "", "/app");
@@ -442,8 +449,7 @@
   // پوسته‌ی پیش‌فرض، و آن حالت هم باید دیده شود: `?accent=` در
   // نشانیِ هارنس خاموشش می‌کند.
   var M_ME = { name: "مریم کاظمی", brand: "نکسورا", balance: 240000, coins: 36,
-               accent: (new URLSearchParams(location.search).get("accent") === "off"
-                        ? "" : "#7c5cff"),
+               accent: MINI_ACCENT,
                logo: FAKE_LOGO,
                support: "nexora_support", channel: "nexora_vpn",
                phone: "", avatar: "",
@@ -955,10 +961,15 @@ var D_CODES = { ready: true,
     if (u.indexOf("/portal/summary") >= 0) return P_SUMMARY;
     if (u.indexOf("/portal/configs") >= 0) return P_CONFIGS;
     if (u.indexOf("/portal/stats") >= 0) return P_STATS;
-    if (u.indexOf("/portal/bot-plans") >= 0) return P_BOT_PLANS;
+    if (u.indexOf("/portal/bot-plans") >= 0) {
+      // نماینده‌ی تازه — همان حالتی که تا امروز بن‌بست بود و در
+      // هارنس هیچ‌وقت دیده نمی‌شد، چون داده‌ی ساختگی همیشه دو پلن
+      // داشت.
+      if (NEW_RESELLER) return Object.assign({}, P_BOT_PLANS, { plans: [] });
+      return P_BOT_PLANS;
+    }
     if (u.indexOf("/portal/plans") >= 0) return P_PLANS;
     if (u.indexOf("/portal/orders") >= 0) return portalOrders(u);
-    if (u.indexOf("/portal/bot-plans") >= 0) return { plans: [] };
     if (u.indexOf("/portal/bot") >= 0) return { hasBot: true, username: "hossein_vpn_bot" };
     if (u.indexOf("/bot/inbounds") >= 0) return INBOUNDS;
     if (u.indexOf("/tenant/portal-list") >= 0) return PORTAL_LIST;

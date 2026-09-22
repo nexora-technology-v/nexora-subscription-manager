@@ -1447,6 +1447,10 @@ export default function Mini() {
       w.onEvent?.("contentSafeAreaChanged", syncSafeArea);
       w.onEvent?.("viewportChanged", syncSafeArea);
     }
+    // نامِ پیش‌فرض تا وقتی برند برسد. بعدش نامِ همان فروشگاه
+    // می‌نشیند — تلگرام همین را بالای پنجره نشان می‌دهد، و
+    // «اشتراک من» روی مینی‌اپِ نماینده یعنی مشتری نامِ فروشگاهی
+    // را که از آن خرید کرده هیچ‌جا نمی‌بیند.
     document.title = "اشتراک من";
     load();
     return () => {
@@ -1850,6 +1854,12 @@ export default function Mini() {
   }
 
   const view = detail ? "detail" : tab;
+
+  // عنوانِ پنجره = نامِ همان فروشگاه
+  useEffect(() => {
+    const b = String(me?.brand || "").trim();
+    if (b) document.title = b;
+  }, [me?.brand]);
 
   return (
     <div className="mn-app" dir="rtl" style={accentVars(me?.accent)}>

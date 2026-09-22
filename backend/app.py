@@ -1073,22 +1073,38 @@ def _learn_panel_origin(request):
 
         con = _bot_rw()
         try:
-            row = con.execute(
-                "SELECT id, settings FROM tenants WHERE parent_id IS NULL "
-                "ORDER BY id LIMIT 1").fetchone()
-            if not row:
-                return
-            try:
-                st = json.loads(row["settings"] or "{}")
-            except (json.JSONDecodeError, TypeError):
-                st = {}
-            if str(st.get("miniapp_url") or "").strip():
-                return                      # مالک خودش گذاشته — دست نمی‌زنیم
-            st["miniapp_url"] = f"https://{host}/app"
-            con.execute("UPDATE tenants SET settings=? WHERE id=?",
-                        (json.dumps(st, ensure_ascii=False), row["id"]))
-            con.commit()
-            log.info("آدرس مینی‌اپ ثبت شد: %s", st["miniapp_url"])
+            # **همه‌ی** مستاجرها، نه فقط ریشه.
+            #
+            # تا امروز `WHERE parent_id IS NULL … LIMIT 1` بود، پس
+            # نماینده هیچ‌وقت آدرس نمی‌گرفت و دکمه‌ی مینی‌اپ در
+            # رباتش ظاهر نمی‌شد. یعنی نماینده اصلاً مینی‌اپ نداشت.
+            #
+            # آدرس برای همه یکی است (`/app` روی همین دامنه) و
+            # مستاجر از روی **امضای توکنِ ربات** تشخیص داده می‌شود،
+            # نه از روی آدرس — پس مشتریِ هر نماینده فروشگاهِ خودِ او
+            # را می‌بیند.
+            # همه‌ی مستاجرها، حتی آن‌که هنوز ربات ندارد: آدرس
+            # بدونِ ربات بی‌ضرر است، و لحظه‌ای که ربات وصل شود دکمه
+            # همان‌جا هست بدونِ بازکردنِ دوباره‌ی پنل.
+            rows = con.execute("SELECT id, settings FROM tenants").fetchall()
+            wrote = 0
+            for row in rows:
+                try:
+                    st = json.loads(row["settings"] or "{}")
+                except (json.JSONDecodeError, TypeError):
+                    st = {}
+                if not isinstance(st, dict):
+                    st = {}
+                if str(st.get("miniapp_url") or "").strip():
+                    continue            # خودش گذاشته — دست نمی‌زنیم
+                st["miniapp_url"] = f"https://{host}/app"
+                con.execute("UPDATE tenants SET settings=? WHERE id=?",
+                            (json.dumps(st, ensure_ascii=False), row["id"]))
+                wrote += 1
+            if wrote:
+                con.commit()
+                log.info("آدرس مینی‌اپ برای %s مستاجر ثبت شد: https://%s/app",
+                         wrote, host)
         finally:
             con.close()
     except Exception:
@@ -11956,20 +11972,25 @@ def _mini_tenants():
     """
     رباتی که مینی‌اپ ممکن است از آن باز شده باشد.
 
-    فعلاً فقط مستاجر ریشه — تصمیم مالک. ولی فهرست برمی‌گرداند نه یک
-    ردیف، چون قدم بعدی دادنِ همین به نماینده‌هاست و آن‌وقت باید امضا
-    با توکنِ هر کدام جدا سنجیده شود.
+    **هر** مستاجرِ فعالی که ربات دارد — مالک و نماینده‌ها.
+
+    تا امروز فقط ریشه بود و کامنتِ همین‌جا می‌گفت «قدم بعدی دادنِ
+    همین به نماینده‌هاست». نتیجه‌ی برداشته‌نشدنِ آن قدم: مشتریِ
+    نماینده مینی‌اپ را باز می‌کرد و ۴۰۱ می‌گرفت، چون امضایش با
+    توکنِ رباتِ نماینده سنجیده نمی‌شد.
 
     `initData` نمی‌گوید از کدام ربات آمده، پس تنها راه امتحان‌کردن
-    توکن‌هاست. تعدادشان کم و کراندار است.
+    توکن‌هاست. تعدادشان کم و کراندار است، و امضا خودش تضمین می‌کند
+    که فقط یکی جواب می‌دهد — پس نشتی بین مستاجرها ممکن نیست.
     """
     con = _bot_conn()
     if not con:
         return []
     try:
         rows = con.execute(
-            "SELECT * FROM tenants WHERE parent_id IS NULL AND is_active=1 "
-            "AND bot_token IS NOT NULL ORDER BY id").fetchall()
+            "SELECT * FROM tenants WHERE is_active=1 "
+            "AND bot_token IS NOT NULL AND bot_token<>'' "
+            "ORDER BY parent_id IS NULL DESC, id").fetchall()
         return [dict(r) for r in rows]
     except Exception:
         log.debug("خواندن مستاجرها برای مینی‌اپ ناموفق", exc_info=True)
@@ -14509,6 +14530,35 @@ def portal_bot_set(payload: dict, t: dict = Depends(portal_tenant)):
     try:
         con.execute("UPDATE tenants SET bot_token=?, bot_username=? WHERE id=?",
                     (token, who, t["id"]))
+
+        # آدرسِ مینی‌اپ را همین‌جا از مالک کپی می‌کنیم.
+        #
+        # بدونِ این، نماینده تا بازشدنِ دوباره‌ی پنلِ مالک مینی‌اپ
+        # ندارد — و مالک دلیلی ندارد پنلش را باز کند. یعنی قابلیتی
+        # که ساخته شده و منتظرِ اتفاقی است که ممکن است نیفتد.
+        #
+        # آدرس برای همه یکی است؛ مستاجر از روی امضای توکنِ ربات
+        # تشخیص داده می‌شود، نه از روی آدرس.
+        try:
+            mine = json.loads(t.get("settings") or "{}")
+            if not isinstance(mine, dict):
+                mine = {}
+        except (json.JSONDecodeError, TypeError):
+            mine = {}
+        if not str(mine.get("miniapp_url") or "").strip():
+            root = con.execute(
+                "SELECT settings FROM tenants WHERE parent_id IS NULL "
+                "ORDER BY id LIMIT 1").fetchone()
+            try:
+                rst = json.loads((root["settings"] if root else "") or "{}")
+            except (json.JSONDecodeError, TypeError):
+                rst = {}
+            url = str((rst or {}).get("miniapp_url") or "").strip()
+            if url.lower().startswith("https://"):
+                mine["miniapp_url"] = url
+                con.execute("UPDATE tenants SET settings=? WHERE id=?",
+                            (json.dumps(mine, ensure_ascii=False), t["id"]))
+
         con.commit()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ذخیره نشد: {str(e)[:120]}")

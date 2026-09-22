@@ -1416,11 +1416,24 @@ function PlansBox({ token, onClose, onNote }) {
 
         {!rows ? (
           <SkeletonCards n={3} />
-        ) : !rows.length ? (
-          <EmptyState icon={Package} text="هنوز پلنی تعریف نکرده‌اید"
-            hint="پلن همان چیزی است که مشتری در ربات شما می‌بیند — حجم، مدت و قیمت." />
         ) : (
           <>
+            {/* حالتِ خالی **بن‌بست نیست**.
+                تا امروز این شاخه `<>`ای را که دکمه‌های «پلن تازه» و
+                «ذخیره» در آن بودند اصلاً رندر نمی‌کرد، پس هر
+                نماینده‌ی تازه ویرایشگر را باز می‌کرد و هیچ راهی
+                برای ساختنِ اولین پلن نداشت. */}
+            {!rows.length && (
+              <EmptyState icon={Package} text="هنوز پلنی تعریف نکرده‌اید"
+                hint="پلن همان چیزی است که مشتری در ربات شما می‌بیند — حجم، مدت و قیمت."
+                action={
+                  <button onClick={add}
+                    className="fx-btn px-4 py-2.5 text-[13px] flex items-center gap-1.5">
+                    <Plus size={13} /> ساختِ اولین پلن
+                  </button>
+                } />
+            )}
+
             {rows.map((r, i) => (
               <div key={i} className="rounded-xl p-3 mb-2.5"
                 style={{ background: "var(--surface-3)",
@@ -1506,11 +1519,15 @@ function PlansBox({ token, onClose, onNote }) {
               </div>
             ))}
 
-            <button onClick={add}
-              className="fx-btn-g w-full py-2.5 text-[13px] flex items-center
-                         justify-center gap-1.5 mb-3">
-              <Plus size={13} /> پلن تازه
-            </button>
+            {/* در حالتِ خالی، دکمه‌ی خودِ کارتِ خالی کافی است —
+                دو دکمه‌ی یک‌کاره کنار هم فقط شلوغی است. */}
+            {rows.length > 0 && (
+              <button onClick={add}
+                className="fx-btn-g w-full py-2.5 text-[13px] flex items-center
+                           justify-center gap-1.5 mb-3">
+                <Plus size={13} /> پلن تازه
+              </button>
+            )}
 
             {err && (
               <p className="text-[13px] mb-3 flex items-start gap-1.5"
@@ -1519,11 +1536,13 @@ function PlansBox({ token, onClose, onNote }) {
               </p>
             )}
 
-            <button onClick={save} disabled={busy}
-              className="fx-btn w-full py-2.5 text-[13px] flex items-center
-                         justify-center gap-2">
-              {busy && <Loader2 size={13} className="animate-spin" />} ذخیره
-            </button>
+            {rows.length > 0 && (
+              <button onClick={save} disabled={busy}
+                className="fx-btn w-full py-2.5 text-[13px] flex items-center
+                           justify-center gap-2">
+                {busy && <Loader2 size={13} className="animate-spin" />} ذخیره
+              </button>
+            )}
           </>
         )}
       </div>
