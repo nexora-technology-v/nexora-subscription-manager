@@ -435,6 +435,46 @@
         .lang-dropdown-item:hover { background: rgba(var(--accent-rgb), 0.12); color: var(--text); }
 
         /* ===== کارت اشتراک ===== */
+        /* نوارِ حجم، پایینِ کارتِ بالا.
+           تا امروز آن‌جا ~۶۰ پیکسل خالی بود و همین عدد در شبکه‌ی
+           پایین تکرار می‌شد. */
+        .sub-usage {
+            /* کارت `flex` است نه `grid`، پس ردیفِ سوم با
+               `flex-basis: 100%` ساخته می‌شود نه با `grid-column`. */
+            flex: 0 0 100%;
+            margin-top: 14px;
+            padding-top: 13px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .sub-usage-head {
+            display: flex; align-items: baseline;
+            justify-content: space-between; gap: 10px;
+            font-size: 12px; color: rgba(255, 255, 255, 0.62);
+            margin-bottom: 8px;
+        }
+        .sub-usage-nums { display: flex; align-items: baseline; gap: 5px; }
+        .sub-usage-nums b { font-size: 14px; color: #fff; font-weight: 700; }
+        /* «از» بینِ دو عدد — کوچک و کم‌رنگ، وگرنه با خودِ عددها
+           رقابت می‌کند */
+        .sub-usage-nums em {
+            font-style: normal; font-size: 11px;
+            color: rgba(255, 255, 255, 0.45);
+        }
+        .sub-usage-bar {
+            height: 6px; border-radius: 99px; overflow: hidden;
+            background: rgba(255, 255, 255, 0.10);
+        }
+        .sub-usage-bar > span {
+            display: block; height: 100%; width: 0;
+            border-radius: 99px; background: var(--accent);
+            transition: width .7s cubic-bezier(.22,.61,.36,1), background .3s;
+        }
+        /* نامحدود: میله معنا ندارد، پس پر و کم‌رنگ می‌ماند تا
+           «صفر درصد» را نگوید — که دقیقاً برعکسِ واقعیت است. */
+        .sub-usage.is-unlimited .sub-usage-bar > span {
+            width: 100%; opacity: .35;
+        }
+
         .subscription-card {
             border: 1px solid rgba(var(--accent-rgb), 0.15);
             border-radius: 18px;
@@ -442,6 +482,7 @@
             margin-bottom: 16px;
             position: relative;
             display: flex;
+            flex-wrap: wrap;
             justify-content: space-between;
             align-items: center;
             background: linear-gradient(150deg, var(--hero-1) 0%, var(--hero-2) 100%);
@@ -598,14 +639,11 @@
                شش قلم در یک ردیف یعنی متنِ ۱۰ پیکسلی و عددهای
                شکسته؛ سه‌تا در هر ردیف جا دارد که خوانده شود. */
             display: grid;
-            /* سه ستون، ثابت — نه `auto-fit`.
-               `auto-fit` با `minmax(96px, 1fr)` روی صفحه‌ی ۹۰۰
-               پیکسلی **چهار** ستون می‌داد، و چون قلم‌ها شش‌تا هستند
-               ردیفِ دوم دو سلولِ خالی داشت: یک حفره‌ی بزرگ پایینِ
-               کارت که در اسکرین‌شاتِ مالک دیده شد.
-               اندازه‌گیری‌شده: ۴×۱۰۷ پیکسل، ۶ سلول، ۲ جای خالی.
-               شش قلم فقط با ۳ یا ۲ ستون کامل پر می‌شود. */
-            grid-template-columns: repeat(3, 1fr);
+            /* چهار سلول (حجمِ کل و باقی‌مانده رفتند داخلِ کارتِ
+               بالا). چهار قلم با ۴ یا ۲ ستون کامل پر می‌شود، پس
+               هیچ‌وقت جای خالی نمی‌ماند — همان حفره‌ای که `auto-fit`
+               با شش قلم می‌ساخت. */
+            grid-template-columns: repeat(4, 1fr);
             gap: 1px;
             background: var(--border);
             overflow: hidden;
@@ -636,11 +674,9 @@
            پهن‌تر است و سلول یک‌سومِ عرضِ گوشی است. */
         .stat-cell .stat-value-text { font-size: 13px; font-weight: 600; }
 
-        /* روی گوشی، دوتایی — ۶ قلم می‌شود ۳ ردیفِ کامل.
-           آستانه از ۳۴۰ به ۴۲۰ آمد: روی ۳۷۵ (پرتکرارترین عرضِ
-           گوشی) سه ستونِ ۱۱۵ پیکسلی، عددِ «۲۴.۹ GB» را با سه‌نقطه
-           می‌برید. */
-        @media (max-width: 420px) {
+        /* روی گوشی، دوتایی — ۴ قلم می‌شود ۲ ردیفِ کامل. چهار ستونِ
+           ~۸۵ پیکسلی روی ۳۷۵، عددِ «۲۳.۴ GB» را با سه‌نقطه می‌برید. */
+        @media (max-width: 560px) {
             .stats-card { grid-template-columns: repeat(2, 1fr); }
         }
         .stat-header-row {
@@ -689,10 +725,13 @@
         .promo-card .promo-text { flex: 1; min-width: 150px; }
         .promo-card .promo-buttons { flex: none; }
         .promo-card .promo-text {
-            font-size: 16px;
+            /* ۱۶ پیکسل روی ۳۷۵ سه خط می‌شد و «تمدید ساب / دارید؟»
+               وسطِ عبارت می‌شکست. ۱۴.۵ همان جمله را در دو خط جا
+               می‌دهد و هم‌اندازه‌ی بقیه‌ی متن‌های صفحه می‌شود. */
+            font-size: 14.5px;
             font-weight: 500;
             color: var(--text);
-            line-height: 1.8;
+            line-height: 1.75;
         }
         .promo-card .promo-text span {
             color: var(--accent);
@@ -1476,6 +1515,15 @@
             position: relative;
             z-index: 1;
         }
+        /* روی قالبِ روشن، خط و میله هم باید تیره شوند وگرنه سفیدِ
+           کم‌رنگ روی آبیِ روشن اصلاً دیده نمی‌شود — همان چیزی که
+           یک‌بار سرِ «نامحدود» افتاد. */
+        body.tpl-wallet .sub-usage { border-top-color: rgba(0, 0, 0, 0.16); }
+        body.tpl-wallet .sub-usage-head { color: rgba(0, 0, 0, 0.55); }
+        body.tpl-wallet .sub-usage-nums b { color: var(--bg); }
+        body.tpl-wallet .sub-usage-nums em { color: rgba(0, 0, 0, 0.45); }
+        body.tpl-wallet .sub-usage-bar { background: rgba(0, 0, 0, 0.16); }
+        body.tpl-wallet .sub-usage-bar > span { background: var(--bg); }
         /* کارتِ این قالب گرادیانِ پررنگِ `--accent` است، پس هر
            چیزی که رنگش از `--accent` می‌آید روی آن ناپدید می‌شود.
            `.days-left` و `.days-left span` در این فهرست نبودند و
@@ -2252,6 +2300,23 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
                     </div>
                 </div>
             </div>
+
+            <!-- نوارِ حجم — داخلِ همین کارت، نه در شبکه‌ی پایین.
+                 دو دلیل: پایینِ کارت یک نوارِ ~۶۰ پیکسلیِ خالی بود،
+                 و «چقدر حجم مانده» دومین چیزی است که مشتری می‌خواهد
+                 بداند (اولی «چند روز»). پایین‌بودنش یعنی برای دیدنش
+                 باید اسکرول کند. -->
+            <div class="sub-usage" id="sub-usage">
+                <div class="sub-usage-head">
+                    <span id="detail-remaining-volume-label">حجم باقی‌مانده</span>
+                    <span class="sub-usage-nums">
+                        <b class="en-font" id="detail-remaining-volume">نامحدود</b>
+                        <em id="sub-usage-of">از</em>
+                        <b class="en-font" id="stat-limit">0 GB</b>
+                    </span>
+                </div>
+                <div class="sub-usage-bar"><span id="sub-usage-fill"></span></div>
+            </div>
         </div>
 
 
@@ -2263,24 +2328,10 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         <div class="stats-card" id="sec-stats" data-sec="stats">
             <div class="stat-cell">
                 <div class="stat-header-row">
-                    <div class="stat-icon-wrapper"><i class="fa-solid fa-database" style="color: var(--accent);"></i></div>
-                    <div class="stat-title" id="title-limit">حجم کلی</div>
-                </div>
-                <div class="stat-value purple-value en-font" id="stat-limit">0 GB</div>
-            </div>
-            <div class="stat-cell">
-                <div class="stat-header-row">
                     <div class="stat-icon-wrapper"><i class="fa-solid fa-chart-pie" style="color: var(--cy);"></i></div>
                     <div class="stat-title" id="title-total">مصرف کل</div>
                 </div>
                 <div class="stat-value en-font" id="stat-total-val">0 B</div>
-            </div>
-            <div class="stat-cell">
-                <div class="stat-header-row">
-                    <div class="stat-icon-wrapper"><i class="fa-solid fa-gauge-high" style="color: var(--ok);"></i></div>
-                    <div class="stat-title" id="detail-remaining-volume-label">حجم باقی‌مانده</div>
-                </div>
-                <div class="stat-value en-font" id="detail-remaining-volume">نامحدود</div>
             </div>
             <div class="stat-cell">
                 <div class="stat-header-row">
@@ -3598,6 +3649,24 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
                 setText("detail-remaining-volume", data.unlimitedText);
             }
 
+            // میله‌ی حجم — از **همان** `percentRemaining` که حلقه
+            // از آن می‌خواند، نه یک محاسبه‌ی دوم. دو حساب یعنی روزی
+            // حلقه ۵۰٪ بگوید و میله ۴۸٪.
+            var usageWrap = document.getElementById("sub-usage");
+            var usageFill = document.getElementById("sub-usage-fill");
+            if (usageWrap && usageFill) {
+                var unlimited = !(sanaeiClientData.totalByte > 0);
+                usageWrap.classList.toggle("is-unlimited", unlimited);
+                // «از ۰ GB» بی‌معنی است؛ در حالتِ نامحدود کلِ عبارت
+                // برداشته می‌شود، نه اینکه صفر نشان داده شود.
+                var ofEl = document.getElementById("sub-usage-of");
+                var limEl = document.getElementById("stat-limit");
+                if (ofEl) ofEl.style.display = unlimited ? "none" : "";
+                if (limEl) limEl.style.display = unlimited ? "none" : "";
+                usageFill.style.width = unlimited ? "100%" : percentRemaining + "%";
+                usageFill.style.background = getColorForPercentage(percentRemaining);
+            }
+
             // «چند وقت پیش»، نه مهرِ زمانیِ کامل.
             //
             // `toLocaleString` چیزی مثل «۱۴۰۴/۷/۱۲، ۲۰:۳۷:۱۹» می‌دهد
@@ -4241,10 +4310,16 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             document.getElementById("html-root").setAttribute("dir", data.dir);
 
             document.getElementById("remaining-label").innerText = data.remainingLabel;
-            document.getElementById("title-limit").innerText = data.titleLimit;
-            document.getElementById("title-total").innerText = data.titleTotal;
-            document.getElementById("title-download").innerText = data.titleDownload;
-            document.getElementById("title-upload").innerText = data.titleUpload;
+            // `setText` نه `getElementById(...).innerText`:
+            // «حجم کلی» حالا داخلِ نوارِ کارتِ بالاست و سلولِ
+            // جداگانه‌اش وجود ندارد. دسترسیِ مستقیم یک TypeError
+            // می‌داد و **تمامِ ترجمه‌های بعدِ این خط** اجرا نمی‌شدند
+            // — صفحه در حالتِ صفر می‌ماند و هیچ خطایی به کاربر
+            // نشان داده نمی‌شد.
+            setText("title-limit", data.titleLimit);
+            setText("title-total", data.titleTotal);
+            setText("title-download", data.titleDownload);
+            setText("title-upload", data.titleUpload);
 
             setText("detail-total-label", data.detailTotal);
             setText("detail-remaining-label", data.detailRemaining);

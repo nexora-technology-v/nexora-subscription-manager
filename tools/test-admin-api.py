@@ -565,6 +565,87 @@ except Exception as e:
 check("نماینده‌ی بی‌گروه هیچ چیز نمی‌بیند", _blank,
       "نه اینکه «همه» را ببیند — آن بدترین حالت پیش‌فرض است")
 
+# ── ولی پلنِ رباتش باید کار کند ──────────────────────────────────────
+#
+# برگه: docs/specs/2026-09-22-reseller-and-ui.md
+#
+# باگی که مالک گزارش کرد: «نماینده نمی‌تواند پلنی تعریف کند».
+# علت — `_portal_gb_policy` → `_portal_rates` → `_portal_group`، و
+# آن آخری بدونِ گروه ۴۰۹ می‌داد. پس ویرایشگرِ پلن نه باز می‌شد و نه
+# ذخیره — با پیامِ «با پشتیبانی تماس بگیرید».
+#
+# ولی پلنِ ربات یک ردیف در جدولِ `plans`ِ خودِ نماینده برای رباتِ
+# خودش است. گروه فقط برای *کفِ قیمت* لازم است.
+#
+# **رفتار سنجیده می‌شود نه متن**: جاروی شکستن نشان داد یک `return`
+# زودهنگام، دروازه‌ی متنی را سبز نگه می‌دارد.
+_ng = AP._tenant_by_slug("hossein")          # همین حالا بی‌گروه است
+
+try:
+    _pl = AP.portal_bot_plans(t=_ng)
+    _plans_open, _why_p = True, _pl.get("gbMode")
+except Exception as e:
+    _plans_open, _why_p = False, f"{getattr(e, 'status_code', '')} {e}"
+check("نماینده‌ی بی‌گروه ویرایشگرِ پلن را باز می‌کند", _plans_open,
+      str(_why_p)[:60])
+
+# جدولِ پلن‌ها در فیکسچر نیست. اسکیما را از خودِ `bot/db.py`
+# می‌گیریم، نه یک کپیِ دستی — کپی یعنی روزی این تست با واقعیت
+# فرق کند و همان را تایید کند.
+try:
+    import sys as _sys2
+    import os as _os2
+    _botdir = _os2.path.join(
+        _os2.path.dirname(_os2.path.dirname(_os2.path.abspath(__file__))), "bot")
+    if _botdir not in _sys2.path:
+        _sys2.path.insert(0, _botdir)
+    import db as _BOTDB                                   # noqa: E402
+    _bd = _sq3.connect(str(AP.BOT_DB))
+    try:
+        for _stmt in _BOTDB.SCHEMA.split(";"):
+            if "CREATE TABLE IF NOT EXISTS plans" in _stmt:
+                _bd.execute(_stmt)
+        _bd.commit()
+    finally:
+        _bd.close()
+except Exception as _e:
+    print(f"    (جدولِ پلن ساخته نشد: {type(_e).__name__})")
+
+try:
+    _sv = AP.portal_bot_plans_save(
+        {"plans": [{"name": "تستِ بی‌گروه", "gb": 50, "days": 30,
+                    "ip_limit": 2, "price": 150000, "is_active": True}]},
+        t=_ng)
+    _saved = bool(_sv.get("ok"))
+    _why_s = str(_sv)
+except Exception as e:
+    _saved, _why_s = False, f"{getattr(e, 'status_code', '')} {e}"
+check("و پلنش واقعاً ذخیره می‌شود", _saved, str(_why_s)[:60])
+
+# کف معلوم نیست — ولی باید *بگوید* چرا، نه صفر بدهد و نه بترکد
+try:
+    _c = AP.portal_plan_cost({"rows": [{"gb": 50, "days": 30, "ip_limit": 2}]},
+                             t=_ng)
+    _r0 = (_c.get("rows") or [{}])[0]
+    _said = _r0.get("ready") is False and bool(_r0.get("why"))
+    _why_c = str(_r0.get("why"))[:44]
+except Exception as e:
+    _said, _why_c = False, f"{getattr(e, 'status_code', '')} {e}"
+check("کفِ بی‌گروه دلیل می‌گوید، نه صفر", _said, _why_c)
+
+# و گروه را دوباره سرِ جایش می‌گذاریم تا سنجه‌های بعدی خراب نشوند
+_bd = _sq3.connect(str(AP.BOT_DB))
+try:
+    try:
+        _bd.execute("DELETE FROM plans WHERE name='تستِ بی‌گروه'")
+    except Exception:
+        pass
+    _bd.execute("UPDATE tenants SET portal_group='goroh-a' "
+                "WHERE portal_slug='hossein'")
+    _bd.commit()
+finally:
+    _bd.close()
+
 
 # ═══════════════════════════════════════════════════════════
 head("نوشتن نماینده در پنل — محافظ‌ها")
