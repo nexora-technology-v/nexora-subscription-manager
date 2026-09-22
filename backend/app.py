@@ -2073,12 +2073,13 @@ def aff_summary(aff: dict = Depends(aff_session)):
         balance = _affiliate_balance(con, aid)
 
         # مشتری‌هایی که این همکار آورده — با مجموعِ خریدشان
-        users = [dict(r) for r in con.execute("""
+        users = [dict(r) for r in con.execute(f"""
             SELECT u.id, u.first_name, u.username, u.tg_id, u.created_at,
-                   (SELECT COUNT(*) FROM orders o
-                     WHERE o.user_id = u.id AND o.status='approved') AS orders,
-                   (SELECT COALESCE(SUM(o.amount),0) FROM orders o
-                     WHERE o.user_id = u.id AND o.status='approved') AS spent
+                   -- تستِ رایگان خرید نیست؛ همان قاعده‌ی قیف
+                   (SELECT COUNT(*) FROM orders o {SQL_PLAN_JOIN}
+                     WHERE o.user_id = u.id AND {SQL_REAL_BUY}) AS orders,
+                   (SELECT COALESCE(SUM(o.amount),0) FROM orders o {SQL_PLAN_JOIN}
+                     WHERE o.user_id = u.id AND {SQL_REAL_BUY}) AS spent
               FROM users u WHERE u.affiliate_id = ?
              ORDER BY u.id DESC LIMIT 200""", (aid,))]
 
@@ -2387,8 +2388,15 @@ _USER_FILTERS = {
                "AND s.is_active=1 AND (s.expires_at IS NULL "
                "OR s.expires_at > CURRENT_TIMESTAMP))",
     "never": "NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.user_id=u.id)",
-    "buyers": "EXISTS (SELECT 1 FROM orders o WHERE o.user_id=u.id "
-              "AND o.status='approved')",
+    # «خریدار» یعنی همان چیزی که قیف می‌گوید، نه هر سفارشِ approved.
+    #
+    #  گرفتنِ تست رایگان خودش یک سفارشِ approved با مبلغ صفر می‌سازد،
+    #  پس با شرطِ خامِ status='approved' هر کسی که دکمه‌ی تست را زده
+    #  «خریدار» شمرده می‌شد — چیپِ بالای صفحه عددِ بزرگ‌تری از قیف
+    #  نشان می‌داد و لیست، آدمی را خریدار می‌خواند که یک تومان هم
+    #  نداده بود. همان قاعده، دو جا، دو جواب.
+    "buyers": f"EXISTS (SELECT 1 FROM orders o {SQL_PLAN_JOIN} "
+              f"WHERE o.user_id=u.id AND {SQL_REAL_BUY})",
     "blocked": "u.is_blocked=1",
     "withPhone": "u.phone IS NOT NULL AND u.phone<>''",
     "noPhone": "(u.phone IS NULL OR u.phone='')",
@@ -2438,10 +2446,12 @@ def bot_users(q: str = "", limit: int = 50, offset: int = 0,
 
     base = f"""
         SELECT u.*,
-          (SELECT COUNT(*) FROM orders o
-            WHERE o.user_id=u.id AND o.status='approved') AS ordersCount,
-          (SELECT COALESCE(SUM(o.amount),0) FROM orders o
-            WHERE o.user_id=u.id AND o.status='approved') AS spent,
+          -- «۱ خرید · ۰ تومان» کنارِ کسی که فقط تست گرفته بود، چون
+          -- تستِ رایگان هم یک سفارشِ approved است. همان قاعده‌ی قیف.
+          (SELECT COUNT(*) FROM orders o {SQL_PLAN_JOIN}
+            WHERE o.user_id=u.id AND {SQL_REAL_BUY}) AS ordersCount,
+          (SELECT COALESCE(SUM(o.amount),0) FROM orders o {SQL_PLAN_JOIN}
+            WHERE o.user_id=u.id AND {SQL_REAL_BUY}) AS spent,
           (SELECT COUNT(*) FROM subscriptions s WHERE s.user_id=u.id) AS subsCount,
           (SELECT COUNT(*) FROM subscriptions s WHERE s.user_id=u.id
             AND s.is_active=1 AND (s.expires_at IS NULL
