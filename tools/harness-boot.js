@@ -940,6 +940,14 @@ var D_CODES = { ready: true,
       P_THEME.until = "1405-08-22T12:00:00";
       return { ok: true, until: P_THEME.until, paid: P_THEME.price };
     }
+    if (u.indexOf("/portal/brand") >= 0) {
+      P_THEME.brand = (body || {}).brand || P_THEME.brand;
+      return { ok: true };
+    }
+    if (u.indexOf("/portal/logo") >= 0) {
+      P_THEME.logo = method === "DELETE" ? "" : FAKE_LOGO;
+      return { ok: true };
+    }
     if (u.indexOf("/portal/theme") >= 0) {
       if (method === "POST") { P_THEME.accent = (body || {}).accent || ""; return { ok: true }; }
       return P_THEME;

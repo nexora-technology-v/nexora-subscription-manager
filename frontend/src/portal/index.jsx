@@ -1106,14 +1106,17 @@ function DashBox({ token, onClose, onOrders, onPlans, onTheme }) {
 function ThemeBox({ token, onClose, onNote }) {
   const [d, setD] = useState(null);
   const [accent, setAccent] = useState("");
+  const [brand, setBrand] = useState("");
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
+  const logoRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
       const j = await api("/api/portal/theme", { token });
       setD(j);
       setAccent(j.accent || "");
+      setBrand(j.brand || "");
     } catch (e) { setErr(e.message); }
   }, [token]);
 
@@ -1127,6 +1130,47 @@ function ThemeBox({ token, onClose, onNote }) {
       onNote("پوسته ذخیره شد");
       load();
     } catch (e) { setErr(e.message); } finally { setBusy(""); }
+  };
+
+  // نام از همان مسیری می‌رود که «ربات من» استفاده می‌کند — نه
+  // مسیرِ دوم. دو مسیر برای یک کلید یعنی روزی یکی اعتبارسنجی را
+  // عوض کند و دیگری نه.
+  const saveBrand = async () => {
+    setBusy("brand"); setErr("");
+    try {
+      await api("/api/portal/brand", { token, method: "POST",
+                                       body: { brand: brand.trim() } });
+      onNote("نام فروشگاه ذخیره شد");
+      load();
+    } catch (e) { setErr(e.message); } finally { setBusy(""); }
+  };
+
+  const pickLogo = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    setErr("");
+    if (f.size > 512 * 1024) { setErr("حجم فایل بیشتر از ۵۱۲ کیلوبایت است"); return; }
+    setBusy("logo");
+    try {
+      const data = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result || ""));
+        r.onerror = () => rej(new Error("فایل خوانده نشد"));
+        r.readAsDataURL(f);
+      });
+      await api("/api/portal/logo", { token, method: "POST", body: { data } });
+      onNote("لوگو ذخیره شد");
+      load();
+    } catch (e2) { setErr(e2.message); } finally { setBusy(""); }
+  };
+
+  const dropLogo = async () => {
+    setBusy("logo"); setErr("");
+    try {
+      await api("/api/portal/logo", { token, method: "DELETE" });
+      load();
+    } catch (e2) { setErr(e2.message); } finally { setBusy(""); }
   };
 
   const buy = async () => {
@@ -1209,6 +1253,57 @@ function ThemeBox({ token, onClose, onNote }) {
 
             <div className="flex gap-4 flex-wrap">
               <div className="flex-1" style={{ minWidth: 240 }}>
+                {/* نام و لوگو **رایگان‌اند** — پشتِ قفل نمی‌روند.
+                    فقط رنگ پولی است. */}
+                <label className="text-[12px] block mb-1.5"
+                  style={{ color: "var(--muted)" }}>نام فروشگاه</label>
+                <div className="flex items-center gap-2 mb-3">
+                  <input value={brand} maxLength={40}
+                    placeholder="مثلاً: حسین وی‌پی‌ان"
+                    onChange={(e) => setBrand(e.target.value)}
+                    className="fx-input text-[13px] flex-1" />
+                  <button onClick={saveBrand}
+                    disabled={busy === "brand" || !brand.trim()
+                              || brand.trim() === (d.brand || "")}
+                    className="fx-btn-g px-3 py-2 text-[12.5px]">
+                    {busy === "brand" ? <Loader2 size={12} className="animate-spin" />
+                      : "ذخیره"}
+                  </button>
+                </div>
+
+                <label className="text-[12px] block mb-1.5"
+                  style={{ color: "var(--muted)" }}>لوگو</label>
+                <div className="flex items-center gap-2 mb-4">
+                  <span style={{
+                    width: 38, height: 38, borderRadius: 11, flex: "none",
+                    display: "grid", placeItems: "center", overflow: "hidden",
+                    background: "var(--surface-3)",
+                    border: "1px solid var(--border)",
+                  }}>
+                    {d.logo
+                      ? <img src={d.logo} alt="" style={{ width: "100%",
+                          height: "100%", objectFit: "cover" }} />
+                      : <Camera size={15} style={{ color: "var(--muted)" }} />}
+                  </span>
+                  <input ref={logoRef} type="file" className="hidden"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={pickLogo} />
+                  <button onClick={() => logoRef.current?.click()}
+                    disabled={busy === "logo"}
+                    className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
+                    {busy === "logo" ? <Loader2 size={12} className="animate-spin" />
+                      : <Camera size={12} />}
+                    {d.logo ? "تغییر" : "انتخاب"}
+                  </button>
+                  {d.logo && (
+                    <button onClick={dropLogo} disabled={busy === "logo"}
+                      className="fx-btn-g px-3 py-2 text-[12.5px]">حذف</button>
+                  )}
+                  <span className="text-[11px]" style={{ color: "var(--muted)" }}>
+                    تا ۵۱۲ کیلوبایت
+                  </span>
+                </div>
+
                 <label className="text-[12px] block mb-2"
                   style={{ color: "var(--muted)" }}>رنگِ اصلی</label>
 
@@ -1269,7 +1364,8 @@ function ThemeBox({ token, onClose, onNote }) {
 
               {/* پیش‌نمایش حتی وقتی قفل است دیده می‌شود — این همان
                   چیزی است که نماینده را قانع می‌کند تهیه‌اش کند. */}
-              <ThemePreview accent={accent} brand={d.brand} logo={d.logo} />
+              <ThemePreview accent={accent} brand={brand || d.brand}
+                logo={d.logo} />
             </div>
           </>
         )}
