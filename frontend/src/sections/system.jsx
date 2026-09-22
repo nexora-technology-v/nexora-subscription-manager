@@ -696,11 +696,74 @@ export function SystemSection({ password }) {
   );
 }
 
-export function LivePreview({ dirty, onSave, saving }) {
+export function LivePreview({ dirty, onSave, saving, password }) {
   const [key, setKey] = useState(0);
   const [device, setDevice] = useState("mobile");
   const [loading, setLoading] = useState(true);
   const [zoom, setZoom] = useState(100);
+
+  /*
+   * امتحانِ قالب‌ها بدونِ ذخیره.
+   *
+   * تا امروز حلقه این بود: قالب را عوض کن → ذخیره کن → بیا
+   * پیش‌نمایش → ببین → برگرد. برای مقایسه‌ی چهار قالب یعنی چهار بار
+   * ذخیره روی تنظیماتِ واقعیِ مشتری‌ها.
+   *
+   * `try` همان چیزی است که در نوار انتخاب می‌شود و فقط به نشانیِ
+   * iframe می‌رود؛ `saved` آن چیزی است که واقعاً ذخیره شده. تا وقتی
+   * دکمه‌ی «همین را انتخاب کن» زده نشود، هیچ‌چیز عوض نمی‌شود.
+   */
+  const [opts, setOpts] = useState({ templates: [], palettes: [] });
+  const [saved, setSaved] = useState({ template: "", palette: "" });
+  const [tryTpl, setTryTpl] = useState("");
+  const [tryPal, setTryPal] = useState("");
+  const [picking, setPicking] = useState(false);
+  const [pickMsg, setPickMsg] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch(`${API_URL}/api/admin/themes`,
+                              { headers: { "X-Admin-Password": password || "" } });
+        const j = await r.json().catch(() => ({}));
+        if (!alive || !r.ok) return;
+        // نام‌های واقعیِ پاسخ: `currentTemplate` / `currentPalette`،
+        // و پالت‌های سفارشی جدا می‌آیند
+        setOpts({
+          templates: j.templates || [],
+          palettes: [...(j.palettes || []), ...(j.customPalettes || [])],
+        });
+        setSaved({ template: j.currentTemplate || "",
+                   palette: j.currentPalette || "" });
+      } catch { /* نبودِ فهرست نباید پیش‌نمایش را بیندازد */ }
+    })();
+    return () => { alive = false; };
+  }, [password]);
+
+  const curTpl = tryTpl || saved.template;
+  const curPal = tryPal || saved.palette;
+  const changed = (tryTpl && tryTpl !== saved.template)
+               || (tryPal && tryPal !== saved.palette);
+
+  const pick = async () => {
+    setPicking(true); setPickMsg(null);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/themes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json",
+                   "X-Admin-Password": password || "" },
+        body: JSON.stringify({ template: curTpl, palette: curPal }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(j.detail, "ذخیره نشد"));
+      setSaved({ template: curTpl, palette: curPal });
+      setTryTpl(""); setTryPal("");
+      setPickMsg({ t: "ok", m: "انتخاب شد — مشتری‌ها از این به بعد همین را می‌بینند" });
+    } catch (e) {
+      setPickMsg({ t: "err", m: e.message });
+    } finally { setPicking(false); }
+  };
 
   const DEVICES = {
     mobile: { w: 390, label: "موبایل", icon: Smartphone, sub: "iPhone 14 Pro" },
@@ -785,6 +848,73 @@ export function LivePreview({ dirty, onSave, saving }) {
           <div className="w-14 fx-hide-m" />
         </div>
 
+        {/* انتخابگر — بالای خودِ نما، نه در صفحه‌ای دیگر. مقایسه
+            وقتی معنی دارد که هر دو چیز هم‌زمان جلوی چشم باشند. */}
+        {opts.templates.length > 0 && (
+          <div className="px-3 py-2.5"
+            style={{ borderBottom: "1px solid var(--border-2)",
+                     background: "var(--surface-2)" }}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[12px] shrink-0"
+                style={{ color: "var(--muted)" }}>چیدمان</span>
+              {opts.templates.map((t) => (
+                <button key={t.id}
+                  onClick={() => { setTryTpl(t.id); setLoading(true); }}
+                  className="px-2.5 py-1 rounded-lg text-[12px] transition-all"
+                  style={curTpl === t.id
+                    ? { background: "var(--accent-fill)",
+                        border: "1px solid var(--accent-edge)",
+                        color: "var(--accent-2)" }
+                    : { background: "transparent",
+                        border: "1px solid var(--border-2)",
+                        color: "var(--muted)" }}>
+                  {t.name || t.id}
+                </button>
+              ))}
+            </div>
+
+            {opts.palettes.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap mt-2">
+                <span className="text-[12px] shrink-0"
+                  style={{ color: "var(--muted)" }}>رنگ</span>
+                {opts.palettes.map((p) => (
+                  <button key={p.id} title={p.name || p.id}
+                    onClick={() => { setTryPal(p.id); setLoading(true); }}
+                    aria-label={p.name || p.id}
+                    style={{
+                      width: 24, height: 24, borderRadius: 8, flex: "none",
+                      // مقدارِ رنگ این‌جا خودِ داده است — یکی از دو
+                      // استثنای قاعده‌ی توکن
+                      background: (p.vars && p.vars.accent) || "var(--accent)",
+                      border: curPal === p.id
+                        ? "2px solid var(--text)" : "1px solid var(--hair-3)",
+                    }} />
+                ))}
+              </div>
+            )}
+
+            {changed && (
+              <div className="flex items-center gap-2 flex-wrap mt-2.5">
+                <span className="text-[12px]" style={{ color: "var(--warn)" }}>
+                  فقط دارید نگاه می‌کنید — هنوز ذخیره نشده
+                </span>
+                <button onClick={pick} disabled={picking}
+                  className="fx-btn px-3 py-1.5 text-[12.5px] flex items-center gap-1.5">
+                  {picking ? <Loader2 size={12} className="animate-spin" />
+                    : <Save size={12} />}
+                  همین را انتخاب کن
+                </button>
+                <button onClick={() => { setTryTpl(""); setTryPal(""); setLoading(true); }}
+                  className="fx-btn-g px-3 py-1.5 text-[12.5px]">
+                  برگرد به ذخیره‌شده
+                </button>
+              </div>
+            )}
+
+            <Msg msg={pickMsg} onClose={() => setPickMsg(null)} />
+          </div>
+        )}
+
         <div className="nx-preview-scroll" style={{ background: "#05070C" }}>
           <div className="flex justify-center p-6" style={{ minWidth: device === "desktop" ? d.w * scale + 48 : "auto" }}>
             <div className="relative" style={{ width: d.w * scale, transition: "width .25s ease" }}>
@@ -796,7 +926,9 @@ export function LivePreview({ dirty, onSave, saving }) {
               )}
               <iframe
                 key={key}
-                src={`${API_URL}/api/preview?t=${key}`}
+                src={`${API_URL}/api/preview?t=${key}`
+                     + `&template=${encodeURIComponent(curTpl || "")}`
+                     + `&palette=${encodeURIComponent(curPal || "")}`}
                 onLoad={() => setLoading(false)}
                 title="پیش‌نمایش صفحه اشتراک"
                 style={{

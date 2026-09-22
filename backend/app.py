@@ -905,6 +905,47 @@ def list_themes(x_admin_password: str = Header(...)):
     }
 
 
+@app.post("/api/admin/themes")
+def pick_theme(payload: dict, x_admin_password: str = Header(...)):
+    """
+    انتخابِ چیدمان و پالت — از داخلِ پیش‌نمایش.
+
+    فقط همین دو کلید. بقیه‌ی تنظیمات دست‌نخورده می‌مانند، چون این
+    مسیر آن‌ها را نمی‌خواند و نمی‌نویسد.
+
+    هر دو از فهرستِ مجاز رد می‌شوند: شناسه‌ی ناشناس یعنی صفحه‌ی
+    مشتری کلاسِ `tpl-<چیزی>` بگیرد که هیچ CSSای ندارد — یعنی
+    چیدمانِ شکسته، بی‌صدا.
+    """
+    check_auth(x_admin_password)
+    p = payload or {}
+    cfg = load_config()
+
+    tpl = str(p.get("template") or "").strip()
+    pal = str(p.get("palette") or "").strip()
+
+    if tpl:
+        if not any(t["id"] == tpl for t in TEMPLATES):
+            raise HTTPException(status_code=400,
+                                detail=f"چیدمان «{tpl}» شناخته نشد")
+        cfg["template"] = tpl
+
+    if pal:
+        known = ({p2["id"] for p2 in PALETTES}
+                 | {c.get("id") for c in cfg.get("customPalettes", [])})
+        if pal not in known:
+            raise HTTPException(status_code=400,
+                                detail=f"پالت «{pal}» شناخته نشد")
+        cfg["palette"] = pal
+
+    if not tpl and not pal:
+        raise HTTPException(status_code=400, detail="چیزی برای تغییر نیست")
+
+    save_config(cfg)
+    return {"ok": True, "template": cfg.get("template"),
+            "palette": cfg.get("palette")}
+
+
 @app.post("/api/admin/palettes")
 def add_custom_palette(payload: dict, x_admin_password: str = Header(...)):
     """افزودن پالت رنگی سفارشی."""
@@ -1155,7 +1196,13 @@ def get_stats(x_admin_password: str = Header(...)):
     }
 
 
-def render_preview_html(raw: str) -> str:
+#: قالب‌هایی که صفحه‌ی اشتراک می‌شناسد. فهرستِ مجاز است، نه ممنوع:
+#: مقدار مستقیم داخلِ صفحه تزریق می‌شود.
+PREVIEW_TEMPLATES = ("classic", "analytics", "wallet", "console")
+
+
+def render_preview_html(raw: str, template: str = "",
+                        palette: str = "") -> str:
     """
     فایل قالب را برای پیش‌نمایش آماده می‌کند.
 
@@ -1217,12 +1264,48 @@ def render_preview_html(raw: str) -> str:
     # ۴. هر متغیر باقی‌مانده‌ی ناشناخته → رشته‌ی خالی (تا JS نشکند)
     out = _re.sub(r"\{\{[^}]*\}\}", lambda m: "", out)
 
+    # ۵. بازنویسیِ قالب/پالت — فقط برای همین نما.
+    #
+    #  فهرستِ مجاز، نه هر رشته‌ای: این مقدار مستقیم داخلِ صفحه
+    #  تزریق می‌شود و ورودیِ کنترل‌نشده یعنی تزریقِ اسکریپت. قاعده‌ی
+    #  خودِ مخزن: فهرستِ مجاز، نه فهرستِ ممنوع.
+    tpl = template if template in PREVIEW_TEMPLATES else ""
+    pal = palette if _re.fullmatch(r"[a-z0-9_-]{1,32}", palette or "") else ""
+    if tpl or pal:
+        # `resolve_theme` همان تابعی است که مسیرِ واقعی صدا می‌زند،
+        # پس پیش‌نمایش و صفحه‌ی مشتری هیچ‌وقت از هم دور نمی‌افتند.
+        # نگاشتِ دومِ «نامِ پالت → رنگ‌ها» دقیقاً همان الگویی است که
+        # این مخزن بارها بابتش باگ خورده.
+        try:
+            _cfg = load_config()
+            _th = resolve_theme(_cfg, tpl or None, pal or None)
+            forced = {"template": _th.get("template") or tpl,
+                      "vars": _th.get("vars") or {}}
+        except Exception:
+            log.debug("حلِ پوسته‌ی پیش‌نمایش ناموفق", exc_info=True)
+            forced = {"template": tpl} if tpl else {}
+        inject = ("<script>window.NEXORA_FORCE_THEME = "
+                  + json.dumps(forced, ensure_ascii=False) + ";</script>")
+        # پیش از هر اسکریپتِ دیگری، وگرنه قالب یک‌بار با مقدارِ
+        # ذخیره‌شده اعمال می‌شود و پرش دیده می‌شود
+        if "</head>" in out:
+            out = out.replace("</head>", inject + "</head>", 1)
+        else:
+            out = inject + out
+
     return out
 
 
 @app.get("/api/preview", response_class=HTMLResponse)
-def preview_subpage():
-    """صفحه‌ی اشتراک را با داده‌ی نمونه برای مشاهده در پنل مدیریت سرو می‌کند."""
+def preview_subpage(template: str = "", palette: str = ""):
+    """
+    صفحه‌ی اشتراک را با داده‌ی نمونه برای مشاهده در پنل مدیریت سرو
+    می‌کند.
+
+    `template` و `palette` **فقط همین نما** را عوض می‌کنند و هیچ‌چیز
+    ذخیره نمی‌شود. بدونِ این، مقایسه‌ی چهار قالب یعنی چهار بار
+    ذخیره روی تنظیماتِ واقعیِ مشتری‌ها و چهار بار رفت‌وبرگشت.
+    """
     html_path = Path(os.getenv("SUBPAGE_HTML_PATH", "../sub-page-index.html"))
     if not html_path.exists():
         return HTMLResponse(
@@ -1233,7 +1316,8 @@ def preview_subpage():
         )
 
     raw = html_path.read_text(encoding="utf-8")
-    return HTMLResponse(render_preview_html(raw))
+    return HTMLResponse(render_preview_html(raw, template=template,
+                                            palette=palette))
 
 
 @app.post("/api/admin/change-password")

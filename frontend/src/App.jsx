@@ -485,7 +485,7 @@ export default function App() {
           <div key={active} className="fx-stg">
           <ErrorBoundary key={active}>
           {active === "overview" && <OverviewSection config={config} stats={stats} navigate={navigate} dirty={dirty} password={password} />}
-          {active === "preview" && <LivePreview dirty={dirty} onSave={save} saving={saving} />}
+          {active === "preview" && <LivePreview dirty={dirty} onSave={save} saving={saving} password={password} />}
           {active === "apps" && <AppsSection config={config} setConfig={setConfig} requestDelete={setConfirmTarget} />}
           {active === "videos" && <VideosSection config={config} setConfig={setConfig} requestDelete={setConfirmTarget} />}
           {active === "faq" && <FaqSection config={config} setConfig={setConfig} requestDelete={setConfirmTarget} />}

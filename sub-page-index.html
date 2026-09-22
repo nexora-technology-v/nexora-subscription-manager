@@ -2928,6 +2928,18 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         // اعمال قالب: متغیرهای رنگ + کلاس چیدمان
         function applyTheme(theme) {
             if (!theme || !theme.vars) return;
+
+            /* بازنویسیِ فقط-پیش‌نمایش.
+               پنل مدیر برای مقایسه‌ی قالب‌ها این را تزریق می‌کند تا
+               لازم نباشد چهار بار روی تنظیماتِ واقعیِ مشتری‌ها ذخیره
+               کند. در صفحه‌ی واقعیِ مشتری هیچ‌وقت وجود ندارد. */
+            const forced = window.NEXORA_FORCE_THEME;
+            if (forced && typeof forced === 'object') {
+                theme = Object.assign({}, theme);
+                if (forced.template) theme.template = forced.template;
+                if (forced.vars) theme.vars = Object.assign({}, theme.vars, forced.vars);
+            }
+
             const v = theme.vars;
 
             let el = document.getElementById('nexora-theme-vars');

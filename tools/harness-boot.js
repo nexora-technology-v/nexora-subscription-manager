@@ -73,6 +73,25 @@
     }
   } catch (e) { /* بی‌صدا */ }
 
+  // قالب‌ها و پالت‌ها — همان شکلی که `/api/admin/themes` می‌دهد
+  var THEMES = {
+    currentTemplate: "classic",
+    currentPalette: "ocean",
+    templates: [
+      { id: "classic", name: "کلاسیک" },
+      { id: "analytics", name: "آماری" },
+      { id: "wallet", name: "کیف پول" },
+      { id: "console", name: "کنسول" },
+    ],
+    palettes: [
+      { id: "ocean", name: "اقیانوس", vars: { accent: "#2B7FD6" } },
+      { id: "violet", name: "بنفش", vars: { accent: "#7C5CFF" } },
+      { id: "mint", name: "نعنایی", vars: { accent: "#00B894" } },
+      { id: "gold", name: "طلایی", vars: { accent: "#F0A500" } },
+    ],
+    customPalettes: [],
+  };
+
   var CONFIG = {
     brandName: "NEXORA",
     links: { channelUsername: "nexora_vpn", supportUsername: "nexora_sup" },
@@ -950,6 +969,15 @@ var D_CODES = { ready: true,
     if (u.indexOf("/tunnel/overview") >= 0 || u.indexOf("/tunnel") >= 0) return TUNNEL;
     if (u.indexOf("/affiliates") >= 0) return AFFILIATES;
     if (u.indexOf("/monitor") >= 0 || u.indexOf("/nodes") >= 0) return MONITOR;
+    if (u.indexOf("/admin/themes") >= 0) {
+      if (method === "POST") {
+        THEMES.currentTemplate = (body || {}).template || THEMES.currentTemplate;
+        THEMES.currentPalette = (body || {}).palette || THEMES.currentPalette;
+        return { ok: true, template: THEMES.currentTemplate,
+                 palette: THEMES.currentPalette };
+      }
+      return THEMES;
+    }
     if (u.indexOf("/admin/config") >= 0) return CONFIG;
     if (u.indexOf("/admin/stats") >= 0) {
       return { appsCount: 7, faqCount: 4, videosCount: 2,
