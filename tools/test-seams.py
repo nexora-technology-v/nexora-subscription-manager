@@ -1467,6 +1467,76 @@ check("و ثبتش تحویل را نمی‌شکند",
       "از مسیرِ پول صدا زده می‌شود")
 
 
+# ═══════════════════════════════════════════════════════════
+#  درز — داده‌ی هارنس ↔ شکلِ واقعیِ پاسخِ بکند
+# ═══════════════════════════════════════════════════════════
+#
+# چرا دروازه شد: ردیف‌های ساختگیِ سفارشِ پرتال `name` و `plan`
+# می‌فرستادند، ولی بکند `customer` و `planName` می‌دهد. نتیجه:
+# هر ردیف در هارنس «#۷۰۰ · » خالی نشان می‌داد و فیلترِ برگه‌ها هم
+# اعمال نمی‌شد، پس سفارشِ تاییدشده در برگه‌ی «در انتظار» می‌نشست و
+# چون دکمه‌ای ندارد **شبیهِ باگ** به نظر می‌رسید.
+#
+# یعنی داده‌ی ساختگیِ بدشکل دو کار می‌کند، هر دو بد: باگِ تقلبی
+# می‌سازد، و باگِ واقعی را می‌پوشاند. `CLAUDE.md` درباره‌ی
+# «واقع‌نما نگهش دار» هشدار داده بود؛ این‌جا اجرایش می‌کنیم.
+
+_BOOT = rd("tools", "harness-boot.js")
+
+
+def _return_keys(fn_name):
+    """کلیدهای دیکشنریِ `return {...}`ِ یک مسیرِ بکند."""
+    if f"def {fn_name}(" not in APP_PY:
+        return set()
+    body = APP_PY.split(f"def {fn_name}(")[1].split("\n@app.")[0]
+    # آخرین `return {` که یک دیکشنریِ چندخطی است
+    i = body.rfind("return {")
+    if i < 0:
+        return set()
+    return set(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)":', body[i:]))
+
+
+def _mock_keys(var_name):
+    """کلیدهای شیءِ ساختگی در harness-boot."""
+    m = re.search(rf"{var_name}\s*=\s*\{{(.*?)\n\s*\}}", _BOOT, re.S)
+    if not m:
+        m = re.search(rf"{var_name}\s*=.*?return \{{(.*?)\n\s*\}};", _BOOT, re.S)
+    if not m:
+        return set()
+    return set(re.findall(r"(?:^|[{,\s])([A-Za-z_][A-Za-z0-9_]*)\s*:", m.group(1)))
+
+
+#: مسیرهایی که ردیفِ ساختگی دارند. فهرست کوتاه و عمدی است — هر
+#: قلم یک جفتِ «تابعِ بکند ↔ متغیرِ هارنس» است که رابط ردیف‌به‌ردیف
+#: می‌خواندش، پس نامِ کلیدها باید یکی باشد.
+_SHAPES = [
+    ("portal_orders", "P_ORDER_ROWS", {"id", "customer", "planName", "amount",
+                                       "status", "kind", "paidFrom"}),
+]
+
+for _fn, _var, _must in _SHAPES:
+    _mock = _mock_keys(_var)
+    _missing = sorted(_must - _mock)
+    check(f"ردیفِ ساختگیِ «{_var}» شکلِ بکند را دارد", not _missing,
+          "، ".join(_missing) if _missing else f"{len(_mock)} کلید")
+    if _missing:
+        bullets([f"{k} — بکند می‌دهد، هارنس نه" for k in _missing])
+
+# و فیلترِ برگه‌ها در هارنس واقعاً اعمال شود
+check("هارنس فیلترِ وضعیتِ سفارش را اعمال می‌کند",
+      "function portalOrders(" in _BOOT and "status=" in _BOOT,
+      "وگرنه سفارشِ تاییدشده در برگه‌ی «در انتظار» بی‌دکمه می‌نشیند")
+
+# داده‌ی خالی یعنی شاخه‌ی «هنوز چیزی نیست» و صفحه‌ی سالمِ دروغین
+for _var, _why in (("M_ORDERS", "کارتِ سفارشِ در انتظارِ مینی‌اپ"),
+                   ("EVENTS", "فهرستِ رویدادها")):
+    _m = re.search(rf"var {_var}\s*=\s*(.{{0,40}})", _BOOT, re.S)
+    _txt = _m.group(1) if _m else ""
+    check(f"داده‌ی ساختگیِ «{_var}» خالی نیست",
+          "[]" not in _txt.replace(" ", "")[:14],
+          _why)
+
+
 # و آستانه‌ها واقعاً از تنظیمات بیایند، نه از ثابتِ ماژول
 check("آستانه‌های یادآوری از تنظیمات خوانده می‌شوند",
       "def expiry_steps(" in _RUN_PY and "def traffic_pct(" in _RUN_PY

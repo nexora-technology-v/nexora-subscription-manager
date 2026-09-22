@@ -384,17 +384,47 @@
                           { gb: 100, label: "۱۰۰ گیگ", price: 180000, perDevice: 30000 },
                           { gb: 200, label: "۲۰۰ گیگ", price: 320000, perDevice: 40000 }] };
 
-  var P_ORDERS = { orders: mk(6, function (i) {
-    return { id: 700 + i, name: NAMES[i % 7], tg_id: 9000 + i,
-             plan: ["یک‌ماهه", "سه‌ماهه"][i % 2],
+  // شکلِ ردیف **دقیقاً** همانی است که بکند می‌دهد: `customer` و
+  // `planName`، نه `name` و `plan`. نسخه‌ی قبلی نام‌های دیگری
+  // می‌فرستاد و هر ردیف «#۷۰۰ · » خالی نشان می‌داد — دادهٔ ساختگی
+  // که شکلش با واقعیت فرق دارد، باگِ تقلبی می‌سازد و باگِ واقعی
+  // را می‌پوشاند.
+  var P_ORDER_ROWS = mk(6, function (i) {
+    return { id: 700 + i, customer: NAMES[i % 7], tgId: 9000 + i,
+             planName: ["یک‌ماهه", "سه‌ماهه"][i % 2],
+             gb: [50, 100][i % 2],
              amount: [120000, 280000][i % 2],
-             status: ["pending", "approved", "rejected"][i % 3],
-             created_at: "2026-09-0" + ((i % 9) + 1) };
-  }), total: 6, truncated: false };
+             kind: ["new", "renew", "topup"][i % 3],
+             paidFrom: i % 2 ? "wallet" : "card",
+             hasReceipt: i % 2 === 0,
+             receiptText: i % 4 === 0 ? "کارت به کارت ۱۲۰ هزار، ساعت ۱۴:۳۰" : "",
+             note: "",
+             status: ["awaiting", "approved", "rejected"][i % 3],
+             createdAt: "۱۴۰۵/۰۶/۰" + ((i % 9) + 1) };
+  });
+
+  // و فیلترِ برگه‌ها واقعاً اعمال شود، وگرنه سفارشِ تاییدشده در
+  // برگه‌ی «در انتظار» می‌نشیند و چون دکمه‌ای ندارد شبیهِ «کار
+  // نمی‌کند» به نظر می‌رسد.
+  function portalOrders(u) {
+    var st = (String(u).match(/status=(\w+)/) || [])[1] || "open";
+    var want = { open: ["pending", "awaiting", "review"],
+                 approved: ["approved"], rejected: ["rejected"] }[st]
+               || ["pending", "awaiting", "review"];
+    var rows = P_ORDER_ROWS.filter(function (o) {
+      return want.indexOf(o.status) >= 0;
+    });
+    return { ready: true, orders: rows, total: rows.length, truncated: false };
+  }
 
 
   /* ── مینی‌اپ مشتری ── */
+  // رنگِ فروشگاه — نماینده‌ای که پوسته‌ی شخصی گرفته. خالی یعنی
+  // پوسته‌ی پیش‌فرض، و آن حالت هم باید دیده شود: `?accent=` در
+  // نشانیِ هارنس خاموشش می‌کند.
   var M_ME = { name: "مریم کاظمی", brand: "نکسورا", balance: 240000, coins: 36,
+               accent: (new URLSearchParams(location.search).get("accent") === "off"
+                        ? "" : "#7c5cff"),
                logo: FAKE_LOGO,
                support: "nexora_support", channel: "nexora_vpn",
                phone: "", avatar: "",
@@ -908,7 +938,7 @@ var D_CODES = { ready: true,
     if (u.indexOf("/portal/stats") >= 0) return P_STATS;
     if (u.indexOf("/portal/bot-plans") >= 0) return P_BOT_PLANS;
     if (u.indexOf("/portal/plans") >= 0) return P_PLANS;
-    if (u.indexOf("/portal/orders") >= 0) return P_ORDERS;
+    if (u.indexOf("/portal/orders") >= 0) return portalOrders(u);
     if (u.indexOf("/portal/bot-plans") >= 0) return { plans: [] };
     if (u.indexOf("/portal/bot") >= 0) return { hasBot: true, username: "hossein_vpn_bot" };
     if (u.indexOf("/bot/inbounds") >= 0) return INBOUNDS;
