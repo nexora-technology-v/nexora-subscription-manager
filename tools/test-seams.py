@@ -651,7 +651,19 @@ def _py_nocomment(src):
             out.append(tok)
         return _tk.untokenize(out)
     except Exception:
-        return src
+        # **متنِ خام برنمی‌گردانیم.**
+        #
+        # `tokenize` روی یک قطعه‌ی تورفته‌ی وسطِ فایل (نه کلِ فایل)
+        # در بعضی نسخه‌های پایتون خطا می‌دهد. نسخه‌ی قبلی این‌جا
+        # `src` را پس می‌داد، یعنی کامنت‌ها می‌ماندند و صداکننده
+        # بی‌خبر بود — یک دروازه روی CI قرمز شد و محلی سبز، چون
+        # ۳.۱۰ و ۳.۱۴ این‌جا مثل هم رفتار نمی‌کنند.
+        #
+        # حذفِ خط‌به‌خط کامل نیست (`#` داخلِ رشته را هم می‌برد) ولی
+        # دست‌کم در همان جهتِ درست خطا می‌کند.
+        return "\n".join(
+            "" if ln.strip().startswith("#") else ln.split("  #")[0]
+            for ln in src.splitlines())
 
 
 _coins_jsx = _nocomment(rd("frontend", "src", "sections", "bot", "coins.jsx"))
@@ -1663,11 +1675,20 @@ def _root_only(body):
     دروازه‌ای که به توضیح گیر کند، مجبورمان می‌کند توضیح را پاک
     کنیم.
     """
-    clean = _py_nocomment(body)
-    for _m in re.finditer(r"parent_id IS NULL", clean):
-        before = clean[max(0, _m.start() - 40):_m.start()].upper()
-        if "ORDER BY" in before:
-            continue          # ترتیب، نه فیلتر
+    # خط‌به‌خط، بدونِ `tokenize`.
+    #
+    # `_py_nocomment` روی یک قطعه‌ی تورفته‌ی وسطِ فایل در پایتون
+    # ۳.۱۰ خطا می‌دهد و بی‌صدا متنِ خام را برمی‌گرداند — یعنی
+    # کامنت‌ها می‌مانند و دروازه روی CI قرمز می‌شود و محلی سبز.
+    for line in body.splitlines():
+        bare = line.strip()
+        if bare.startswith("#"):
+            continue                      # توضیح، نه کد
+        if "parent_id IS NULL" not in line:
+            continue
+        head = line[:line.index("parent_id IS NULL")].upper()
+        if "ORDER BY" in head:
+            continue                      # ترتیب، نه فیلتر
         return True
     return False
 
