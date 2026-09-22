@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { errText, faNum } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { EmptyState, Field, Msg, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../../ui/index";
+import { EmptyState, Field, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../../ui/index";
 
 export function BotPlansSection({ password }) {
   const [plans, setPlans] = useState([]);
@@ -116,7 +116,7 @@ export function BotPlansSection({ password }) {
               <input className="fx-input" value={p.name || ""} onChange={(e) => up(i, { name: e.target.value })} />
             </Field>
             <Field label="قیمت (تومان)">
-              <NumberInput className="fx-input" value={p.price ?? 0}
+              <MoneyInput className="fx-input" value={p.price ?? 0}
                 onChange={(e) => up(i, { price: Number(e.target.value) })}
                 style={{ fontFamily: "var(--mono)" }}  />
             </Field>

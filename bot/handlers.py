@@ -1808,6 +1808,7 @@ def deliver(ctx, user, sub):
                      .replace("{sub_url}", esc(url or ""))
                      .replace("{gb}", core.fmt_gb(sub.get("gb")))
                      .replace("{expires}", str(d0) if d0 is not None else "—"))
+        _chat_copy(ctx, user, custom, sub)
         return ctx.bot.send(user["tg_id"], custom, keyboard=_deliver_kb(ctx, url))
 
     d = core.days_left(sub.get("expires_at"))
@@ -1867,7 +1868,61 @@ def deliver(ctx, user, sub):
     lines += ["", "<blockquote>هر وقت خواستید، از «اشتراک‌های من» مصرف و "
               "روزهای باقی‌مانده را ببینید.</blockquote>"]
 
-    _send_delivery(ctx, user, "\n".join(lines), url)
+    text = "\n".join(lines)
+    _chat_copy(ctx, user, text, sub)
+    _send_delivery(ctx, user, text, url)
+
+
+def _chat_copy(ctx, user, html, sub):
+    """
+    همان پیامِ تحویل، در صندوقِ مینی‌اپ.
+
+    چرا کپیِ همان متن و نه متنی جدا:
+        دو متنِ جدا یعنی روزی یکی‌شان اصلاح می‌شود و دیگری نه — و
+        آن‌که فراموش می‌شود همانی است که مشتری می‌خواند. متنِ
+        تلگرام از `F.*` ساخته شده، پس فقط تگ‌هایش برداشته می‌شود.
+
+    چرا اصلاً لازم است:
+        مشتری بعد از خرید مینی‌اپ را باز می‌کند، نه چتِ ربات را. و
+        مشتری‌ای که ربات را بلاک کرده یا نوتیفیکیشن را بسته، پیامِ
+        تلگرام را اصلاً نمی‌بیند — ولی پولش را داده.
+
+    **هرگز تحویل را نمی‌شکند.** از داخلِ مسیرِ پول صدا زده می‌شود و
+    یک خطای فرعی نباید جای کانفیگِ ساخته‌شده را بگیرد.
+    """
+    try:
+        body = F.plain(html).strip()
+        if not body:
+            return
+        ctx.db.chat_add(user["id"], "system", body,
+                        order_id=(sub or {}).get("order_id"))
+    except Exception:
+        log.debug("کپیِ تحویل در صندوق ناموفق", exc_info=True)
+
+
+def _chat_notice(ctx, srow, html):
+    """
+    یادآوری‌ها در صندوقِ مینی‌اپ.
+
+    چرا: مشتری‌ای که ربات را بلاک کرده یا نوتیفیکیشن را بسته، هیچ
+    یادآوری‌ای نمی‌بیند و اولین خبری که می‌گیرد قطع‌شدنِ اتصال است.
+    صندوق همیشه هست.
+
+    **همان متنِ تلگرام**، فقط بدونِ تگ — دو متنِ جدا یعنی روزی
+    یکی‌شان اصلاح می‌شود و دیگری نه.
+
+    `user_id` روی ردیفِ اشتراک هست؛ اگر نبود بی‌صدا رد می‌شویم، چون
+    پیامِ بی‌صاحب در صندوقِ کسِ دیگری می‌نشیند.
+    """
+    try:
+        uid = (srow or {}).get("user_id")
+        if not uid:
+            return
+        body = F.plain(html).strip()
+        if body:
+            ctx.db.chat_add(uid, "system", body)
+    except Exception:
+        log.debug("یادآوری در صندوق ثبت نشد", exc_info=True)
 
 
 def _send_delivery(ctx, user, text, url):
@@ -3858,6 +3913,7 @@ def send_expiry_notice(tenant, bot, sub, days_left):
         txt = (tpl.replace("{days}", str(max(days_left, 0)))
                   .replace("{plan}", esc(str(srow.get("plan_name") or "")))
                   .replace("{label}", esc(label)))
+        _chat_notice(ctx, srow, txt)
         return ctx.bot.send(srow.get("tg_id"), txt, keyboard=renew_kb)
 
     txt = F.join(
@@ -3869,6 +3925,7 @@ def send_expiry_notice(tenant, bot, sub, days_left):
             " — لازم نیست چیزی را دوباره اضافه کنید.",
         ),
     )
+    _chat_notice(ctx, srow, txt)
     try:
         bot.send(sub["tg_id"], txt, keyboard=renew_kb)
     except TelegramError as e:
@@ -3905,6 +3962,7 @@ def send_traffic_notice(tenant, bot, sub, used_gb, total_gb):
                   .replace("{plan}", esc(str(srow.get("plan_name") or "")))
                   .replace("{label}", esc(label)))
         renew_cb = f"renew:{srow['id']}" if srow.get("id") else "mysubs"
+        _chat_notice(ctx, srow, txt)
         return bot.send(srow.get("tg_id"), txt,
                         keyboard=kb([[(f"🔄 تمدید · {label}", renew_cb)],
                                      [("‹ منوی اصلی", "menu")]]))
@@ -3920,6 +3978,7 @@ def send_traffic_notice(tenant, bot, sub, used_gb, total_gb):
                 "اشتراکتان هنوز باقی باشد."),
     )
     renew_cb = f"renew:{srow['id']}" if srow.get("id") else "mysubs"
+    _chat_notice(ctx, srow, txt)
     try:
         bot.send(sub["tg_id"], txt,
                  keyboard=kb([[(f"🔄 تمدید · {label}", renew_cb)],

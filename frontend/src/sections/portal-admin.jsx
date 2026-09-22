@@ -12,7 +12,7 @@ import {
 
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import { Avatar, EmptyState, Field, InfoBox, Msg, NumberInput, SectionHead, StatTile } from "../ui/index";
+import { Avatar, EmptyState, Field, InfoBox, Msg, MoneyInput, NumberInput, SectionHead, StatTile } from "../ui/index";
 import { BotInboundsSection } from "./bot/inbounds";
 
 
@@ -327,7 +327,7 @@ function Row({ t, groups, password, onSaved, setMsg }) {
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
-          <NumberInput value={topup}
+          <MoneyInput value={topup}
             onChange={(e) => setTopup(e.target.value)}
             placeholder="100000"
             title="مبلغ شارژ به تومان — منفی یعنی برداشت"
@@ -569,6 +569,144 @@ export function ResellerInbounds({ password }) {
 }
 
 
+/**
+ * قیمت و مدتِ «پوسته‌ی شخصیِ مینی‌اپ» برای نماینده‌ها.
+ *
+ * برگه: docs/specs/2026-09-22-reseller-and-ui.md
+ *
+ * **قیمت را مالک تعیین می‌کند، سیستم حدس نمی‌زند.** صفر یعنی
+ * رایگان برای همه — نه «خاموش». این تفاوت صریح نوشته شده چون
+ * «صفر» در این مخزن یک‌بار «رایگان» و یک‌بار «تعریف‌نشده» معنی
+ * داده و همان ابهام باگ شده.
+ */
+export function PortalAddon({ password }) {
+  const [d, setD] = useState(null);
+  const [price, setPrice] = useState("");
+  const [days, setDays] = useState("");
+  const [busy, setBusy] = useState("");
+  const [msg, setMsg] = useState(null);
+
+  const load = async () => {
+    try {
+      const r = await fetch(`${API_URL}/api/admin/portal-addon`,
+                            { headers: { "X-Admin-Password": password } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(j.detail, "خوانده نشد"));
+      setD(j); setPrice(String(j.price ?? 0)); setDays(String(j.days ?? 30));
+    } catch (e) { setMsg({ t: "err", m: e.message }); }
+  };
+
+  useEffect(() => { load(); },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [password]);
+
+  const save = async () => {
+    setBusy("save");
+    try {
+      const r = await fetch(`${API_URL}/api/admin/portal-addon`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json",
+                   "X-Admin-Password": password },
+        body: JSON.stringify({ price: Number(price) || 0,
+                               days: Number(days) || 30 }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(j.detail, "ذخیره نشد"));
+      setMsg({ t: "ok", m: "ذخیره شد" });
+      load();
+    } catch (e) { setMsg({ t: "err", m: e.message }); } finally { setBusy(""); }
+  };
+
+  const grant = async (tenant, g) => {
+    setBusy(`g${tenant}`);
+    try {
+      const r = await fetch(`${API_URL}/api/admin/portal-addon/grant`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json",
+                   "X-Admin-Password": password },
+        body: JSON.stringify({ tenant, days: g }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(j.detail, "انجام نشد"));
+      setMsg({ t: "ok", m: g > 0 ? "باز شد" : "بسته شد" });
+      load();
+    } catch (e) { setMsg({ t: "err", m: e.message }); } finally { setBusy(""); }
+  };
+
+  const free = Number(price) === 0;
+
+  return (
+    <div className="fx-card p-4 mb-4">
+      <div className="text-[13px] font-semibold text-white mb-1">
+        پوسته‌ی شخصیِ نماینده‌ها
+      </div>
+      <p className="text-[12px] leading-relaxed mb-3"
+        style={{ color: "var(--muted)" }}>
+        نماینده می‌تواند رنگ و لوگوی خودش را روی مینی‌اپِ مشتریانش
+        بگذارد. مبلغ از اعتبارِ خودش کم می‌شود.
+      </p>
+
+      <Msg msg={msg} onClose={() => setMsg(null)} />
+
+      <div className="flex items-end gap-2 flex-wrap mb-3">
+        <div style={{ width: 170 }}>
+          <label className="text-[12px] block mb-1.5"
+            style={{ color: "var(--muted)" }}>قیمت (تومان)</label>
+          <MoneyInput value={price} onChange={(e) => setPrice(e.target.value)} />
+        </div>
+        <div style={{ width: 110 }}>
+          <label className="text-[12px] block mb-1.5"
+            style={{ color: "var(--muted)" }}>مدت (روز)</label>
+          <NumberInput value={days} onChange={(e) => setDays(e.target.value)} />
+        </div>
+        <button onClick={save} disabled={busy === "save"}
+          className="fx-btn px-4 py-2 text-[13px]">ذخیره</button>
+      </div>
+
+      <div className="text-[12px] mb-3 rounded-lg px-3 py-2"
+        style={{ background: free ? "var(--ok-wash)" : "var(--accent-wash)",
+                 border: `1px solid ${free ? "var(--ok-line)" : "var(--accent-fill)"}`,
+                 color: free ? "var(--ok)" : "var(--dim)" }}>
+        {free
+          ? "قیمت صفر است — این قابلیت برای همه‌ی نماینده‌ها باز است."
+          : `هر نماینده ${faNum(price)} تومان می‌دهد و ${faNum(days)} روز باز می‌ماند.`}
+      </div>
+
+      {(d?.resellers || []).length > 0 && (
+        <div style={{ display: "grid", gap: 6 }}>
+          {d.resellers.map((r) => (
+            <div key={r.id}
+              className="flex items-center gap-2 flex-wrap rounded-lg px-3 py-2"
+              style={{ background: "var(--surface-3)",
+                       border: "1px solid var(--border)" }}>
+              <span className="text-[12.5px] flex-1"
+                style={{ color: "var(--dim)" }}>{r.name || `#${r.id}`}</span>
+              <span className="text-[11.5px]"
+                style={{ color: r.open ? "var(--ok)" : "var(--muted)" }}>
+                {r.open ? (r.until ? `تا ${String(r.until).slice(0, 10)}` : "باز")
+                  : "بسته"}
+              </span>
+              <button onClick={() => grant(r.id, Number(days) || 30)}
+                disabled={busy === `g${r.id}`}
+                className="fx-btn-g px-2.5 py-1 text-[11.5px]">
+                باز کن
+              </button>
+              {r.open && (
+                <button onClick={() => grant(r.id, 0)}
+                  disabled={busy === `g${r.id}`}
+                  className="fx-btn-g px-2.5 py-1 text-[11.5px]">
+                  ببند
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 export function PortalAdmin({ password }) {
   const [msg, setMsg] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -618,6 +756,8 @@ export function PortalAdmin({ password }) {
         بسازد و تمدید کند. نه کانفیگ نماینده‌های دیگر، نه مشتری‌های مستقیم
         شما، نه رمز پنل x-ui.
       </InfoBox>
+
+      <PortalAddon password={password} />
 
       {/* بدون این، نخواندنِ فهرست گروه‌ها بی‌صدا می‌ماند و مدیر فقط
           یک منوی خالی می‌دید. */}

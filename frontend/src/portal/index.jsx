@@ -12,7 +12,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   AlertTriangle, Bot, Camera, Check, Clock, Copy, Database, FileText, Link2,
-  Loader2, LogOut, Package, Plus, Power, QrCode, RefreshCw, Search,
+  LayoutGrid, Loader2, LogOut, Package, Palette, Plus, Power, QrCode, RefreshCw, Search,
   ShoppingCart, Trash2, TrendingUp, Users, Wallet, X, XCircle,
 } from "lucide-react";
 
@@ -23,7 +23,7 @@ import { isoToJalaliLabel } from "../ui/jalali";
 // قاعده است و دو پیاده‌سازی از یک قاعده دیر یا زود از هم جدا
 // می‌شوند. این‌جا فقط همان چیزی گرفته می‌شود که ui/jalali هم هست —
 // ابزار عمومی، نه کدِ پنل مدیر.
-import { Avatar, EmptyState, NumberInput, SkeletonCards, SkeletonTable,
+import { Avatar, EmptyState, MoneyInput, NumberInput, SkeletonCards, SkeletonTable,
          StatTile, usePager } from "../ui/index";
 import { NexoraMark } from "../lib/mark.jsx";
 
@@ -723,6 +723,562 @@ function BotBox({ token, onClose, onNote }) {
 }
 
 
+/**
+ * کف، قیمت، و سودِ یک پلن.
+ *
+ * `cost` از `/api/portal/plan-cost` می‌آید و **این‌جا هیچ ضربی
+ * انجام نمی‌شود** — فقط تفریقِ سود، که خودِ همان دو عددِ آمده است.
+ * قاعده‌ی مخزن: هیچ صفحه‌ای پول را خودش حساب نمی‌کند.
+ *
+ * چرا سه عدد و نه یکی: «برای شما ۲۰۰٬۰۰۰ تومان» به نماینده
+ * نمی‌گفت چقدر سود می‌کند، فقط می‌گفت زیر کف نیست. و کفِ قبلی
+ * `days` و `ip_limit` را نادیده می‌گرفت.
+ */
+function PlanFloor({ row, cost }) {
+  if (!cost) {
+    return (
+      <div className="text-[11px] mt-1" style={{ color: "var(--muted)" }}>
+        در حال حساب‌کردن کف…
+      </div>
+    );
+  }
+
+  if (!cost.ready) {
+    // صفر نشان نمی‌دهیم: صفر یعنی «رایگان»، و این یعنی «نمی‌دانیم»
+    return (
+      <div className="rounded-lg px-2.5 py-2 mt-1.5 text-[11px] leading-relaxed"
+        style={{ background: "var(--warn-wash)",
+                 border: "1px solid var(--warn-fill)", color: "var(--warn)" }}>
+        کفِ قیمت معلوم نیست — {cost.why || "نرخی برای این حجم ثبت نشده"}.
+        {" "}تا ثبت نشود نمی‌توانید بدانید سود می‌کنید یا نه.
+      </div>
+    );
+  }
+
+  const price = Number(row.price) || 0;
+  const floor = Number(cost.cost) || 0;
+  const profit = price - floor;
+  const loss = price > 0 && profit < 0;
+  const flat = price > 0 && profit === 0;
+
+  const tone = loss ? "var(--danger)" : flat ? "var(--warn)" : "var(--ok)";
+  const wash = loss ? "var(--danger-wash)"
+             : flat ? "var(--warn-wash)" : "var(--ok-wash)";
+  const line = loss ? "var(--danger-line)"
+             : flat ? "var(--warn-line)" : "var(--ok-line)";
+
+  return (
+    <div className="rounded-lg px-2.5 py-2 mt-1.5"
+      style={{ background: wash, border: `1px solid ${line}` }}>
+      <div className="flex items-center gap-3 flex-wrap text-[11.5px]">
+        <span style={{ color: "var(--muted)" }}>
+          کفِ شما <b style={{ color: "var(--dim)" }}>{faNum(floor)}</b> تومان
+        </span>
+        <span style={{ color: "var(--muted)" }}>
+          قیمتِ شما <b style={{ color: "var(--dim)" }}>{faNum(price)}</b>
+        </span>
+        <span style={{ color: tone, fontWeight: 700 }}>
+          {price === 0 ? "قیمت نگذاشته‌اید"
+            : loss ? `${faNum(Math.abs(profit))} تومان ضرر`
+            : flat ? "بدون سود"
+            : `${faNum(profit)} تومان سود`}
+        </span>
+      </div>
+
+      {/* چرا این‌قدر: نماینده باید بتواند عدد را بشکند، وگرنه
+          «کف» یک ادعای بی‌پشتوانه است. */}
+      <div className="text-[10.5px] mt-1" style={{ color: "var(--muted)" }}>
+        {faNum(cost.base)} تومان پایه
+        {cost.extraDevices > 0 && (
+          <> {" + "}{faNum(cost.extraDevices)} کاربر اضافه ×{" "}
+            {faNum(cost.perDevice)}</>
+        )}
+        {" × "}{faNum(cost.months)} ماه
+        {cost.estimated && (
+          <span style={{ color: "var(--warn)" }}>
+            {" — "}پلن بی‌انقضاست؛ یک ماه تخمین زده شد
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+/*
+ * پوسته‌ی شخصیِ نماینده.
+ *
+ * برگه: docs/specs/2026-09-22-reseller-and-ui.md
+ *
+ * برند و لوگو از قبل بودند و جای دیگری تنظیم می‌شدند؛ این‌جا رنگ
+ * اضافه شد و — مهم‌تر — **پیش‌نمایش**. بدون پیش‌نمایش، نماینده
+ * رنگ را ذخیره می‌کرد و تنها راهِ دیدنِ نتیجه باز کردنِ مینی‌اپ
+ * با یک حسابِ واقعیِ تلگرام بود؛ یعنی عملاً هیچ‌وقت.
+ */
+
+//: پیشنهادها. نماینده می‌تواند هر رنگی بدهد، ولی انتخاب از میان
+//: چند رنگِ سنجیده‌شده سریع‌تر است و به رنگِ ناخوانا نمی‌رسد.
+const ACCENTS = [
+  "#2b7fd6", "#7c5cff", "#00b894", "#e17055",
+  "#e84393", "#f0a500", "#0aa2c0", "#8d6e63",
+];
+
+function ThemePreview({ accent, brand, logo }) {
+  // همان متغیرهایی که مینی‌اپ می‌سازد — یک قاعده، دو جا، پس
+  // اگر روزی پله‌ها عوض شدند باید هر دو با هم عوض شوند.
+  const ok = /^#[0-9a-fA-F]{6}$/.test(String(accent || ""));
+  const n = ok ? parseInt(accent.slice(1), 16) : 0;
+  const rgb = ok ? `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}` : "";
+  const vars = ok ? {
+    "--pv-accent": accent,
+    "--pv-soft": `rgba(${rgb}, .12)`,
+    "--pv-fill": `rgba(${rgb}, .20)`,
+    "--pv-line": `rgba(${rgb}, .30)`,
+  } : {
+    "--pv-accent": "var(--accent)",
+    "--pv-soft": "var(--accent-soft)",
+    "--pv-fill": "var(--accent-fill)",
+    "--pv-line": "var(--accent-line)",
+  };
+
+  return (
+    <div style={{ ...vars, width: 232, flex: "none" }}>
+      <div style={{
+        borderRadius: 18, overflow: "hidden",
+        border: "1px solid var(--border)", background: "var(--surface-2)",
+      }}>
+        <div style={{ padding: "10px 12px", display: "flex",
+                      alignItems: "center", gap: 8,
+                      borderBottom: "1px solid var(--border)" }}>
+          {logo ? (
+            <img src={logo} alt="" style={{ width: 26, height: 26,
+              borderRadius: 9, objectFit: "cover", flex: "none" }} />
+          ) : (
+            <span style={{ width: 26, height: 26, borderRadius: 9,
+              flex: "none", display: "grid", placeItems: "center",
+              background: "var(--pv-soft)", color: "var(--pv-accent)",
+              fontSize: 12, fontWeight: 700 }}>
+              {(brand || "N").trim().charAt(0)}
+            </span>
+          )}
+          <b style={{ fontSize: 12, color: "var(--dim)" }}>
+            {brand || "فروشگاه شما"}
+          </b>
+        </div>
+
+        <div style={{ padding: 12 }}>
+          <div style={{
+            borderRadius: 14, padding: "12px 13px", marginBottom: 9,
+            background: "var(--pv-soft)",
+            border: "1px solid var(--pv-line)",
+          }}>
+            <div style={{ fontSize: 10, color: "var(--muted)" }}>موجودی</div>
+            <div style={{ fontSize: 17, fontWeight: 700,
+                          color: "var(--pv-accent)" }}>۲۴۰٬۰۰۰</div>
+          </div>
+
+          <div style={{ borderRadius: 12, padding: "9px 11px", marginBottom: 9,
+                        background: "var(--surface-3)",
+                        border: "1px solid var(--border)" }}>
+            <div style={{ fontSize: 11, color: "var(--dim)" }}>پلن یک‌ماهه</div>
+            <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>
+              ۵۰ گیگ · ۳۰ روز
+            </div>
+          </div>
+
+          <div style={{
+            borderRadius: 11, padding: "8px 0", textAlign: "center",
+            fontSize: 11.5, fontWeight: 700, color: "#fff",
+            background: "var(--pv-accent)",
+          }}>خرید</div>
+        </div>
+      </div>
+      <p className="text-[10.5px] mt-2 text-center"
+        style={{ color: "var(--muted)" }}>
+        پیش‌نمایشِ مینی‌اپِ مشتریانِ شما
+      </p>
+    </div>
+  );
+}
+
+
+/*
+ * داشبوردِ نماینده.
+ *
+ * برگه: docs/specs/2026-09-22-reseller-and-ui.md
+ *
+ * **هیچ عددی این‌جا حساب نمی‌شود.** همه از `/api/portal/summary` و
+ * `/api/portal/stats` می‌آید — همان دو مسیری که از قبل بودند و
+ * همان محاسبه‌ای که صورتحسابِ مالک می‌کند. اگر این صفحه خودش
+ * می‌شمرد، می‌شد چهارمین سطحی که پول را جدا حساب می‌کند، و این
+ * مخزن می‌داند آخرش چه می‌شود.
+ *
+ * ترتیب از روی «چه کاری از دستم برمی‌آید» است، نه از روی اینکه چه
+ * چیزی راحت‌تر شمرده می‌شود: اول کارهای امروز، بعد وضعیت، آخر پول.
+ */
+function DashBox({ token, onClose, onOrders, onPlans, onTheme }) {
+  const [sum, setSum] = useState(null);
+  const [st, setSt] = useState(null);
+  const [open, setOpen] = useState(null);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const [a, b, c] = await Promise.all([
+          api("/api/portal/summary", { token }),
+          api("/api/portal/stats", { token }).catch(() => null),
+          api("/api/portal/orders?status=open", { token }).catch(() => null),
+        ]);
+        if (!alive) return;
+        setSum(a); setSt(b);
+        setOpen((c?.orders || []).length);
+      } catch (e) { if (alive) setErr(e.message); }
+    })();
+    return () => { alive = false; };
+  }, [token]);
+
+  //: کارهایی که همین حالا از دستِ نماینده برمی‌آید. فهرستِ خالی
+  //: خودش یک خبرِ خوب است و همان را می‌گوییم — نه یک کارتِ خالی.
+  const todo = [];
+  const pending = open ?? st?.sales?.pending ?? 0;
+  if (pending > 0) {
+    todo.push({ t: `${faNum(pending)} سفارش در انتظار تایید`,
+                b: "دیدن سفارش‌ها", on: onOrders, tone: "var(--warn)" });
+  }
+  if (st?.expiringSoon > 0) {
+    todo.push({ t: `${faNum(st.expiringSoon)} اشتراک تا یک هفته تمام می‌شود`,
+                b: null, tone: "var(--warn)" });
+  }
+  if (st?.overQuota > 0) {
+    todo.push({ t: `${faNum(st.overQuota)} مشتری حجمش تمام شده`,
+                b: null, tone: "var(--danger)" });
+  }
+  if (st?.nearQuota > 0) {
+    todo.push({ t: `${faNum(st.nearQuota)} مشتری بالای ۸۰٪ حجمش را مصرف کرده`,
+                b: null, tone: "var(--muted)" });
+  }
+  if (sum?.unpriced > 0) {
+    todo.push({ t: `${faNum(sum.unpriced)} کانفیگ هنوز نرخ ندارد`,
+                b: null, tone: "var(--muted)" });
+  }
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
+      alignItems: "flex-start", justifyContent: "center", padding: 16,
+      background: "var(--scrim-3)", overflowY: "auto",
+    }} onClick={onClose}>
+      <div className="fx-card p-5" style={{ width: 660, maxWidth: "100%",
+                                            marginTop: 24 }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[14px] font-semibold text-white">
+            داشبورد شما
+          </div>
+          <button onClick={onClose} className="fx-ico-btn"
+            style={{ width: 28, height: 28 }} aria-label="بستن">
+            <X size={13} />
+          </button>
+        </div>
+
+        {err && (
+          <p className="text-[12.5px] mb-3 flex items-start gap-1.5"
+            style={{ color: "var(--danger)" }}>
+            <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+          </p>
+        )}
+
+        {!sum ? <SkeletonCards n={3} /> : (
+          <>
+            {/* ── کارهای امروز ── */}
+            <div className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
+              کارهای امروز
+            </div>
+            {!todo.length ? (
+              <div className="rounded-xl p-3 mb-4 text-[12.5px] flex items-center gap-2"
+                style={{ background: "var(--ok-wash)",
+                         border: "1px solid var(--ok-line)", color: "var(--ok)" }}>
+                <Check size={14} /> کاری روی زمین نمانده
+              </div>
+            ) : (
+              <div className="mb-4" style={{ display: "grid", gap: 8 }}>
+                {todo.map((x, i) => (
+                  <div key={i}
+                    className="rounded-xl px-3 py-2.5 flex items-center gap-2 flex-wrap"
+                    style={{ background: "var(--surface-3)",
+                             border: "1px solid var(--border)" }}>
+                    <span style={{ width: 7, height: 7, borderRadius: 99,
+                                   background: x.tone, flex: "none" }} />
+                    <span className="text-[12.5px] flex-1"
+                      style={{ color: "var(--dim)" }}>{x.t}</span>
+                    {x.b && (
+                      <button onClick={x.on}
+                        className="fx-btn-g px-2.5 py-1 text-[11.5px]">{x.b}</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── وضعیت ── */}
+            <div className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
+              مشتری‌های شما
+            </div>
+            <div className="mb-4" style={{
+              display: "grid", gap: 8,
+              gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
+            }}>
+              <Stat label="فعال" value={faNum(st?.active ?? "—")} />
+              <Stat label="منقضی" value={faNum(st?.expired ?? "—")} />
+              <Stat label="تازه، این ماه"
+                value={faNum(st?.thisMonth?.new ?? "—")} />
+              <Stat label="تمدید، این ماه"
+                value={faNum(st?.thisMonth?.renewals ?? "—")} />
+            </div>
+
+            {/* فروشِ خودِ ربات — «فروش» و «دریافتی» عمداً جدایند:
+                خریدِ از کیف پول فروش هست ولی پولِ تازه نیست. */}
+            {st?.sales?.hasBot && (
+              <>
+                <div className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
+                  فروشِ ربات شما
+                </div>
+                <div className="mb-4" style={{
+                  display: "grid", gap: 8,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
+                }}>
+                  <Stat label="سفارش، این ماه"
+                    value={faNum(st.sales.monthOrders)} />
+                  <Stat label="فروش، این ماه"
+                    value={faNum(st.sales.monthSold)} hint="تومان" />
+                  <Stat label="فروشِ کل" value={faNum(st.sales.sold)}
+                    hint="تومان" />
+                  <Stat label="دریافتی" value={faNum(st.sales.received)}
+                    hint="فقط کارت‌به‌کارت" />
+                </div>
+              </>
+            )}
+
+            {/* ── پول ── */}
+            <div className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
+              حساب شما
+            </div>
+            <div className="mb-4" style={{
+              display: "grid", gap: 8,
+              gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
+            }}>
+              <Stat label="کانفیگ‌های این دوره" value={faNum(sum.configs)} />
+              <Stat label="بدهیِ این دوره" value={faNum(sum.due)}
+                hint="تومان" />
+              <Stat label="پرداختی" value={faNum(sum.paid)} hint="تومان" />
+              <Stat
+                label={sum.prepaid ? "اعتبار" : "مانده"}
+                value={sum.prepaid ? faNum(sum.credit) : faNum(sum.balance)}
+                hint="تومان"
+                color={sum.prepaid && Number(sum.credit) <= 0
+                  ? "var(--danger)" : null} />
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={onPlans}
+                className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
+                <Package size={13} /> پلن‌ها و قیمت
+              </button>
+              <button onClick={onTheme}
+                className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
+                <Palette size={13} /> پوسته‌ی فروشگاه
+              </button>
+              <button onClick={onOrders}
+                className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
+                <FileText size={13} /> سفارش‌ها
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+function ThemeBox({ token, onClose, onNote }) {
+  const [d, setD] = useState(null);
+  const [accent, setAccent] = useState("");
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const j = await api("/api/portal/theme", { token });
+      setD(j);
+      setAccent(j.accent || "");
+    } catch (e) { setErr(e.message); }
+  }, [token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    setBusy("save"); setErr("");
+    try {
+      await api("/api/portal/theme", { token, method: "POST",
+                                       body: { accent } });
+      onNote("پوسته ذخیره شد");
+      load();
+    } catch (e) { setErr(e.message); } finally { setBusy(""); }
+  };
+
+  const buy = async () => {
+    setBusy("buy"); setErr("");
+    try {
+      const j = await api("/api/portal/theme/buy", { token, method: "POST" });
+      onNote(`فعال شد — ${faNum(j.paid)} تومان از اعتبارتان کم شد`);
+      load();
+    } catch (e) { setErr(e.message); } finally { setBusy(""); }
+  };
+
+  const open = !!d?.open;
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
+      alignItems: "flex-start", justifyContent: "center", padding: 16,
+      background: "var(--scrim-3)", overflowY: "auto",
+    }} onClick={onClose}>
+      <div className="fx-card p-5" style={{ width: 640, maxWidth: "100%",
+                                            marginTop: 24 }}
+        onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[14px] font-semibold text-white">
+            پوسته‌ی فروشگاه شما
+          </div>
+          <button onClick={onClose} className="fx-ico-btn"
+            style={{ width: 28, height: 28 }} aria-label="بستن">
+            <X size={13} />
+          </button>
+        </div>
+
+        {!d ? <SkeletonCards n={2} /> : (
+          <>
+            {/* قفل — و اینکه چه چیزی می‌گیرد. صفحه‌ی قفل که فقط
+                بگوید «فعال نیست» از نبودنِ صفحه بدتر است. */}
+            {!open && (
+              <div className="rounded-xl p-4 mb-4"
+                style={{ background: "var(--accent-wash)",
+                         border: "1px solid var(--accent-fill)" }}>
+                <div className="text-[13px] font-semibold mb-1.5"
+                  style={{ color: "var(--accent-2)" }}>
+                  مینی‌اپِ مشتریانتان، با رنگ و نشانِ خودتان
+                </div>
+                <p className="text-[12px] leading-relaxed mb-3"
+                  style={{ color: "var(--dim)" }}>
+                  مشتری شما به‌جای پوسته‌ی پیش‌فرض، رنگ و لوگوی
+                  فروشگاهِ خودتان را می‌بیند — در کیف پول، فهرستِ
+                  پلن‌ها، و هر دکمه‌ای که می‌زند.
+                </p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button onClick={buy} disabled={busy === "buy"}
+                    className="fx-btn px-4 py-2 text-[13px] flex items-center gap-1.5">
+                    {busy === "buy" ? <Loader2 size={13} className="animate-spin" />
+                      : <Palette size={13} />}
+                    {faNum(d.price)} تومان برای {faNum(d.days)} روز
+                  </button>
+                  <span className="text-[11.5px]" style={{ color: "var(--muted)" }}>
+                    {d.postpaid
+                      ? "به صورتحسابِ این دوره‌تان اضافه می‌شود"
+                      : `از اعتبارتان کم می‌شود — موجودی: ${faNum(d.credit)} تومان`}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {open && d.until && (
+              <div className="text-[11.5px] mb-3 flex items-center gap-2 flex-wrap"
+                style={{ color: "var(--muted)" }}>
+                <Check size={12} style={{ color: "var(--ok)" }} />
+                فعال تا {String(d.until).slice(0, 10)}
+                {d.price > 0 && (
+                  <button onClick={buy} disabled={busy === "buy"}
+                    className="fx-btn-g px-2.5 py-1 text-[11.5px]">
+                    تمدید
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-4 flex-wrap">
+              <div className="flex-1" style={{ minWidth: 240 }}>
+                <label className="text-[12px] block mb-2"
+                  style={{ color: "var(--muted)" }}>رنگِ اصلی</label>
+
+                <div className="flex items-center gap-2 flex-wrap mb-3">
+                  {ACCENTS.map((c) => (
+                    <button key={c} onClick={() => open && setAccent(c)}
+                      disabled={!open} aria-label={`رنگ ${c}`}
+                      style={{
+                        width: 30, height: 30, borderRadius: 10,
+                        // این یکی از دو استثنای قاعده‌ی توکن است:
+                        // مقدارِ رنگ این‌جا خودِ داده است.
+                        background: c, flex: "none",
+                        opacity: open ? 1 : 0.4,
+                        cursor: open ? "pointer" : "not-allowed",
+                        border: accent === c
+                          ? "2px solid var(--text)" : "1px solid var(--hair-3)",
+                      }} />
+                  ))}
+                  <button onClick={() => open && setAccent("")}
+                    disabled={!open}
+                    className="fx-btn-g px-2.5 py-1 text-[11.5px]"
+                    style={{ opacity: open ? 1 : 0.4 }}>
+                    پیش‌فرض
+                  </button>
+                </div>
+
+                <label className="text-[12px] block mb-1.5"
+                  style={{ color: "var(--muted)" }}>یا رنگِ دلخواه</label>
+                <div className="flex items-center gap-2 mb-4">
+                  <input type="color" value={accent || "#2b7fd6"}
+                    disabled={!open}
+                    onChange={(e) => setAccent(e.target.value)}
+                    style={{ width: 42, height: 34, borderRadius: 9,
+                             border: "1px solid var(--border)",
+                             background: "transparent", padding: 2 }} />
+                  <input value={accent} dir="ltr" placeholder="#2b7fd6"
+                    disabled={!open} maxLength={7}
+                    onChange={(e) => setAccent(e.target.value.trim())}
+                    className="fx-input text-[13px] flex-1"
+                    style={{ fontFamily: "var(--mono)" }} />
+                </div>
+
+                {err && (
+                  <p className="text-[12.5px] mb-3 flex items-start gap-1.5"
+                    style={{ color: "var(--danger)" }}>
+                    <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+                  </p>
+                )}
+
+                <button onClick={save} disabled={!open || busy === "save"}
+                  className="fx-btn w-full py-2.5 text-[13px] flex items-center
+                             justify-center gap-1.5">
+                  {busy === "save" ? <Loader2 size={14} className="animate-spin" />
+                    : <Check size={14} />}
+                  ذخیره‌ی پوسته
+                </button>
+              </div>
+
+              {/* پیش‌نمایش حتی وقتی قفل است دیده می‌شود — این همان
+                  چیزی است که نماینده را قانع می‌کند تهیه‌اش کند. */}
+              <ThemePreview accent={accent} brand={d.brand} logo={d.logo} />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function PlansBox({ token, onClose, onNote }) {
   const [rows, setRows] = useState(null);
   const [hasBot, setHasBot] = useState(false);
@@ -730,6 +1286,8 @@ function PlansBox({ token, onClose, onNote }) {
     { mode: "open", allowed: [], perGb: 0, cost: {} });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  //: کفِ هر ردیف — از بکند می‌آید، این‌جا حساب نمی‌شود.
+  const [cost, setCost] = useState([]);
 
   const load = useCallback(async () => {
     try {
@@ -742,6 +1300,40 @@ function PlansBox({ token, onClose, onNote }) {
   }, [token]);
 
   useEffect(() => { load(); }, [load]);
+
+  /*
+   * کف را **بکند** حساب می‌کند، نه این‌جا.
+   *
+   * تا امروز این صفحه `cost[gb]` را نشان می‌داد — یعنی فقط حجم.
+   * صورتحساب از `_line_amount` می‌آید که
+   * `(نرخ پایه + نرخ کاربر اضافه) × ماه` است، پس یک پلنِ ۹۰ روزه‌ی
+   * چهارکاربره کفش تقریباً یک‌سوم نشان داده می‌شد. نماینده «بالای
+   * کف» می‌فروخت و ضرر می‌کرد، و فقط آخر ماه می‌فهمید.
+   *
+   * تاخیر دارد چون در حالِ تایپ صدا زده می‌شود.
+   */
+  const key = JSON.stringify((rows || []).map(
+    (r) => [Number(r.gb) || 0, Number(r.days) || 0, Number(r.ip_limit) || 0]));
+
+  useEffect(() => {
+    if (!rows || !rows.length) { setCost([]); return undefined; }
+    let alive = true;
+    const id = setTimeout(async () => {
+      try {
+        const j = await api("/api/portal/plan-cost", {
+          token, method: "POST",
+          body: { rows: rows.map((r) => ({ gb: r.gb, days: r.days,
+                                           ip_limit: r.ip_limit })) },
+        });
+        if (alive) setCost(j.rows || []);
+      } catch {
+        // نبودِ کف نباید ویرایشگر را از کار بیندازد؛ فقط نشان
+        // داده نمی‌شود
+        if (alive) setCost([]);
+      }
+    }, 350);
+    return () => { alive = false; clearTimeout(id); };
+  }, [key, token]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const patch = (i, p) => setRows(rows.map((r, k) => (k === i ? { ...r, ...p } : r)));
   // پلنِ تازه با اولین پله‌ی مجاز شروع می‌شود، نه با ۵۰ ثابت — وگرنه
@@ -885,32 +1477,32 @@ function PlansBox({ token, onClose, onNote }) {
                     <div key={k}>
                       <label className="text-[11px] block mb-1"
                         style={{ color: "var(--muted)" }}>{lbl}</label>
-                      <NumberInput min="0" value={r[k] ?? 0}
-                        onChange={(e) => patch(i, { [k]: Number(e.target.value) || 0 })}
-                        className="fx-input text-[13px] text-center"
-                        style={{ fontFamily: "var(--mono)" }}  />
+                      {/* فقط «قیمت» جداکننده می‌گیرد. روز و تعداد
+                          کاربر هیچ‌وقت سه‌رقمی نمی‌شوند و جداکننده
+                          رویشان فقط شلوغی است. */}
+                      {k === "price" ? (
+                        <MoneyInput min="0" value={r[k] ?? 0}
+                          onChange={(e) => patch(i, { [k]: Number(e.target.value) || 0 })}
+                          className="fx-input text-[13px] text-center" />
+                      ) : (
+                        <NumberInput min="0" value={r[k] ?? 0}
+                          onChange={(e) => patch(i, { [k]: Number(e.target.value) || 0 })}
+                          className="fx-input text-[13px] text-center"
+                          style={{ fontFamily: "var(--mono)" }} />
+                      )}
                     </div>
                   ))}
                 </div>
-                <div className="text-[11px] mt-1.5 flex items-center gap-2 flex-wrap"
+                <div className="text-[11px] mt-1.5"
                   style={{ color: "var(--muted)" }}>
-                  <span>حجم ۰ یعنی نامحدود · کاربر ۰ یعنی بدون محدودیت</span>
-                  {/* هزینه‌ی خودِ نماینده. بدون این، «زیر قیمت فروختم»
-                      فقط آخر ماه روی صورتحساب معلوم می‌شود. */}
-                  {(() => {
-                    const c = policy.mode === "volume"
-                      ? policy.perGb * (Number(r.gb) || 0)
-                      : Number(policy.cost[String(Number(r.gb) || 0)] || 0);
-                    if (!c) return null;
-                    const loss = Number(r.price) > 0 && Number(r.price) < c;
-                    return (
-                      <span style={{ color: loss ? "var(--danger)" : "var(--dim)" }}>
-                        · برای شما {faNum(c)} تومان
-                        {loss ? " — زیر قیمت" : ""}
-                      </span>
-                    );
-                  })()}
+                  حجم ۰ یعنی نامحدود · کاربر ۰ یعنی بدون محدودیت
                 </div>
+
+                {/* کف، قیمت، و سود — سه عددِ جدا.
+                    «برای شما X تومان» به‌تنهایی کافی نبود: نماینده
+                    باید ببیند چقدر سود می‌کند، نه فقط اینکه زیر کف
+                    نیست. */}
+                <PlanFloor row={r} cost={cost[i]} />
               </div>
             ))}
 
@@ -1513,6 +2105,8 @@ function Dashboard({ token, onOut }) {
   const [botOpen, setBotOpen] = useState(false);
   const [plansOpen, setPlansOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
+  const [dashOpen, setDashOpen] = useState(false);
   const [detail, setDetail] = useState(null);
   const [stats, setStats] = useState(null);
   const [copied, setCopied] = useState("");
@@ -1629,9 +2223,17 @@ function Dashboard({ token, onOut }) {
               نماینده بیرون از کادر و کارت‌ها نصفه. ردیفِ بیرونی
               flex-wrap داشت و همین ردیفِ داخلی نداشت. */}
           <div className="flex items-center gap-2 flex-wrap">
+            <button onClick={() => setDashOpen(true)}
+              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
+              <LayoutGrid size={13} /> داشبورد
+            </button>
             <button onClick={() => setOrdersOpen(true)}
               className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
               <FileText size={13} /> سفارش‌ها
+            </button>
+            <button onClick={() => setThemeOpen(true)}
+              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
+              <Palette size={13} /> پوسته
             </button>
             <button onClick={() => setPlansOpen(true)}
               className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
@@ -1999,6 +2601,18 @@ function Dashboard({ token, onOut }) {
       {plansOpen && (
         <PlansBox token={token} onClose={() => setPlansOpen(false)}
           onNote={(m) => { setNote(m); setErr(""); }} />
+      )}
+
+      {themeOpen && (
+        <ThemeBox token={token} onClose={() => setThemeOpen(false)}
+          onNote={(m) => { setNote(m); setErr(""); }} />
+      )}
+
+      {dashOpen && (
+        <DashBox token={token} onClose={() => setDashOpen(false)}
+          onOrders={() => { setDashOpen(false); setOrdersOpen(true); }}
+          onPlans={() => { setDashOpen(false); setPlansOpen(true); }}
+          onTheme={() => { setDashOpen(false); setThemeOpen(true); }} />
       )}
 
       {ordersOpen && (

@@ -12016,6 +12016,13 @@ def mini_me(tu: tuple = Depends(mini_user)):
         # لوگوی همین فروشگاه. خالی یعنی «نشان نکسورا» — رابط خودش
         # تصمیم می‌گیرد، این‌جا حدس نمی‌زنیم.
         "logo": _logo_url(t["id"]),
+        # رنگِ فروشگاهِ نماینده. خالی یعنی پوسته‌ی پیش‌فرض.
+        #
+        # قفل این‌جا هم سنجیده می‌شود، نه فقط موقعِ ذخیره: اگر
+        # اشتراکِ نماینده تمام شود، رنگ باید بی‌آنکه پاک شود از کار
+        # بیفتد — تا اگر دوباره تهیه کرد، همان رنگِ قبلی برگردد.
+        "accent": (_clean_accent(st.get("mini_accent"))
+                   if _addon_open(t) else ""),
         "avatar": _avatar_url(t["id"], u["id"]),
         "phone": u.get("phone") or "",
         # دعوتِ دوست — کدِ خودِ کاربر و اینکه چند نفر با آن آمده‌اند.
@@ -12929,6 +12936,106 @@ def tenant_create(payload: dict, x_admin_password: str = Header(...)):
                 "next": "گروه x-ui را انتخاب کنید و بعد پنلش را باز کنید"}
     finally:
         con.close()
+
+
+@app.get("/api/admin/portal-addon")
+def portal_addon_get(x_admin_password: str = Header(...)):
+    """قیمت و مدتِ «پوسته‌ی شخصیِ نماینده» — و اینکه هرکس تا کِی دارد."""
+    check_auth(x_admin_password)
+    cfg = _addon_config()
+
+    rows = []
+    con = _bot_conn()
+    if con:
+        try:
+            for r in con.execute(
+                    "SELECT id, name, settings FROM tenants "
+                    "WHERE parent_id IS NOT NULL ORDER BY id"):
+                t = dict(r)
+                rows.append({
+                    "id": t["id"],
+                    "name": t.get("name") or "",
+                    "until": _addon_until(t),
+                    "open": _addon_open(t),
+                })
+        except Exception:
+            log.debug("فهرست پوسته‌ها خوانده نشد", exc_info=True)
+        finally:
+            con.close()
+
+    return dict(cfg, resellers=rows)
+
+
+@app.post("/api/admin/portal-addon")
+def portal_addon_set(payload: dict, x_admin_password: str = Header(...)):
+    """
+    قیمت و مدت را مالک تعیین می‌کند.
+
+    **صفر یعنی رایگان برای همه** — نه «خاموش». اگر مالک نخواهد
+    پولی باشد، صفر می‌گذارد و قفل برای همه باز می‌شود. این صریح
+    نوشته شده چون «صفر» در این مخزن یک‌بار «رایگان» و یک‌بار
+    «تعریف‌نشده» معنی داده و همان ابهام باگ شده.
+    """
+    check_auth(x_admin_password)
+    p = payload or {}
+    try:
+        price = max(0, int(p.get("price") or 0))
+        days = max(1, int(p.get("days") or 30))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="عدد نامعتبر")
+
+    root = _root_tenant_row()
+    st = _tenant_settings(root)
+    st["portal_addon"] = {"price": price, "days": days}
+    _save_tenant_settings(root["id"], st)
+    return {"ok": True, "price": price, "days": days}
+
+
+@app.post("/api/admin/portal-addon/grant")
+def portal_addon_grant(payload: dict, x_admin_password: str = Header(...)):
+    """
+    باز یا بسته‌کردنِ دستیِ پوسته برای یک نماینده — بدونِ پول.
+
+    چرا لازم است: نماینده‌ی تازه، یا کسی که آفلاین پرداخت کرده.
+    بدون این، تنها راهِ بازکردن دست‌بردن در دیتابیس بود.
+    """
+    check_auth(x_admin_password)
+    p = payload or {}
+    try:
+        tid = int(p.get("tenant") or 0)
+        days = int(p.get("days") or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="ورودی نامعتبر")
+    if tid <= 0:
+        raise HTTPException(status_code=400, detail="نماینده مشخص نیست")
+
+    row = _tenant_row(tid)
+    if not row:
+        raise HTTPException(status_code=404, detail="نماینده پیدا نشد")
+    if row.get("parent_id") is None:
+        raise HTTPException(status_code=400,
+                            detail="این ردیفِ خودِ مالک است، نه نماینده")
+
+    st = _tenant_settings(row)
+    if days <= 0:
+        # بستن: تاریخ پاک می‌شود ولی **رنگ می‌ماند** — اگر دوباره
+        # باز شد، همان پوسته‌ی قبلی برمی‌گردد و لازم نیست از نو
+        # بسازدش.
+        st.pop("theme_until", None)
+    else:
+        from datetime import datetime as _dt, timedelta as _td
+        base = _dt.now()
+        cur = st.get("theme_until") or ""
+        if cur:
+            try:
+                have = _dt.fromisoformat(str(cur)[:19])
+                if have > base:
+                    base = have
+            except (TypeError, ValueError):
+                pass
+        st["theme_until"] = (base + _td(days=days)).isoformat(timespec="seconds")
+    _save_tenant_settings(tid, st)
+    return {"ok": True, "until": st.get("theme_until") or ""}
 
 
 @app.get("/api/admin/tenant/portal-list")
@@ -14316,6 +14423,164 @@ def portal_bot_del(t: dict = Depends(portal_tenant)):
     return {"ok": True}
 
 
+# ═══════════════════════════════════════════════════════════
+#  پوسته‌ی شخصیِ نماینده — و قفلش
+#
+#  برگه: docs/specs/2026-09-22-reseller-and-ui.md
+#
+#  برند و لوگو از قبل بودند؛ تازه: **رنگ**، **پیش‌نمایش**، و
+#  اینکه مالک بتواند این قابلیت را پولی کند.
+#
+#  مبلغ و مدت را **مالک** تعریف می‌کند؛ این‌جا هیچ عددی حدس زده
+#  نمی‌شود. صفر یعنی رایگان برای همه.
+#
+#  پرداخت از همان `tenants.credit` کم می‌شود که از قبل هست — راهِ
+#  پرداختِ دومی ساختن یعنی دو جای حسابداری، و این مخزن می‌داند
+#  آخرش چه می‌شود.
+# ═══════════════════════════════════════════════════════════
+
+#: رنگِ معتبر: فقط `#RRGGBB`. هر چیز دیگری رد می‌شود و پوسته‌ی
+#: پیش‌فرض می‌ماند — رنگِ خراب یعنی متنِ نامرئی روی زمینه‌ی هم‌رنگ،
+#: همان چیزی که یک‌بار در قالبِ «کیف پول» صفحه‌ی اشتراک افتاد.
+_HEX_RE = _re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _clean_accent(raw):
+    """رنگ، یا رشته‌ی خالی. هیچ‌وقت چیزِ نامعتبر برنمی‌گرداند."""
+    v = str(raw or "").strip()
+    return v.lower() if _HEX_RE.match(v) else ""
+
+
+def _addon_config():
+    """
+    قیمت و مدتِ «پوسته‌ی شخصی»، از تنظیماتِ مالک.
+
+    برمی‌گرداند: {"price": تومان, "days": روز}
+    قیمتِ صفر یعنی رایگان — قفل باز است برای همه.
+    """
+    try:
+        root = _root_tenant_row()
+    except HTTPException:
+        return {"price": 0, "days": 30}
+    st = _tenant_settings(root).get("portal_addon") or {}
+    try:
+        price = max(0, int(st.get("price") or 0))
+        days = max(1, int(st.get("days") or 30))
+    except (TypeError, ValueError):
+        price, days = 0, 30
+    return {"price": price, "days": days}
+
+
+def _addon_until(t):
+    """تا کِی پوسته‌ی شخصیِ این نماینده باز است؟ ISO یا خالی."""
+    return str(_tenant_settings(t).get("theme_until") or "")
+
+
+def _addon_open(t):
+    """
+    آیا این نماینده الان اجازه‌ی پوسته‌ی شخصی دارد؟
+
+    قیمتِ صفر یعنی برای همه باز است. وگرنه تاریخ سنجیده می‌شود.
+    """
+    if _addon_config()["price"] <= 0:
+        return True
+    until = _addon_until(t)
+    if not until:
+        return False
+    try:
+        from datetime import datetime as _dt
+        return _dt.fromisoformat(until[:19]) > _dt.now()
+    except (TypeError, ValueError):
+        return False
+
+
+@app.get("/api/portal/theme")
+def portal_theme_get(t: dict = Depends(portal_tenant)):
+    """پوسته‌ی فعلی، و اینکه قفل باز است یا نه."""
+    st = _tenant_settings(t)
+    cfg = _addon_config()
+    return {
+        "accent": _clean_accent(st.get("mini_accent")),
+        "brand": st.get("brand") or t.get("name") or "",
+        "logo": _logo_url(t["id"]),
+        "open": _addon_open(t),
+        "until": _addon_until(t),
+        "price": cfg["price"],
+        "days": cfg["days"],
+        "credit": int(t.get("credit") or 0),
+        # اعتبارِ منفی یعنی «پس‌پرداخت» — آخر ماه صورتحساب می‌آید
+        "postpaid": int(t.get("credit") or 0) < 0,
+    }
+
+
+@app.post("/api/portal/theme")
+def portal_theme_set(payload: dict, t: dict = Depends(portal_tenant)):
+    """
+    ذخیره‌ی رنگِ مینی‌اپ.
+
+    **قفل در بکند است، نه فقط در رابط.** رابط فقط راحتی است و کسی
+    می‌تواند درخواست را مستقیم بفرستد — همان قاعده‌ای که برای
+    حجم‌های مجاز هم رعایت شد.
+    """
+    if not _addon_open(t):
+        raise HTTPException(
+            status_code=402,
+            detail="پوسته‌ی شخصی برای شما فعال نیست — اول تهیه‌اش کنید")
+
+    accent = _clean_accent((payload or {}).get("accent"))
+    if (payload or {}).get("accent") and not accent:
+        raise HTTPException(status_code=400,
+                            detail="رنگ باید به شکل ‎#RRGGBB باشد")
+
+    st = _tenant_settings(t)
+    st["mini_accent"] = accent
+    _save_tenant_settings(t["id"], st)
+    return {"ok": True, "accent": accent}
+
+
+@app.post("/api/portal/theme/buy")
+def portal_theme_buy(t: dict = Depends(portal_tenant)):
+    """
+    تهیه یا تمدیدِ پوسته‌ی شخصی — از اعتبارِ خودِ نماینده.
+
+    **اول کسر، بعد تمدید.** اگر برعکس بود، شکستِ کسر یعنی قابلیتی
+    که پولش نرسیده باز می‌ماند. و اگر نوشتنِ تاریخ شکست بخورد،
+    پول برمی‌گردد — همان قاعده‌ی `close_order` در ربات.
+    """
+    cfg = _addon_config()
+    if cfg["price"] <= 0:
+        raise HTTPException(status_code=400,
+                            detail="این قابلیت رایگان است و نیازی به تهیه ندارد")
+
+    ok, why = _portal_charge(t, cfg["price"], "پوسته‌ی شخصیِ مینی‌اپ")
+    if not ok:
+        raise HTTPException(status_code=402, detail=why)
+
+    try:
+        from datetime import datetime as _dt, timedelta as _td
+        base = _dt.now()
+        cur = _addon_until(t)
+        if cur:
+            # تمدیدِ زودهنگام نباید روزهای باقی‌مانده را بسوزاند
+            try:
+                have = _dt.fromisoformat(cur[:19])
+                if have > base:
+                    base = have
+            except (TypeError, ValueError):
+                pass
+        until = (base + _td(days=cfg["days"])).isoformat(timespec="seconds")
+        st = _tenant_settings(t)
+        st["theme_until"] = until
+        _save_tenant_settings(t["id"], st)
+    except Exception as e:
+        _portal_refund(t, cfg["price"])
+        log.exception("تمدید پوسته ناموفق")
+        raise HTTPException(status_code=500,
+                            detail=f"تهیه انجام نشد و پول برگشت: {type(e).__name__}")
+
+    return {"ok": True, "until": until, "paid": cfg["price"]}
+
+
 @app.post("/api/portal/brand")
 def portal_brand(payload: dict, t: dict = Depends(portal_tenant)):
     """
@@ -14396,6 +14661,70 @@ def portal_bot_plans(t: dict = Depends(portal_tenant)):
                     **policy)
     finally:
         con.close()
+
+
+@app.post("/api/portal/plan-cost")
+def portal_plan_cost(payload: dict, t: dict = Depends(portal_tenant)):
+    """
+    کفِ قیمتِ هر پلن برای خودِ نماینده — یعنی آنچه آخرِ ماه از او
+    گرفته می‌شود اگر یک کانفیگ با این مشخصات بفروشد.
+
+    چرا مسیرِ تازه و نه حساب‌کردن در رابط:
+        پرتال تا امروز `cost[gb]` را نشان می‌داد — یعنی **فقط حجم**.
+        صورتحسابِ واقعی از `_line_amount` می‌آید و آن
+        `(نرخ پایه + نرخ هر کاربر اضافه) × ماه` است. پس یک پلنِ
+        ۹۰ روزه‌ی چهارکاربره کفش تقریباً یک‌سوم نشان داده می‌شد و
+        نماینده «بالای کف» می‌فروخت و ضرر می‌کرد — چیزی که فقط
+        آخرِ ماه معلوم می‌شد.
+
+        قاعده‌ی مخزن: هیچ صفحه‌ای پول را خودش حساب نمی‌کند. پس
+        این‌جا هم ضرب نمی‌شود؛ همان `_line_amount` صدا زده می‌شود.
+
+    اجزای عدد هم برمی‌گردد تا نماینده ببیند *چرا* این‌قدر است.
+    """
+    rows = (payload or {}).get("rows")
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=400, detail="فهرست پلن نامعتبر است")
+    if len(rows) > 40:
+        raise HTTPException(status_code=400, detail="حداکثر ۴۰ پلن")
+
+    _conf, rates = _portal_rates(t)
+
+    out = []
+    for r in rows:
+        if not isinstance(r, dict):
+            out.append({"ready": False, "why": "ردیف نامعتبر"})
+            continue
+        try:
+            gb = max(0, int(r.get("gb") or 0))
+            days = max(0, int(r.get("days") or 0))
+            ips = max(0, int(r.get("ip_limit") or 0))
+        except (TypeError, ValueError):
+            out.append({"ready": False, "why": "عدد نامعتبر"})
+            continue
+
+        base, why = _price_with_reason(gb, rates)
+        if base is None:
+            # صفر برنمی‌گردانیم: صفر یعنی «رایگان است» و این یعنی
+            # «نمی‌دانیم». نماینده باید تفاوتشان را ببیند.
+            out.append({"ready": False, "why": why})
+            continue
+
+        months = _months_from_days(days) if days else 1
+        cost, base2, per, extra = _line_amount(gb, rates, months, ips)
+        out.append({
+            "ready": True,
+            "cost": int(cost or 0),
+            "base": int(base2 or 0),
+            "perDevice": int(per or 0),
+            "extraDevices": int(extra or 0),
+            "months": int(months),
+            # پلنِ بی‌انقضا چند ماه می‌ماند معلوم نیست؛ یک ماه
+            # حساب می‌شود و همین‌جا گفته می‌شود که تخمین است.
+            "estimated": not days,
+        })
+
+    return {"rows": out}
 
 
 @app.put("/api/portal/bot-plans")

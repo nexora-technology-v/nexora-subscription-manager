@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import { ConfirmModal, EmptyState, Field, InfoBox, Msg, NumberInput, PageSkeleton, SectionHead, StatTile } from "../ui/index";
+import { ConfirmModal, EmptyState, Field, InfoBox, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile } from "../ui/index";
 import { JalaliDate } from "../ui/jalali";
 
 const KIND_META = {
@@ -141,7 +141,7 @@ function ExpenseForm({ password, onDone, setMsg }) {
             onChange={(e) => setF({ ...f, label: e.target.value })} />
         </Field>
         <Field label="مبلغ">
-          <NumberInput decimal className="fx-input"
+          <MoneyInput decimal className="fx-input"
             value={f.amount} style={{ fontFamily: "var(--mono)" }}
             onChange={(e) => setF({ ...f, amount: e.target.value })}  />
         </Field>
@@ -182,7 +182,7 @@ function ExpenseForm({ password, onDone, setMsg }) {
         )}
         {f.currency !== "IRT" && (
           <Field label="نرخ دستی" hint="خالی = نرخ روز بازار">
-            <NumberInput className="fx-input" value={f.rate}
+            <MoneyInput decimal className="fx-input" value={f.rate}
               placeholder={fx && fx.ok ? String(fx.toman) : "—"}
               style={{ fontFamily: "var(--mono)" }}
               onChange={(e) => setF({ ...f, rate: e.target.value })}  />

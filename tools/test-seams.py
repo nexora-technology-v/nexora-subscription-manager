@@ -1290,6 +1290,183 @@ check("قاعده‌ی «خریدِ واقعی» یک‌جا تعریف شده",
       f"{APP_PY.count('SQL_REAL_BUY')} مصرف‌کننده")
 
 
+# ═══════════════════════════════════════════════════════════
+#  درز — کفِ قیمتِ نماینده ↔ خودِ صورتحساب
+# ═══════════════════════════════════════════════════════════
+#
+# برگه: docs/specs/2026-09-22-reseller-and-ui.md
+#
+# چرا دروازه شد: پرتال کف را خودش حساب می‌کرد — `cost[gb]`، یعنی
+# **فقط حجم**. صورتحساب از `_line_amount` می‌آید که
+# `(نرخ پایه + نرخ کاربر اضافه) × ماه` است.
+#
+# اندازه‌گیری‌شده با نرخ‌های نمونه:
+#
+#     ۳۰ گیگ /  ۹۰ روز / ۲ کاربر   ۶۰٬۰۰۰ نشان داده می‌شد،  ۲۲۵٬۰۰۰ بود
+#     نامحدود / ۳۶۵ روز / ۱ کاربر  ۲۰۰٬۰۰۰ نشان داده می‌شد، ۲٬۴۰۰٬۰۰۰ بود
+#
+# یعنی نماینده «بالای کف» می‌فروخت و دوازده برابر ضرر می‌کرد، و فقط
+# آخرِ ماه می‌فهمید.
+
+_PORTAL_JSX = rd("frontend", "src", "portal", "index.jsx")
+
+check("مسیرِ کفِ قیمت وجود دارد",
+      '"/api/portal/plan-cost"' in APP_PY
+      and "/api/portal/plan-cost" in _PORTAL_JSX,
+      "دو سمتِ درز")
+
+# کف باید از همان تابعی بیاید که فاکتور را می‌سازد، نه ضربِ تازه
+_cost_fn = APP_PY.split("def portal_plan_cost(")[1].split("\n@app.")[0] \
+    if "def portal_plan_cost(" in APP_PY else ""
+check("کف از _line_amount می‌آید، نه ضربِ تازه",
+      "_line_amount(" in _cost_fn and "_months_from_days(" in _cost_fn
+      and "_price_with_reason(" in _cost_fn,
+      "همان تابعی که صورتحساب از آن می‌خواند")
+
+# و «نمی‌دانم» صفر برنگردد — صفر یعنی رایگان
+# جاروی شکستن: با برداشتنِ همین یک شاخه، دروازه‌ی قبلی سبز ماند
+# چون رشته‌ی `"ready": False` جای دیگری از همان تابع هم بود. حالا
+# خودِ شاخه سنجیده می‌شود، نه وجودِ یک رشته.
+_no_rate = ""
+if "        base, why = _price_with_reason(gb, rates)" in _cost_fn:
+    _no_rate = _cost_fn.split(
+        "        base, why = _price_with_reason(gb, rates)")[1].split(
+        "\n        months =")[0]
+check("نبودِ نرخ صفر برنمی‌گرداند",
+      "if base is None:" in _no_rate
+      and '"ready": False' in _no_rate and '"why": why' in _no_rate
+      and '"cost": 0' not in _cost_fn,
+      "صفر یعنی «رایگان»، نه «نرخ ندارد»")
+
+# پرتال دیگر خودش ضرب نکند
+_bad = []
+for _m in re.finditer(r"policy\.(?:perGb|cost)\b[^\n]{0,60}", _PORTAL_JSX):
+    _frag = _m.group(0)
+    if "*" in _frag or "+" in _frag:
+        _bad.append(" ".join(_frag.split())[:70])
+check("پرتال کفِ قیمت را خودش حساب نمی‌کند", not _bad,
+      f"{len(_bad)} ضرب در JSX" if _bad else "از بکند می‌گیرد")
+if _bad:
+    bullets(_bad)
+
+
+# ═══════════════════════════════════════════════════════════
+#  درز — فیلدِ مبلغ جداکننده دارد، فیلدِ غیرمبلغ ندارد
+# ═══════════════════════════════════════════════════════════
+#
+# `MoneyInput` مقدارِ خام را به `onChange` می‌دهد، نه رشته‌ی
+# جداکننده‌دار — وگرنه `Number(e.target.value)` در همه‌ی صداکننده‌ها
+# `NaN` می‌شود.
+_UI_JSX = rd("frontend", "src", "ui", "index.jsx")
+_money_fn = _UI_JSX.split("export function MoneyInput(")[1] \
+                   .split("\nexport function ")[0]
+check("MoneyInput مقدارِ خام به صداکننده می‌دهد",
+      "e.target.value = normalizeNumeric(" in _money_fn,
+      "رشته‌ی جداکننده‌دار یعنی NaN در هر صداکننده")
+
+#: فیلدهایی که عمداً جداکننده نمی‌گیرند — عدد نیستند یا بزرگ نمی‌شوند.
+#: شماره‌ی کارت و شناسه‌ی تلگرام هر کدام یک‌بار همین اشتباه را
+#: خورده‌اند.
+_NOT_MONEY = re.compile(
+    r"درصد|percent|pct|روز|days|گیگ|GB|حجم|کاربر|ip_limit|سکه|coin|"
+    r"شماره|کارت|card|شناسه|tg_id|پورت|port|دقیقه|ساعت|ماه")
+_MONEY_LBL = re.compile(r"قیمت|مبلغ|تومان|نرخ|اعتبار|شارژ")
+
+_plain = []
+for _rel in ("frontend/src/sections/billing.jsx",
+             "frontend/src/sections/bot/plans.jsx",
+             "frontend/src/sections/expenses.jsx",
+             "frontend/src/sections/portal-admin.jsx",
+             "frontend/src/portal/index.jsx"):
+    _src = rd(*_rel.split("/"))
+    _lines = _src.splitlines()
+    for _i, _ln in enumerate(_lines):
+        if "<NumberInput" not in _ln:
+            continue
+        _ctx = "\n".join(_lines[max(0, _i - 7):_i + 3])
+        if _MONEY_LBL.search(_ctx) and not _NOT_MONEY.search(_ctx):
+            _plain.append(f"{_rel.split('/')[-1]}:{_i + 1}")
+
+check("هر فیلدِ مبلغ جداکننده دارد", not _plain,
+      f"{len(_plain)} فیلدِ مبلغِ بی‌جداکننده" if _plain
+      else "MoneyInput روی همه سوار است")
+if _plain:
+    bullets(_plain)
+
+
+# ═══════════════════════════════════════════════════════════
+#  درز — قفلِ پوسته‌ی نماینده
+# ═══════════════════════════════════════════════════════════
+#
+# قاعده‌ی مخزن: اعتبارسنجی **در بکند**، نه فقط در رابط. رابط فقط
+# راحتی است و کسی می‌تواند درخواست را مستقیم بفرستد — همان چیزی
+# که برای حجم‌های مجازِ نماینده هم رعایت شد.
+
+_theme_set = APP_PY.split("def portal_theme_set(")[1].split("\n@app.")[0] \
+    if "def portal_theme_set(" in APP_PY else ""
+check("ذخیره‌ی پوسته در بکند قفل را می‌سنجد",
+      "_addon_open(t)" in _theme_set and "402" in _theme_set,
+      "رابط فقط راحتی است")
+
+_buy = APP_PY.split("def portal_theme_buy(")[1].split("\n@app.")[0] \
+    if "def portal_theme_buy(" in APP_PY else ""
+check("اول کسر، بعد تمدید",
+      _buy.find("_portal_charge(") < _buy.find("theme_until")
+      and _buy.find("_portal_charge(") > 0,
+      "برعکسش یعنی قابلیتی که پولش نرسیده باز می‌ماند")
+check("و اگر تمدید شکست خورد پول برمی‌گردد",
+      "_portal_refund(" in _buy,
+      "همان قاعده‌ی close_order در ربات")
+
+# رنگ باید اعتبارسنجی شود — رنگِ خراب یعنی متنِ نامرئی، همان چیزی
+# که یک‌بار در قالبِ «کیف پول» صفحه‌ی اشتراک افتاد
+check("رنگ فقط #RRGGBB پذیرفته می‌شود",
+      "_HEX_RE" in APP_PY and "def _clean_accent(" in APP_PY,
+      "رنگِ نامعتبر یعنی متنِ نامرئی")
+
+# قفل موقعِ *خواندن* هم سنجیده شود، نه فقط موقعِ نوشتن: اشتراکِ
+# تمام‌شده باید رنگ را خاموش کند بی‌آنکه پاکش کند
+_me = APP_PY.split("def mini_me(")[1].split("\n@app.")[0] \
+    if "def mini_me(" in APP_PY else ""
+check("مینی‌اپ رنگ را فقط وقتی قفل باز است می‌گیرد",
+      "_addon_open(t)" in _me,
+      "اشتراکِ تمام‌شده رنگ را خاموش می‌کند، نه پاک")
+
+
+# ═══════════════════════════════════════════════════════════
+#  درز — یادآوری‌ها: یک متن، دو مقصد
+# ═══════════════════════════════════════════════════════════
+#
+# مشتری‌ای که ربات را بلاک کرده یا نوتیفیکیشن را بسته، هیچ
+# یادآوری‌ای نمی‌بیند و اولین خبرش قطع‌شدنِ اتصال است. صندوق همیشه
+# هست.
+#
+# دو متنِ جدا یعنی روزی یکی‌شان اصلاح می‌شود و دیگری نه — و آن‌که
+# فراموش می‌شود همانی است که مشتری می‌خواند.
+
+check("تحویل و یادآوری‌ها در صندوق هم می‌نشینند",
+      "_chat_copy(" in HANDLERS and "_chat_notice(" in HANDLERS,
+      "بلاک‌کردنِ ربات نباید یعنی بی‌خبری")
+
+for _fn, _hook in (("def deliver(", "_chat_copy("),
+                   ("def send_expiry_notice(", "_chat_notice("),
+                   ("def send_traffic_notice(", "_chat_notice(")):
+    _body = HANDLERS.split(_fn)[1].split("\ndef ")[0] if _fn in HANDLERS else ""
+    check(f"«{_fn[4:-1]}» هر دو مسیرش صندوق را پر می‌کند",
+          _body.count(_hook) >= 2,
+          f"{_body.count(_hook)} جا — متنِ سفارشی و متنِ پیش‌فرض")
+
+# و متنِ صندوق از همان متنِ تلگرام ساخته شود، نه نسخه‌ی دوم
+_copy = HANDLERS.split("def _chat_copy(")[1].split("\ndef ")[0] \
+    if "def _chat_copy(" in HANDLERS else ""
+check("متنِ صندوق از همان متنِ تلگرام می‌آید",
+      "F.plain(" in _copy,
+      "نسخه‌ی دوم یعنی روزی از هم دور می‌افتند")
+check("و ثبتش تحویل را نمی‌شکند",
+      "except Exception" in _copy,
+      "از مسیرِ پول صدا زده می‌شود")
+
+
 # و آستانه‌ها واقعاً از تنظیمات بیایند، نه از ثابتِ ماژول
 check("آستانه‌های یادآوری از تنظیمات خوانده می‌شوند",
       "def expiry_steps(" in _RUN_PY and "def traffic_pct(" in _RUN_PY

@@ -150,6 +150,14 @@
         .en-font {
             font-family: 'IRANSansX', ui-monospace, 'Cascadia Mono', Consolas, monospace !important;
             letter-spacing: 0.2px;
+            /* مقدارِ لاتین داخلِ صفحه‌ی راست‌به‌چپ وارونه خوانده
+               می‌شد: متنِ واقعیِ «50 GB» روی صفحه «GB 50» دیده
+               می‌شد، چون الگوریتم دوجهته واحد را به ابتدای خط
+               می‌برد. مالک همین را در اسکرین‌شات نشان داد
+               («GB 5.06»). `isolate` هم لازم است تا این جهت به
+               متنِ فارسیِ کنارش سرایت نکند. */
+            direction: ltr;
+            unicode-bidi: isolate;
         }
 
         .app-screen { display: none; }
@@ -590,11 +598,14 @@
                شش قلم در یک ردیف یعنی متنِ ۱۰ پیکسلی و عددهای
                شکسته؛ سه‌تا در هر ردیف جا دارد که خوانده شود. */
             display: grid;
-            /* همان قاعده‌ی ردیفِ دکمه‌ها: تعدادِ ستون از عرضِ
-               واقعی می‌آید، نه از یک عددِ ثابت. روی صفحه‌ی پهن‌تر
-               شش قلم در دو ردیفِ سه‌تایی می‌نشینند و روی گوشیِ
-               باریک خودشان دوتایی می‌شوند — بدون media query جدا. */
-            grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+            /* سه ستون، ثابت — نه `auto-fit`.
+               `auto-fit` با `minmax(96px, 1fr)` روی صفحه‌ی ۹۰۰
+               پیکسلی **چهار** ستون می‌داد، و چون قلم‌ها شش‌تا هستند
+               ردیفِ دوم دو سلولِ خالی داشت: یک حفره‌ی بزرگ پایینِ
+               کارت که در اسکرین‌شاتِ مالک دیده شد.
+               اندازه‌گیری‌شده: ۴×۱۰۷ پیکسل، ۶ سلول، ۲ جای خالی.
+               شش قلم فقط با ۳ یا ۲ ستون کامل پر می‌شود. */
+            grid-template-columns: repeat(3, 1fr);
             gap: 1px;
             background: var(--border);
             overflow: hidden;
@@ -625,8 +636,11 @@
            پهن‌تر است و سلول یک‌سومِ عرضِ گوشی است. */
         .stat-cell .stat-value-text { font-size: 13px; font-weight: 600; }
 
-        /* روی صفحه‌های خیلی باریک، دوتایی — سه‌تا هم می‌شکند */
-        @media (max-width: 340px) {
+        /* روی گوشی، دوتایی — ۶ قلم می‌شود ۳ ردیفِ کامل.
+           آستانه از ۳۴۰ به ۴۲۰ آمد: روی ۳۷۵ (پرتکرارترین عرضِ
+           گوشی) سه ستونِ ۱۱۵ پیکسلی، عددِ «۲۴.۹ GB» را با سه‌نقطه
+           می‌برید. */
+        @media (max-width: 420px) {
             .stats-card { grid-template-columns: repeat(2, 1fr); }
         }
         .stat-header-row {
@@ -1462,13 +1476,29 @@
             position: relative;
             z-index: 1;
         }
+        /* کارتِ این قالب گرادیانِ پررنگِ `--accent` است، پس هر
+           چیزی که رنگش از `--accent` می‌آید روی آن ناپدید می‌شود.
+           `.days-left` و `.days-left span` در این فهرست نبودند و
+           «نامحدود» آبی روی آبی نوشته می‌شد — در اسکرین‌شاتِ مالک
+           عملاً نامرئی بود. */
         body.tpl-wallet .subscription-card .progress-text .value,
         body.tpl-wallet .subscription-card .username-text,
+        body.tpl-wallet .subscription-card .days-left,
         body.tpl-wallet .subscription-card .expire-date {
             color: var(--bg) !important;
         }
+        body.tpl-wallet .subscription-card .days-left span {
+            /* واحد («روز» / «نامحدود») کم‌رنگ‌تر از خودِ عدد، ولی
+               هنوز خوانا — نه همان رنگِ زمینه. */
+            color: rgba(0, 0, 0, 0.62) !important;
+        }
         body.tpl-wallet .subscription-card .progress-text .label {
             color: rgba(0,0,0,0.52) !important;
+        }
+        /* حلقه‌ی درصد هم زمینه‌اش تیره بود و روی کارتِ روشن
+           یک لکه‌ی سیاه می‌شد */
+        body.tpl-wallet .subscription-card .progress-circle {
+            background: rgba(255, 255, 255, 0.16) !important;
         }
         body.tpl-wallet .action-cell {
             border-radius: 16px !important;
@@ -4167,8 +4197,23 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             const username = sanaeiClientData.username || '';
             const supportUrl = window.NEXORA_SUPPORT_URL || 'https://t.me/crm_nexoravpn';
             const referralLink = `${supportUrl}?text=${encodeURIComponent('سلام، دوستم منو با کد ' + username + ' معرفی کرده')}`;
+
+            // آنچه نشان داده می‌شود با آنچه کپی می‌شود یکی نیست —
+            // و نباید باشد.
+            //
+            // لینکِ کامل یک `?text=` دارد که متنِ فارسی را
+            // درصد-کدگذاری می‌کند، پس روی صفحه این‌طور دیده می‌شد:
+            //
+            //   https://t.me/crm_nexoravpn?text=%D8%B3%D9%84%D8%A7%D9%85…
+            //
+            // که نه خوانده می‌شود، نه به کسی می‌گوید چه چیزی کپی
+            // خواهد شد. حالا نشانیِ تمیز دیده می‌شود و دکمه‌ی کپی
+            // همان لینکِ کاملِ آماده را برمی‌دارد.
             const linkEl = document.getElementById('referral-link-text');
-            linkEl.innerText = referralLink;
+            let shown = supportUrl.replace(/^https?:\/\//, '');
+            if (username) shown += '  ·  ' + username;
+            linkEl.innerText = shown;
+            linkEl.title = referralLink;
 
             const copyBtn = document.getElementById('referral-copy-btn');
             copyBtn.onclick = function() {

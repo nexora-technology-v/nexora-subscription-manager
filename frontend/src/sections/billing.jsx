@@ -14,7 +14,7 @@ import {
 import { JalaliDate, isoToJalaliLabel } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
 import { errText, faDate, faNum, monoIf } from "../lib/format";
-import { Donut, EmptyState, Field, InfoBox, Modal, Msg, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../ui/index";
+import { Donut, EmptyState, Field, InfoBox, Modal, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../ui/index";
 
 export function BillingPeriod({ password }) {
   const { data, loading: loadingGroups } = useBilling(password);
@@ -1245,7 +1245,7 @@ export function RateRow({ rate, onChange, onDelete }) {
             boxShadow: "0 2px 8px var(--scrim-2) inset",
           }}>
           <button onClick={() => bump(-RATE_STEP)} className="nx-step">−</button>
-          <NumberInput value={rate.price || ""}
+          <MoneyInput value={rate.price || ""}
             onChange={(e) => onChange({ price: Math.max(0, Number(e.target.value)) })}
             placeholder="0"
             className="flex-1 bg-transparent border-0 outline-none text-center py-2 text-[16px] font-bold"
@@ -1265,7 +1265,7 @@ export function RateRow({ rate, onChange, onDelete }) {
               {rate.perDevice ? `${faNum(rate.perDevice)} تومان` : "رایگان"}
             </span>
           </div>
-          <NumberInput min="0" value={rate.perDevice || ""}
+          <MoneyInput min="0" value={rate.perDevice || ""}
             onChange={(e) => onChange({ perDevice: Math.max(0, Number(e.target.value)) })}
             placeholder="0"
             className="fx-input w-full text-center py-2 text-[15px] font-bold"
@@ -1863,7 +1863,7 @@ export function BillingGroups({ password }) {
                         <Field label="نرخ هر گیگابایت (تومان)"
                           hint="بر اساس مصرف واقعی حساب می‌شود، نه سقف پلن">
                           <div className="flex items-center gap-2">
-                            <NumberInput className="fx-input"
+                            <MoneyInput className="fx-input"
                               value={d.perGb || ""}
                               onChange={(e) => set(g, { perGb: Math.max(0, +e.target.value) })}
                               placeholder="3000"
@@ -2285,7 +2285,7 @@ function SettleBox({ password, groups, onDone }) {
           </select>
         </Field>
         <Field label="مبلغ دریافتی" hint={cur ? `مانده: ${faNum(owed)} تومان` : "اختیاری — صفر یعنی فقط دوره بسته شود"}>
-          <NumberInput value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <MoneyInput value={amount} onChange={(e) => setAmount(e.target.value)} />
         </Field>
         <Field label="تسویه تا تاریخ" hint="هر چه پیش از این تاریخ است، پولش گرفته‌شده حساب می‌شود">
           <JalaliDate value={until} onChange={setUntil} />
@@ -2426,7 +2426,7 @@ export function BillingPayments({ password }) {
               </select>
             </Field>
             <Field label="مبلغ (تومان)">
-              <NumberInput className="fx-input" value={form.amount}
+              <MoneyInput className="fx-input" value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
                 style={{ fontFamily: "var(--mono)" }}  />
             </Field>

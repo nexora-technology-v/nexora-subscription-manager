@@ -362,6 +362,13 @@
     ],
   };
 
+  // پوسته‌ی شخصی — عمداً **قفل** شروع می‌شود، چون صفحه‌ی قفل همان
+  // چیزی است که بیشترِ نماینده‌ها می‌بینند و اگر باز باشد هیچ‌وقت
+  // دیده نمی‌شود.
+  var P_THEME = { accent: "", brand: "حسین VPN", logo: "",
+                  open: false, until: "", price: 250000, days: 30,
+                  credit: 1800000, postpaid: false };
+
   var P_STATS = { total: 96, active: 84, inactive: 12, expired: 5,
                   expiringSoon: 7, neverExpires: 2, nearQuota: 6, overQuota: 2,
                   unlimitedQuota: 3, usedGB: 812.4, quotaGB: 4200, usagePct: 19.3,
@@ -532,7 +539,18 @@ var D_CODES = { ready: true,
     return { ok: true, spent: pl.price, left: M_ME.balance, plan: pl.name };
   }
 
-  var M_ORDERS = { orders: [] };
+  // با آرایه‌ی خالی، کارتِ «سفارشِ در انتظار» هیچ‌وقت دیده نمی‌شد و
+  // شاخه‌ی سالمِ «چیزی نیست» رندر می‌شد — همان دامی که CLAUDE.md
+  // درباره‌اش هشدار می‌دهد. نامِ بلند عمدی است: کوتاه‌ترین نام
+  // سرریزِ ردیف را پنهان می‌کند.
+  var M_ORDERS = { orders: [
+    { id: 4098, status: "awaiting", amount: 280000,
+      plan: "پلن سه‌ماهه ۱۰۰ گیگ — نامحدود کاربر", paidFrom: "card",
+      createdAt: "۱۴۰۵/۰۶/۲۷", expiresAt: "", note: "" },
+    { id: 4097, status: "pending", amount: 95000,
+      plan: "پلن یک‌ماهه", paidFrom: "card",
+      createdAt: "۱۴۰۵/۰۶/۲۷", expiresAt: "", note: "" },
+  ] };
   var _oid = 4100;
 
   // سفارشِ کارتی — و رسیدش. بدون این‌ها، مسیر کارت‌به‌کارت در هارنس
@@ -862,6 +880,28 @@ var D_CODES = { ready: true,
     if (u.indexOf("/mini/me") >= 0) return M_ME;
     if (u.indexOf("/mini/subs") >= 0) return M_SUBS;
     if (u.indexOf("/mini/plans") >= 0) return M_PLANS;
+    if (u.indexOf("/portal/theme/buy") >= 0) {
+      P_THEME.open = true;
+      P_THEME.until = "1405-08-22T12:00:00";
+      return { ok: true, until: P_THEME.until, paid: P_THEME.price };
+    }
+    if (u.indexOf("/portal/theme") >= 0) {
+      if (method === "POST") { P_THEME.accent = (body || {}).accent || ""; return { ok: true }; }
+      return P_THEME;
+    }
+    if (u.indexOf("/portal/plan-cost") >= 0) {
+      // همان شکلی که بکند می‌دهد: کف از نرخ پایه × ماه + کاربر اضافه
+      return { rows: ((body || {}).rows || []).map(function (r) {
+        var gb = Number(r.gb) || 0, days = Number(r.days) || 0;
+        var ips = Number(r.ip_limit) || 0;
+        var base = gb === 0 ? 200000 : gb * 2000;
+        var months = Math.max(1, Math.round((days || 30) / 30));
+        var per = 15000, extra = Math.max(0, ips - 1);
+        return { ready: true, cost: (base + per * extra) * months,
+                 base: base, perDevice: per, extraDevices: extra,
+                 months: months, estimated: !days };
+      }) };
+    }
     if (u.indexOf("/portal/me") >= 0) return P_ME;
     if (u.indexOf("/portal/summary") >= 0) return P_SUMMARY;
     if (u.indexOf("/portal/configs") >= 0) return P_CONFIGS;

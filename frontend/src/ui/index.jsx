@@ -12,7 +12,7 @@ import {
   ChevronRight, Info, Loader2, Minus, Plus, Search, SlidersHorizontal, X,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { faNum, errText } from "../lib/format";
+import { faNum, errText, toFaDigits } from "../lib/format";
 
 /**
  * ارقام فارسی و عربی و جداکننده‌ها را به عددِ خامِ لاتین تبدیل می‌کند.
@@ -82,6 +82,60 @@ export function NumberInput({ value, onChange, decimal = false,
     />
   );
 }
+
+/**
+ * فیلدِ مبلغ — مثل `NumberInput`، ولی جداکننده‌ی هزارگان را
+ * **همان‌طور که تایپ می‌شود** نشان می‌دهد.
+ *
+ * چرا لازم شد: مالک گفت «بعضی مواقع متوجه نمیشم چه عددی دارم وارد
+ * میکنم». `۱۲۰۰۰۰۰` و `۱۲۰۰۰۰۰۰` با یک نگاه فرق نمی‌کنند و یک صفرِ
+ * اضافه روی قیمتِ پلن یعنی ده برابر.
+ *
+ * **قرارداد با صداکننده عوض نمی‌شود.** آنچه به `onChange` می‌رسد
+ * همان رشته‌ی لاتینِ بدونِ جداکننده است، پس
+ * `Number(e.target.value)` در همه‌ی صداکننده‌های موجود دست‌نخورده
+ * کار می‌کند. اگر رشته‌ی جداکننده‌دار می‌رفت، همه‌جا `NaN` می‌شد.
+ *
+ * فقط برای **مبلغ**. شماره‌ی کارت، شناسه‌ی تلگرام، حجم، روز و
+ * تعداد کاربر جداکننده نمی‌گیرند: یا عدد نیستند یا آن‌قدر بزرگ
+ * نمی‌شوند. همین اشتباه دو بار افتاده — یک‌بار روی شناسه‌ی تلگرام
+ * و یک‌بار روی شماره‌ی کارت، که «۶٬۰۳۷٬۹۹۱٬…» می‌شد و هیچ‌کس
+ * نمی‌توانست در اپ بانک واردش کند.
+ */
+export function MoneyInput({ value, onChange, decimal = false,
+                             className = "fx-input", ...rest }) {
+  const raw = normalizeNumeric(value ?? "", { decimal });
+
+  // گروه‌بندی از سمتِ راست. `toLocaleString` این‌جا به‌درد نمی‌خورد
+  // چون روی رشته‌ی نیمه‌تمامِ حالِ تایپ باید کار کند، نه روی عدد.
+  // فقط بخشِ صحیح گروه‌بندی می‌شود؛ اعشار دست‌نخورده می‌ماند،
+  // وگرنه «۱۲٫۵» می‌شد «۱۲٫۵۰۰»
+  const dot = raw.indexOf(".");
+  const head = dot >= 0 ? raw.slice(0, dot) : raw;
+  const tail = dot >= 0 ? raw.slice(dot) : "";
+  const shown = raw === "" || raw === "-"
+    ? raw
+    : toFaDigits(head.replace(/\B(?=(\d{3})+(?!\d))/g, "\u066C") + tail);
+
+  return (
+    <input
+      {...rest}
+      type="text"
+      inputMode={decimal ? "decimal" : "numeric"}
+      dir="ltr"
+      className={className}
+      style={{ fontFamily: "var(--num)", fontVariantNumeric: "tabular-nums",
+               ...(rest.style || {}) }}
+      value={shown}
+      onChange={(e) => {
+        // مقدارِ خام روی خودِ رویداد می‌نشیند، نه رشته‌ی نمایشی
+        e.target.value = normalizeNumeric(e.target.value, { decimal });
+        onChange(e);
+      }}
+    />
+  );
+}
+
 
 export function Field({ label, hint, children }) {
   return (

@@ -124,6 +124,17 @@
   --accent-line: rgba(90, 169, 230, 0.40);
   --accent-edge: rgba(90, 169, 230, 0.55);
 
+  /* پیش‌نمایشِ پوسته‌ی نماینده.
+     مقدارِ واقعی را خودِ کامپوننت روی wrapper می‌نشاند (رنگ آن‌جا
+     داده است، نه طراحی). این‌ها **پیش‌فرض** هستند: اگر wrapper
+     نبود یا رنگ نامعتبر بود، پیش‌نمایش پوسته‌ی معمولی را نشان
+     می‌دهد — نه اینکه بی‌صدا شفاف شود، که همان چیزی است که
+     دروازه‌ی ui-safety جلویش را می‌گیرد. */
+  --pv-accent: var(--accent);
+  --pv-soft: var(--accent-soft);
+  --pv-fill: var(--accent-fill);
+  --pv-line: var(--accent-line);
+
   --cy-wash: rgba(45, 212, 191, 0.07);
   --cy-soft: rgba(45, 212, 191, 0.12);
   --cy-fill: rgba(45, 212, 191, 0.20);
@@ -2026,6 +2037,35 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .mn-pay-tick.wait {
   background: var(--warn-soft); color: var(--warn);
   border-color: var(--warn-line);
+}
+
+/* حلقه‌ی «در حال ساخت».
+   `flex: none` و `aspect-ratio` هر دو لازم‌اند: برگه اسکرول دارد و
+   روی گوشیِ کوتاه، عنصری که فقط height دارد له می‌شود و دایره
+   بیضی می‌شود. */
+.mn-pay-ring {
+  display: block; flex: none;
+  width: 56px; aspect-ratio: 1; height: auto;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  border: 3px solid var(--hair-3);
+  border-top-color: var(--accent);
+  animation: mn-spin .9s linear infinite;
+}
+@keyframes mn-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .mn-pay-ring { animation-duration: 2.4s; }
+}
+
+/* همان دلیل، روی تیکِ موفقیت و آیکونِ سفارشِ در انتظار */
+.mn-pay-tick { flex: none; aspect-ratio: 1; height: auto; }
+.mn-pend-ico { aspect-ratio: 1; height: auto; }
+
+/* واحد کنارِ مبلغ، کوچک‌تر و کم‌رنگ‌تر — عدد باید اول خوانده شود */
+.mn-pend-amt { display: flex; align-items: baseline; gap: 3px; }
+.mn-pend-amt em {
+  font-style: normal; font-size: 10px; font-weight: 500;
+  color: var(--muted);
 }
 
 /* ── سفارش‌های در انتظار، بالای خانه ── */

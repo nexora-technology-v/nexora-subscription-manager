@@ -35,7 +35,7 @@ import {
 import { API_URL } from "../lib/constants";
 import { errText, faDate, faNum, toFaDigits as faDigits } from "../lib/format";
 import { shrinkImage } from "../lib/image.js";
-import { Avatar, EmptyState, Lightbox, Skeleton } from "../ui/index";
+import { Avatar, EmptyState, Lightbox, MoneyInput, Skeleton } from "../ui/index";
 
 /* آیا این آدرس مینی‌اپ است؟ — نام باید در دامنه‌ی خودِ ماژول هم
    باشد، نه فقط عبور کند. */
@@ -635,7 +635,8 @@ function PendingOrders({ orders }) {
                 : "منتظر رسید شماست"}
             </span>
           </span>
-          <span className="mn-pend-amt">{faNum(o.amount)}</span>
+          {/* بدونِ واحد، «۲۸۰٬۰۰۰» می‌توانست هر چیزی باشد */}
+          <span className="mn-pend-amt">{faNum(o.amount)}<em>تومان</em></span>
         </div>
       ))}
     </div>
@@ -1078,11 +1079,36 @@ function PaySheet({ pay, me, rw, onClose, onConfirm, onTopUp,
 
   let body;
 
+  /* در حالِ ساختنِ اشتراک.
+     تا امروز تنها بازخوردِ این لحظه یک اسپینرِ ۱۵ پیکسلی داخلِ دکمه
+     بود. ساختِ کانفیگ در 3x-ui چند ثانیه طول می‌کشد و مشتری در آن
+     چند ثانیه نمی‌دانست پولش کم شده یا نه — و چون برگه دست‌نخورده
+     می‌ماند، دوباره می‌زد.
+
+     مهم‌ترین جمله‌ی این صفحه «این صفحه را نبندید» نیست؛ «پولتان کم
+     شد» است. مشتری اول این را می‌خواهد بداند. */
+  if (busy && !isTopup && pay.step !== "card") {
+    body = (
+      <div className="mn-pay-done">
+        <span className="mn-pay-ring" role="status" aria-live="polite"
+          aria-label="در حال ساخت اشتراک" />
+        <b>در حال ساخت اشتراک</b>
+        <span>
+          {p.gb === 0 ? "نامحدود" : `${faNum(p.gb)} گیگابایت`}
+          {" · "}{faNum(p.days)} روز
+        </span>
+        <div className="mn-pay-left">
+          چند ثانیه طول می‌کشد. این صفحه را نبندید.
+        </div>
+      </div>
+    );
+  }
+
   /* انتخابِ مبلغِ شارژ.
      مبلغ‌های آماده همان‌هایی‌اند که ربات نشان می‌دهد، به‌علاوه‌ی
      مبلغِ دلخواه — چون کسی که دقیقاً ۲۳۰ هزار کم دارد نباید مجبور
      شود ۵۰۰ بریزد. */
-  if (isTopup && pay.step === "amount") {
+  else if (isTopup && pay.step === "amount") {
     const PRESETS = [100000, 200000, 500000, 1000000];
     const chosen = Number(amt || 0);
     const okAmount = chosen >= 10000 && chosen <= 50000000;
@@ -1100,10 +1126,13 @@ function PaySheet({ pay, me, rw, onClose, onConfirm, onTopUp,
 
         <div className="mn-field mt-1">
           <label htmlFor="mn-amt">مبلغ دلخواه</label>
-          <input id="mn-amt" inputMode="numeric" dir="ltr"
+          {/* جداکننده همان‌طور که تایپ می‌شود: «۲۵۰۰۰۰» و
+              «۲۵۰۰۰۰۰» با یک نگاه فرق نمی‌کنند و این‌جا یک صفرِ
+              اضافه یعنی ده برابر شارژ. */}
+          <MoneyInput id="mn-amt"
             value={chosen ? String(chosen) : ""}
-            onChange={(e) => setAmt(Number(String(e.target.value).replace(/\D/g, "")) || 0)}
-            placeholder="250000" />
+            onChange={(e) => setAmt(Number(e.target.value) || 0)}
+            placeholder="۲۵۰٬۰۰۰" />
           <small>از ۱۰ هزار تا ۵۰ میلیون تومان.</small>
         </div>
 
@@ -1330,6 +1359,35 @@ const TABS = [
   { k: "chat", l: "پیام‌ها", i: MessageCircle },
   { k: "me", l: "تنظیمات", i: User },
 ];
+
+/**
+ * رنگِ فروشگاهِ نماینده → متغیرهای پوسته.
+ *
+ * چرا فقط یک رنگ می‌گیریم و بقیه را خودمان می‌سازیم: اگر نماینده
+ * پنج رنگ جدا انتخاب کند، ترکیب‌هایی می‌سازد که متن رویشان خوانده
+ * نمی‌شود. یک رنگ، و پله‌هایش از همان — همان قاعده‌ی
+ * `wash/soft/fill/line/edge` در پنل.
+ *
+ * رنگِ نامعتبر یا خالی → `null`، یعنی پوسته‌ی پیش‌فرض. هیچ‌وقت
+ * صفحه‌ی بی‌رنگ یا سفیدِ خالی.
+ */
+function accentVars(hex) {
+  if (!/^#[0-9a-fA-F]{6}$/.test(String(hex || ""))) return undefined;
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const rgb = `${r}, ${g}, ${b}`;
+  return {
+    "--accent": hex,
+    "--accent-2": hex,
+    "--accent-rgb": rgb,
+    "--accent-wash": `rgba(${rgb}, .07)`,
+    "--accent-soft": `rgba(${rgb}, .12)`,
+    "--accent-fill": `rgba(${rgb}, .20)`,
+    "--accent-line": `rgba(${rgb}, .30)`,
+    "--accent-edge": `rgba(${rgb}, .45)`,
+  };
+}
+
 
 export default function Mini() {
   const [tab, setTab] = useState("home");
@@ -1794,7 +1852,7 @@ export default function Mini() {
   const view = detail ? "detail" : tab;
 
   return (
-    <div className="mn-app" dir="rtl">
+    <div className="mn-app" dir="rtl" style={accentVars(me?.accent)}>
       {/* ── نوار برند ── */}
       <header className="mn-top">
         <div className="mn-brand">
