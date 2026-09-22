@@ -19,6 +19,7 @@ import { BotBackupSection } from "./sections/bot/backup";
 import { ChannelSection } from "./sections/channel";
 import { BotCoinsSection } from "./sections/bot/coins";
 import { BotDiscountsSection } from "./sections/bot/discounts";
+import { BotEventsSection } from "./sections/bot/events";
 import { BotSection } from "./sections/bot/connection";
 import { BotInboundsSection } from "./sections/bot/inbounds";
 import { BotOrdersSection } from "./sections/bot/orders";
@@ -499,6 +500,7 @@ export default function App() {
           {active === "channel" && <ChannelSection password={password} />}
           {active === "bot-coins" && <BotCoinsSection password={password} />}
           {active === "bot-discounts" && <BotDiscountsSection password={password} />}
+          {active === "bot-events" && <BotEventsSection password={password} />}
           {active === "bot-affiliates" && <BotAffiliates password={password} />}
           {active === "bill-dash" && <BillingDash password={password} />}
           {active === "bill-groups" && <BillingGroups password={password} />}

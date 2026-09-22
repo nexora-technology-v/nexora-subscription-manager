@@ -99,6 +99,44 @@ class ChatLocks:
             return len(self._locks)
 
 
+def _event(tid, kind, user_id=None, data=None, who=None):
+    """
+    ثبتِ رویدادِ زمان‌بند، و اگر پولی معلق است خبرکردنِ گروه.
+
+    چرا این‌جا یک تابع است و نه `d.log(...)` در نُه جای شکست:
+        هر جای شکست که خودش تصمیم بگیرد «گروه را خبر کنم یا نه»،
+        دهمی فراموشش می‌کند. تصمیم مالِ `events.KINDS` است.
+
+    و چرا مستاجر و ربات را خودش می‌سازد: در چند جای شکست، `tenant`
+    یا `tg` هنوز ساخته نشده‌اند — خطا دقیقاً موقعِ ساختنشان بوده.
+    اتکا به متغیرِ محلی آن‌جا `NameError` می‌دهد و خطای اصلی را
+    گم می‌کند.
+
+    هیچ‌وقت خطا بالا نمی‌برد.
+    """
+    try:
+        d = db.TenantDB(tid)
+    except Exception:
+        log.debug("ثبت رویداد ناموفق (%s)", kind, exc_info=True)
+        return
+
+    if not handlers.EV.is_alert(kind):
+        d.log(kind, user_id, data)
+        return
+
+    # هشدار لازم است: `handlers.record` هم ثبت می‌کند هم می‌فرستد.
+    try:
+        t = db.get_tenant(tid)
+        if t and t.get("bot_token"):
+            handlers.record(handlers.Ctx(Bot(t["bot_token"]), t),
+                            kind, user_id, data, who=who)
+            return
+    except Exception:
+        log.debug("هشدار گروه ناموفق (%s)", kind, exc_info=True)
+    # ربات در دسترس نبود — دست‌کم ردیفِ جدول ثبت شود
+    d.log(kind, user_id, data)
+
+
 def chat_id_of(update):
     """شناسه‌ی چتِ یک آپدیت — پیام یا دکمه‌ی شیشه‌ای."""
     msg = (update.get("message") or update.get("callback_query", {})
@@ -214,6 +252,7 @@ def tenant_loop(tenant_id: int):
             msg = str(e)
             if "401" in msg or "Unauthorized" in msg:
                 log.error("%s: توکن نامعتبر است — غیرفعال شد", name)
+                _event(tenant_id, "token_invalid", None, {"error": msg[:200]})
                 db.update_tenant(tenant_id, is_active=0)
                 return
             log.warning("%s: خطای تلگرام: %s", name, msg)
@@ -397,8 +436,10 @@ def send_expiry_reminders():
 
             try:
                 handlers.send_expiry_notice(t, tg, s, left)
-            except Exception:
+            except Exception as _e:
                 log.exception("ارسال یادآوری ناموفق (اشتراک %s)", s["id"])
+                _event(t["id"], "reminder_failed", s.get("user_id"),
+                       {"sub": s["id"], "error": str(_e)[:200]})
                 continue    # پرچم را نمی‌بندیم تا ساعت بعد دوباره تلاش شود
 
             d.exec(
@@ -464,8 +505,9 @@ def send_traffic_warnings():
         ctx = handlers.Ctx(tg, t)
         try:
             usage = ctx.xui.all_client_traffic()
-        except Exception:
+        except Exception as _e:
             log.exception("گرفتن مصرف ناموفق (مستاجر %s)", t["id"])
+            _event(t["id"], "usage_failed", None, {"error": str(_e)[:200]})
             continue
 
         for s in subs:
@@ -484,8 +526,10 @@ def send_traffic_warnings():
 
             try:
                 handlers.send_traffic_notice(t, tg, s, used_gb, total_gb)
-            except Exception:
+            except Exception as _e:
                 log.exception("هشدار حجم ناموفق (اشتراک %s)", s["id"])
+                _event(t["id"], "traffic_warn_failed", s.get("user_id"),
+                       {"sub": s["id"], "error": str(_e)[:200]})
                 continue
 
             d.exec("UPDATE subscriptions SET notified_80p=1"
@@ -524,8 +568,10 @@ def run_auto_renew():
                 continue
             try:
                 handlers.auto_renew_subscription(t, tg, s)
-            except Exception:
+            except Exception as _e:
                 log.exception("تمدید خودکار ناموفق (اشتراک %s)", s["id"])
+                _event(t["id"], "renew_failed", s.get("user_id"),
+                       {"sub": s["id"], "error": str(_e)[:200]})
 
 
 def daily_report():
@@ -535,8 +581,9 @@ def daily_report():
             continue
         try:
             handlers.send_daily_report(t)
-        except Exception:
+        except Exception as _e:
             log.exception("گزارش روزانه ناموفق (مستاجر %s)", t["id"])
+            _event(t["id"], "report_failed", None, {"error": str(_e)[:200]})
 
 
 def process_panel_approvals():
@@ -602,6 +649,8 @@ def process_panel_approvals():
                         (f"تحویل ناموفق: {str(note)[:120]}", oid))
         except Exception as e:
             log.error("خطا در تحویل سفارش %s: %s", oid, e)
+            _event(tid, "order_deliver_failed", None,
+                   {"order": oid, "error": str(e)[:200]})
             try:
                 with db.conn() as cx:
                     cx.execute(
@@ -726,8 +775,9 @@ def trial_winback():
                        "WHERE tenant_id=? AND id=?", (t["id"], r["id"]))
 
             log.info("پیگیری تست برای %s کاربر (مستاجر %s)", len(rows), t["id"])
-        except Exception:
+        except Exception as _e:
             log.exception("پیگیری تست ناموفق (مستاجر %s)", t["id"])
+            _event(t["id"], "winback_failed", None, {"error": str(_e)[:200]})
 
 
 def send_due_posts():
@@ -779,8 +829,9 @@ def send_due_posts():
                         log.warning("پست %s با %s دقیقه تاخیر رفت", p["id"], late)
                 else:
                     log.warning("پستِ کانال نرفت (%s): %s", p["id"], res)
-        except Exception:
+        except Exception as _e:
             log.exception("ارسال پست‌های کانال ناموفق (مستاجر %s)", t["id"])
+            _event(t["id"], "channel_failed", None, {"error": str(_e)[:200]})
 
 
 def scheduler_loop():
@@ -839,8 +890,14 @@ def scheduler_loop():
 
             sync_workers()
 
-        except Exception:
+        except Exception as _e:
             log.exception("خطا در زمان‌بند")
+            try:
+                for _t in db.all_tenants(active_only=True):
+                    _event(_t["id"], "scheduler_failed", None,
+                           {"error": str(_e)[:200]})
+            except Exception:
+                log.debug("ثبت خطای زمان‌بند ناموفق", exc_info=True)
 
         _stop.wait(30)
 

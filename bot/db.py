@@ -9,6 +9,7 @@
 
 import os
 import json
+import logging
 import sqlite3
 import secrets
 import string
@@ -16,7 +17,19 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 
+# ثبتِ ناموفقِ رویداد بی‌صدا رد می‌شود، ولی دست‌کم در لاگِ سرویس
+# دیده شود. بدونِ این، همان except که قرار بود خطا را ببلعد خودش
+# NameError می‌داد — یعنی مسیرِ جبران می‌شکست.
+log = logging.getLogger(__name__)
+
 DB_PATH = Path(os.getenv("BOT_DB_PATH", "../data/bot.db"))
+
+#: سقفِ ردیفِ `events` در هر مستاجر. تعریفِ اصلی در `bot/events.py`
+#: است؛ این‌جا فقط خوانده می‌شود تا `db` به آن ماژول وابسته نشود.
+try:
+    from events import MAX_ROWS as EVENT_MAX_ROWS
+except ImportError:                      # وقتی به‌صورت `bot.db` بار می‌شود
+    from .events import MAX_ROWS as EVENT_MAX_ROWS
 
 SCHEMA = """
 PRAGMA journal_mode = WAL;
@@ -1558,10 +1571,84 @@ class TenantDB:
         }
 
     def log(self, kind, user_id=None, data=None):
-        self.exec(
-            "INSERT INTO events (tenant_id, user_id, kind, data) VALUES (?,?,?,?)",
-            (self.tid, user_id, kind, json.dumps(data or {}, ensure_ascii=False))
-        )
+        """
+        ثبتِ رویداد — **هرگز کارِ صداکننده را نمی‌شکند.**
+
+        این تابع از داخلِ `except` صدا زده می‌شود: جایی که تحویلِ
+        کانفیگ شکست خورده و داریم دلیلش را می‌نویسیم. اگر خودِ
+        نوشتن خطا بدهد و بالا برود، یک خطای فرعی جای خطای اصلی را
+        می‌گیرد و مسیرِ جبران (برگرداندنِ پول) اجرا نمی‌شود.
+        """
+        try:
+            self.exec(
+                "INSERT INTO events (tenant_id, user_id, kind, data) "
+                "VALUES (?,?,?,?)",
+                (self.tid, user_id, kind,
+                 json.dumps(data or {}, ensure_ascii=False))
+            )
+        except Exception:
+            log.debug("ثبت رویداد ناموفق (%s)", kind, exc_info=True)
+            return
+
+        # هرس: جدول سقف ندارد و برای همیشه رشد می‌کند. همان‌جا که
+        # می‌نویسیم می‌بُریم، نه در یک کارِ زمان‌بندِ جدا — کاری که
+        # وصل‌کردنش یادمان برود یعنی سقف وجود ندارد.
+        #
+        # هر صد تا یک‌بار، نه هر بار: شمردنِ ردیف‌ها در هر ثبت،
+        # هزینه‌ای است که هیچ‌چیز نمی‌خرد.
+        try:
+            if secrets.randbelow(100) == 0:
+                self.exec(
+                    """DELETE FROM events
+                        WHERE tenant_id=? AND id NOT IN (
+                            SELECT id FROM events WHERE tenant_id=?
+                             ORDER BY id DESC LIMIT ?)""",
+                    (self.tid, self.tid, EVENT_MAX_ROWS))
+        except Exception:
+            log.debug("هرس رویدادها ناموفق", exc_info=True)
+
+    def events(self, limit=50, offset=0, only_errors=False, kinds=None):
+        """
+        فهرستِ رویدادها با صفحه‌بندیِ شماره‌دار.
+
+        `kinds` فهرستِ نوع‌هایی است که «خطا» شمرده می‌شوند. از
+        بیرون داده می‌شود و این‌جا دوباره نوشته نمی‌شود: تعریفش در
+        `bot/events.py` است و دو نسخه‌ی این فهرست یعنی روزی فیلترِ
+        پنل و فیلترِ ربات دو چیزِ متفاوت بگویند.
+        """
+        params = [self.tid]
+
+        # فقط فیلترِ نوع از متغیر می‌آید. شرطِ مستاجر **در خودِ متنِ
+        # SQL** نوشته می‌شود، نه داخلِ یک `{where}`: هم دروازه‌ی درز
+        # و هم نگهبانِ `self.q` متن را می‌خوانند، و شرطی که پشتِ
+        # متغیر پنهان شده از دیدِ هر دو غایب است.
+        kind_sql = ""
+        if only_errors:
+            ks = list(kinds or [])
+            if not ks:
+                # فهرستِ خالی یعنی «هیچ نوعی خطا نیست» — نه «فیلتر
+                # را نادیده بگیر». برگرداندنِ همه چیز این‌جا یعنی
+                # مالک فکر کند فیلتر کار کرده و نکرده.
+                return {"rows": [], "total": 0}
+            kind_sql = " AND e.kind IN (%s)" % ",".join("?" * len(ks))
+            params += ks
+
+        total = self.q(
+            f"SELECT COUNT(*) c FROM events e"
+            f" WHERE e.tenant_id=?{kind_sql}",
+            tuple(params), one=True)["c"]
+
+        limit = max(1, min(int(limit or 50), 200))
+        offset = max(0, int(offset or 0))
+        rows = self.q(
+            f"""SELECT e.id, e.kind, e.data, e.created_at, e.user_id,
+                       u.first_name, u.username, u.tg_id
+                  FROM events e
+                  LEFT JOIN users u ON u.id = e.user_id
+                 WHERE e.tenant_id=?{kind_sql}
+                 ORDER BY e.id DESC LIMIT ? OFFSET ?""",
+            tuple(params) + (limit, offset))
+        return {"rows": [dict(r) for r in rows], "total": int(total or 0)}
 
 
 # ═══════════════════════════════════════════════════════════

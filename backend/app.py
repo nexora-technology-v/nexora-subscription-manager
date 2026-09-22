@@ -3276,6 +3276,106 @@ def admin_inbox_send(payload: dict, x_admin_password: str = Header(...)):
 
 
 # ═══════════════════════════════════════════════════════════
+#  رویدادهای ربات
+#
+#  برگه: docs/specs/2026-09-22-bot-events.md
+#
+#  جدولِ `events` از قبل بود و دو جا نوشته می‌شد و **هیچ‌جا خوانده
+#  نمی‌شد**. این‌جا فقط خوانده می‌شود.
+#
+#  نگاشتِ «نوع → برچسبِ فارسی و شدت» این‌جا دوباره نوشته نمی‌شود:
+#  از `bot/events.py` می‌آید، همان چیزی که خودِ ربات هم می‌خواند.
+#  دو نسخه‌ی این نگاشت یعنی روزی چیپِ پنل یک چیز بگوید و پیامِ
+#  گروه چیزِ دیگری.
+#
+#  **هیچ آماری از این جدول شمرده نمی‌شود.** فروش از `orders` می‌آید
+#  و بس؛ دو منبعِ حقیقت برای یک عدد، همان باگی است که این مخزن
+#  هفت بار دیده.
+# ═══════════════════════════════════════════════════════════
+
+def _bot_events_mod():
+    """ماژولِ `events` ربات — خالص، بدونِ دیتابیس و FastAPI."""
+    if "events" in _BOT_MODS:
+        return _BOT_MODS["events"]
+    import sys as _sys
+    bot_dir = str(Path(__file__).resolve().parent.parent / "bot")
+    if bot_dir not in _sys.path:
+        _sys.path.insert(0, bot_dir)
+    try:
+        import events as _ev          # noqa: E402
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"فهرستِ رویدادها بارگذاری نشد: {type(e).__name__}")
+    _BOT_MODS["events"] = _ev
+    return _ev
+
+
+@app.get("/api/admin/bot/events")
+def bot_events(page: int = 1, per: int = 30, errors: int = 0,
+               x_admin_password: str = Header(...)):
+    """
+    رویدادهای ربات — چه چیزی شکست، کِی، و برای چه کسی.
+
+    صفحه‌بندیِ شماره‌دار، نه «نمایش بیشتر» — قاعده‌ی مخزن و
+    `test-ui-safety` اجرایش می‌کند.
+    """
+    check_auth(x_admin_password)
+    con = _bot_conn()
+    if not con:
+        return {"ready": False, "events": [], "total": 0,
+                "message": "ربات هنوز راه‌اندازی نشده است"}
+    con.close()
+
+    ev = _bot_events_mod()
+    t = _root_tenant_row()
+
+    per = max(5, min(int(per or 30), 100))
+    page = max(1, int(page or 1))
+
+    try:
+        res = _bot_db_rw(t).events(
+            limit=per, offset=(page - 1) * per,
+            only_errors=bool(errors),
+            kinds=[k for k in ev.KINDS if ev.is_error(k)])
+    except Exception as e:
+        log.debug("خواندن رویدادها ناموفق", exc_info=True)
+        raise HTTPException(status_code=503,
+                            detail=f"خواندن رویدادها ناموفق: {type(e).__name__}")
+
+    out = []
+    for r in res["rows"]:
+        try:
+            data = json.loads(r.get("data") or "{}")
+        except Exception:
+            data = {}
+        out.append({
+            "id": r["id"],
+            "kind": r["kind"],
+            "level": ev.level(r["kind"]),
+            "text": ev.describe(r["kind"], data),
+            "at": r["created_at"],
+            "userId": r.get("user_id"),
+            "name": r.get("first_name") or "",
+            "username": r.get("username") or "",
+            "tgId": r.get("tg_id"),
+        })
+
+    return {
+        "ready": True,
+        "events": out,
+        "total": res["total"],
+        "page": page,
+        "per": per,
+        # فهرستِ نوع‌ها هم می‌رود تا پنل بتواند بدونِ نسخه‌ی دومِ
+        # نگاشت، چیپ و راهنما بسازد
+        "kinds": {k: {"label": v["label"], "level": v["level"],
+                      "alert": bool(v.get("alert"))}
+                  for k, v in ev.KINDS.items()},
+    }
+
+
+# ═══════════════════════════════════════════════════════════
 #  کد تخفیف
 #
 #  برگه‌اش: docs/specs/2026-09-19-discount-and-trial-winback.md

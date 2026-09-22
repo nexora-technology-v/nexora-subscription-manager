@@ -411,7 +411,44 @@
   };
   /* کدهای تخفیف. با فهرستِ خالی، صفحه شاخه‌ی «هنوز کدی ساخته
      نشده» را می‌گیرد و هیچ‌وقت ردیفِ واقعی دیده نمی‌شود. */
-  var D_CODES = { ready: true,
+  var EVENT_KINDS = {
+  provision_failed: { label: "ساختِ کانفیگ ناموفق", level: "error", alert: true },
+  deliver_failed: { label: "کانفیگ ساخته شد ولی به مشتری نرسید", level: "error", alert: true },
+  order_deliver_failed: { label: "تحویلِ سفارشِ تاییدشده ناموفق", level: "error", alert: true },
+  renew_failed: { label: "تمدید خودکار ناموفق", level: "error", alert: true },
+  usage_failed: { label: "خواندنِ مصرف از پنل ناموفق", level: "error", alert: false },
+  channel_failed: { label: "ارسالِ پستِ کانال ناموفق", level: "error", alert: false },
+  provision: { label: "کانفیگ ساخته شد", level: "ok", alert: false },
+  signup: { label: "کاربر تازه", level: "info", alert: false },
+};
+
+var EVENTS = [
+  { id: 214, kind: "provision_failed", level: "error",
+    text: "ساختِ کانفیگ ناموفق — سفارش #1842 · خطای پنل: 3x-ui پاسخ نداد (timeout بعد از ۳۰ ثانیه)",
+    at: "1405/07/01 14:22", userId: 88, name: "مریم کاظمی", username: "maryamk", tgId: 184923771 },
+  { id: 213, kind: "signup", level: "info", text: "کاربر تازه",
+    at: "1405/07/01 14:19", userId: 141, name: "امیرحسین", username: "", tgId: 622019384 },
+  { id: 212, kind: "provision", level: "ok",
+    text: "کانفیگ ساخته شد — سفارش #1841 · اشتراک #903",
+    at: "1405/07/01 13:58", userId: 77, name: "سعید رحمانی", username: "saeedr", tgId: 99201773 },
+  { id: 211, kind: "renew_failed", level: "error",
+    text: "تمدید خودکار ناموفق — اشتراک #812 · موجودی کیف پول کافی نبود و کسر برگشت خورد",
+    at: "1405/07/01 12:04", userId: 52, name: "نگار", username: "", tgId: 510228841 },
+  { id: 210, kind: "channel_failed", level: "error",
+    text: "ارسالِ پستِ کانال ناموفق — پست #37 · ربات در کانال ادمین نیست",
+    at: "1405/07/01 11:40", userId: null, name: "", username: "", tgId: null },
+  { id: 209, kind: "deliver_failed", level: "error",
+    text: "کانفیگ ساخته شد ولی به مشتری نرسید — سفارش #1836 · Forbidden: bot was blocked by the user",
+    at: "1405/06/31 22:15", userId: 61, name: "حسین نجی", username: "hnaji", tgId: 771993022 },
+  { id: 208, kind: "usage_failed", level: "error",
+    text: "خواندنِ مصرف از پنل ناموفق · نام کاربری یا رمز پنل پذیرفته نشد",
+    at: "1405/06/31 20:00", userId: null, name: "", username: "", tgId: null },
+  { id: 207, kind: "provision", level: "ok",
+    text: "کانفیگ ساخته شد — سفارش #1835 · اشتراک #901",
+    at: "1405/06/31 19:31", userId: 34, name: "زهرا م.", username: "zahra_m", tgId: 402118837 },
+];
+
+var D_CODES = { ready: true,
     /* گزارش با عددِ واقع‌نما، نه صفر: با صفر، صفحه شاخه‌ی «هنوز
        استفاده نشده» را می‌گیرد و خودِ گزارش هیچ‌وقت دیده نمی‌شود. */
     report: {
@@ -792,6 +829,23 @@
     if (u.indexOf("/mini/orders") >= 0) return M_ORDERS;
     if (u.indexOf("/mini/order") >= 0) return miniOrder(body);
     if (u.indexOf("/mini/buy") >= 0) return miniBuy(body);
+    if (u.indexOf("/admin/bot/events") >= 0) {
+      var onlyErr = u.indexOf("errors=1") >= 0;
+      var pg = 1;
+      var mPg = u.match(/page=(\d+)/);
+      if (mPg) pg = parseInt(mPg[1], 10) || 1;
+      var rows = onlyErr
+        ? EVENTS.filter(function (e) { return e.level === "error"; })
+        : EVENTS;
+      return {
+        ready: true,
+        total: onlyErr ? 41 : 214,
+        page: pg,
+        per: 30,
+        events: rows,
+        kinds: EVENT_KINDS,
+      };
+    }
     if (u.indexOf("/admin/bot/discounts") >= 0) {
       if (method === "DELETE") return { ok: true };
       if (method === "POST") return { ok: true, code: (body || {}).code };

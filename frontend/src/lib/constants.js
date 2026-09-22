@@ -187,6 +187,7 @@ export const WORKSPACES = {
           { key: "bot-texts", label: "متن‌ها و یادآوری‌ها", icon: MessageCircle },
           { key: "bot-preview", label: "پیش‌نمایش ربات", icon: Eye },
           { key: "bot-stats", label: "آمار و قیف", icon: TrendingUp },
+          { key: "bot-events", label: "رویدادها", icon: Clock },
           { key: "bot-backup", label: "بک‌آپ ربات", icon: Database },
         ],
       },

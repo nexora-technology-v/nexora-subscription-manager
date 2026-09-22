@@ -1833,6 +1833,162 @@ check("و فقط سفارشِ تاییدشده را می‌شمارد",
       "o.status = 'approved'" in _fn)
 
 
+# ═══════════════════════════════════════════════════════════
+#  رویدادها — برگه: docs/specs/2026-09-22-bot-events.md
+# ═══════════════════════════════════════════════════════════
+section("رویدادها")
+
+import events as _EV           # noqa: E402
+_HSRC = io.open("bot/handlers.py", encoding="utf-8").read()
+_RSRC = io.open("bot/run.py", encoding="utf-8").read()
+
+# ── یک در، نه پنج تا ────────────────────────────────────────────────
+#
+# اولین نسخه فقط دو `except` را ثبت می‌کرد و probe نشان داد پنلِ
+# خاموش از راهِ «اینباند پیدا نشد» بیرون می‌رود — سفارش شکست
+# می‌خورد و هیچ رویدادی ثبت نمی‌شد. حالا بدنه `_provision` است و
+# پوسته تنها نقطه‌ی ثبت.
+_shell = _HSRC.split("def provision(ctx, order_id):")[1].split("\ndef _provision(")[0]
+check("شکستِ ساختِ کانفیگ از یک نقطه ثبت می‌شود",
+      _shell.count('record(ctx, "provision_failed"') == 1
+      and "_provision(ctx, order_id)" in _shell,
+      "پنج راهِ شکست، یک درِ خروج")
+check("و بدنه خودش چیزی ثبت نمی‌کند",
+      'record(ctx, "provision_failed"' not in
+      _HSRC.split("def _provision(ctx, order_id):")[1],
+      "دو ثبت یعنی دو پیام در گروه")
+
+# ── و همین را با رفتار بسنج، نه با متن ──────────────────────────────
+#
+# جاروی شکستن: با `if False:` به‌جای `if not ok:` دروازه‌ی بالا سبز
+# ماند، چون متنِ `record(...)` هنوز در فایل بود. دروازه‌ای که شکلِ
+# کد را می‌سنجد، رفتار را تضمین نمی‌کند.
+class _BrokenXUI:
+    def __getattr__(self, _n):
+        def _boom(*a, **k):
+            raise H.XUIError("پنل جواب نداد")
+        return _boom
+
+
+_ev_tid = db.create_tenant("رویداد", bot_token="9:T", owner_tg_id=9)
+_ED = db.TenantDB(_ev_tid)
+_ED.exec("""INSERT INTO plans (tenant_id,name,price,gb,days,inbound_id)
+            VALUES (?,?,?,?,?,?)""", (_ev_tid, "یک‌ماهه", 100_000, 10, 30, 1))
+_ED.exec("INSERT INTO users (tenant_id,tg_id,first_name) VALUES (?,?,?)",
+         (_ev_tid, 777, "نسرین"))
+_eu = _ED.get_user(777)
+_eoid = _ED.exec(
+    "INSERT INTO orders (tenant_id,user_id,plan_id,amount,base_amount,status)"
+    " VALUES (?,?,?,?,?,'pending')",
+    (_ev_tid, _eu["id"], _ED.plans()[0]["id"], 100_000, 100_000))
+
+_ectx = H.Ctx(FakeBot(), db.get_tenant(_ev_tid))
+# `ctx.xui` امضای اتصال را از خودِ مستاجر می‌سازد و اگر فرق کند
+# دوباره `XUI(...)` می‌سازد — پس نشاندنِ `_xui` کافی نیست و خودِ
+# کلاس باید عوض شود. (اولین نسخه‌ی این تست همین را جا انداخت و
+# `FakeXUI` موفق شد؛ تست غلط بود نه کد.)
+_real_xui, H.XUI = H.XUI, lambda *a, **k: _BrokenXUI()
+try:
+    _eok, _ewhy = H.provision(_ectx, _eoid)
+finally:
+    H.XUI = _real_xui
+
+_erows = [r["kind"] for r in _ED.events()["rows"]]
+check("ساختِ کانفیگِ شکست‌خورده واقعاً رویداد ثبت می‌کند",
+      not _eok and "provision_failed" in _erows,
+      "، ".join(_erows) or "هیچ رویدادی ثبت نشد")
+
+# و شکستی که از `except` نمی‌آید هم باید ثبت شود — همان راهی که
+# probe پیدایش کرد: «اینباند پیدا نشد» یک `return False` ساده است.
+# پلنی که وجود ندارد: `provision` این‌جا با یک `return False` ساده
+# بیرون می‌رود، نه با raise
+_eoid2 = _ED.exec(
+    "INSERT INTO orders (tenant_id,user_id,plan_id,amount,base_amount,status)"
+    " VALUES (?,?,?,?,?,'pending')",
+    (_ev_tid, _eu["id"], 999_999, 999, 999))
+_before = _ED.events()["total"]
+H.provision(_ectx, _eoid2)
+check("و شکستی که استثنا نیست هم ثبت می‌شود",
+      _ED.events()["total"] > _before,
+      "پلنِ پیدانشده یک return ساده است، نه raise")
+
+# ── ثبت نباید کارِ اصلی را بشکند — باز هم با رفتار ──────────────────
+#
+# با `raise` به‌جای `return` دروازه‌ی متنی سبز ماند، چون `except`
+# هنوز در فایل بود.
+class _DeadDB(db.TenantDB):
+    def exec(self, *a, **k):
+        raise RuntimeError("دیسک پر است")
+
+
+try:
+    _DeadDB(_ev_tid).log("provision_failed", None, {"order": 1})
+    _quiet = True
+except Exception:
+    _quiet = False
+check("ثبتِ ناموفقِ رویداد، صداکننده را نمی‌شکند", _quiet,
+      "از داخلِ except صدا زده می‌شود؛ خطای فرعی مسیرِ جبران را می‌بندد")
+
+
+# ── تصمیمِ «گروه را خبر کن» مالِ events.py است، نه صداکننده ─────────
+check("تصمیمِ هشدار یک‌جاست",
+      _HSRC.count("EV.is_alert(kind)") == 1
+      and _RSRC.count("handlers.EV.is_alert(kind)") == 1,
+      "هر جای شکست که خودش تصمیم بگیرد، دهمی فراموشش می‌کند")
+
+# ── هر نوعی که ثبت می‌شود باید در KINDS باشد ────────────────────────
+#
+# نوعِ ناشناخته بی‌صدا دور انداخته نمی‌شود، ولی «رویدادِ ناشناخته»
+# در فهرستِ مالک هم چیزی به او نمی‌گوید.
+import ast as _ast            # noqa: E402
+import re as _re              # noqa: E402
+
+# با ast، نه regex: صدازدن‌های `_event(t["id"], "reminder_failed", …)`
+# اولین آرگومانشان یک اندیس است نه نام، و regexِ اول شش تا از نُه
+# صدازدن را ندید — دروازه‌ای که کمتر از واقعیت می‌بیند، سبزِ دروغ
+# می‌دهد.
+_used = set()
+for _src in (_HSRC, _RSRC):
+    for _n in _ast.walk(_ast.parse(_src)):
+        if not isinstance(_n, _ast.Call):
+            continue
+        _f = _n.func
+        _name = (_f.id if isinstance(_f, _ast.Name)
+                 else _f.attr if isinstance(_f, _ast.Attribute) else "")
+        if _name not in ("record", "_event", "log"):
+            continue
+        for _a in _n.args:
+            if isinstance(_a, _ast.Constant) and isinstance(_a.value, str):
+                _used.add(_a.value)
+                break
+_unknown = sorted(_used - set(_EV.KINDS))
+check("هر نوعی که ربات ثبت می‌کند در KINDS تعریف شده", not _unknown,
+      "، ".join(_unknown) if _unknown else f"{len(_used)} نوع")
+
+# ── فهرستِ «خطا» یک تعریف دارد ──────────────────────────────────────
+check("فیلترِ «فقط خطاها» از events.py می‌خواند",
+      "is_error" in io.open("backend/app.py", encoding="utf-8").read()
+      and _EV.is_error("provision_failed") and not _EV.is_error("signup"),
+      "دو نسخه‌ی این فهرست یعنی دو جوابِ متفاوت")
+
+# ── و هیچ آماری از events شمرده نمی‌شود ─────────────────────────────
+#
+# دو منبعِ حقیقت برای یک عدد، همان باگی است که این مخزن هفت بار دیده.
+_APP = io.open("backend/app.py", encoding="utf-8").read()
+_agg = _re.findall(r"(?:COUNT|SUM)\([^)]*\)[^;\"']{0,80}FROM events", _APP)
+check("هیچ عددِ فروشی از جدولِ رویدادها شمرده نمی‌شود", not _agg,
+      f"{len(_agg)} شمارش" if _agg else "فروش فقط از orders")
+
+# ── ثبت نباید کارِ اصلی را بشکند ────────────────────────────────────
+_logfn = _DBS.split("    def log(self, kind")[1].split("\n    def ")[0]
+check("ثبتِ رویداد خطا بالا نمی‌برد",
+      _logfn.count("except Exception") >= 2,
+      "از داخلِ except صدا زده می‌شود؛ خطای فرعی نباید جای اصلی را بگیرد")
+check("و جدول سقف دارد",
+      "DELETE FROM events" in _logfn and "EVENT_MAX_ROWS" in _logfn,
+      f"سقف {_EV.MAX_ROWS} ردیف در هر مستاجر")
+
+
 os.unlink(tmp)
 
 print(f"\n{'═' * 52}")

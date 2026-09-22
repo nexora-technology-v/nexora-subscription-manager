@@ -16,6 +16,7 @@ from tg import (kb, esc, TelegramError, Bot, contact_kb, remove_kb,
 import core
 import db as DB
 import fmt as F          # واژگان قالب‌بندی تلگرام — F.b، F.code، F.quote و…
+import events as EV   # نگاشتِ نوعِ رویداد → برچسب و هشدار
 from xui import XUI, XUIError
 import qr
 
@@ -239,6 +240,38 @@ class Ctx:
         except TelegramError as e:
             log.warning("ارسال به گروه ناموفق: %s", e)
             return None
+
+
+# ═══════════════════════════════════════════════════════════
+#  رویدادها — یک درِ ورودی، نه دو
+# ═══════════════════════════════════════════════════════════
+
+def record(ctx, kind, user_id=None, data=None, who=None):
+    """
+    ثبتِ رویداد، و اگر پولِ مشتری معلق مانده، خبرکردنِ گروه.
+
+    چرا یک تابع و نه دو خط در هر جای شکست:
+        اگر «ثبت کن» و «گروه را خبر کن» جدا نوشته شوند، جای
+        هفدهم یکی‌شان را فراموش می‌کند — و آن یکی همیشه همانی
+        است که مالک لازمش دارد. این‌جا `EV.is_alert` تصمیم
+        می‌گیرد، نه صداکننده.
+
+    هیچ‌وقت خطا بالا نمی‌برد: از داخلِ `except` صدا زده می‌شود و
+    یک خطای فرعی نباید جای خطای اصلی را بگیرد.
+    """
+    try:
+        ctx.db.log(kind, user_id, data)
+    except Exception:
+        log.debug("ثبت رویداد ناموفق (%s)", kind, exc_info=True)
+
+    if not EV.is_alert(kind):
+        return
+    try:
+        ctx.notify_group(EV.alert_text(kind, data, who=esc(who) if who else None))
+    except Exception:
+        # گروه خبردار نشد؛ ولی ردیفِ جدول سرِ جایش است. دو مسیرِ
+        # جدا، تا شکستِ یکی دیگری را نبرد.
+        log.debug("هشدار گروه ناموفق (%s)", kind, exc_info=True)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -1422,6 +1455,13 @@ def approve_order(ctx, order_id, admin_tg_id):
         deliver(ctx, user, result)
     except Exception as e:
         log.exception("ارسال کانفیگ به مشتری ناموفق")
+        # فقط ثبت: پیامِ گروه همین پایین دست‌ساز است و راهنمای
+        # عمل دارد، پس `record` نباید پیامِ دومی روی آن بفرستد.
+        try:
+            ctx.db.log("deliver_failed", order["user_id"],
+                       {"order": order_id, "error": str(e)})
+        except Exception:
+            log.debug("ثبت رویداد ناموفق", exc_info=True)
         ctx.notify_group(
             f"⚠️ <b>کانفیگ ساخته شد ولی به مشتری نرسید</b>\n\n"
             f"سفارش <code>#{order_id}</code> · "
@@ -1533,7 +1573,35 @@ def _reward_referrer(ctx, user, order_id):
 
 
 def provision(ctx, order_id):
-    """ساخت یا تمدید کانفیگ در 3x-ui."""
+    """
+    ساخت یا تمدید کانفیگ در 3x-ui — و ثبتِ شکست، هر شکلی که باشد.
+
+    چرا یک پوسته و نه `record()` کنارِ هر `return False`:
+        بدنه پنج راهِ شکست دارد (پلنِ پیدانشده، اینباندِ نبود،
+        تمدیدِ هم‌زمان، خطای پنل، خطای غیرمنتظره) و راهِ ششم روزی
+        اضافه می‌شود. اولین نسخه فقط دو `except` را ثبت می‌کرد و
+        probe نشان داد پنلِ خاموش از راهِ «اینباند پیدا نشد» بیرون
+        می‌رود — یعنی سفارش شکست می‌خورد و هیچ رویدادی ثبت نمی‌شد.
+
+        این‌جا نقطه‌ی خروج یکی است، پس راهِ ششم هم خودبه‌خود ثبت
+        می‌شود.
+    """
+    ok, res = _provision(ctx, order_id)
+    if not ok:
+        try:
+            order = ctx.db.get_order(order_id) or {}
+            user = (ctx.db.get_user_by_id(order["user_id"])
+                    if order.get("user_id") else None) or {}
+        except Exception:
+            order, user = {}, {}
+        record(ctx, "provision_failed", order.get("user_id"),
+               {"order": order_id, "error": res},
+               who=user.get("first_name") or user.get("tg_id"))
+    return ok, res
+
+
+def _provision(ctx, order_id):
+    """بدنه — هیچ‌کس جز پوسته‌ی بالا صدایش نمی‌زند."""
     order = ctx.db.get_order(order_id)
     plan = ctx.db.get_plan(order["plan_id"]) if order.get("plan_id") else None
     if not plan:
