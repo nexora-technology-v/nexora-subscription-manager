@@ -128,7 +128,7 @@ def test_checks(fast):
                   "bot/test_fmt.py", "bot/test_wallet.py",
                   "bot/test_reminders.py", "bot/test_tg.py",
                   "bot/test_reseller.py"]),
-        ("پنل و ابزارها", ["tools/test-admin-api.py", "tools/test-billing.py", "tools/test-billing-e2e.py",
+        ("پنل و ابزارها", ["tools/test-admin-api.py", "tools/test-portal-dashboard.py", "tools/test-billing.py", "tools/test-billing-e2e.py",
                            "tools/test-monitor.py", "tools/test-firewall.py", "tools/test-fw-safety.py",
                            "tools/test-maintenance.py", "tools/test-serve.py",
                            "tools/test-intrusion.py",
@@ -203,7 +203,8 @@ def frontend_checks(fast):
                      ("test-subpage.js", "صفحه‌ی اشتراک"),
                      ("tools/test-components.cjs", "رندر کامپوننت‌ها"),
                      ("tools/test-hooks.cjs", "ترتیب هوک‌ها"),
-                     ("tools/test-jalali.cjs", "تقویم شمسی")]:
+                     ("tools/test-jalali.cjs", "تقویم شمسی"),
+                     ("tools/test-palette.cjs", "پالتِ رنگِ فروشگاه")]:
         try:
             p = subprocess.run(["node", f], cwd=ROOT, env=env, timeout=400,
                                capture_output=True, text=True,

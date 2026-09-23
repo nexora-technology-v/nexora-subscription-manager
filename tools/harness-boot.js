@@ -29,7 +29,11 @@
      می‌گذارد، پس هر چیزی که دیرتر بخواندش هیچ‌وقت نمی‌بیندش. */
   var Q0 = new URLSearchParams(location.search);
   var NEW_RESELLER = Q0.get("plans") === "0";
-  var MINI_ACCENT = Q0.get("accent") === "off" ? "" : "#7c5cff";
+  // ?accent=off بدونِ رنگ، ?accent=RRGGBB هر رنگی — تا بشود دید پالت
+  // با رنگ‌های سخت (زردِ روشن، بنفشِ تیره) هم خوانا می‌ماند
+  var MINI_ACCENT = Q0.get("accent") === "off" ? ""
+    : /^[0-9a-fA-F]{6}$/.test(Q0.get("accent") || "") ? "#" + Q0.get("accent")
+    : "#7c5cff";
 
   try {
     var qs = Q0;
@@ -359,7 +363,51 @@
              activeCards: P_CARDS.filter(function (c) { return c.active; }).length };
   }
 
-  var P_ME = { ok: true, id: 2, name: "حسین", slug: "hossein",
+  var P_NAMES = ["نیما احمدی", "سارا موسوی", "رضا کریمی", "لیلا نوری", "پویا صادقی",
+                 "مهسا رحیمی", "کاوه جعفری"];
+  var P_USERS = { users: [], total: 62, counts: {
+    all: 62, active: 38, expired: 11, never: 13, buyers: 41, withPhone: 29,
+    noPhone: 33, withBalance: 6, withCoins: 17, referred: 9, blocked: 1 } };
+  for (var pu = 0; pu < 14; pu++) {
+    P_USERS.users.push({
+      id: 500 + pu, tg_id: 7100 + pu, first_name: P_NAMES[pu % 7],
+      username: pu % 3 ? "p_user" + pu : "", phone: pu % 2 ? "0935100" + (2000 + pu) : "",
+      balance: (pu % 4) * 30000, coins: pu * 2, is_blocked: pu === 5 ? 1 : 0,
+      created_at: "2026-09-" + (10 + (pu % 9)) + " 10:00",
+      ordersCount: pu % 4, spent: (pu % 4) * 150000, subsCount: pu % 3, activeSubs: pu % 2,
+    });
+  }
+  var P_SUB = { user: { id: 501, tg_id: 7101, first_name: "سارا موسوی", username: "p_user1",
+                        phone: "09351002001", balance: 30000, coins: 2, created_at: "2026-09-11 10:00" },
+                subscriptions: [{ id: 91, plan_name: "ماهانه ۵۰", client_email: "hossein_7101_1",
+                                  gb: 50, is_active: 1, expires_at: "2026-10-11 10:00",
+                                  created_at: "2026-09-11 10:00" }],
+                orders: [{ id: 3301, plan_name: "ماهانه ۵۰", amount: 150000, status: "approved",
+                           created_at: "2026-09-11 10:00", paid_from: "card" }],
+                coinHistory: [], live: {}, liveAvailable: false };
+  var P_INBOX = { unread: 1, threads: [
+    { userId: 501, tgId: 7101, name: "سارا موسوی", username: "p_user1", avatar: "",
+      unread: 1, lastBody: "کانفیگ روی آیفون وصل نمی‌شه", lastAt: "2026-09-23 09:12" },
+    { userId: 503, tgId: 7103, name: "لیلا نوری", username: "",
+      unread: 0, lastBody: "ممنون، درست شد 🙏", lastAt: "2026-09-22 21:40" },
+  ] };
+  var P_THREAD = { messages: [
+    { id: 1, from: "user", body: "سلام، کانفیگ روی آیفون وصل نمی‌شه", orderId: null, at: "2026-09-23 09:10", read: true },
+    { id: 2, from: "system", body: "سفارش #3301 تایید شد و اشتراکتان فعال است.", orderId: 3301, at: "2026-09-23 09:11", read: true },
+    // عکس بعداً وصل می‌شود: FAKE_SHOT پایین‌تر تعریف شده
+    { id: 3, from: "user", body: "این پیام خطاست", photo: "", orderId: null, at: "2026-09-23 09:12", read: false },
+  ] };
+  var P_SETTINGS = { settings: {
+    brand: "وی‌پی‌ان حسین", support_username: "hsupport",
+    welcome_text: "سلام {name} 👋 به {brand} خوش آمدید.",
+    trial_enabled: !NEW_RESELLER, ask_phone: true, order_ttl_minutes: 45,
+    reminders: { enabled: true, days: [5, 2, 1], traffic_pct: 85, traffic_text: "" },
+    coins: { enabled: true, per_referral: 12, welcome_bonus: 3, max_percent: 40,
+             expire_days: 0, tiers: [{ coins: 20, percent: 10 }, { coins: 50, percent: 25 }] },
+    force_channel_on: false, force_channel: "",
+  }, trialCap: { gb: 1, days: 1, ip_limit: 1 }, trialWhy: "" };
+
+  var P_ME = { ok: true, id: 2, name: "حسین", slug: "hossein", version: "1.87.0",
                credit: 1200000, discount: 0, hasBot: true,
                botUsername: "hossein_vpn_bot", logo: FAKE_LOGO };
 
@@ -390,7 +438,7 @@
   // پلن‌های ربات نماینده + سیاست حجم. حالت «پله‌ای» گذاشته شده تا
   // در هارنس دیده شود که فیلدِ حجم بسته می‌شود.
   var P_BOT_PLANS = {
-    ready: true, hasBot: true,
+    ready: true, hasBot: true, trialCap: { gb: 1, days: 1, ip_limit: 1 },
     gbMode: "tiers", gbAllowed: [30, 50, 100, 200],
     perGb: 0, gbCost: { "30": 90000, "50": 140000, "100": 250000, "200": 460000 },
     plans: [
@@ -979,6 +1027,56 @@ var D_CODES = { ready: true,
       }) };
     }
     if (u.indexOf("/portal/me") >= 0) return Object.assign({}, P_ME, pReady());
+    if (u.indexOf("/portal/users") >= 0) {
+      var pq = (u.match(/[?&]q=([^&]*)/) || [])[1];
+      pq = pq ? decodeURIComponent(pq) : "";
+      var pl = P_USERS.users.filter(function (x) {
+        return !pq || (x.first_name + " " + x.username + " " + x.tg_id).indexOf(pq) >= 0;
+      });
+      return { users: pl, total: pq ? pl.length : P_USERS.total, dbReady: true,
+               counts: P_USERS.counts };
+    }
+    if (u.indexOf("/portal/subscriber/") >= 0) return P_SUB;
+    if (u.indexOf("/portal/message/") >= 0) return { ok: true };
+    if (u.indexOf("/portal/inbox/send") >= 0) {
+      var pb = ((body || {}).body || "").trim();
+      if (!pb && !(body || {}).photo) { var pe = new Error("پیام خالی است"); pe.status = 400; throw pe; }
+      P_THREAD.messages.push({ id: P_THREAD.messages.length + 1, from: "admin", body: pb,
+                               photo: (body || {}).photo || "", orderId: null,
+                               at: new Date().toISOString().slice(0, 16).replace("T", " "),
+                               read: false });
+      return { ok: true };
+    }
+    if (u.indexOf("/portal/inbox") >= 0) {
+      if (NEW_RESELLER) return u.indexOf("user_id=") >= 0 ? { messages: [] } : { threads: [], unread: 0 };
+      if (!P_THREAD.messages[2].photo) P_THREAD.messages[2].photo = FAKE_SHOT;
+      return u.indexOf("user_id=") >= 0 ? P_THREAD : P_INBOX;
+    }
+    if (u.indexOf("/portal/funnel") >= 0) {
+      if (NEW_RESELLER) return { ready: true, started: 0, steps: [], segments: {} };
+      return { ready: true, started: 62, steps: [
+        { label: "ربات را باز کردند", n: 62, pct: 100 },
+        { label: "شماره ثبت کردند", n: 29, pct: 46.8 },
+        { label: "سفارش ثبت کردند", n: 47, pct: 75.8 },
+        { label: "خرید موفق", n: 41, pct: 66.1 }],
+        segments: { paid: 41, trialOnly: 8, trial: 19, idle: 13 } };
+    }
+    if (u.indexOf("/portal/events") >= 0) {
+      return { ready: true, total: 3, page: 1, per: 30, kinds: EVENT_KINDS,
+               events: EVENTS.slice(0, 3) };
+    }
+    if (u.indexOf("/portal/bot-settings") >= 0) {
+      if (method === "PUT") {
+        var ps = (body || {}).settings || {};
+        if (ps.order_ttl_minutes !== undefined
+            && (ps.order_ttl_minutes < 5 || ps.order_ttl_minutes > 1440)) {
+          var pe2 = new Error("«مهلت پرداخت» باید بین 5 و 1440 باشد"); pe2.status = 400; throw pe2;
+        }
+        Object.keys(ps).forEach(function (k) { P_SETTINGS.settings[k] = ps[k]; });
+        return { ok: true, saved: Object.keys(ps) };
+      }
+      return P_SETTINGS;
+    }
     if (u.indexOf("/portal/cards") >= 0) {
       if (method === "PUT") {
         P_CARDS = ((body || {}).cards || []).filter(function (c) { return c && c.number; });

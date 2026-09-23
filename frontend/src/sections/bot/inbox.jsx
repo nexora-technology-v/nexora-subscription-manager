@@ -18,26 +18,12 @@ import {
   MessageCircle, Pencil, Plus, RefreshCw, Search, Send, Shield, Trash2, X, Zap,
 } from "lucide-react";
 
-import { API_URL } from "../../lib/constants";
-import { errText, faNum, toFaDigits } from "../../lib/format";
+import { adminSrc } from "../../lib/botsrc";
+import { faNum, toFaDigits } from "../../lib/format";
 import {
   Avatar, EmptyState, Field, Lightbox, Modal, PageSkeleton, SectionHead,
 } from "../../ui/index";
 import { shrinkImage } from "../../lib/image.js";
-
-async function call(path, password, opt = {}) {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: opt.method || "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Admin-Password": password || "",
-    },
-    ...(opt.body ? { body: JSON.stringify(opt.body) } : {}),
-  });
-  const j = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(errText(j.detail, "درخواست ناموفق بود"));
-  return j;
-}
 
 /* ── پاسخ‌های آماده ──
 
@@ -93,7 +79,11 @@ function dayLabel(key) {
   } catch { return toFaDigits(key); }
 }
 
-export function BotInboxSection({ password }) {
+/* `src`: منبعِ داده. خالی یعنی پنلِ مالک؛ پرتالِ نماینده
+   `portalSrc(token)` می‌دهد و **همین صفحه** با داده‌ی او کار می‌کند
+   (lib/botsrc.js — چرا یک صفحه و نه کپی). */
+export function BotInboxSection({ password, src, note }) {
+  const S = useMemo(() => src || adminSrc(password), [src, password]);
   const [threads, setThreads] = useState(null);
   const [open, setOpen] = useState(null);
   const [msgs, setMsgs] = useState(null);
@@ -119,32 +109,30 @@ export function BotInboxSection({ password }) {
   const loadThreads = useCallback(async () => {
     setErr("");
     try {
-      const j = await call("/api/admin/bot/inbox", password);
+      const j = await S.inbox();
       setThreads(j.threads || []);
     } catch (e) { setErr(e.message); setThreads([]); }
-  }, [password]);
+  }, [S]);
 
   const loadThread = useCallback(async (uid) => {
     if (!uid) return;
     try {
-      const j = await call(`/api/admin/bot/inbox?user_id=${uid}`, password);
+      const j = await S.inbox(uid);
       setMsgs(j.messages || []);
     } catch (e) { setErr(e.message); }
-  }, [password]);
+  }, [S]);
 
   // پاسخ‌های آماده از تنظیمات می‌آیند. اگر چیزی ذخیره نشده باشد،
   // پیش‌فرض‌ها نشان داده می‌شوند — نه یک ردیفِ خالی که مالک نفهمد
   // این‌جا قرار بوده چه باشد.
   const loadQuick = useCallback(async () => {
     try {
-      const j = await call("/api/admin/bot/settings", password);
-      const st = (j.tenant?.settings && typeof j.tenant.settings === "object"
-                  && !Array.isArray(j.tenant.settings)) ? j.tenant.settings : {};
+      const st = await S.settings();
       setBrand(st);
       const q0 = Array.isArray(st.quick_replies) ? st.quick_replies : null;
       setQuick(q0 && q0.length ? q0 : QUICK_DEFAULTS);
     } catch { setQuick(QUICK_DEFAULTS); }
-  }, [password]);
+  }, [S]);
 
   useEffect(() => { loadQuick(); }, [loadQuick]);
   useEffect(() => { loadThreads(); }, [loadThreads]);
@@ -260,8 +248,7 @@ export function BotInboxSection({ password }) {
   const saveQuick = async (rows) => {
     setQuick(rows);
     try {
-      await call("/api/admin/bot/settings", password,
-                 { method: "PUT", body: { settings: { ...brand, quick_replies: rows } } });
+      await S.saveSettings({ ...brand, quick_replies: rows });
       setBrand((b) => ({ ...b, quick_replies: rows }));
     } catch (e) { setErr(e.message); }
   };
@@ -281,9 +268,7 @@ export function BotInboxSection({ password }) {
     }]);
     boxRef.current?.focus();
     try {
-      await call("/api/admin/bot/inbox/send", password,
-                 { method: "POST",
-                   body: { userId: open, body, ...(pic ? { photo: pic } : {}) } });
+      await S.inboxSend({ userId: open, body, ...(pic ? { photo: pic } : {}) });
       lastMove.current = Date.now();
       await loadThread(open);
       loadThreads();
@@ -518,7 +503,7 @@ export function BotInboxSection({ password }) {
                   </button>
                 </footer>
                 <p className="fx-chat-note">
-                  پاسخ شما هم در مینی‌اپ و هم در خودِ ربات به مشتری می‌رسد.
+                  {note || "پاسخ شما هم در مینی‌اپ و هم در خودِ ربات به مشتری می‌رسد."}
                 </p>
               </>
             )}

@@ -1,5 +1,4 @@
 /**
-import { errText } from "../../lib/format";
  * هوک مشترک صداکردن API ربات.
  *
  * از App.jsx جدا شد؛ آن فایل ۱۱۴۰۰ خط بود و پیداکردن یک کامپوننت
@@ -7,6 +6,7 @@ import { errText } from "../../lib/format";
  */
 import React, { useState, useEffect } from "react";
 import { API_URL } from "../../lib/constants";
+import { errText } from "../../lib/format";
 
 export function useBotApi(password) {
   const [data, setData] = useState(null);

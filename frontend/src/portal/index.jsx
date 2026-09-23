@@ -9,10 +9,11 @@
  * این‌جا اصلاً به آن کد دسترسی ندارد — نه به مسیرهایش، نه به
  * کامپوننت‌هایش.
  */
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
-  AlertTriangle, Bot, Camera, Check, Clock, Copy, CreditCard, Database,
-  ExternalLink, FileText, Link2,
+  Activity, AlertTriangle, Bot, Camera, Check, Clock, Coins, Copy, CreditCard,
+  Database, ExternalLink, FileText, Gift, Link2, Menu, MessageCircle, Settings2,
   LayoutGrid, Loader2, LogOut, Package, Palette, Plus, Power, QrCode, RefreshCw, Search,
   ShoppingCart, Trash2, TrendingUp, Users, Wallet, X, XCircle,
 } from "lucide-react";
@@ -27,6 +28,15 @@ import { isoToJalaliLabel } from "../ui/jalali";
 import { Avatar, EmptyState, MoneyInput, NumberInput, SkeletonCards, SkeletonTable,
          StatTile, Toggle, usePager } from "../ui/index";
 import { NexoraMark } from "../lib/mark.jsx";
+// همان صفحه‌های پنلِ مالک، با داده‌ی خودِ نماینده — نه کپی.
+// چرا: lib/botsrc.js. مرزِ واقعی بکند است (`portal_tenant`).
+import { portalSrc } from "../lib/botsrc";
+import { accentPalette } from "../lib/palette.js";
+import { BotUsersSection } from "../sections/bot/users";
+import { BotInboxSection } from "../sections/bot/inbox";
+import { BOT_BEHAVIOUR, BotTextsSection } from "../sections/bot/texts";
+import { BotCoinsSection } from "../sections/bot/coins";
+import { BotEventsSection } from "../sections/bot/events";
 
 const TOKEN_KEY = "nexora_portal_token";
 
@@ -40,6 +50,36 @@ const TOKEN_KEY = "nexora_portal_token";
    بیلد هم چیزی نمی‌گفت، چون خودِ نحو درست است. */
 import { portalSlug } from "../lib/route.js";
 export { portalSlug };
+
+/**
+ * قابِ هر پنجره‌ی پرتال — یا، با `inline`، یک صفحه‌ی داشبورد.
+ *
+ * چرا یکی: هشت پنجره هر کدام پرده‌ی خودش را داشت، با
+ * `align-items: center`. پنجره‌ای که بلندتر از صفحه می‌شد، سرش
+ * **بالای صفحه بریده می‌شد و با اسکرول هم برنمی‌گشت** — اندازه‌گیری‌شده
+ * روی «ربات من»: ۱۴۱ پیکسل روی لپ‌تاپِ ۶۸۰ پیکسلی، یعنی عنوان و وضعیت
+ * هیچ‌وقت دیده نمی‌شدند. `margin: auto` روی کارت، کوتاه را وسط می‌گذارد
+ * و بلند را از بالا شروع می‌کند.
+ *
+ * و از راهِ پورتال روی `body`: داخلِ `.fx-anim` (صفحه‌های مالک که حالا
+ * این‌جا سوارند) `transform` ماندگار هست و `fixed` در آن حبس می‌شود.
+ */
+function Frame({ inline, onClose, width = 420, children }) {
+  if (inline) {
+    return <div className="fx-card p-5" style={{ maxWidth: width + 220 }}>{children}</div>;
+  }
+  return createPortal(
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 3000, display: "flex", padding: 16,
+      background: "var(--scrim-3)", overflowY: "auto",
+    }} onClick={onClose}>
+      <div className="fx-card p-5" style={{ width, maxWidth: "100%", margin: "auto" }}
+        onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>,
+    document.body);
+}
 
 async function api(path, { token, method = "GET", body } = {}) {
   const res = await fetch(`${API_URL}${path}`, {
@@ -139,7 +179,7 @@ function Stat({ icon, label, value, unit, hint, color, spark, sparkColor }) {
   );
 }
 
-function RenewBox({ token, row, plans, onDone, onClose }) {
+function RenewBox({ inline, token, row, plans, onDone, onClose }) {
   const [months, setMonths] = useState(1);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -170,19 +210,15 @@ function RenewBox({ token, row, plans, onDone, onClose }) {
   };
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
-      alignItems: "center", justifyContent: "center", padding: 16,
-      background: "var(--scrim-3)",
-    }} onClick={onClose}>
-      <div className="fx-card p-5" style={{ width: 360, maxWidth: "100%" }}
-        onClick={(e) => e.stopPropagation()}>
+    <Frame inline={inline} onClose={onClose} width={360}>
         <div className="flex items-center justify-between mb-3">
           <div className="text-[14px] font-semibold text-white">تمدید کانفیگ</div>
-          <button onClick={onClose} className="fx-ico-btn"
-            style={{ width: 28, height: 28 }} aria-label="بستن">
-            <X size={13} />
-          </button>
+          {!inline && (
+            <button onClick={onClose} className="fx-ico-btn"
+              style={{ width: 28, height: 28 }} aria-label="بستن">
+              <X size={13} />
+            </button>
+          )}
         </div>
 
         <div className="text-[13px] mb-3" dir="ltr"
@@ -230,8 +266,7 @@ function RenewBox({ token, row, plans, onDone, onClose }) {
           className="fx-btn w-full py-2.5 text-[13px] flex items-center justify-center gap-2">
           {busy && <Loader2 size={13} className="animate-spin" />} تمدید کن
         </button>
-      </div>
-    </div>
+    </Frame>
   );
 }
 
@@ -250,7 +285,7 @@ function RenewBox({ token, row, plans, onDone, onClose }) {
  * نوشتنش این‌جا مهم است: بدون آن، نماینده فکر می‌کند حذف یعنی
  * پس‌گرفتن پول، و وقتی برنگشت حس می‌کند چیزی دزدیده شده.
  */
-function DropBox({ token, config, onDone, onClose }) {
+function DropBox({ inline, token, config, onDone, onClose }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const fresh = !config.used || config.used <= 0;
@@ -268,13 +303,7 @@ function DropBox({ token, config, onDone, onClose }) {
   };
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
-      alignItems: "center", justifyContent: "center", padding: 16,
-      background: "var(--scrim-3)", overflowY: "auto",
-    }} onClick={onClose}>
-      <div className="fx-card p-5" style={{ width: 380, maxWidth: "100%" }}
-        onClick={(e) => e.stopPropagation()}>
+    <Frame inline={inline} onClose={onClose} width={380}>
         <div className="text-[14px] font-semibold text-white mb-2">
           حذف کانفیگ
         </div>
@@ -319,13 +348,12 @@ function DropBox({ token, config, onDone, onClose }) {
             انصراف
           </button>
         </div>
-      </div>
-    </div>
+    </Frame>
   );
 }
 
 
-function NewBox({ token, plans, slug, onDone, onClose }) {
+function NewBox({ inline, token, plans, slug, onDone, onClose }) {
   const tiers = plans?.plans || [];
   const [gb, setGb] = useState(tiers[0] ? tiers[0].gb : 0);
   const [days, setDays] = useState(30);
@@ -363,19 +391,15 @@ function NewBox({ token, plans, slug, onDone, onClose }) {
   };
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
-      alignItems: "center", justifyContent: "center", padding: 16,
-      background: "var(--scrim-3)", overflowY: "auto",
-    }} onClick={onClose}>
-      <div className="fx-card p-5" style={{ width: 380, maxWidth: "100%" }}
-        onClick={(e) => e.stopPropagation()}>
+    <Frame inline={inline} onClose={onClose} width={380}>
         <div className="flex items-center justify-between mb-3">
           <div className="text-[14px] font-semibold text-white">کانفیگ تازه</div>
-          <button onClick={onClose} className="fx-ico-btn"
-            style={{ width: 28, height: 28 }} aria-label="بستن">
-            <X size={13} />
-          </button>
+          {!inline && (
+            <button onClick={onClose} className="fx-ico-btn"
+              style={{ width: 28, height: 28 }} aria-label="بستن">
+              <X size={13} />
+            </button>
+          )}
         </div>
 
         {made ? (
@@ -559,8 +583,7 @@ function NewBox({ token, plans, slug, onDone, onClose }) {
             </button>
           </>
         )}
-      </div>
-    </div>
+    </Frame>
   );
 }
 
@@ -787,7 +810,7 @@ function OwnerLink({ token, linked, onChange }) {
   );
 }
 
-function BotBox({ token, onClose, onNote }) {
+function BotBox({ inline, token, onClose, onNote }) {
   const [st, setSt] = useState(null);
   const [tok, setTok] = useState("");
   const [brand, setBrand] = useState("");
@@ -856,19 +879,15 @@ function BotBox({ token, onClose, onNote }) {
   };
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
-      alignItems: "center", justifyContent: "center", padding: 16,
-      background: "var(--scrim-3)", overflowY: "auto",
-    }} onClick={onClose}>
-      <div className="fx-card p-5" style={{ width: 420, maxWidth: "100%" }}
-        onClick={(e) => e.stopPropagation()}>
+    <Frame inline={inline} onClose={onClose} width={420}>
         <div className="flex items-center justify-between mb-4">
           <div className="text-[14px] font-semibold text-white">ربات تلگرام شما</div>
-          <button onClick={onClose} className="fx-ico-btn"
-            style={{ width: 28, height: 28 }} aria-label="بستن">
-            <X size={13} />
-          </button>
+          {!inline && (
+            <button onClick={onClose} className="fx-ico-btn"
+              style={{ width: 28, height: 28 }} aria-label="بستن">
+              <X size={13} />
+            </button>
+          )}
         </div>
 
         {st?.hasBot ? (
@@ -983,8 +1002,7 @@ function BotBox({ token, onClose, onNote }) {
             <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
           </p>
         )}
-      </div>
-    </div>
+    </Frame>
   );
 }
 
@@ -1090,21 +1108,24 @@ const ACCENTS = [
 ];
 
 function ThemePreview({ accent, brand, logo }) {
-  // همان متغیرهایی که مینی‌اپ می‌سازد — یک قاعده، دو جا، پس
-  // اگر روزی پله‌ها عوض شدند باید هر دو با هم عوض شوند.
-  const ok = /^#[0-9a-fA-F]{6}$/.test(String(accent || ""));
-  const n = ok ? parseInt(accent.slice(1), 16) : 0;
-  const rgb = ok ? `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}` : "";
-  const vars = ok ? {
-    "--pv-accent": accent,
-    "--pv-soft": `rgba(${rgb}, .12)`,
-    "--pv-fill": `rgba(${rgb}, .20)`,
-    "--pv-line": `rgba(${rgb}, .30)`,
+  // **همان تابعی** که مینی‌اپ صدا می‌زند (lib/palette.js). قبلاً این‌جا
+  // حسابِ خودش را داشت و فقط `--accent` را می‌ساخت — پیش‌نمایش چیزی
+  // نشان می‌داد که مشتری نمی‌دید، چون دکمه‌های مینی‌اپ `--cy` بودند.
+  const pal = accentPalette(accent);
+  const vars = pal ? {
+    "--pv-accent": pal["--accent"],
+    "--pv-soft": pal["--accent-soft"],
+    "--pv-fill": pal["--accent-fill"],
+    "--pv-line": pal["--accent-line"],
+    "--pv-cta": `linear-gradient(140deg, ${pal["--accent"]}, ${pal["--cy"]})`,
+    "--pv-on-cta": pal["--on-cy"],
   } : {
     "--pv-accent": "var(--accent)",
     "--pv-soft": "var(--accent-soft)",
     "--pv-fill": "var(--accent-fill)",
     "--pv-line": "var(--accent-line)",
+    "--pv-cta": "linear-gradient(140deg, var(--accent), var(--cy))",
+    "--pv-on-cta": "var(--on-cy)",
   };
 
   return (
@@ -1154,8 +1175,8 @@ function ThemePreview({ accent, brand, logo }) {
 
           <div style={{
             borderRadius: 11, padding: "8px 0", textAlign: "center",
-            fontSize: 11.5, fontWeight: 700, color: "#fff",
-            background: "var(--pv-accent)",
+            fontSize: 11.5, fontWeight: 700, color: "var(--pv-on-cta)",
+            background: "var(--pv-cta)",
           }}>خرید</div>
         </div>
       </div>
@@ -1168,208 +1189,7 @@ function ThemePreview({ accent, brand, logo }) {
 }
 
 
-/*
- * داشبوردِ نماینده.
- *
- * برگه: docs/specs/2026-09-22-reseller-and-ui.md
- *
- * **هیچ عددی این‌جا حساب نمی‌شود.** همه از `/api/portal/summary` و
- * `/api/portal/stats` می‌آید — همان دو مسیری که از قبل بودند و
- * همان محاسبه‌ای که صورتحسابِ مالک می‌کند. اگر این صفحه خودش
- * می‌شمرد، می‌شد چهارمین سطحی که پول را جدا حساب می‌کند، و این
- * مخزن می‌داند آخرش چه می‌شود.
- *
- * ترتیب از روی «چه کاری از دستم برمی‌آید» است، نه از روی اینکه چه
- * چیزی راحت‌تر شمرده می‌شود: اول کارهای امروز، بعد وضعیت، آخر پول.
- */
-function DashBox({ token, onClose, onOrders, onPlans, onTheme }) {
-  const [sum, setSum] = useState(null);
-  const [st, setSt] = useState(null);
-  const [open, setOpen] = useState(null);
-  const [err, setErr] = useState("");
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const [a, b, c] = await Promise.all([
-          api("/api/portal/summary", { token }),
-          api("/api/portal/stats", { token }).catch(() => null),
-          api("/api/portal/orders?status=open", { token }).catch(() => null),
-        ]);
-        if (!alive) return;
-        setSum(a); setSt(b);
-        setOpen((c?.orders || []).length);
-      } catch (e) { if (alive) setErr(e.message); }
-    })();
-    return () => { alive = false; };
-  }, [token]);
-
-  //: کارهایی که همین حالا از دستِ نماینده برمی‌آید. فهرستِ خالی
-  //: خودش یک خبرِ خوب است و همان را می‌گوییم — نه یک کارتِ خالی.
-  const todo = [];
-  const pending = open ?? st?.sales?.pending ?? 0;
-  if (pending > 0) {
-    todo.push({ t: `${faNum(pending)} سفارش در انتظار تایید`,
-                b: "دیدن سفارش‌ها", on: onOrders, tone: "var(--warn)" });
-  }
-  if (st?.expiringSoon > 0) {
-    todo.push({ t: `${faNum(st.expiringSoon)} اشتراک تا یک هفته تمام می‌شود`,
-                b: null, tone: "var(--warn)" });
-  }
-  if (st?.overQuota > 0) {
-    todo.push({ t: `${faNum(st.overQuota)} مشتری حجمش تمام شده`,
-                b: null, tone: "var(--danger)" });
-  }
-  if (st?.nearQuota > 0) {
-    todo.push({ t: `${faNum(st.nearQuota)} مشتری بالای ۸۰٪ حجمش را مصرف کرده`,
-                b: null, tone: "var(--muted)" });
-  }
-  if (sum?.unpriced > 0) {
-    todo.push({ t: `${faNum(sum.unpriced)} کانفیگ هنوز نرخ ندارد`,
-                b: null, tone: "var(--muted)" });
-  }
-
-  return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
-      alignItems: "flex-start", justifyContent: "center", padding: 16,
-      background: "var(--scrim-3)", overflowY: "auto",
-    }} onClick={onClose}>
-      <div className="fx-card p-5" style={{ width: 660, maxWidth: "100%",
-                                            marginTop: 24 }}
-        onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-[14px] font-semibold text-white">
-            داشبورد شما
-          </div>
-          <button onClick={onClose} className="fx-ico-btn"
-            style={{ width: 28, height: 28 }} aria-label="بستن">
-            <X size={13} />
-          </button>
-        </div>
-
-        {err && (
-          <p className="text-[12.5px] mb-3 flex items-start gap-1.5"
-            style={{ color: "var(--danger)" }}>
-            <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
-          </p>
-        )}
-
-        {!sum ? <SkeletonCards n={3} /> : (
-          <>
-            {/* ── کارهای امروز ── */}
-            <div className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
-              کارهای امروز
-            </div>
-            {!todo.length ? (
-              <div className="rounded-xl p-3 mb-4 text-[12.5px] flex items-center gap-2"
-                style={{ background: "var(--ok-wash)",
-                         border: "1px solid var(--ok-line)", color: "var(--ok)" }}>
-                <Check size={14} /> کاری روی زمین نمانده
-              </div>
-            ) : (
-              <div className="mb-4" style={{ display: "grid", gap: 8 }}>
-                {todo.map((x, i) => (
-                  <div key={i}
-                    className="rounded-xl px-3 py-2.5 flex items-center gap-2 flex-wrap"
-                    style={{ background: "var(--surface-3)",
-                             border: "1px solid var(--border)" }}>
-                    <span style={{ width: 7, height: 7, borderRadius: 99,
-                                   background: x.tone, flex: "none" }} />
-                    <span className="text-[12.5px] flex-1"
-                      style={{ color: "var(--dim)" }}>{x.t}</span>
-                    {x.b && (
-                      <button onClick={x.on}
-                        className="fx-btn-g px-2.5 py-1 text-[11.5px]">{x.b}</button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* ── وضعیت ── */}
-            <div className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
-              مشتری‌های شما
-            </div>
-            <div className="mb-4" style={{
-              display: "grid", gap: 8,
-              gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
-            }}>
-              <Stat label="فعال" value={faNum(st?.active ?? "—")} />
-              <Stat label="منقضی" value={faNum(st?.expired ?? "—")} />
-              <Stat label="تازه، این ماه"
-                value={faNum(st?.thisMonth?.new ?? "—")} />
-              <Stat label="تمدید، این ماه"
-                value={faNum(st?.thisMonth?.renewals ?? "—")} />
-            </div>
-
-            {/* فروشِ خودِ ربات — «فروش» و «دریافتی» عمداً جدایند:
-                خریدِ از کیف پول فروش هست ولی پولِ تازه نیست. */}
-            {st?.sales?.hasBot && (
-              <>
-                <div className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
-                  فروشِ ربات شما
-                </div>
-                <div className="mb-4" style={{
-                  display: "grid", gap: 8,
-                  gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
-                }}>
-                  <Stat label="سفارش، این ماه"
-                    value={faNum(st.sales.monthOrders)} />
-                  <Stat label="فروش، این ماه"
-                    value={faNum(st.sales.monthSold)} hint="تومان" />
-                  <Stat label="فروشِ کل" value={faNum(st.sales.sold)}
-                    hint="تومان" />
-                  <Stat label="دریافتی" value={faNum(st.sales.received)}
-                    hint="فقط کارت‌به‌کارت" />
-                </div>
-              </>
-            )}
-
-            {/* ── پول ── */}
-            <div className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
-              حساب شما
-            </div>
-            <div className="mb-4" style={{
-              display: "grid", gap: 8,
-              gridTemplateColumns: "repeat(auto-fit, minmax(118px, 1fr))",
-            }}>
-              <Stat label="کانفیگ‌های این دوره" value={faNum(sum.configs)} />
-              <Stat label="بدهیِ این دوره" value={faNum(sum.due)}
-                hint="تومان" />
-              <Stat label="پرداختی" value={faNum(sum.paid)} hint="تومان" />
-              <Stat
-                label={sum.prepaid ? "اعتبار" : "مانده"}
-                value={sum.prepaid ? faNum(sum.credit) : faNum(sum.balance)}
-                hint="تومان"
-                color={sum.prepaid && Number(sum.credit) <= 0
-                  ? "var(--danger)" : null} />
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <button onClick={onPlans}
-                className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
-                <Package size={13} /> پلن‌ها و قیمت
-              </button>
-              <button onClick={onTheme}
-                className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
-                <Palette size={13} /> پوسته‌ی فروشگاه
-              </button>
-              <button onClick={onOrders}
-                className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
-                <FileText size={13} /> سفارش‌ها
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-
-function ThemeBox({ token, onClose, onNote }) {
+function ThemeBox({ inline, token, onClose, onNote }) {
   const [d, setD] = useState(null);
   const [accent, setAccent] = useState("");
   const [brand, setBrand] = useState("");
@@ -1451,22 +1271,17 @@ function ThemeBox({ token, onClose, onNote }) {
   const open = !!d?.open;
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
-      alignItems: "flex-start", justifyContent: "center", padding: 16,
-      background: "var(--scrim-3)", overflowY: "auto",
-    }} onClick={onClose}>
-      <div className="fx-card p-5" style={{ width: 640, maxWidth: "100%",
-                                            marginTop: 24 }}
-        onClick={(e) => e.stopPropagation()}>
+    <Frame inline={inline} onClose={onClose} width={640}>
         <div className="flex items-center justify-between mb-3">
           <div className="text-[14px] font-semibold text-white">
             پوسته‌ی فروشگاه شما
           </div>
-          <button onClick={onClose} className="fx-ico-btn"
-            style={{ width: 28, height: 28 }} aria-label="بستن">
-            <X size={13} />
-          </button>
+          {!inline && (
+            <button onClick={onClose} className="fx-ico-btn"
+              style={{ width: 28, height: 28 }} aria-label="بستن">
+              <X size={13} />
+            </button>
+          )}
         </div>
 
         {!d ? <SkeletonCards n={2} /> : (
@@ -1635,13 +1450,12 @@ function ThemeBox({ token, onClose, onNote }) {
             </div>
           </>
         )}
-      </div>
-    </div>
+    </Frame>
   );
 }
 
 
-function PlansBox({ token, onClose, onNote }) {
+function PlansBox({ inline, token, onClose, onNote }) {
   const [rows, setRows] = useState(null);
   const [hasBot, setHasBot] = useState(false);
   const [policy, setPolicy] = useState(
@@ -1650,12 +1464,15 @@ function PlansBox({ token, onClose, onNote }) {
   const [err, setErr] = useState("");
   //: کفِ هر ردیف — از بکند می‌آید، این‌جا حساب نمی‌شود.
   const [cost, setCost] = useState([]);
+  //: سقفِ تستِ رایگان = تستِ خودِ مالک. null یعنی تست ممکن نیست.
+  const [trialCap, setTrialCap] = useState(null);
 
   const load = useCallback(async () => {
     try {
       const j = await api("/api/portal/bot-plans", { token });
       setRows(j.plans || []);
       setHasBot(!!j.hasBot);
+      setTrialCap(j.trialCap || null);
       setPolicy({ mode: j.gbMode || "open", allowed: j.gbAllowed || [],
                   perGb: j.perGb || 0, cost: j.gbCost || {} });
     } catch (e) { setErr(e.message); }
@@ -1707,6 +1524,13 @@ function PlansBox({ token, onClose, onNote }) {
     days: 30, ip_limit: 2, price: 0, is_active: true,
   }]);
   const drop = (i) => setRows(rows.filter((_, k) => k !== i));
+  // تستِ رایگان با اندازه‌ی تستِ مالک شروع می‌شود — بزرگ‌ترین چیزی که
+  // مجاز است. بزرگ‌ترش را بکند رد می‌کند و می‌گوید چرا.
+  const hasTrial = (rows || []).some((r) => r.is_trial);
+  const addTrial = () => setRows([...(rows || []), {
+    name: "تست رایگان", gb: trialCap?.gb || 1, days: trialCap?.days || 1,
+    ip_limit: trialCap?.ip_limit || 1, price: 0, is_active: true, is_trial: true,
+  }]);
 
   const save = async () => {
     setBusy(true);
@@ -1721,21 +1545,17 @@ function PlansBox({ token, onClose, onNote }) {
   };
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
-      alignItems: "flex-start", justifyContent: "center", padding: 16,
-      background: "var(--scrim-3)", overflowY: "auto",
-    }} onClick={onClose}>
-      <div className="fx-card p-5" style={{ width: 620, maxWidth: "100%", marginTop: 24 }}
-        onClick={(e) => e.stopPropagation()}>
+    <Frame inline={inline} onClose={onClose} width={620}>
         <div className="flex items-center justify-between mb-2">
           <div className="text-[14px] font-semibold text-white">
             پلن‌های ربات شما
           </div>
-          <button onClick={onClose} className="fx-ico-btn"
-            style={{ width: 28, height: 28 }} aria-label="بستن">
-            <X size={13} />
-          </button>
+          {!inline && (
+            <button onClick={onClose} className="fx-ico-btn"
+              style={{ width: 28, height: 28 }} aria-label="بستن">
+              <X size={13} />
+            </button>
+          )}
         </div>
 
         <p className="text-[12px] mb-3 leading-relaxed" style={{ color: "var(--muted)" }}>
@@ -1799,8 +1619,14 @@ function PlansBox({ token, onClose, onNote }) {
             {rows.map((r, i) => (
               <div key={i} className="rounded-xl p-3 mb-2.5"
                 style={{ background: "var(--surface-3)",
-                         border: "1px solid var(--border)" }}>
+                         border: `1px solid ${r.is_trial ? "var(--ok-line)" : "var(--border)"}` }}>
                 <div className="flex items-center gap-2 mb-2">
+                  {r.is_trial && (
+                    <span className="fx-pill text-[11.5px] shrink-0"
+                      style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
+                      <Gift size={11} className="inline" /> تست رایگان
+                    </span>
+                  )}
                   <input value={r.name} placeholder="نام پلن"
                     onChange={(e) => patch(i, { name: e.target.value })}
                     className="fx-input text-[13px] flex-1" />
@@ -1825,7 +1651,7 @@ function PlansBox({ token, onClose, onNote }) {
                     {/* select بدون مونو: گزینه‌ها «نامحدود» و «خارج از
                         نرخ» هم دارند و JetBrains Mono حرف فارسی ندارد،
                         پس فقط به فونتِ دیگری می‌افتد. */}
-                    {policy.mode === "tiers" ? (
+                    {policy.mode === "tiers" && !r.is_trial ? (
                       <select value={r.gb ?? 0}
                         onChange={(e) => patch(i, { gb: Number(e.target.value) || 0 })}
                         className="fx-input text-[13px] text-center w-full">
@@ -1855,7 +1681,11 @@ function PlansBox({ token, onClose, onNote }) {
                       {/* فقط «قیمت» جداکننده می‌گیرد. روز و تعداد
                           کاربر هیچ‌وقت سه‌رقمی نمی‌شوند و جداکننده
                           رویشان فقط شلوغی است. */}
-                      {k === "price" ? (
+                      {k === "price" && r.is_trial ? (
+                        <input disabled value="رایگان"
+                          className="fx-input text-[13px] text-center"
+                          style={{ color: "var(--ok)" }} />
+                      ) : k === "price" ? (
                         <MoneyInput min="0" value={r[k] ?? 0}
                           onChange={(e) => patch(i, { [k]: Number(e.target.value) || 0 })}
                           className="fx-input text-[13px] text-center" />
@@ -1877,9 +1707,37 @@ function PlansBox({ token, onClose, onNote }) {
                     «برای شما X تومان» به‌تنهایی کافی نبود: نماینده
                     باید ببیند چقدر سود می‌کند، نه فقط اینکه زیر کف
                     نیست. */}
-                <PlanFloor row={r} cost={cost[i]} />
+                {r.is_trial ? (
+                  <div className="text-[12px] mt-2 leading-relaxed"
+                    style={{ color: "var(--dim)" }}>
+                    رایگان برای مشتری و برای شما — هزینه‌اش با مدیر است. حداکثر{" "}
+                    <b>{trialCap?.gb ? `${faNum(trialCap.gb)} گیگ` : "حجمِ نامحدود"}</b>
+                    {" · "}<b>{trialCap?.days ? `${faNum(trialCap.days)} روز` : "بی‌انقضا"}</b>
+                    {" · "}<b>{trialCap?.ip_limit ? `${faNum(trialCap.ip_limit)} کاربر` : "کاربرِ نامحدود"}</b>
+                    . هر مشتری یک بار. دکمه‌اش در ربات وقتی می‌آید که
+                    «اشتراک تست رایگان» را در تنظیماتِ ربات روشن کنید.
+                  </div>
+                ) : (
+                  <PlanFloor row={r} cost={cost[i]} />
+                )}
               </div>
             ))}
+
+            {/* تستِ رایگان: یکی، و فقط وقتی مالک تستی دارد. نبودنش گفته
+                می‌شود — دکمه‌ای که کار نمی‌کند از نبودنش بدتر است. */}
+            {rows.length > 0 && !hasTrial && (
+              trialCap ? (
+                <button onClick={addTrial}
+                  className="fx-btn-g w-full py-2 text-[12.5px] flex items-center
+                             justify-center gap-1.5 mb-2">
+                  <Gift size={13} /> افزودنِ تستِ رایگان
+                </button>
+              ) : (
+                <p className="text-[12px] mb-2 text-center" style={{ color: "var(--muted)" }}>
+                  تستِ رایگان فعلاً ممکن نیست — مدیر هنوز تستی تعریف نکرده.
+                </p>
+              )
+            )}
 
             {/* در حالتِ خالی، دکمه‌ی خودِ کارتِ خالی کافی است —
                 دو دکمه‌ی یک‌کاره کنار هم فقط شلوغی است. */}
@@ -1907,13 +1765,12 @@ function PlansBox({ token, onClose, onNote }) {
             )}
           </>
         )}
-      </div>
-    </div>
+    </Frame>
   );
 }
 
 
-function OrdersBox({ token, onClose, onNote }) {
+function OrdersBox({ inline, token, onClose, onNote }) {
   const [rows, setRows] = useState(null);
   const [cut, setCut] = useState(false);
   const [tab, setTab] = useState("open");
@@ -1978,21 +1835,18 @@ function OrdersBox({ token, onClose, onNote }) {
                 ["rejected", "ردشده"]];
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 3000, display: "flex",
-      alignItems: "flex-start", justifyContent: "center", padding: 16,
-      background: "var(--scrim-3)", overflowY: "auto",
-    }} onClick={onClose}>
-      <div className="fx-card p-5" style={{ width: 640, maxWidth: "100%", marginTop: 24 }}
-        onClick={(e) => e.stopPropagation()}>
+    <>
+    <Frame inline={inline} onClose={onClose} width={640}>
         <div className="flex items-center justify-between mb-3">
           <div className="text-[14px] font-semibold text-white">
             سفارش‌های مشتری‌های شما
           </div>
-          <button onClick={onClose} className="fx-ico-btn"
-            style={{ width: 28, height: 28 }} aria-label="بستن">
-            <X size={13} />
-          </button>
+          {!inline && (
+            <button onClick={onClose} className="fx-ico-btn"
+              style={{ width: 28, height: 28 }} aria-label="بستن">
+              <X size={13} />
+            </button>
+          )}
         </div>
 
         <div className="flex gap-1.5 mb-4">
@@ -2115,9 +1969,9 @@ function OrdersBox({ token, onClose, onNote }) {
             «گزارش فروش» پنل مدیر هست.
           </p>
         )}
-      </div>
+    </Frame>
 
-      {shot && (
+      {shot && createPortal(
         <div style={{
           position: "fixed", inset: 0, zIndex: 3100, display: "flex",
           alignItems: "center", justifyContent: "center", padding: 16,
@@ -2125,9 +1979,8 @@ function OrdersBox({ token, onClose, onNote }) {
         }} onClick={(e) => { e.stopPropagation(); setShot(null); }}>
           <img src={shot} alt="رسید پرداخت"
             style={{ maxWidth: "100%", maxHeight: "90vh", borderRadius: 12 }} />
-        </div>
-      )}
-    </div>
+        </div>, document.body)}
+    </>
   );
 }
 
@@ -2471,6 +2324,182 @@ function LogoPick({ token, logo, name, onDone }) {
 }
 
 
+/*
+ * منوی نماینده — مثلِ پنلِ مالک، با بخش‌هایی که مالک برایش خواست.
+ *
+ * برگه: docs/specs/2026-09-23-reseller-dashboard.md
+ */
+const PORTAL_GROUPS = ["فروشگاه", "ربات", "ظاهر"];
+const PORTAL_NAV = [
+  { key: "home", label: "داشبورد", icon: LayoutGrid, group: "فروشگاه" },
+  { key: "configs", label: "کانفیگ‌ها", icon: Database, group: "فروشگاه" },
+  { key: "orders", label: "سفارش‌ها", icon: FileText, group: "فروشگاه" },
+  { key: "users", label: "مشتری‌ها", icon: Users, group: "فروشگاه" },
+  { key: "chat", label: "چت با مشتری", icon: MessageCircle, group: "فروشگاه" },
+  { key: "plans", label: "پلن‌ها", icon: Package, group: "ربات" },
+  { key: "bot", label: "ربات و پرداخت", icon: Bot, group: "ربات" },
+  { key: "texts", label: "متن‌ها و تنظیمات", icon: Settings2, group: "ربات" },
+  { key: "coins", label: "سکه و دعوت", icon: Coins, group: "ربات" },
+  { key: "events", label: "رویدادها", icon: Activity, group: "ربات" },
+  { key: "theme", label: "پوسته‌ی مینی‌اپ", icon: Palette, group: "ظاهر" },
+];
+
+/*
+ * رفتارِ ربات برای نماینده — زیرمجموعه‌ی همان فهرستِ مالک.
+ *
+ * پیشوندِ شناسه، آدرسِ مینی‌اپ و پایه‌ی لینک مالِ مالک‌اند: پیشوند
+ * برندِ صفحه‌ی اشتراک را تعیین می‌کند و آدرس برای همه یکی است.
+ * یوزرنیمِ پشتیبانی در «ربات و پرداخت» است. بکند هم فقط همین‌ها را
+ * می‌پذیرد (`PORTAL_SETTING_KEYS`) — این فهرست فقط رابط است.
+ */
+const PORTAL_BEHAVIOUR = BOT_BEHAVIOUR
+  .filter((f) => ["trial_enabled", "ask_phone", "order_ttl_minutes"].includes(f.k))
+  .map((f) => (f.k === "trial_enabled"
+    ? { ...f, hint: "هر مشتری یک بار. پلنِ تست را در «پلن‌ها» بسازید — حداکثر به اندازه‌ی تستِ مدیر." }
+    : f));
+
+/**
+ * کارهای امروز — چیزی که همین حالا از دستِ نماینده برمی‌آید.
+ *
+ * جای کارتِ «نیاز به پیگیری» را گرفت: هر دو همان عددها را نشان
+ * می‌دادند، یکی زیرِ دیگری. «۶ تا تا یک هفته دیگر تمام می‌شوند» فقط
+ * وقتی به درد می‌خورد که کنارش دکمه‌ای باشد که به همان‌جا ببرد.
+ */
+function TodayBox({ stats, sum, go }) {
+  const todo = [];
+  const pending = stats?.sales?.pending || 0;
+  if (pending > 0) {
+    todo.push({ t: `${faNum(pending)} سفارش در انتظار تایید`, b: "دیدن سفارش‌ها",
+                on: () => go("orders"), tone: "var(--warn)" });
+  }
+  if (stats?.expiringSoon > 0) {
+    todo.push({ t: `${faNum(stats.expiringSoon)} اشتراک تا یک هفته تمام می‌شود`,
+                b: "مشتری‌ها", on: () => go("users"), tone: "var(--warn)" });
+  }
+  if (stats?.expired > 0) {
+    todo.push({ t: `${faNum(stats.expired)} اشتراک منقضی شده`,
+                b: "کانفیگ‌ها", on: () => go("configs"), tone: "var(--danger)" });
+  }
+  if (stats?.overQuota > 0) {
+    todo.push({ t: `${faNum(stats.overQuota)} مشتری حجمش تمام شده`,
+                b: "کانفیگ‌ها", on: () => go("configs"), tone: "var(--danger)" });
+  }
+  if (stats?.nearQuota > 0) {
+    todo.push({ t: `${faNum(stats.nearQuota)} مشتری بالای ۸۰٪ حجمش را مصرف کرده`,
+                tone: "var(--muted)" });
+  }
+  if (sum?.unpriced > 0) {
+    todo.push({ t: `${faNum(sum.unpriced)} کانفیگ هنوز نرخ ندارد`, tone: "var(--muted)" });
+  }
+  if (!stats && !sum) return null;
+  return (
+    <div className="fx-card p-4 mb-4">
+      <div className="text-[13px] font-semibold text-white mb-2">کارهای امروز</div>
+      {!todo.length ? (
+        <div className="text-[13px]" style={{ color: "var(--ok)" }}>
+          <Check size={13} className="inline" /> چیزی منتظرِ شما نیست.
+        </div>
+      ) : todo.map((x, i) => (
+        <div key={i} className="flex items-center justify-between gap-3 py-1.5 flex-wrap">
+          <span className="text-[13px]" style={{ color: x.tone }}>• {x.t}</span>
+          {x.b && (
+            <button onClick={x.on} className="fx-btn-g px-3 py-1.5 text-[12px]">{x.b}</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * قیفِ تبدیل — از بازکردنِ ربات تا خرید.
+ *
+ * همان `_funnel` پنلِ مالک، با مستاجرِ خودِ نماینده. تستِ رایگان خرید
+ * شمرده نمی‌شود (`SQL_REAL_BUY`).
+ */
+function FunnelBox({ src }) {
+  const [f, setF] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    src.funnel().then((j) => { if (alive) setF(j); }).catch(() => { if (alive) setF(null); });
+    return () => { alive = false; };
+  }, [src]);
+  if (!f || !f.ready || !f.started) return null;
+  return (
+    <div className="fx-card p-4 mb-4">
+      <div className="text-[13px] font-semibold text-white mb-3">از بازکردنِ ربات تا خرید</div>
+      {f.steps.map((st) => (
+        <div key={st.label} className="mb-2">
+          <div className="flex justify-between text-[12.5px] mb-1">
+            <span style={{ color: "var(--dim)" }}>{st.label}</span>
+            <span style={{ color: "var(--muted)" }}>
+              {faNum(st.n)} · {faNum(st.pct)}٪
+            </span>
+          </div>
+          <div className="fx-usebar">
+            <i style={{ width: `${Math.max(2, Math.min(100, st.pct))}%`,
+                        background: "var(--accent)" }} />
+          </div>
+        </div>
+      ))}
+      <div className="text-[12px] mt-2" style={{ color: "var(--muted)" }}>
+        {faNum(f.segments.trialOnly)} نفر فقط تست گرفتند و نخریدند.
+      </div>
+    </div>
+  );
+}
+
+/**
+ * قفلِ کانال — مشتری تا عضوِ کانالِ نماینده نشود، پلن نمی‌بیند.
+ *
+ * ربات باید در آن کانال مدیر باشد؛ وگرنه عضویت را نمی‌تواند بپرسد.
+ */
+function ChannelLock({ src }) {
+  const [st, setSt] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  useEffect(() => { src.settings().then(setSt).catch(() => setSt({})); }, [src]);
+  if (!st) return null;
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    try {
+      await src.saveSettings({ force_channel_on: !!st.force_channel_on,
+                               force_channel: st.force_channel || "" });
+      setMsg({ ok: true, m: "قفلِ کانال ذخیره شد" });
+    } catch (e) { setMsg({ ok: false, m: e.message }); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="fx-card p-4 mt-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-[14px] font-semibold text-white">عضویتِ اجباری در کانال</div>
+          <div className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--muted)" }}>
+            مشتری پیش از دیدنِ پلن‌ها باید عضوِ کانالتان باشد. رباتتان باید در
+            آن کانال مدیر باشد.
+          </div>
+        </div>
+        <Toggle label="عضویتِ اجباری" checked={!!st.force_channel_on}
+          onChange={() => setSt({ ...st, force_channel_on: !st.force_channel_on })} />
+      </div>
+      <div className="flex gap-2 mt-3" style={{ opacity: st.force_channel_on ? 1 : 0.45 }}>
+        <input dir="ltr" className="fx-input flex-1 min-w-0" placeholder="@yourchannel"
+          value={st.force_channel || ""} disabled={!st.force_channel_on}
+          onChange={(e) => setSt({ ...st, force_channel: e.target.value })}
+          style={{ fontFamily: "var(--mono)" }} />
+        <button onClick={save} disabled={busy} className="fx-btn px-4 text-[13px] shrink-0">
+          {busy ? <Loader2 size={13} className="animate-spin" /> : "ذخیره"}
+        </button>
+      </div>
+      {msg && (
+        <p className="text-[12.5px] mt-2" style={{ color: msg.ok ? "var(--ok)" : "var(--danger)" }}>
+          {msg.m}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Dashboard({ token, onOut }) {
   const [me, setMe] = useState(null);
   const [sum, setSum] = useState(null);
@@ -2483,11 +2512,18 @@ function Dashboard({ token, onOut }) {
   const [renew, setRenew] = useState(null);
   const [drop, setDrop] = useState(null);
   const [making, setMaking] = useState(false);
-  const [botOpen, setBotOpen] = useState(false);
-  const [plansOpen, setPlansOpen] = useState(false);
-  const [ordersOpen, setOrdersOpen] = useState(false);
-  const [themeOpen, setThemeOpen] = useState(false);
-  const [dashOpen, setDashOpen] = useState(false);
+  // صفحه‌ی باز — در آدرس (#) می‌ماند تا تازه‌سازی و «برگشت» جای کاربر
+  // را گم نکند
+  const [page, setPage] = useState(() => {
+    const h = String(window.location.hash || "").replace("#", "");
+    return PORTAL_NAV.some((n) => n.key === h) ? h : "home";
+  });
+  const [side, setSide] = useState(false);
+  const S = useMemo(() => portalSrc(token), [token]);
+  const go = (k) => {
+    setPage(k); setSide(false);
+    try { window.history.replaceState(null, "", `#${k}`); } catch { /* تزئین */ }
+  };
   const [detail, setDetail] = useState(null);
   const [stats, setStats] = useState(null);
   const [copied, setCopied] = useState("");
@@ -2570,76 +2606,94 @@ function Dashboard({ token, onOut }) {
   // پنل دارد. تا امروز این جدول همه‌ی ردیف‌ها را یک‌جا می‌ریخت.
   const { shown: pageRows, pager } = usePager(rows, 15);
 
-  return (
-    <div className="min-h-screen" dir="rtl" style={{ background: "var(--bg)" }}>
-      <div className="max-w-6xl mx-auto px-4 py-6">
+  const cur = PORTAL_NAV.find((n) => n.key === page) || PORTAL_NAV[0];
+  const gaps = saleGaps(me);
+  const pageNote = (m) => { setNote(m); setErr(""); };
 
-        <div className="flex items-center justify-between gap-3 mb-5 flex-wrap">
-          {/* تا امروز این‌جا فقط یک خط متن بود و پنل نماینده کنارِ
-              پنل مدیر «نصفه» به نظر می‌رسید. چهره و نشانِ گروه،
-              همان چیزی است که به صفحه صاحب می‌دهد. */}
-          <div className="flex items-center gap-3 min-w-0">
-            <LogoPick token={token} logo={me?.logo} name={me?.name}
-              onDone={load} />
-            <div className="min-w-0">
-              <div className="text-[18px] font-bold text-white truncate">
-                {me?.name || "پنل نمایندگی"}
-              </div>
-              <div className="text-[13px] flex items-center gap-2 flex-wrap"
-                style={{ color: "var(--muted)" }}>
-                {sum && <span>گروه {sum.label}</span>}
-                {me?.hasBot && me?.botUsername && (
-                  <>
-                    <span style={{ opacity: .4 }}>•</span>
-                    <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>
-                      @{me.botUsername}
-                    </span>
-                  </>
-                )}
-              </div>
+  return (
+    <div className="min-h-screen w-full flex fx-shell" dir="rtl">
+      <div className="fx-amb" aria-hidden="true"><i /></div>
+      {side && <div className="fx-backdrop fx-fade" onClick={() => setSide(false)} />}
+
+      {/* منوی کناری — همان کلاس‌های پنلِ مالک، پس روی گوشی همان کشوی
+          کناری است و روی دسکتاپ ثابت. */}
+      <aside className={`fx-side ${side ? "open" : ""}`} style={{ zIndex: 60 }}>
+        <div className="flex items-center gap-2.5 px-2 mb-2 min-w-0">
+          <LogoPick token={token} logo={me?.logo} name={me?.name} onDone={load} />
+          <div className="min-w-0 flex-1">
+            <div className="text-[15px] font-bold text-white truncate">
+              {me?.name || "پنل نمایندگی"}
+            </div>
+            <div className="text-[12px] truncate" style={{ color: "var(--muted)" }}
+              dir={me?.botUsername ? "ltr" : "rtl"}>
+              {me?.botUsername ? `@${me.botUsername}` : (sum ? `گروه ${sum.label}` : "")}
             </div>
           </div>
-          {/* flex-wrap لازم است: پنج دکمه در یک خطِ نشکن، صفحه را روی
-              موبایل ۴۶۳ پیکسل می‌کرد روی نمایشگر ۳۷۵ پیکسلی — یعنی نام
-              نماینده بیرون از کادر و کارت‌ها نصفه. ردیفِ بیرونی
-              flex-wrap داشت و همین ردیفِ داخلی نداشت. */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={() => setDashOpen(true)}
-              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
-              <LayoutGrid size={13} /> داشبورد
+          <button className="lg:hidden shrink-0" onClick={() => setSide(false)}
+            style={{ color: "var(--dim)" }} aria-label="بستن منو"><X size={18} /></button>
+        </div>
+
+        {PORTAL_GROUPS.map((g) => (
+          <div key={g}>
+            <div className="fx-side-label">{g}</div>
+            <nav className="flex flex-col gap-1">
+              {PORTAL_NAV.filter((n) => n.group === g).map((n) => (
+                <button key={n.key} data-navkey={n.key}
+                  className={`fx-nav-item ${page === n.key ? "on" : ""}`}
+                  onClick={() => go(n.key)}>
+                  <n.icon size={16} />
+                  <span className="flex-1 text-right">{n.label}</span>
+                  {/* کاری که همین حالا منتظرِ اوست */}
+                  {n.key === "orders" && stats?.sales?.pending > 0 && (
+                    <span className="fx-pill text-[11px]"
+                      style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>
+                      {faNum(stats.sales.pending)}
+                    </span>
+                  )}
+                  {n.key === "bot" && gaps.length > 0 && (
+                    <AlertTriangle size={13} style={{ color: "var(--warn)" }} />
+                  )}
+                </button>
+              ))}
+            </nav>
+          </div>
+        ))}
+
+        <div className="mt-auto pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+          <button onClick={onOut} className="fx-nav-item"><LogOut size={15} /> خروج</button>
+          {/* «هنوز نمی‌بینمش» معمولاً یعنی سرور به‌روز نشده — و تا
+              امروز هیچ راهی برای فهمیدنش نبود. */}
+          {me?.version && (
+            <div className="text-[11.5px] px-3 mt-2" style={{ color: "var(--muted)" }}>
+              نسخه‌ی <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{me.version}</span>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <div className="flex-1 min-w-0 flex flex-col">
+        <header className="fx-topbar">
+          <div className="flex items-center gap-3 min-w-0">
+            <button className="fx-burger" onClick={() => setSide(true)} aria-label="منو">
+              <Menu size={19} />
             </button>
-            <button onClick={() => setOrdersOpen(true)}
-              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
-              <FileText size={13} /> سفارش‌ها
-            </button>
-            <button onClick={() => setThemeOpen(true)}
-              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
-              <Palette size={13} /> پوسته
-            </button>
-            <button onClick={() => setPlansOpen(true)}
-              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
-              <Package size={13} /> پلن‌های ربات
-            </button>
-            <button onClick={() => setBotOpen(true)}
-              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
-              <Bot size={13} style={{ color: me?.hasBot ? "var(--ok)" : "var(--muted)" }} />
-              ربات من
-            </button>
+            <h1 className="text-[18px] font-bold text-white truncate">{cur.label}</h1>
+          </div>
+          {/* فقط برای داده‌ی همین دو صفحه؛ صفحه‌های دیگر دکمه‌ی خودشان را
+              دارند و دو «تازه‌سازی» کنارِ هم نمی‌گوید کدام چه می‌کند. */}
+          {(page === "home" || page === "configs") && (
             <button onClick={load} disabled={busy}
-              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
+              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5 shrink-0">
               {busy ? <Loader2 size={13} className="animate-spin" />
                 : <RefreshCw size={13} />} تازه‌سازی
             </button>
-            <button onClick={onOut}
-              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
-              <LogOut size={13} /> خروج
-            </button>
-          </div>
-        </div>
+          )}
+        </header>
 
+        <main className="fx-main flex-1 p-7 w-full mx-auto" style={{ maxWidth: 1180 }}>
         {/* رباتی که وصل است ولی نمی‌فروشد. بدون این، نماینده فقط
             وقتی می‌فهمید که مشتری شکایت می‌کرد. */}
-        {saleGaps(me).length > 0 && (
+        {gaps.length > 0 && page !== "bot" && (
           <div className="fx-card p-4 mb-4 flex items-start gap-3 flex-wrap"
             style={{ borderColor: "var(--warn-line)" }}>
             <AlertTriangle size={16} className="shrink-0 mt-0.5"
@@ -2649,12 +2703,12 @@ function Dashboard({ token, onOut }) {
                 ربات شما هنوز نمی‌تواند بفروشد
               </div>
               <ul className="text-[13px] mt-1 leading-relaxed" style={{ color: "var(--dim)" }}>
-                {saleGaps(me).map((g) => (
+                {gaps.map((g) => (
                   <li key={g.key}>• {g.title}{g.who === "owner" && " (کارِ مدیر)"}</li>
                 ))}
               </ul>
             </div>
-            <button onClick={() => setBotOpen(true)}
+            <button onClick={() => go("bot")}
               className="fx-btn-g px-3 py-2 text-[13px] shrink-0">
               درست‌کردن
             </button>
@@ -2679,43 +2733,9 @@ function Dashboard({ token, onOut }) {
           </div>
         )}
 
-        {/* آنچه همین حالا کاری می‌خواهد — نه شمارش خشک.
-            «۹۴ کانفیگ» به نماینده نمی‌گوید کدام مشتری دارد از دست
-            می‌رود؛ «۶ تا تا یک هفته دیگر تمام می‌شوند» می‌گوید. */}
-        {stats && stats.needsAttention > 0 && (
-          <div className="fx-card p-4 mb-4"
-            style={{ borderColor: "var(--warn-line)" }}>
-            <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle size={14} style={{ color: "var(--warn)" }} />
-              <span className="text-[13px] font-semibold text-white">
-                نیاز به پیگیری
-              </span>
-            </div>
-            <div className="flex gap-4 flex-wrap text-[13px]">
-              {stats.expiringSoon > 0 && (
-                <span style={{ color: "var(--warn)" }}>
-                  {faNum(stats.expiringSoon)} تا یک هفته‌ی دیگر تمام می‌شود
-                </span>
-              )}
-              {stats.expired > 0 && (
-                <span style={{ color: "var(--danger)" }}>
-                  {faNum(stats.expired)} منقضی شده
-                </span>
-              )}
-              {stats.overQuota > 0 && (
-                <span style={{ color: "var(--danger)" }}>
-                  {faNum(stats.overQuota)} حجمش تمام شده
-                </span>
-              )}
-              {stats.nearQuota > 0 && (
-                <span style={{ color: "var(--warn)" }}>
-                  {faNum(stats.nearQuota)} بالای ۸۰٪ مصرف
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
+        {page === "home" && (
+          <>
+            <TodayBox stats={stats} sum={sum} go={go} />
         {/* تا رسیدنِ آمار، شکلِ همان کارت‌ها — نه فضای خالی که بعد
             ناگهان پر شود و بقیه‌ی صفحه را هل بدهد */}
         {!stats && busy && <SkeletonCards n={4} />}
@@ -2795,6 +2815,11 @@ function Dashboard({ token, onOut }) {
           </div>
         )}
 
+            <FunnelBox src={S} />
+          </>
+        )}
+
+        {page === "configs" && (
         <div className="fx-card p-5">
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <div className="flex items-center gap-2">
@@ -2978,6 +3003,29 @@ function Dashboard({ token, onOut }) {
             </div>
           )}
         </div>
+        )}
+
+        {page === "orders" && <OrdersBox inline token={token} onNote={pageNote} />}
+        {page === "users" && <BotUsersSection src={S} />}
+        {page === "chat" && (
+          <BotInboxSection src={S}
+            note={me?.hasBot ? "پاسخ شما در مینی‌اپِ مشتری و با یک خبر در رباتِ خودتان می‌رسد."
+                             : "تا رباتتان وصل نشود، پاسخ فقط در مینی‌اپ دیده می‌شود."} />
+        )}
+        {page === "plans" && <PlansBox inline token={token} onNote={pageNote} />}
+        {page === "bot" && (
+          <BotBox inline token={token} onNote={pageNote} onClose={load} />
+        )}
+        {page === "texts" && (
+          <>
+            <BotTextsSection src={S} behaviour={PORTAL_BEHAVIOUR} showAdmins={false} />
+            <ChannelLock src={S} />
+          </>
+        )}
+        {page === "coins" && <BotCoinsSection src={S} />}
+        {page === "theme" && <ThemeBox inline token={token} onNote={pageNote} />}
+        {page === "events" && <BotEventsSection src={S} />}
+        </main>
       </div>
 
       {renew && (
@@ -2996,33 +3044,6 @@ function Dashboard({ token, onOut }) {
         <NewBox token={token} plans={plans} slug={portalSlug()}
           onClose={() => { setMaking(false); load(); }}
           onDone={() => { setNote("کانفیگ تازه ساخته شد"); setErr(""); }} />
-      )}
-
-      {botOpen && (
-        <BotBox token={token} onClose={() => { setBotOpen(false); load(); }}
-          onNote={(m) => { setNote(m); setErr(""); }} />
-      )}
-
-      {plansOpen && (
-        <PlansBox token={token} onClose={() => setPlansOpen(false)}
-          onNote={(m) => { setNote(m); setErr(""); }} />
-      )}
-
-      {themeOpen && (
-        <ThemeBox token={token} onClose={() => setThemeOpen(false)}
-          onNote={(m) => { setNote(m); setErr(""); }} />
-      )}
-
-      {dashOpen && (
-        <DashBox token={token} onClose={() => setDashOpen(false)}
-          onOrders={() => { setDashOpen(false); setOrdersOpen(true); }}
-          onPlans={() => { setDashOpen(false); setPlansOpen(true); }}
-          onTheme={() => { setDashOpen(false); setThemeOpen(true); }} />
-      )}
-
-      {ordersOpen && (
-        <OrdersBox token={token} onClose={() => { setOrdersOpen(false); load(); }}
-          onNote={(m) => { setNote(m); setErr(""); }} />
       )}
 
       {detail && (

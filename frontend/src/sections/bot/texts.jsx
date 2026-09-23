@@ -4,11 +4,11 @@
  * از App.jsx جدا شد؛ آن فایل ۱۱۴۰۰ خط بود و پیداکردن یک کامپوننت
  * در آن عملاً ناممکن.
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   BellRing, Check, Circle, Loader2, Save,
 } from "lucide-react";
-import { API_URL } from "../../lib/constants";
+import { adminSrc } from "../../lib/botsrc";
 import {
   Field, InfoBox, Msg, NumberInput, NumberStepper, PageSkeleton, SectionHead,
   Toggle,
@@ -211,7 +211,13 @@ function Reminders({ s, upS }) {
   );
 }
 
-export function BotTextsSection({ password }) {
+/* `src` خالی یعنی پنلِ مالک. پرتالِ نماینده `portalSrc` می‌دهد، همراهِ
+   `behaviour` کوتاه‌تر (بدونِ پیشوندِ شناسه، آدرسِ مینی‌اپ و پایه‌ی
+   لینک — آن‌ها مالِ مالک‌اند) و بدونِ فهرستِ مدیرها، چون نماینده با
+   دکمه‌ی «وصلِ من به ربات» مدیرِ رباتش می‌شود. مرزِ واقعی بکند است. */
+export function BotTextsSection({ password, src, behaviour = BOT_BEHAVIOUR,
+                                  showAdmins = true }) {
+  const S = useMemo(() => src || adminSrc(password), [src, password]);
   const [t, setT] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -219,18 +225,11 @@ export function BotTextsSection({ password }) {
 
   const load = async () => {
     try {
-      const d = await fetch(`${API_URL}/api/admin/bot/settings`, {
-        headers: { "X-Admin-Password": password } }).then((r) => r.json());
-      setT({
-        settings: {}, topics: {},
-        ...(d.tenant || {}),
-        settings: (d.tenant?.settings && typeof d.tenant.settings === "object"
-                   && !Array.isArray(d.tenant.settings)) ? d.tenant.settings : {},
-      });
-    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+      setT({ settings: await S.settings() });
+    } catch (e) { setMsg({ t: "err", m: e.message || "اتصال برقرار نشد" }); }
     finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, [password]);
+  useEffect(() => { load(); }, [S]);
   useEffect(() => { if (msg) { const x = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(x); } }, [msg]);
 
   const s = t?.settings || {};
@@ -239,15 +238,12 @@ export function BotTextsSection({ password }) {
   const save = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/bot/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "X-Admin-Password": password },
-        body: JSON.stringify({ settings: t.settings }),
-      });
-      setMsg(res.ok ? { t: "ok", m: "متن‌ها ذخیره شد — ربات فوری اعمال می‌کند" }
-                    : { t: "err", m: "ذخیره ناموفق" });
-    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
-    finally { setSaving(false); }
+      await S.saveSettings(t.settings);
+      setMsg({ t: "ok", m: "متن‌ها ذخیره شد — ربات فوری اعمال می‌کند" });
+    } catch (e) {
+      // دلیلِ واقعی، نه «ناموفق» — بکندِ پرتال می‌گوید کدام عدد بیرون از بازه بود
+      setMsg({ t: "err", m: e.message || "ذخیره ناموفق" });
+    } finally { setSaving(false); }
   };
 
   if (loading) return <PageSkeleton />;
@@ -304,7 +300,7 @@ export function BotTextsSection({ password }) {
         desc="تنظیم‌هایی که ربات موقع کار می‌خواند — بدون اینها روی مقدار پیش‌فرض می‌ماند." />
 
       <div className="fx-card p-4 mt-3">
-        {BOT_BEHAVIOUR.map((f) => (
+        {behaviour.map((f) => (
           <div key={f.k}
             className="flex items-start justify-between gap-4 py-3"
             style={{ borderBottom: "1px solid var(--border)" }}>
@@ -345,7 +341,7 @@ export function BotTextsSection({ password }) {
         ))}
 
         {/* مدیرها آیدی عددی‌اند، پس هر خط یک عدد — نه CSV که با فاصله خراب شود */}
-        <div className="pt-3">
+        {showAdmins && <div className="pt-3">
           <Field label="مدیرهای ربات"
             hint="هر خط یک آیدی عددی تلگرام. اینها دسترسی پنل مدیریت داخل ربات را دارند.">
             <textarea className="fx-input" rows={3}
@@ -359,7 +355,7 @@ export function BotTextsSection({ password }) {
               style={{ fontFamily: "var(--mono)", direction: "ltr",
                        textAlign: "left", resize: "vertical" }} />
           </Field>
-        </div>
+        </div>}
       </div>
     </div>
   );

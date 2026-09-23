@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { isAff, isMini, portalSlug } from "./lib/route.js";
 import { Splash } from "./lib/mark.jsx";
 import "./index.css";
+import { applyPalette } from "./lib/palette.js";
 
 // آدرس تعیین می‌کند کدام اپ بالا بیاید.
 //
@@ -66,6 +67,16 @@ function cachedShop() {
 }
 
 const SHOP = cachedShop();
+
+// رنگِ فروشگاه پیش از اولین رندر، تا اسپلش هم رنگِ خودش را داشته باشد.
+// پوسته‌ی تلگرام این‌جا هنوز روی ریشه ننشسته، پس از خودِ SDK پرسیده
+// می‌شود؛ مینی‌اپ بعداً با پوسته‌ی قطعی دوباره می‌سازدش.
+try {
+  if (WHICH === "mini" && SHOP && SHOP.accent) {
+    const w = window.Telegram && window.Telegram.WebApp;
+    applyPalette(SHOP.accent, (w && w.colorScheme) === "light" ? "light" : "dark");
+  }
+} catch { /* رنگ تزئین است، نه شرطِ بالاآمدن */ }
 
 // عنوانِ پنجره هم همین است — تلگرام آن را بالای مینی‌اپ نشان
 // می‌دهد، و `index.html` یک عنوانِ مشترک برای هر چهار اپ دارد.

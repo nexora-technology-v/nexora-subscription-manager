@@ -4,15 +4,15 @@
  * از App.jsx جدا شد؛ آن فایل ۱۱۴۰۰ خط بود و پیداکردن یک کامپوننت
  * در آن عملاً ناممکن.
  */
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useDebouncedChange } from "../../lib/hooks";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle, Ban, ChevronLeft, Loader2, Package, RefreshCw, Send, Users, Wallet, X,
 } from "lucide-react";
-import { API_URL } from "../../lib/constants";
+import { adminSrc } from "../../lib/botsrc";
 import { isoToJalaliLabel } from "../../ui/jalali";
-import { daysLeft, errText, faNum, fmtBytes, fmtDate } from "../../lib/format";
+import { daysLeft, faNum, fmtBytes, fmtDate } from "../../lib/format";
 import { Avatar, EmptyState, FilterBar, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile, StatusPill } from "../../ui/index";
 
 // فیلترهای بخش کاربران — کلیدها باید عیناً با _USER_FILTERS در
@@ -42,7 +42,10 @@ export const USER_SORTS = [
 
 export const PAGE = 40;
 
-export function BotUsersSection({ password }) {
+/* `src` خالی یعنی پنلِ مالک؛ پرتالِ نماینده `portalSrc` می‌دهد و همین
+   فهرست با مشتری‌های خودِ او پر می‌شود (مرز در بکند است). */
+export function BotUsersSection({ password, src }) {
+  const S = useMemo(() => src || adminSrc(password), [src, password]);
   const [d, setD] = useState({ users: [], total: 0, counts: {} });
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
@@ -77,8 +80,7 @@ export function BotUsersSection({ password }) {
       // کاربر ۳۶ میلی‌ثانیه از هر ضربه‌ی کیبورد را می‌خورد. پس
       // موقع تایپ نمی‌خواهیمش و عددهای قبلی را نگه می‌داریم.
       if (query) p.set("counts", "0");
-      const r = await fetch(`${API_URL}/api/admin/bot/users?${p}`,
-        { headers: { "X-Admin-Password": password } }).then((x) => x.json());
+      const r = await S.users(p.toString());
       if (mine !== seq.current) return;
       setD((prev) => ({
         users: r.users || [], total: r.total || 0,
@@ -89,7 +91,7 @@ export function BotUsersSection({ password }) {
       if (mine === seq.current) { setBusy(false); setLoading(false); }
     }
   };
-  useEffect(() => { load({ offset: 0 }); }, [password]);
+  useEffect(() => { load({ offset: 0 }); }, [S]);
 
   // جستجوی زنده — بدون این، ادمین باید هر بار Enter بزند.
   // بارِ اول اجرا نمی‌شود، وگرنه بازکردنِ صفحه دو درخواستِ یکسان
@@ -250,17 +252,18 @@ export function BotUsersSection({ password }) {
       )}
 
       {detail && (
-        <SubscriberModal tgId={detail} password={password} onClose={() => setDetail(null)}
+        <SubscriberModal tgId={detail} src={S} onClose={() => setDetail(null)}
           onMessage={(u) => { setDetail(null); setMsgTo(u); }} />
       )}
       {msgTo && (
-        <MessageUserModal user={msgTo} password={password} onClose={() => setMsgTo(null)} />
+        <MessageUserModal user={msgTo} src={S} onClose={() => setMsgTo(null)} />
       )}
     </div>
   );
 }
 
-export function MessageUserModal({ user, password, onClose }) {
+export function MessageUserModal({ user, password, src, onClose }) {
+  const S = useMemo(() => src || adminSrc(password), [src, password]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -270,21 +273,12 @@ export function MessageUserModal({ user, password, onClose }) {
     if (!text.trim()) return;
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch(`${API_URL}/api/admin/bot/message/${user.tg_id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Admin-Password": password },
-        body: JSON.stringify({ text }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (res.ok) {
-        setMsg({ t: "ok", m: "پیام فرستاده شد" });
-        setText("");
-        setTimeout(onClose, 1200);
-      } else {
-        setMsg({ t: "err", m: errText(j.detail, "ارسال ناموفق بود") });
-      }
-    } catch {
-      setMsg({ t: "err", m: "اتصال برقرار نشد" });
+      await S.message(user.tg_id, text);
+      setMsg({ t: "ok", m: "پیام فرستاده شد" });
+      setText("");
+      setTimeout(onClose, 1200);
+    } catch (e) {
+      setMsg({ t: "err", m: e.message || "ارسال ناموفق بود" });
     } finally { setBusy(false); }
   };
 
@@ -318,7 +312,8 @@ export function MessageUserModal({ user, password, onClose }) {
   );
 }
 
-export function SubscriberModal({ tgId, password, onClose, onMessage }) {
+export function SubscriberModal({ tgId, password, src, onClose, onMessage }) {
+  const S = useMemo(() => src || adminSrc(password), [src, password]);
   const [d, setD] = useState(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -326,16 +321,11 @@ export function SubscriberModal({ tgId, password, onClose, onMessage }) {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/admin/bot/subscriber/${tgId}`, {
-          headers: { "X-Admin-Password": password },
-        });
-        const body = await res.json();
-        if (res.ok) setD(body);
-        else setErr(errText(body.detail, "دریافت اطلاعات ناموفق بود"));
-      } catch { setErr("اتصال به سرور برقرار نشد"); }
+        setD(await S.subscriber(tgId));
+      } catch (e) { setErr(e.message || "دریافت اطلاعات ناموفق بود"); }
       finally { setLoading(false); }
     })();
-  }, [tgId, password]);
+  }, [tgId, S]);
 
   const u = d?.user || {};
   const subs = d?.subscriptions || [];

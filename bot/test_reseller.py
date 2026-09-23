@@ -342,6 +342,77 @@ claim(R4, None, tg=55555, arg="GOOD-CODE-3")
 check("همان لینک دوباره کار نمی‌کند",
       db.get_tenant(R4)["owner_tg_id"] == 31337)
 
+# دو Start هم‌زمان: هر دو کدِ زنده را خوانده‌اند. فقط یکی باید برنده شود.
+R5, D5, _p5 = reseller("مسابقه", "race", "grp-race", credit=-1)
+st5 = db.tenant_settings(R5)
+st5["owner_claim"] = {"code": "RACE-CODE", "until": (
+    datetime.now() + timedelta(minutes=30)).isoformat(timespec="seconds")}
+db.save_tenant_settings(R5, st5)
+_stale = db.get_tenant(R5)                       # آنچه نفرِ دوم خوانده بود
+claim(R5, None, tg=111, arg="RACE-CODE")         # نفرِ اول برنده
+_real_get = H.DB.get_tenant
+H.DB.get_tenant = lambda tid: dict(_stale) if tid == R5 else _real_get(tid)
+try:
+    claim(R5, None, tg=222, arg="RACE-CODE")     # نفرِ دوم با خواندنِ کهنه
+finally:
+    H.DB.get_tenant = _real_get
+check("دو Start هم‌زمان: فقط اولی وصل می‌شود",
+      db.get_tenant(R5)["owner_tg_id"] == 111, db.get_tenant(R5)["owner_tg_id"])
+check("و دومی می‌فهمد لینک استفاده شد", "همین حالا استفاده شد" in SENT[-1]["text"])
+
+# ═══════════════════════════════════════════════════════════
+section("تستِ رایگانِ نماینده — رایگان، بی‌گروه، زیرِ سقفِ مالک")
+# ═══════════════════════════════════════════════════════════
+# تصمیمِ مالک: تستِ نماینده مجاز و رایگان است، هزینه با مالک. پس
+# نباید در صورتحسابِ نماینده بیاید (بی‌گروه) و نباید از اعتبارش کم
+# شود — ولی از تستِ خودِ مالک هم بزرگ‌تر نباشد.
+R6, D6, _p6 = reseller("تست‌دار", "trialshop", "grp-trial", credit=300000)
+D6.exec("INSERT INTO plans (tenant_id,name,price,gb,days,ip_limit,is_trial,is_active) "
+        "VALUES (?,?,?,?,?,?,1,1)", (R6, "تست", 0, 1, 1, 1))
+tplan = D6.trial_plan()
+
+
+def trial_order(tg):
+    u = D6.get_user(tg) or D6.create_user(tg, first_name="t")
+    u = D6.get_user(tg)
+    o = D6.create_order(u["id"], tplan["id"], 0, 0)
+    return o["id"] if isinstance(o, dict) else o
+
+
+# مالک هنوز تست ندارد → تستِ نماینده ساخته نمی‌شود
+n0 = len(CREATED)
+ok, res = H.provision(ctx_for(R6), trial_order(8001))
+check("مالک تست ندارد: تستِ نماینده ساخته نمی‌شود", not ok and len(CREATED) == n0,
+      str(res)[:70])
+
+DR.exec("INSERT INTO plans (tenant_id,name,price,gb,days,ip_limit,is_trial,is_active) "
+        "VALUES (?,?,?,?,?,?,1,1)", (ROOT, "تست مالک", 0, 2, 1, 1))
+ok, res = H.provision(ctx_for(R6), trial_order(8002))
+check("زیرِ سقف: ساخته می‌شود", ok, str(res)[:60])
+check("بی‌گروه — در صورتحسابِ نماینده نمی‌آید", CREATED[-1]["group"] is None,
+      CREATED[-1]["group"])
+check("و از اعتبارش چیزی کم نشد", credit_of(R6) == 300000, credit_of(R6))
+check("شناسه همچنان مالِ فروشگاه است", CREATED[-1]["email"].startswith("trialshop_"))
+
+# مالک تستش را کوچک می‌کند → تستِ قدیمیِ نماینده دیگر ساخته نمی‌شود
+D6.exec("UPDATE plans SET gb=5 WHERE tenant_id=? AND id=?", (R6, tplan["id"]))
+tplan = D6.trial_plan()
+n0 = len(CREATED)
+ok, res = H.provision(ctx_for(R6), trial_order(8003))
+check("بزرگ‌تر از سقف: ساخته نمی‌شود، حتی اگر قبلاً ذخیره شده",
+      not ok and len(CREATED) == n0, str(res)[:70])
+check("و دلیل را می‌گوید", "حداکثر" in str(res))
+
+# دکمه‌ی تست فقط وقتی پلنی هست
+st6 = db.tenant_settings(R4)
+st6["trial_enabled"] = True
+db.save_tenant_settings(R4, st6)
+u4 = D4.get_user(31337) or D4.create_user(31337, first_name="o")
+u4 = D4.get_user(31337)
+kb4 = str(H.main_menu(ctx_for(R4), u4))
+check("تست روشن ولی بی‌پلن: دکمه نشان داده نمی‌شود", "trial" not in kb4,
+      "دکمه‌ای که جوابش «فعال نیست» است از نبودنش بدتر است")
+
 print(f"\n{'═' * 52}\n  {PASS} پاس · {FAIL} شکست\n{'═' * 52}")
 try:
     os.remove(tmp)

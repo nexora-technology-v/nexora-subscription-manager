@@ -1685,6 +1685,18 @@ def root_tenant():
     return dict(r) if r else None
 
 
+def trial_cap():
+    """تستِ فعالِ مالک — سقفِ تستِ نماینده‌ها. None یعنی مالک تست ندارد."""
+    root = root_tenant()
+    if not root:
+        return None
+    with conn() as c:
+        r = c.execute("SELECT gb, days, ip_limit FROM plans WHERE tenant_id=? "
+                      "AND is_trial=1 AND is_active=1 ORDER BY id LIMIT 1",
+                      (root["id"],)).fetchone()
+    return dict(r) if r else None
+
+
 def panel_source(t):
     """
     ردیفی که اتصالِ x-ui از آن خوانده می‌شود.

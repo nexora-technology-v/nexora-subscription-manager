@@ -62,6 +62,7 @@ jobs:
       - name: تست‌های پنل و ابزارها
         run: |
           python tools/test-admin-api.py
+          python tools/test-portal-dashboard.py
           python tools/test-billing.py
           python tools/test-billing-e2e.py
           python tools/test-monitor.py
@@ -125,6 +126,7 @@ jobs:
           node tools/test-components.cjs
           node tools/test-hooks.cjs
           node tools/test-jalali.cjs
+          node tools/test-palette.cjs
 
       - name: تست سرو کردن پنل ساخته‌شده
         # به frontend/dist نیاز دارد، پس بعد از build اجرا می‌شود.

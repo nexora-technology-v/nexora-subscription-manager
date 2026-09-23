@@ -1182,16 +1182,22 @@ _SETTINGS_OK = {"brand", "apps", "configs", "clients", "topics"}
 # می‌شود. فهرستِ دستی یعنی صفحه‌ی تازه از دیدِ دروازه پنهان است —
 # و دقیقاً همین یک‌بار اتفاق افتاد: صفحه‌ی «کانال» ساخته شد و
 # `channel_id` در هیچ‌کدام از پنج فایلِ فهرست نبود.
-_SECT = os.path.join(ROOT, "frontend", "src", "sections")
+#
+# از ۱.۸۷ صفحه‌های ربات تنظیمات را از راهِ `lib/botsrc.js` می‌خوانند
+# (`S.settings()` / `S.saveSettings(...)`) تا همان صفحه برای نماینده
+# هم کار کند. پس «صفحه‌ی تنظیمات» یعنی یکی از این دو در آن هست؛
+# بدونِ این، با آن جابه‌جایی متن‌ها و سکه از دیدِ دروازه پنهان شدند و
+# ۱۶ کلید «بی‌فیلد» خوانده شدند.
+_SETTINGS_DOOR = re.compile(r'/api/admin/bot/settings|\b(?:S|src)\.(?:saveSettings|settings)\(')
 _front_files = []
-for _b, _d, _f in os.walk(_SECT):
-    for _n in _f:
-        if not _n.endswith(".jsx"):
-            continue
-        _p = os.path.join(_b, _n)
-        _src = io.open(_p, encoding="utf-8").read()
-        if "/api/admin/bot/settings" in _src:
-            _front_files.append(_src)
+for _dir in (("sections",), ("portal",)):
+    for _b, _d, _f in os.walk(os.path.join(ROOT, "frontend", "src", *_dir)):
+        for _n in _f:
+            if not _n.endswith(".jsx"):
+                continue
+            _src = io.open(os.path.join(_b, _n), encoding="utf-8").read()
+            if _SETTINGS_DOOR.search(_src):
+                _front_files.append(_src)
 _FRONT = "\n".join(_front_files)
 
 _unwritten = sorted(
@@ -1219,6 +1225,11 @@ for _m in re.finditer(r'upS\(\s*\{\s*([a-z_][a-z_0-9]*)\s*:', _FRONT):
 for _m in re.finditer(r'\bsettings:\s*\{\s*\.\.\.[a-z.]+,\s*([a-z_][a-z_0-9]*)\s*:',
                       _FRONT):
     _writes.add(_m.group(1))
+# همان نوشتن از راهِ درِ تازه: saveSettings({ ...x, key: … }) و
+# saveSettings({ key: …, key2: … })
+for _m in re.finditer(r'saveSettings\(\s*\{([^}]*)', _FRONT):
+    for _k in re.findall(r'(?:^|,)\s*([a-z_][a-z_0-9]*)\s*:', _m.group(1)):
+        _writes.add(_k)
 
 #: تنظیم‌هایی که فقط خودِ پنل مصرفشان می‌کند — ربات نمی‌بیندشان و
 #: نباید هم ببیند. هر قلم دلیلش را همراه دارد.

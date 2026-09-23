@@ -361,7 +361,10 @@ def main_menu(ctx, user):
     if app_url:
         rows.insert(0, [("📱 اپلیکیشن", app_url, "web_app")])
 
-    if ctx.s.get("trial_enabled") and not user.get("trial_used"):
+    # دکمه فقط وقتی پلنِ تستی هست. «روشن» بدونِ پلن، دکمه‌ای می‌ساخت
+    # که جوابش «فعلاً فعال نیست» بود — دکمه‌ی بی‌جواب از نبودنش بدتر است.
+    if (ctx.s.get("trial_enabled") and not user.get("trial_used")
+            and ctx.db.trial_plan()):
         rows.insert(1, [("🎉 دریافت اشتراک تست رایگان", "trial")])
     rows.append([("📚 آموزش نصب", "help"), ("💬 پشتیبانی", "support")])
     if ctx.is_admin(user["tg_id"]):
@@ -514,7 +517,15 @@ def claim_owner(ctx, msg, code):
     frm = msg.get("from") or {}
     chat_id = (msg.get("chat") or {}).get("id") or frm.get("id")
 
-    st = DB.tenant_settings(ctx.tid)
+    # متنِ خامِ تنظیمات را نگه می‌داریم: ادعای پایین روی همین متن شرط
+    # می‌گذارد.
+    raw = (DB.get_tenant(ctx.tid) or {}).get("settings") or "{}"
+    try:
+        st = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        st = {}
+    if not isinstance(st, dict):
+        st = {}
     want = st.get("owner_claim") if isinstance(st.get("owner_claim"), dict) else {}
     good = bool(code) and bool(want.get("code")) and \
         _hmac.compare_digest(str(code), str(want.get("code")))
@@ -532,11 +543,23 @@ def claim_owner(ctx, msg, code):
             "از پنلِ خودتان دوباره «وصلِ من به ربات» را بزنید — لینک "
             f"فقط {core.fa(OWNER_CLAIM_MINUTES)} دقیقه و یک‌بار کار می‌کند.")
 
-    # اول کد را می‌سوزانیم، بعد وصل می‌کنیم: اگر دو نفر هم‌زمان
-    # بزنند، فقط یکی کدِ زنده می‌بیند.
+    # سوزاندنِ کد و وصل‌کردن **یک** نوشتنِ شرطی است، نه دو تا.
+    #
+    # نسخه‌ی اول اول کد را می‌سوزاند و بعد جدا وصل می‌کرد. دو Start
+    # هم‌زمان هر دو کدِ زنده را خوانده بودند و هر دو رد می‌شدند — آخری
+    # برنده، بی‌آنکه کسی بفهمد. حالا شرط روی همان متنی است که خواندیم:
+    # فقط یکی می‌تواند آن را عوض کند.
     st.pop("owner_claim", None)
-    DB.save_tenant_settings(ctx.tid, st)
-    DB.update_tenant(ctx.tid, owner_tg_id=int(frm["id"]))
+    with DB.conn() as c:
+        cur = c.execute(
+            "UPDATE tenants SET settings=?, owner_tg_id=? "
+            "WHERE id=? AND settings=?",
+            (json.dumps(st, ensure_ascii=False), int(frm["id"]), ctx.tid, raw))
+        won = cur.rowcount == 1
+    if not won:
+        return ctx.bot.send(
+            chat_id, "⚠️ این لینک همین حالا استفاده شد. اگر شما نبودید، از "
+                     "پنلِ خودتان جدا شوید و لینکِ تازه بسازید.")
     ctx.invalidate()
     ctx.db.log("owner_linked", None, {"tg": frm.get("id")})
     log.info("صاحبِ فروشگاه %s به ربات وصل شد: %s", ctx.tid, frm.get("id"))
@@ -1710,8 +1733,17 @@ def _provision(ctx, order_id):
     #
     # شکستِ هر کدام **پیش از** ساختِ کانفیگ است، نه بعدش.
     reseller = bool(t.get("parent_id"))
+    trial = bool(plan.get("is_trial"))
     group = None
-    if reseller:
+    if reseller and trial:
+        # تستِ نماینده رایگان است و هزینه‌اش با مالک (تصمیمِ مالک):
+        # بی‌گروه ساخته می‌شود تا در صورتحسابِ نماینده نیاید. سقف همین‌جا
+        # هم سنجیده می‌شود، نه فقط موقعِ ذخیره — اگر مالک تستِ خودش را
+        # کوچک کرده باشد، تستِ قدیمیِ نماینده دیگر ساخته نمی‌شود.
+        okc, why = core.trial_within_cap(plan, DB.trial_cap())
+        if not okc:
+            return False, f"تستِ این فروشگاه ساخته نشد: {why}"
+    elif reseller:
         group = str(t.get("portal_group") or "").strip()
         if not group:
             return False, ("این فروشگاه هنوز گروهِ x-ui ندارد. کانفیگِ "
@@ -1772,7 +1804,7 @@ def _provision(ctx, order_id):
     # کفِ این پلن برای نماینده‌ی پیش‌پرداخت. بکند موقعِ ذخیره‌ی پلن
     # حسابش کرده (`plans.cost`)؛ این‌جا فقط خوانده می‌شود.
     charge = 0
-    if reseller and DB.is_prepaid(t):
+    if reseller and not trial and DB.is_prepaid(t):
         charge = max(0, int(plan.get("cost") or 0))
         if not charge:
             # کف معلوم نیست — فروش را نمی‌ایستانیم چون مشتری پول داده؛

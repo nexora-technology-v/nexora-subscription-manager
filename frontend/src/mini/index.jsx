@@ -35,6 +35,7 @@ import {
 import { API_URL } from "../lib/constants";
 import { errText, faDate, faNum, toFaDigits as faDigits } from "../lib/format";
 import { shrinkImage } from "../lib/image.js";
+import { applyPalette } from "../lib/palette.js";
 import { Avatar, EmptyState, Lightbox, MoneyInput, Skeleton } from "../ui/index";
 
 /* آیا این آدرس مینی‌اپ است؟ — نام باید در دامنه‌ی خودِ ماژول هم
@@ -1360,35 +1361,6 @@ const TABS = [
   { k: "me", l: "تنظیمات", i: User },
 ];
 
-/**
- * رنگِ فروشگاهِ نماینده → متغیرهای پوسته.
- *
- * چرا فقط یک رنگ می‌گیریم و بقیه را خودمان می‌سازیم: اگر نماینده
- * پنج رنگ جدا انتخاب کند، ترکیب‌هایی می‌سازد که متن رویشان خوانده
- * نمی‌شود. یک رنگ، و پله‌هایش از همان — همان قاعده‌ی
- * `wash/soft/fill/line/edge` در پنل.
- *
- * رنگِ نامعتبر یا خالی → `null`، یعنی پوسته‌ی پیش‌فرض. هیچ‌وقت
- * صفحه‌ی بی‌رنگ یا سفیدِ خالی.
- */
-function accentVars(hex) {
-  if (!/^#[0-9a-fA-F]{6}$/.test(String(hex || ""))) return undefined;
-  const n = parseInt(hex.slice(1), 16);
-  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-  const rgb = `${r}, ${g}, ${b}`;
-  return {
-    "--accent": hex,
-    "--accent-2": hex,
-    "--accent-rgb": rgb,
-    "--accent-wash": `rgba(${rgb}, .07)`,
-    "--accent-soft": `rgba(${rgb}, .12)`,
-    "--accent-fill": `rgba(${rgb}, .20)`,
-    "--accent-line": `rgba(${rgb}, .30)`,
-    "--accent-edge": `rgba(${rgb}, .45)`,
-  };
-}
-
-
 export default function Mini() {
   const [tab, setTab] = useState("home");
   const [me, setMe] = useState(null);
@@ -1876,13 +1848,37 @@ export default function Mini() {
     if (!brand) return;
     try {
       window.localStorage.setItem("nx_shop", JSON.stringify({
-        brand, logo: String(me?.logo || ""),
+        // رنگ هم — تا صفحه‌ی ورودِ دفعه‌ی بعد از همان اول رنگِ خودش را
+        // داشته باشد. رنگِ خالی هم نوشته می‌شود: اگر قفلِ پوسته بسته
+        // شد، اسپلش نباید رنگِ قدیمی را نگه دارد.
+        brand, logo: String(me?.logo || ""), accent: String(me?.accent || ""),
       }));
     } catch { /* بی‌اهمیت */ }
-  }, [me?.brand, me?.logo]);
+  }, [me?.brand, me?.logo, me?.accent]);
+
+  /*
+   * رنگِ فروشگاه روی **ریشه**، نه روی `.mn-app`.
+   *
+   * قبلاً متغیرها روی `.mn-app` می‌نشستند. برگه‌های پایینی و پنجره‌ها
+   * از راهِ پورتال روی `body` می‌روند و بیرون از `.mn-app`اند — پس
+   * آن‌ها آبیِ پیش‌فرض می‌ماندند. و فقط `--accent` ساخته می‌شد، در
+   * حالی که دکمه‌های اصلی `--cy` بودند. `applyPalette` همه را می‌سازد
+   * (lib/palette.js — چرا).
+   *
+   * روشن/تیره هم مهم است: رنگِ متن روی زمینه‌ی روشن تیره‌تر ساخته
+   * می‌شود. پس با عوض‌شدنِ پوسته‌ی تلگرام دوباره ساخته می‌شود.
+   */
+  useEffect(() => {
+    const paint = () => applyPalette(
+      me?.accent, document.documentElement.dataset.mnScheme || "dark");
+    paint();
+    const w = tg();
+    w?.onEvent?.("themeChanged", paint);
+    return () => { try { w?.offEvent?.("themeChanged", paint); } catch { /* */ } };
+  }, [me?.accent]);
 
   return (
-    <div className="mn-app" dir="rtl" style={accentVars(me?.accent)}>
+    <div className="mn-app" dir="rtl">
       {/* ── نوار برند ── */}
       <header className="mn-top">
         <div className="mn-brand">

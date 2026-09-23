@@ -331,6 +331,76 @@ check("و مینی‌اپ برند را برای دفعه‌ی بعد نگه م�
       "بدونش هر بار اول یک صفحه‌ی بی‌نام دیده می‌شود")
 
 
+# ═══════════════════════════════════════════════════════════
+#  رنگِ فروشگاه به همه‌ی مینی‌اپ می‌رسد
+# ═══════════════════════════════════════════════════════════
+#
+# مالک: «پوسته و رنگ اعمال نمی‌شود». اعمال می‌شد — به نصفِ صفحه.
+# دکمه‌های اصلیِ مینی‌اپ `--cy` بودند و فقط `--accent` عوض می‌شد، چند
+# رنگ هم ثابت در CSS نوشته شده بود، و متغیرها روی `.mn-app` می‌نشستند
+# که پنجره‌های پورتال‌شده بیرونِ آن‌اند. خوانایی را `test-palette.cjs`
+# روی کلِ چرخه‌ی رنگ می‌سنجد؛ این‌جا اینکه رنگ اصلاً برسد.
+
+head("رنگِ فروشگاه · به همه‌ی مینی‌اپ می‌رسد")
+
+_CSS_ALL = io.open(os.path.join(ROOT, "frontend", "src", "index.css"),
+                   encoding="utf-8").read()
+_MINI_SRC = io.open(os.path.join(ROOT, "frontend", "src", "mini", "index.jsx"),
+                    encoding="utf-8").read()
+_MAIN_SRC = io.open(os.path.join(ROOT, "frontend", "src", "main.jsx"),
+                    encoding="utf-8").read()
+_PORTAL_SRC = io.open(os.path.join(ROOT, "frontend", "src", "portal", "index.jsx"),
+                      encoding="utf-8").read()
+
+# رنگ‌های ثابتِ برند در قاعده‌های مینی‌اپ و اسپلش
+_FIXED = re.compile(r"#1F6FBF|#14B8A6|#2DD4BF|#5AA9E6|#04221E"
+                    r"|rgba\(\s*45,\s*212,\s*191|rgba\(\s*90,\s*169,\s*230"
+                    r"|rgba\(\s*43,\s*127,\s*214", re.I)
+_stuck = []
+for _m in re.finditer(r"([^{}]+)\{([^{}]*)\}", _CSS_ALL):
+    _sel = _m.group(1).strip().split("\n")[-1]
+    if not re.search(r"\.mn-|\.nx-word|\.nx-retry", _sel):
+        continue
+    if _FIXED.search(_m.group(2)):
+        _stuck.append(_sel[:50])
+check("هیچ رنگِ ثابتِ برندی در مینی‌اپ و اسپلش نمانده",
+      not _stuck, f"{len(_stuck)} قاعده" if _stuck else "همه از توکن")
+if _stuck:
+    for _x in _stuck[:8]:
+        print(f"      ▸ {_x}")
+
+# متنِ روی دکمه‌ی رنگی از پالت می‌آید، نه سیاهِ ثابت
+_ink = []
+for _m in re.finditer(r"([^{}]+)\{([^{}]*)\}", _CSS_ALL):
+    _sel, _body = _m.group(1).strip().split("\n")[-1], _m.group(2)
+    if ".mn-" not in _sel and ".nx-retry" not in _sel:
+        continue
+    if re.search(r"background[^;]*var\(--(accent|cy)", _body) and \
+            re.search(r"(?<![-a-z])color:\s*#(06090F|fff\b|FFFFFF)", _body):
+        _ink.append(_sel[:50])
+check("متنِ روی سطحِ رنگی از پالت می‌آید (on-accent/on-cy)",
+      not _ink, f"{len(_ink)} قاعده" if _ink else "")
+if _ink:
+    for _x in _ink[:8]:
+        print(f"      ▸ {_x}")
+
+check("مینی‌اپ پالت را روی ریشه می‌گذارد، نه روی .mn-app",
+      "applyPalette(" in _MINI_SRC and "style={accentVars" not in _MINI_SRC,
+      "پنجره‌های پورتال‌شده بیرونِ .mn-app‌اند")
+check("اسپلش هم رنگِ کش‌شده را می‌گیرد",
+      "applyPalette(SHOP.accent" in _MAIN_SRC and "accent: String(me?.accent" in _MINI_SRC)
+check("پیش‌نمایشِ پرتال همان پالت را صدا می‌زند",
+      "accentPalette(accent)" in _PORTAL_SRC and "parseInt(accent.slice(1), 16)" not in _PORTAL_SRC,
+      "وگرنه نماینده چیزی می‌بیند که مشتری نمی‌بیند")
+
+# هر توکنِ پالت در :root پیش‌فرض دارد — وگرنه بدونِ رنگِ نماینده شفاف می‌شود
+_ROOT_TOK = set(re.findall(r"^\s*(--[a-z0-9-]+)\s*:", _CSS_ALL.split(":root")[1].split("}")[0], re.M))
+_PAL_KEYS = ["--accent-2s", "--accent-deep", "--cy-2", "--cy-rgb", "--on-accent",
+             "--on-accent-hi", "--on-cy", "--accent-rgb", "--cy-edge"]
+_miss = [k for k in _PAL_KEYS if k not in _ROOT_TOK]
+check("هر توکنِ پالت پیش‌فرض دارد", not _miss, ", ".join(_miss))
+
+
 head("صفحه‌ی اشتراک · دسترسیِ مستقیم به عنصر")
 
 _SUBHTML = io.open(os.path.join(ROOT, "sub-page-index.html"),

@@ -17,13 +17,13 @@
  * صفحه‌بندی شماره‌دار است، نه «نمایش بیشتر» — قاعده‌ی مخزن، و
  * `test-ui-safety.py` اجرایش می‌کند.
  */
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   AlertTriangle, Bell, CheckCircle2, Clock, Info, RefreshCw, User,
 } from "lucide-react";
 
-import { API_URL } from "../../lib/constants";
-import { errText, faNum } from "../../lib/format";
+import { adminSrc } from "../../lib/botsrc";
+import { faNum } from "../../lib/format";
 import {
   EmptyState, InfoBox, Msg, Pager, PageSkeleton, SectionHead, Toggle,
 } from "../../ui/index";
@@ -58,7 +58,9 @@ const TONE = {
 
 const tone = (level) => TONE[level] || TONE.info;
 
-export function BotEventsSection({ password }) {
+/* `src` خالی یعنی پنلِ مالک؛ پرتالِ نماینده `portalSrc` می‌دهد. */
+export function BotEventsSection({ password, src }) {
+  const S = useMemo(() => src || adminSrc(password), [src, password]);
   const [d, setD] = useState(null);
   const [busy, setBusy] = useState(true);
   const [msg, setMsg] = useState(null);
@@ -70,19 +72,14 @@ export function BotEventsSection({ password }) {
     try {
       // پرس‌وجو بیرونِ قالبِ مسیر می‌چسبد، وگرنه تستِ درز یک
       // قطعه‌ی جعلی می‌بیند و مسیر را ناموجود می‌خواند
-      const q = `?page=${page}&per=${PER}&errors=${onlyErrors ? 1 : 0}`;
-      const res = await fetch(`${API_URL}/api/admin/bot/events` + q, {
-        headers: { "X-Admin-Password": password || "" },
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(errText(j.detail, "خواندن رویدادها ناموفق بود"));
-      setD(j);
+      const q = `page=${page}&per=${PER}&errors=${onlyErrors ? 1 : 0}`;
+      setD(await S.events(q));
     } catch (e) {
       setMsg({ t: "err", m: e.message });
     } finally {
       setBusy(false);
     }
-  }, [password, page, onlyErrors]);
+  }, [S, page, onlyErrors]);
 
   useEffect(() => { load(); }, [load]);
 

@@ -1661,6 +1661,67 @@ def _bot_conn():
         return None
 
 
+#: جدول‌هایی که مالِ یک مستاجرند.
+_TENANT_TABLES = ("users", "orders", "subscriptions", "plans", "coin_tx",
+                  "wallet_tx", "tickets", "chat_messages", "events")
+
+
+def _tenant_conn(tid):
+    """
+    اتصالِ فقط‌خواندنی که **فقط داده‌ی یک مستاجر** را می‌بیند.
+
+    چرا این شکل و نه `WHERE tenant_id=?` در هر کوئری:
+        تا وقتی فقط یک ربات بود، هیچ کوئریِ پنل شرطِ مستاجر نداشت و
+        لازم هم نبود. با آمدنِ رباتِ نماینده‌ها، کاربران، سفارش‌ها،
+        قیف و گزارشِ پنلِ مالک همه‌ی مستاجرها را با هم می‌شمردند —
+        فروشِ نماینده در عددِ «فروش»ِ مالک می‌آمد، و پیام به کاربری که
+        مالِ رباتِ دیگری بود از رباتِ مالک می‌رفت.
+
+        گزارش به‌تنهایی دوازده کوئری دارد. اضافه‌کردنِ شرط به تک‌تکشان
+        یعنی روزی یکی جا بماند — همان باگِ همیشگیِ این مخزن.
+
+    SQLite نامِ بی‌پیشوند را اول در `temp` می‌گردد، بعد در `main`. پس
+    یک نمای موقت به همان نام، هر کوئریِ موجود را بدونِ دست‌زدن محدود
+    می‌کند — از جمله زیرکوئری‌ها. روی اتصالِ فقط‌خواندنی هم کار می‌کند،
+    چون `temp` همیشه نوشتنی است.
+
+    `tid=None` یعنی بدونِ محدودیت (هنوز مستاجری نیست).
+    """
+    con = _bot_conn()
+    if con is None or tid is None:
+        return con
+    try:
+        have = {r[0] for r in con.execute(
+            "SELECT name FROM main.sqlite_master WHERE type='table'")}
+        for tbl in _TENANT_TABLES:
+            if tbl not in have:
+                continue
+            cols = {r[1] for r in con.execute(f"PRAGMA main.table_info({tbl})")}
+            if "tenant_id" in cols:
+                # int(): تعریفِ نما پارامتر نمی‌گیرد، پس عدد مستقیم می‌نشیند
+                con.execute(f"CREATE TEMP VIEW {tbl} AS SELECT * FROM "
+                            f"main.{tbl} WHERE tenant_id={int(tid)}")
+    except Exception:
+        con.close()
+        raise
+    return con
+
+
+def _root_tid():
+    """شناسه‌ی مستاجرِ ریشه، یا None اگر هنوز نیست."""
+    con = _bot_conn()
+    if not con:
+        return None
+    try:
+        r = con.execute("SELECT id FROM tenants WHERE parent_id IS NULL "
+                        "ORDER BY id LIMIT 1").fetchone()
+        return int(r["id"]) if r else None
+    except Exception:
+        return None
+    finally:
+        con.close()
+
+
 #: «خرید واقعی» — یک تعریف، برای هر جایی که می‌پرسد چند نفر خریدند.
 #
 #  گرفتن تست رایگان خودش یک سفارشِ `approved` با مبلغ صفر می‌سازد. هر
@@ -2387,7 +2448,8 @@ def bot_status(x_admin_password: str = Header(...)):
 
     module_exists = (_bot_dir() / "run.py").exists()
     okdb, err = _ensure_bot_db()
-    con = _bot_conn()
+    # فقط مستاجرِ ریشه — فروشِ رباتِ نماینده درآمدِ نماینده است
+    con = _tenant_conn(_root_tid())
     if not con:
         return {
             "installed": module_exists,
@@ -2443,7 +2505,9 @@ def bot_orders(status: str = "awaiting", limit: int = 50,
                x_admin_password: str = Header(...)):
     """صف سفارش‌ها — برای تایید رسید از داخل پنل."""
     check_auth(x_admin_password)
-    con = _bot_conn()
+    # سفارشِ رباتِ نماینده این‌جا دکمه‌ی تایید می‌گرفت ولی با زمینه‌ی
+    # رباتِ مالک پیدا نمی‌شد. مالِ هر کس، در پنلِ خودش.
+    con = _tenant_conn(_root_tid())
     if not con:
         return {"orders": [], "dbReady": False}
 
@@ -2527,7 +2591,18 @@ def bot_users(q: str = "", limit: int = 50, offset: int = 0,
     تا بفهمد کدام مشتری واقعی است.
     """
     check_auth(x_admin_password)
-    con = _bot_conn()
+    return _users_page(_root_tid(), q=q, limit=limit, offset=offset,
+                       filter=filter, sort=sort, counts=counts)
+
+
+def _users_page(tid, q="", limit=50, offset=0, filter="all", sort="new",
+                counts=1):
+    """
+    فهرستِ کاربرانِ یک مستاجر — همان برای مالک و نماینده.
+
+    یک پیاده‌سازی: فیلترها، مرتب‌سازی و قاعده‌ی «خریدار» یک جا هستند.
+    """
+    con = _tenant_conn(tid)
     if not con:
         return {"users": [], "dbReady": False}
 
@@ -2612,7 +2687,7 @@ def bot_users_report(days: int = 30, x_admin_password: str = Header(...)):
     فهرست کاربران قابل حدس‌زدن بود.
     """
     check_auth(x_admin_password)
-    con = _bot_conn()
+    con = _tenant_conn(_root_tid())
     if not con:
         return {"ready": False, "error": "دیتابیس ربات در دسترس نیست"}
 
@@ -3281,7 +3356,11 @@ def admin_inbox(user_id: int = None, x_admin_password: str = Header(...)):
     گفتگوها برای مالک — فهرست، یا یک گفتگوی مشخص.
     """
     check_auth(x_admin_password)
-    t = _root_tenant_row()
+    return _inbox_read(_root_tenant_row(), user_id)
+
+
+def _inbox_read(t, user_id=None):
+    """صندوقِ یک مستاجر — همان برای مالک و نماینده."""
     try:
         db = _bot_db_rw(t)
         if user_id:
@@ -3314,6 +3393,17 @@ def admin_inbox(user_id: int = None, x_admin_password: str = Header(...)):
 def admin_inbox_send(payload: dict, x_admin_password: str = Header(...)):
     """پاسخ مالک به یک مشتری — هم در صندوق، هم در خودِ ربات."""
     check_auth(x_admin_password)
+    return _inbox_send(_root_tenant_row(), payload)
+
+
+def _inbox_send(t, payload):
+    """
+    پاسخ به یک مشتری از صندوقِ همین مستاجر.
+
+    `db.chat_add` روی `TenantDB(t["id"])` است، پس گفتگوی مستاجرِ دیگر
+    دست‌نیافتنی است — ولی شناسه‌ی مشتری هم باید مالِ همین مستاجر
+    باشد، وگرنه پیامی ثبت می‌شد که هیچ‌کس نمی‌دیدش.
+    """
     p = payload or {}
     try:
         uid = int(p.get("userId"))
@@ -3324,7 +3414,13 @@ def admin_inbox_send(payload: dict, x_admin_password: str = Header(...)):
     if not body and not raw:
         raise HTTPException(status_code=400, detail="پیام خالی است")
 
-    t = _root_tenant_row()
+    try:
+        if not _bot_db_rw(t).get_user_by_id(uid):
+            raise HTTPException(status_code=404, detail="این مشتری پیدا نشد")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"صندوق در دسترس نیست: {str(e)[:100]}")
     # عکس *قبل* از ثبتِ پیام ذخیره می‌شود: اگر فایل ننشیند، پیامی
     # هم ثبت نشده. برعکسش یعنی ردیفی در گفتگو که به عکسی اشاره
     # می‌کند که وجود ندارد — و آن، قابِ شکسته‌ی همیشگی است.
@@ -3426,9 +3522,12 @@ def bot_events(page: int = 1, per: int = 30, errors: int = 0,
         return {"ready": False, "events": [], "total": 0,
                 "message": "ربات هنوز راه‌اندازی نشده است"}
     con.close()
+    return _events_page(_root_tenant_row(), page, per, errors)
 
+
+def _events_page(t, page=1, per=30, errors=0):
+    """رویدادهای یک مستاجر — همان برای مالک و نماینده."""
     ev = _bot_events_mod()
-    t = _root_tenant_row()
 
     per = max(5, min(int(per or 30), 100))
     page = max(1, int(page or 1))
@@ -5504,7 +5603,12 @@ def bot_restore(payload: dict, x_admin_password: str = Header(...)):
 def bot_funnel(x_admin_password: str = Header(...)):
     """آمار قیف تبدیل — از استارت تا خرید."""
     check_auth(x_admin_password)
-    con = _bot_conn()
+    return _funnel(_root_tid())
+
+
+def _funnel(tid):
+    """قیفِ یک مستاجر — همان برای مالک و نماینده."""
+    con = _tenant_conn(tid)
     if not con:
         return {"ready": False}
 
@@ -5779,8 +5883,18 @@ def bot_subscriber_detail(tg_id: int, x_admin_password: str = Header(...)):
     نشان می‌دهیم باید همان چیزی باشد که مشتری می‌بیند.
     """
     check_auth(x_admin_password)
+    return _subscriber(_root_tid(), tg_id)
 
-    con = _bot_conn()
+
+def _subscriber(tid, tg_id):
+    """
+    پرونده‌ی یک مشتری در **یک** مستاجر.
+
+    تا امروز کاربر فقط با `tg_id` پیدا می‌شد. یک نفر می‌تواند هم از
+    رباتِ مالک بخرد هم از رباتِ نماینده — دو ردیف با یک `tg_id` — و
+    `fetchone()` هر کدام را که پیش می‌آمد برمی‌داشت.
+    """
+    con = _tenant_conn(tid)
     if not con:
         raise HTTPException(status_code=404, detail="دیتابیس ربات موجود نیست")
 
@@ -5804,11 +5918,14 @@ def bot_subscriber_detail(tg_id: int, x_admin_password: str = Header(...)):
             "SELECT * FROM coin_tx WHERE user_id=? ORDER BY created_at DESC LIMIT 15",
             (user["id"],))]
 
-        tenant = con.execute(
-            "SELECT panel_url, panel_user, panel_pass, panel_token "
-            "FROM tenants WHERE id=?", (user["tenant_id"],)).fetchone()
+        _trow = con.execute("SELECT * FROM tenants WHERE id=?",
+                            (user["tenant_id"],)).fetchone()
     finally:
         con.close()
+
+    # نماینده پنلِ جدا ندارد؛ مصرفِ زنده از پنلِ مالک می‌آید — همان
+    # قاعده‌ی `_panel_row` که ساخت و تمدید هم از آن می‌گذرند.
+    tenant = _panel_row(dict(_trow)) if _trow else None
 
     # ترافیک زنده برای هر اشتراک فعال
     live = {}
@@ -5865,7 +5982,17 @@ def bot_message_user(tg_id: int, payload: dict,
     دنبال کاربر می‌گشت — و اگر کاربر یوزرنیم نداشت، اصلاً راهی نبود.
     """
     check_auth(x_admin_password)
+    return _message_user(_root_tid(), tg_id, payload)
 
+
+def _message_user(tid, tg_id, payload):
+    """
+    پیام از رباتِ **همین** مستاجر به مشتریِ **همین** مستاجر.
+
+    قبلاً کاربر با `tg_id` از هر مستاجری پیدا می‌شد و توکنِ رباتِ
+    همان ردیف برداشته می‌شد — یعنی پیامِ مالک می‌توانست از رباتِ
+    نماینده برود.
+    """
     text = (payload or {}).get("text") or ""
     text = str(text).strip()
     if not text:
@@ -5874,7 +6001,7 @@ def bot_message_user(tg_id: int, payload: dict,
         raise HTTPException(status_code=400,
                             detail="متن پیام از ۳۵۰۰ کاراکتر بیشتر است")
 
-    con = _bot_conn()
+    con = _tenant_conn(tid)
     if not con:
         raise HTTPException(status_code=404, detail="دیتابیس ربات موجود نیست")
     try:
@@ -14743,6 +14870,189 @@ def portal_bot_unlink(t: dict = Depends(portal_tenant)):
 
 
 # ═══════════════════════════════════════════════════════════
+#  داشبوردِ نماینده — کاربران، چت، قیف، رویدادها، تنظیماتِ ربات
+#
+#  برگه: docs/specs/2026-09-23-reseller-dashboard.md
+#
+#  هیچ‌کدام منطقِ خودش را ندارد: همه همان هسته‌ای را صدا می‌زنند که
+#  پنلِ مالک صدا می‌زند (`_users_page`، `_inbox_read`، `_funnel`…)،
+#  با مستاجرِ خودِ نماینده. دو پیاده‌سازی از یک صفحه یعنی روزی یک
+#  اصلاح فقط به یکی برسد.
+# ═══════════════════════════════════════════════════════════
+
+@app.get("/api/portal/users")
+def portal_users(q: str = "", limit: int = 40, offset: int = 0,
+                 filter: str = "all", sort: str = "new", counts: int = 1,
+                 t: dict = Depends(portal_tenant)):
+    """مشتری‌های رباتِ همین نماینده."""
+    return _users_page(t["id"], q=q, limit=limit, offset=offset,
+                       filter=filter, sort=sort, counts=counts)
+
+
+@app.get("/api/portal/subscriber/{tg_id}")
+def portal_subscriber(tg_id: int, t: dict = Depends(portal_tenant)):
+    """پرونده‌ی یک مشتری — فقط اگر مشتریِ همین نماینده باشد."""
+    return _subscriber(t["id"], tg_id)
+
+
+@app.post("/api/portal/message/{tg_id}")
+def portal_message(tg_id: int, payload: dict, t: dict = Depends(portal_tenant)):
+    """پیام از رباتِ خودِ نماینده به مشتریِ خودش."""
+    return _message_user(t["id"], tg_id, payload)
+
+
+@app.get("/api/portal/inbox")
+def portal_inbox(user_id: int = None, t: dict = Depends(portal_tenant)):
+    """گفتگو با مشتری‌ها — همان صندوقِ مالک، با داده‌ی خودِ نماینده."""
+    return _inbox_read(_tenant_row(t["id"]) or t, user_id)
+
+
+@app.post("/api/portal/inbox/send")
+def portal_inbox_send(payload: dict, t: dict = Depends(portal_tenant)):
+    """پاسخ به مشتری — در مینی‌اپِ او و با یک خبر در رباتِ نماینده."""
+    return _inbox_send(_tenant_row(t["id"]) or t, payload)
+
+
+@app.get("/api/portal/funnel")
+def portal_funnel(t: dict = Depends(portal_tenant)):
+    """قیفِ تبدیلِ رباتِ نماینده — تستِ رایگان خرید شمرده نمی‌شود."""
+    return _funnel(t["id"])
+
+
+@app.get("/api/portal/events")
+def portal_events(page: int = 1, per: int = 30, errors: int = 0,
+                  t: dict = Depends(portal_tenant)):
+    """رویدادهای رباتِ نماینده — چه چیزی شکست و برای چه کسی."""
+    return _events_page(_tenant_row(t["id"]) or t, page, per, errors)
+
+
+#: متن‌هایی که نماینده برای رباتش می‌نویسد — همان‌هایی که پنلِ مالک دارد
+PORTAL_TEXT_KEYS = ("welcome_text", "phone_prompt", "waiting_text",
+                    "reject_text", "delivered_text", "expiry_text", "help_text")
+
+#: کلیدهایی که نماینده **حق دارد** بنویسد. فهرستِ مجاز، نه ممنوع:
+#: تنظیمات کلیدهای حساس هم دارد (کارت‌ها جدا، پیشوندِ شناسه، آدرسِ
+#: مینی‌اپ، پایه‌ی لینکِ اشتراک) — یک قلمِ جاافتاده در فهرستِ ممنوع
+#: یعنی نماینده برندِ صفحه‌ی اشتراکِ نماینده‌ی دیگری را بگیرد.
+PORTAL_SETTING_KEYS = PORTAL_TEXT_KEYS + (
+    "trial_enabled", "ask_phone", "order_ttl_minutes", "reminders", "coins",
+    "force_channel", "force_channel_on", "quick_replies")
+
+
+def _int_in(v, lo, hi, name):
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"«{name}» باید عدد باشد")
+    if not lo <= n <= hi:
+        raise HTTPException(status_code=400,
+                            detail=f"«{name}» باید بین {lo} و {hi} باشد")
+    return n
+
+
+def _portal_clean_settings(p):
+    """
+    فقط کلیدهای مجاز، با شکل و بازه‌ی درست.
+
+    عددِ خارج از بازه **رد** می‌شود، نه بی‌صدا به نزدیک‌ترین مقدار
+    برده شود — نماینده باید بداند چه چیزی ذخیره نشد.
+    """
+    out = {}
+    for k in PORTAL_TEXT_KEYS:
+        if k in p:
+            out[k] = str(p.get(k) or "")[:3500]
+    for k in ("trial_enabled", "ask_phone", "force_channel_on"):
+        if k in p:
+            out[k] = bool(p.get(k))
+    if "force_channel" in p:
+        out["force_channel"] = str(p.get("force_channel") or "").strip()[:64]
+    if "order_ttl_minutes" in p:
+        out["order_ttl_minutes"] = _int_in(p.get("order_ttl_minutes"), 5, 1440,
+                                           "مهلت پرداخت")
+    if "reminders" in p:
+        r = p.get("reminders") if isinstance(p.get("reminders"), dict) else {}
+        days = r.get("days") if isinstance(r.get("days"), list) else [7, 3, 1]
+        out["reminders"] = {
+            "enabled": bool(r.get("enabled", True)),
+            "days": [_int_in(d or 0, 0, 90, "روزِ یادآوری")
+                     for d in (list(days) + [0, 0, 0])[:3]],
+            "traffic_pct": _int_in(r.get("traffic_pct") or 0, 0, 100, "درصدِ هشدارِ حجم"),
+            "traffic_text": str(r.get("traffic_text") or "")[:1000],
+        }
+    if "coins" in p:
+        c = p.get("coins") if isinstance(p.get("coins"), dict) else {}
+        tiers = []
+        for tr in (c.get("tiers") or [])[:10]:
+            if isinstance(tr, dict):
+                tiers.append({"coins": _int_in(tr.get("coins"), 1, 100000, "سکه‌ی پله"),
+                              "percent": _int_in(tr.get("percent"), 0, 100, "درصدِ پله")})
+        out["coins"] = {
+            "enabled": bool(c.get("enabled", True)),
+            "per_referral": _int_in(c.get("per_referral") or 0, 0, 1000, "سکه‌ی دعوت"),
+            "welcome_bonus": _int_in(c.get("welcome_bonus") or 0, 0, 1000, "سکه‌ی خوش‌آمد"),
+            "max_percent": _int_in(c.get("max_percent") or 0, 0, 100, "سقفِ تخفیف"),
+            "expire_days": _int_in(c.get("expire_days") or 0, 0, 3650, "انقضای سکه"),
+            "tiers": tiers,
+        }
+    if "quick_replies" in p:
+        rows = []
+        for q in (p.get("quick_replies") or [])[:20]:
+            if isinstance(q, dict) and str(q.get("title") or "").strip() \
+                    and str(q.get("body") or "").strip():
+                rows.append({"title": str(q["title"]).strip()[:40],
+                             "body": str(q["body"]).strip()[:1000]})
+        out["quick_replies"] = rows
+    return out
+
+
+@app.get("/api/portal/bot-settings")
+def portal_bot_settings(t: dict = Depends(portal_tenant)):
+    """
+    تنظیماتِ رباتِ نماینده — فقط کلیدهای مجاز.
+
+    `brand` و `support_username` هم می‌آیند ولی فقط برای خواندن (پاسخِ
+    آماده‌ی صندوق `{brand}` را پر می‌کند)؛ نوشتنشان از «ربات و پرداخت»
+    است.
+    """
+    st = _tenant_settings(t)
+    out = {k: st[k] for k in PORTAL_SETTING_KEYS if k in st}
+    out["brand"] = st.get("brand") or t.get("name") or ""
+    out["support_username"] = st.get("support_username") or ""
+    cap = _bot_trial_cap()
+    return {"settings": out, "trialCap": cap,
+            "trialWhy": "" if cap else
+            "مالک هنوز تست رایگانِ فعالی ندارد، پس تستِ شما هم ممکن نیست"}
+
+
+@app.put("/api/portal/bot-settings")
+def portal_bot_settings_save(payload: dict, t: dict = Depends(portal_tenant)):
+    """
+    ذخیره — روی تنظیماتِ فعلی ادغام می‌شود، نه جایگزین.
+
+    پنلِ مالک کلِ دیکشنری را می‌فرستد؛ این‌جا اگر همان کار را
+    می‌کردیم، هر کلیدی که نماینده نمی‌بیند (کارت، برند، لوگو) پاک
+    می‌شد.
+    """
+    raw = (payload or {}).get("settings")
+    if not isinstance(raw, dict):
+        raise HTTPException(status_code=400, detail="تنظیمات نامعتبر است")
+    clean = _portal_clean_settings(raw)
+    st = _tenant_settings(_tenant_row(t["id"]) or t)
+    st.update(clean)
+    _save_tenant_settings(t["id"], st)
+    return {"ok": True, "saved": sorted(clean)}
+
+
+def _bot_trial_cap():
+    """تستِ فعالِ مالک — سقفِ تستِ نماینده. همان `db.trial_cap` ربات."""
+    try:
+        return _bot_handlers().DB.trial_cap()
+    except Exception:
+        log.warning("خواندنِ سقفِ تست ناموفق", exc_info=True)
+        return None
+
+
+# ═══════════════════════════════════════════════════════════
 #  پوسته‌ی شخصیِ نماینده — و قفلش
 #
 #  برگه: docs/specs/2026-09-22-reseller-and-ui.md
@@ -14978,7 +15288,10 @@ def portal_bot_plans(t: dict = Depends(portal_tenant)):
             "is_active, is_trial, sort_order FROM plans "
             "WHERE tenant_id=? ORDER BY sort_order, id", (t["id"],))]
         return dict({"ready": True, "plans": rows,
-                     "hasBot": bool(t.get("bot_token"))}, **policy)
+                     "hasBot": bool(t.get("bot_token")),
+                     # سقفِ تستِ رایگان: تستِ خودِ مالک. None یعنی نماینده
+                     # نمی‌تواند تست بگذارد و رابط باید همین را بگوید.
+                     "trialCap": _bot_trial_cap()}, **policy)
     except Exception as e:
         return dict({"ready": False, "error": str(e)[:120], "plans": []},
                     **policy)
@@ -15136,6 +15449,8 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
     # راحتی است و کسی می‌تواند درخواست را مستقیم بفرستد.
     mode, allowed, _per_gb = _portal_gb_policy(t)
     _conf, rates = _portal_rates(t)
+    trial_cap = None
+    trials = 0
 
     clean = []
     for i, p in enumerate(plans):
@@ -15154,7 +15469,25 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
             raise HTTPException(status_code=400,
                                 detail=f"عددهای پلن «{name}» نامعتبرند")
 
-        if mode == "tiers" and gb not in allowed:
+        # تستِ رایگان (تصمیمِ مالک: مجاز و رایگان، هزینه با مالک).
+        # سقف از تستِ خودِ مالک؛ قیمت صفر؛ کف ندارد؛ و فقط یکی —
+        # ربات «تستِ فعال» را یکی برمی‌دارد و دومی هیچ‌وقت دیده نمی‌شد.
+        is_trial = bool(p.get("is_trial"))
+        if is_trial:
+            trials += 1
+            if trials > 1:
+                raise HTTPException(status_code=400,
+                                    detail="فقط یک پلنِ تست می‌شود داشت")
+            if trial_cap is None:
+                trial_cap = _bot_trial_cap() or {}
+            _okc, _why = _bot_handlers().core.trial_within_cap(
+                {"gb": gb, "days": days, "ip_limit": ip_limit}, trial_cap)
+            if not _okc:
+                raise HTTPException(status_code=400,
+                                    detail=f"تستِ «{name}» ذخیره نشد: {_why}")
+            price = 0
+
+        if mode == "tiers" and gb not in allowed and not is_trial:
             # پله‌ها را *بگو*. «نامعتبر» بدون گفتنِ اینکه چه چیزی
             # معتبر است، یعنی حدس‌زدن.
             opts = "، ".join(("نامحدود" if g == 0 else str(g)) for g in allowed)
@@ -15173,7 +15506,8 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
         # کفِ نامعلوم (بدونِ گروه یا حجمِ بی‌نرخ) جلوی ذخیره را نمی‌گیرد
         # — پیش‌نمایش همان‌جا گفته که معلوم نیست — ولی `cost` صفر
         # می‌ماند و ربات این را در لاگ می‌گوید.
-        floor = _plan_floor(rates, gb, days, ip_limit) if rates else {"ready": False}
+        floor = (_plan_floor(rates, gb, days, ip_limit)
+                 if rates and not is_trial else {"ready": False})
         cost = int(floor.get("cost") or 0) if floor.get("ready") else 0
         if cost and price < cost:
             raise HTTPException(
@@ -15187,9 +15521,9 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
             "gb": gb, "days": days, "ip_limit": ip_limit, "price": price,
             "cost": cost,
             "is_active": 1 if p.get("is_active", True) else 0,
-            # آزمایشی فقط دست مالک است: پلن رایگان یعنی کانفیگی که
-            # کسی پولش را نمی‌دهد ولی روی سرور او ساخته می‌شود.
-            "is_trial": 0,
+            # تست فقط زیرِ سقفِ تستِ مالک (بالا سنجیده شد) — هزینه‌اش
+            # با مالک است، پس سقف همان است که خودش برای خودش گذاشته.
+            "is_trial": 1 if is_trial else 0,
             "sort": i,
         })
 
@@ -15728,7 +16062,19 @@ def portal_me(t: dict = Depends(portal_tenant)):
         "ownerLinked": bool(t.get("owner_tg_id")),
         "activeCards": len(cards),
         "hasGroup": bool(str(t.get("portal_group") or "").strip()),
+        # پایینِ منو نشان داده می‌شود: «هنوز نمی‌بینمش» معمولاً یعنی
+        # سرور به‌روز نشده، و بدونِ این هیچ راهی برای فهمیدنش نبود.
+        "version": _repo_version(),
     }
+
+
+def _repo_version():
+    """نسخه‌ی نصب‌شده، از فایلِ VERSION."""
+    try:
+        return (Path(__file__).resolve().parent.parent / "VERSION"
+                ).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 @app.get("/api/health")

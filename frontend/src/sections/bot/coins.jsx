@@ -25,11 +25,11 @@
  * می‌خواند، و تستِ درز برابریِ این دو را می‌سنجد — چون همین
  * «یک قاعده، دو جا» پرتکرارترین باگِ این مخزن است.
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   Coins, Gift, Loader2, Plus as PlusIcon, Save, Trash2,
 } from "lucide-react";
-import { API_URL } from "../../lib/constants";
+import { adminSrc } from "../../lib/botsrc";
 import {
   Field, InfoBox, Msg, NumberInput, NumberStepper, PageSkeleton, SectionHead, Toggle,
 } from "../../ui/index";
@@ -49,7 +49,9 @@ const DEFAULTS = {
   ],
 };
 
-export function BotCoinsSection({ password }) {
+/* `src` خالی یعنی پنلِ مالک؛ پرتالِ نماینده `portalSrc` می‌دهد. */
+export function BotCoinsSection({ password, src }) {
+  const S = useMemo(() => src || adminSrc(password), [src, password]);
   const [t, setT] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -57,17 +59,11 @@ export function BotCoinsSection({ password }) {
 
   const load = async () => {
     try {
-      const d = await fetch(`${API_URL}/api/admin/bot/settings`, { headers: { "X-Admin-Password": password } }).then(r => r.json());
-      setT({
-        settings: {}, topics: {},
-        ...(d.tenant || {}),
-        settings: (d.tenant?.settings && typeof d.tenant.settings === "object"
-                   && !Array.isArray(d.tenant.settings)) ? d.tenant.settings : {},
-      });
-    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+      setT({ settings: await S.settings() });
+    } catch (e) { setMsg({ t: "err", m: e.message || "اتصال برقرار نشد" }); }
     finally { setLoading(false); }
   };
-  useEffect(() => { load(); }, [password]);
+  useEffect(() => { load(); }, [S]);
   useEffect(() => { if (msg) { const x = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(x); } }, [msg]);
 
   // همه چیز زیر کلیدِ `coins` — همان‌جایی که ربات نگاه می‌کند
@@ -88,14 +84,9 @@ export function BotCoinsSection({ password }) {
   const save = async () => {
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/api/admin/bot/settings`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "X-Admin-Password": password },
-        body: JSON.stringify({ settings: { ...(t.settings || {}), coins: c } }),
-      });
-      if (res.ok) setMsg({ t: "ok", m: "تنظیمات سکه ذخیره شد" });
-      else setMsg({ t: "err", m: "ذخیره ناموفق" });
-    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+      await S.saveSettings({ ...(t.settings || {}), coins: c });
+      setMsg({ t: "ok", m: "تنظیمات سکه ذخیره شد" });
+    } catch (e) { setMsg({ t: "err", m: e.message || "ذخیره ناموفق" }); }
     finally { setSaving(false); }
   };
 
