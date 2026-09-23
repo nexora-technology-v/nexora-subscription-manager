@@ -35,7 +35,7 @@ import {
 import { API_URL } from "../lib/constants";
 import { errText, faDate, faNum, toFaDigits as faDigits } from "../lib/format";
 import { shrinkImage } from "../lib/image.js";
-import { applyTheme } from "../lib/mini-themes.js";
+import { applyTheme, markScheme } from "../lib/mini-themes.js";
 import { ShopLogo } from "../lib/shoplogo.jsx";
 import { Splash } from "../lib/mark.jsx";
 import { demoApi, makeDemo, plansFromPortal } from "./demo.js";
@@ -121,8 +121,7 @@ function syncSafeArea() {
 
 function syncTheme() {
   const w = tg();
-  const dark = (w?.colorScheme || "dark") === "dark";
-  document.documentElement.dataset.mnScheme = dark ? "dark" : "light";
+  const dark = markScheme(w) === "dark";
   try {
     const css = getComputedStyle(document.documentElement);
     const bg = css.getPropertyValue("--bg").trim() || "#070A12";

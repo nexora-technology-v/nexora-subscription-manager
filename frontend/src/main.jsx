@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import { isAff, isMini, portalSlug } from "./lib/route.js";
 import { Splash } from "./lib/mark.jsx";
 import "./index.css";
-import { applyTheme } from "./lib/mini-themes.js";
+import { applyTheme, markScheme } from "./lib/mini-themes.js";
 
 // آدرس تعیین می‌کند کدام اپ بالا بیاید.
 //
@@ -79,9 +79,9 @@ const SHOP_THEME = SHOP
   ? (SHOP.theme || (SHOP.accent ? { palette: "custom", accent: SHOP.accent } : null))
   : null;
 try {
-  if (WHICH === "mini" && SHOP_THEME) {
-    const w = window.Telegram && window.Telegram.WebApp;
-    applyTheme(SHOP_THEME, (w && w.colorScheme) === "light" ? "light" : "dark");
+  if (WHICH === "mini") {
+    const scheme = markScheme(window.Telegram && window.Telegram.WebApp);
+    if (SHOP_THEME) applyTheme(SHOP_THEME, scheme);
   }
 } catch { /* رنگ تزئین است، نه شرطِ بالاآمدن */ }
 
@@ -126,8 +126,11 @@ const SPLASH_MS = 1700;
 const EXIT_MS = 380;
 
 function Gate({ children }) {
+  // پیش‌نمایشِ پرتال: هر بار که قاب بار می‌شود ۱٫۷ ثانیه صفحه‌ی ورودِ
+  // بی‌نام نشان می‌داد، پیش از آنکه پوسته برسد. پخشش با دکمه است.
   const skip = typeof window !== "undefined"
-    && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    && (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+        || /[?&]preview=1\b/.test(window.location.search));
 
   const [phase, setPhase] = React.useState(skip ? "in" : "load");
   const [err, setErr] = React.useState("");

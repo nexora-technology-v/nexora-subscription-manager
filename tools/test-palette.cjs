@@ -51,7 +51,7 @@ const rgb = (hx) => [1, 3, 5].map((i) => parseInt(hx.slice(i, i + 2), 16));
   const BG = { dark: rgb("#070A12"), light: rgb("#EEF3FA") };
 
   // هر جهتی که یک پالتِ آماده برای رنگِ دومش می‌گیرد
-  const SHIFTS = [...new Set([30, ...T.MINI_PALETTES.map((x) => x.shift ?? 30)])];
+  const SHIFTS = [...new Set([16, 30, ...T.MINI_PALETTES.map((x) => x.shift ?? 30)])];
   for (const scheme of ["dark", "light"]) {
     for (let h = 0; h < 360; h += 10) {
       for (const s of [0.1, 0.5, 0.9, 1]) {

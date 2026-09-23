@@ -3380,13 +3380,16 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 
 .mn-rw {
   border-radius: var(--r-l); padding: 15px 15px 13px;
-  /* رنگِ سکه، نه رنگِ برند: این کارت باید از کارتِ موجودی جدا
-     دیده شود، وگرنه چشم هر دو را یک چیز می‌خواند */
+  /* باید از کارتِ موجودی جدا دیده شود — ولی با **رنگِ کم‌رنگِ همان
+     فروشگاه**، نه طلاییِ ثابت. طلاییِ ثابت کنارِ پالتِ بنفش یا آبیِ
+     نماینده وصله‌ی ناجور بود. کارتِ موجودی رنگِ پُر دارد و این یکی
+     ته‌رنگ، پس هنوز یکی خوانده نمی‌شوند. خودِ سکه طلایی می‌ماند —
+     آن‌جا رنگ معنا دارد. */
   background:
     radial-gradient(120% 120% at 100% 0%,
-                    var(--warn-fill) 0%, transparent 60%),
+                    var(--accent-fill) 0%, transparent 60%),
     var(--surface-2);
-  border: 1px solid var(--warn-line);
+  border: 1px solid var(--accent-line);
 }
 
 .mn-rw-top {
@@ -3447,9 +3450,9 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 /* پله‌ای که باز شده — رنگ، نه فقط پررنگی: تفاوتِ کم‌رنگ و پررنگ
    روی صفحه‌ی گوشی در نور روز دیده نمی‌شود */
 .mn-rw-step.on {
-  background: var(--warn-soft); border-color: var(--warn-line);
+  background: var(--accent-soft); border-color: var(--accent-line);
 }
-.mn-rw-step.on > b { color: var(--warn); }
+.mn-rw-step.on > b { color: var(--accent-2); }
 .mn-rw-step.on > span { color: var(--dim); }
 
 /* ── بخشِ دعوت ── */
@@ -3740,3 +3743,251 @@ html[data-mn-tpl="neon"] .mn-card-bal::after { opacity: .35; }
 html[data-mn-tpl="neon"] .mn-pend-row,
 html[data-mn-tpl="neon"] .mn-rw { background: var(--surface-3); border-color: var(--accent-line);
   box-shadow: 0 0 16px -8px rgba(var(--accent-rgb), .55); }
+
+
+/* ═══════════════════════════════════════════════════════════
+   صفحه‌ی ورودِ فروشگاه — lib/mark.jsx: ShopSplash
+   هیچ letter-spacing روی نام: حرف‌های فارسی از هم جدا می‌شوند.
+   ═══════════════════════════════════════════════════════════ */
+.nx-shop { background: var(--bg); }
+.nx-shop-glow {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(60% 42% at 50% 38%, var(--accent-soft), transparent 70%);
+}
+.nx-shop-stage { position: relative; display: grid; justify-items: center; gap: 18px; }
+.nx-shop-logo {
+  box-shadow: 0 18px 44px -16px rgba(var(--accent-rgb), .75);
+  animation: nx-shop-in .7s var(--sp-soft) both;
+}
+.nx-shop-ghost {
+  width: 96px; height: 96px; border-radius: 28%;
+  background: linear-gradient(110deg, var(--hair-1) 30%, var(--hair-2) 50%, var(--hair-1) 70%);
+  background-size: 220% 100%; animation: nx-ghost 1.4s linear infinite;
+}
+@keyframes nx-ghost { to { background-position: -120% 0; } }
+.nx-shop-name {
+  font-family: var(--sans); font-size: 20px; font-weight: 800; color: var(--text);
+  letter-spacing: 0; text-align: center; max-width: 80vw;
+  animation: nx-shop-up .6s var(--sp-soft) .12s both;
+}
+.nx-shop-bar {
+  width: 132px; height: 4px; border-radius: 99px; overflow: hidden;
+  background: var(--hair-2); animation: nx-shop-up .6s var(--sp-soft) .22s both;
+}
+.nx-shop-bar > i {
+  display: block; width: 42%; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--cy));
+  animation: nx-shop-slide 1.15s var(--sp-inout) infinite;
+}
+@keyframes nx-shop-in { from { opacity: 0; transform: scale(.86); } to { opacity: 1; transform: none; } }
+@keyframes nx-shop-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes nx-shop-slide { from { transform: translateX(260%); } to { transform: translateX(-120%); } }
+
+/* پررنگ: تمام‌رنگ تا لبه — بی‌نوارِ سیاه */
+html[data-mn-tpl="bold"] .nx-shop {
+  background: linear-gradient(165deg, var(--accent), var(--accent-deep)); }
+html[data-mn-tpl="bold"] .nx-shop-glow {
+  background: radial-gradient(55% 40% at 50% 36%, rgba(255, 255, 255, .18), transparent 70%); }
+html[data-mn-tpl="bold"] .nx-shop-name { color: var(--on-accent-hi); }
+html[data-mn-tpl="bold"] .nx-shop-logo { box-shadow: 0 18px 44px -18px rgba(0, 0, 0, .55),
+  0 0 0 3px color-mix(in srgb, var(--on-accent-hi) 22%, transparent); }
+/* لوگوی خودکار (حرفِ اول) روی زمینه‌ی تمام‌رنگ ناپدید می‌شد — کاشی
+   خودش همان شیبِ accent است. روی سطح‌های رنگیِ «پررنگ» (اسپلش و
+   سربرگ) برعکس می‌شود: زمینه جوهر، حرف رنگ. کنتراستِ این دو را
+   test-palette روی کلِ چرخه‌ی رنگ می‌سنجد (≥ ۳). */
+html[data-mn-tpl="bold"] .nx-shop .nx-shoplogo.bg-mono,
+html[data-mn-tpl="bold"] .mn-top .nx-shoplogo.bg-mono {
+  background: var(--on-accent-hi); color: var(--accent); }
+html[data-mn-tpl="bold"] .nx-shop-bar { background: rgba(255, 255, 255, .22); }
+html[data-mn-tpl="bold"] .nx-shop-bar > i { background: var(--on-accent-hi); }
+
+/* مینیمال: بی‌نور، خطِ باریک */
+html[data-mn-tpl="mono"] .nx-shop-glow { display: none; }
+html[data-mn-tpl="mono"] .nx-shop-logo { box-shadow: none; }
+html[data-mn-tpl="mono"] .nx-shop-name { font-weight: 700; }
+html[data-mn-tpl="mono"] .nx-shop-bar { height: 2px; }
+html[data-mn-tpl="mono"] .nx-shop-bar > i { background: var(--accent); }
+
+/* نئون: حلقه‌ی درخشان دورِ لوگو، نامِ درخشان */
+html[data-mn-tpl="neon"] .nx-shop-logo {
+  box-shadow: 0 0 0 1px var(--accent-edge), 0 0 36px -4px rgba(var(--accent-rgb), .9); }
+html[data-mn-tpl="neon"] .nx-shop-name {
+  color: var(--accent-2); text-shadow: 0 0 18px rgba(var(--accent-rgb), .8); }
+html[data-mn-tpl="neon"] .nx-shop-bar > i { box-shadow: 0 0 12px rgba(var(--accent-rgb), .9); }
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-shop-logo, .nx-shop-name, .nx-shop-bar, .nx-shop-bar > i, .nx-shop-ghost { animation: none; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   پرتالِ نماینده — صفحه‌ها و داشبورد (portal/dash.jsx)
+   مالک: «فضای خالی به‌شدت زیاد، flexible نیست، جذاب نیست، نمودارِ
+   خطی نگذار». صفحه‌ها تمام‌عرض‌اند و فهرست‌ها شبکه‌ای که با عرض
+   جا می‌افتد؛ کارت داخلِ کارت نداریم.
+   ═══════════════════════════════════════════════════════════ */
+.nx-page { width: 100%; }
+.nx-page > .nx-box-head { display: none; }
+.pd-cards { display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); align-items: start; }
+.nx-tile { background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: 16px; min-width: 0; }
+
+.pd-home { display: grid; gap: 14px; }
+.pd-grid { display: grid; gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
+.pd-kpi {
+  display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto auto;
+  column-gap: 12px; row-gap: 2px; align-items: center; text-align: right;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+  padding: 14px 16px; min-width: 0; font-family: inherit; color: inherit;
+  transition: border-color var(--m-fast) linear, transform var(--m-fast) var(--sp-snappy);
+}
+button.pd-kpi:hover { border-color: var(--border-2); }
+button.pd-kpi:active { transform: scale(.985); }
+.pd-kpi-ico { grid-row: 1 / span 3; width: 40px; height: 40px; border-radius: 12px;
+  display: grid; place-items: center; }
+.pd-kpi-label { font-size: 12.5px; color: var(--muted); }
+.pd-kpi-value { font-size: 24px; font-weight: 800; color: var(--text); line-height: 1.25;
+  font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pd-kpi-value em { font-style: normal; font-size: 12px; font-weight: 500; color: var(--muted); margin-inline-start: 5px; }
+.pd-kpi-sub { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pd-kpi.tone-accent .pd-kpi-ico { background: var(--accent-soft); color: var(--accent-2); }
+.pd-kpi.tone-ok .pd-kpi-ico { background: var(--ok-soft); color: var(--ok); }
+.pd-kpi.tone-warn .pd-kpi-ico { background: var(--warn-soft); color: var(--warn); }
+.pd-kpi.tone-danger .pd-kpi-ico { background: var(--danger-soft); color: var(--danger); }
+.pd-kpi.tone-muted .pd-kpi-ico { background: var(--hair-1); color: var(--muted); }
+.pd-kpi.tone-warn { border-color: var(--warn-line); }
+.pd-skel { height: 86px; animation: pd-pulse 1.4s ease-in-out infinite; }
+@keyframes pd-pulse { 50% { opacity: .5; } }
+
+.pd-split { display: grid; gap: 14px; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); align-items: start; }
+.pd-col { display: grid; gap: 14px; min-width: 0; }
+.pd-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+  padding: 18px; min-width: 0; }
+.pd-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.pd-head h3 { margin: 0; font-size: 14.5px; font-weight: 700; color: var(--text); }
+.pd-head p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
+.pd-head p b { color: var(--text); }
+.pd-head-ico { color: var(--muted); }
+.pd-link { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px;
+  color: var(--accent-2); background: none; border: 0; font-family: inherit; }
+
+/* رنگِ هر بخش — یک جا، برای نوار و نقطه و چیپ */
+.t-ok { --t: var(--ok); }
+.t-warn { --t: var(--warn); }
+.t-danger { --t: var(--danger); }
+.t-muted { --t: var(--hair-3); }
+.t-accent { --t: var(--accent); }
+
+.pd-stack { display: flex; gap: 3px; height: 14px; border-radius: 99px; overflow: hidden; }
+.pd-stack > i { display: block; min-width: 6px; background: var(--t); }
+.pd-legend { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); }
+.pd-legend li { display: flex; align-items: center; gap: 8px; font-size: 12.5px;
+  padding: 8px 10px; border-radius: 10px; background: var(--hair-1); }
+.pd-legend .dot { width: 9px; height: 9px; border-radius: 3px; background: var(--t); flex: none; }
+.pd-legend .lbl { color: var(--dim); flex: 1; min-width: 0; }
+.pd-legend b { color: var(--text); font-variant-numeric: tabular-nums; }
+.pd-legend em { font-style: normal; color: var(--muted); font-size: 11.5px; min-width: 36px; text-align: left; }
+
+.pd-ring-row { position: relative; display: grid; place-items: center; }
+.pd-ring { width: 168px; height: 168px; transform: rotate(-90deg); }
+.pd-ring circle { fill: none; stroke-width: 11; }
+.pd-ring .trk { stroke: var(--hair-2); }
+.pd-ring .val { stroke: var(--t); stroke-linecap: round; transition: stroke-dasharray .6s var(--sp-soft); }
+.pd-ring-center { position: absolute; display: grid; justify-items: center; }
+.pd-ring-center b { font-size: 26px; font-weight: 800; color: var(--text); }
+.pd-ring-center span { font-size: 11.5px; color: var(--muted); }
+.pd-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 12px; }
+.pd-chips span { font-size: 12px; padding: 5px 10px; border-radius: 99px;
+  color: var(--t); background: color-mix(in srgb, var(--t) 12%, transparent); }
+.pd-chips .t-muted { color: var(--muted); background: var(--hair-1); }
+
+.pd-funnel ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.pd-funnel li { display: grid; gap: 7px; }
+.pd-funnel .row { display: flex; align-items: baseline; gap: 8px; }
+.pd-funnel .lbl { min-width: 0; font-size: 13px; color: var(--dim); }
+.pd-funnel .row b { font-size: 15px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+.pd-funnel .row em { font-style: normal; font-size: 11.5px; color: var(--muted); margin-inline-start: auto; }
+.pd-funnel .trk { height: 10px; border-radius: 99px; background: var(--hair-1); overflow: hidden; }
+.pd-funnel .trk > i { display: block; height: 100%; border-radius: inherit;
+  background: var(--accent-fill); box-shadow: inset 0 0 0 1px var(--accent-line);
+  transition: width .6s var(--sp-soft); }
+.pd-funnel li.last .trk > i { background: linear-gradient(90deg, var(--accent), var(--cy)); box-shadow: none; }
+.pd-funnel li.last .row b { color: var(--accent-2); }
+
+.pd-today ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pd-today li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--t) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--t) 22%, transparent); }
+.pd-today li.t-muted { background: var(--hair-1); border-color: var(--border); }
+.pd-today .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--t); flex: none; }
+.pd-today .txt { flex: 1; min-width: 0; font-size: 13px; color: var(--text); }
+.pd-today button { display: inline-flex; align-items: center; gap: 3px; flex: none; font-family: inherit;
+  font-size: 12px; color: var(--accent-2); background: var(--accent-soft); border: 0;
+  border-radius: 8px; padding: 6px 10px; }
+.pd-done { display: flex; align-items: center; gap: 8px; color: var(--ok); font-size: 13px;
+  padding: 12px; border-radius: 12px; background: var(--ok-soft); }
+.pd-note { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--warn); margin: 0; }
+
+.pd-facts dl { margin: 0; display: grid; gap: 2px; }
+.pd-facts dl > div { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 9px 0; border-bottom: 1px solid var(--border); }
+.pd-facts dl > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.pd-facts dt { font-size: 13px; color: var(--dim); display: grid; gap: 1px; min-width: 0; }
+.pd-facts dt small { font-size: 11.5px; color: var(--muted); }
+.pd-facts dd { margin: 0; font-size: 14px; font-weight: 700; color: var(--text);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ربات و پرداخت — دو ستون روی دسکتاپ، یکی روی گوشی */
+.bb-grid { display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+.bb-col { display: grid; gap: 14px; min-width: 0; }
+.bb-pill { flex: none; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 99px;
+  color: var(--t); background: color-mix(in srgb, var(--t) 13%, transparent); }
+.bb-pill.t-muted { color: var(--muted); background: var(--hair-1); }
+.bb-bot { display: flex; align-items: center; gap: 8px; padding: 10px 12px; margin-bottom: 14px;
+  border-radius: 12px; background: var(--accent-wash); border: 1px solid var(--accent-line);
+  color: var(--accent-2); font-size: 13.5px; font-weight: 600; }
+.bb-bot span { flex: 1; min-width: 0; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; }
+.bb-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.bb-row { display: flex; gap: 8px; }
+.bb-row .fx-input { flex: 1; min-width: 0; }
+.bb-two { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.bb-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.bb-checks li { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 12px;
+  background: color-mix(in srgb, var(--t) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--t) 20%, transparent); }
+.bb-checks .ico { flex: none; width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center;
+  color: var(--t); background: color-mix(in srgb, var(--t) 16%, transparent); }
+.bb-checks b { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
+.bb-checks em { font-style: normal; font-weight: 500; font-size: 12px; color: var(--muted); }
+.bb-checks li > div > span { display: block; font-size: 12px; color: var(--dim); margin-top: 2px; line-height: 1.7; }
+
+/* سفارش — نوارِ رنگیِ وضعیت روی لبه، تا فهرستِ درهم با یک نگاه خوانده شود */
+.od-tile { border-inline-start: 3px solid var(--border-2); }
+.od-tile.od-pending, .od-tile.od-awaiting { border-inline-start-color: var(--warn); }
+.od-tile.od-approved { border-inline-start-color: var(--ok); }
+.od-tile.od-rejected, .od-tile.od-expired { border-inline-start-color: var(--danger-line); }
+
+.pl-trial { border-color: var(--ok-line); background:
+  linear-gradient(180deg, var(--ok-wash), transparent 60%), var(--surface); }
+.pd-add { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 120px;
+  border-radius: 16px; border: 1.5px dashed var(--border-2); background: transparent;
+  color: var(--muted); font-family: inherit; font-size: 13.5px; cursor: pointer;
+  transition: color var(--m-fast) linear, border-color var(--m-fast) linear, background var(--m-fast) linear; }
+.pd-add:hover { color: var(--accent-2); border-color: var(--accent-line); background: var(--accent-wash); }
+
+@media (max-width: 900px) { .bb-grid { grid-template-columns: 1fr; } }
+
+@media (max-width: 1100px) { .pd-split { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .pd-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .pd-kpi { grid-template-columns: 1fr; padding: 12px; }
+  .pd-kpi-ico { grid-row: auto; width: 32px; height: 32px; border-radius: 10px; margin-bottom: 4px; }
+  .pd-kpi-value { font-size: 20px; }
+  .pd-card { padding: 14px; border-radius: 16px; }
+  .pd-ring { width: 140px; height: 140px; }
+  .nx-tile { padding: 13px; }
+  .pd-add { min-height: 64px; }
+}

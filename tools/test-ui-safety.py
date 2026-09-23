@@ -419,9 +419,57 @@ for _t in _tpl_ids:
 check("هر قالب نوار، زبانه، کارت، دکمه و صفحه‌ی ورود را عوض می‌کند",
       _tpl_ids and not _thin, ", ".join(_thin[:6]) if _thin else f"{len(_tpl_ids)} قالب")
 
+_MARK = io.open(os.path.join(ROOT, "frontend", "src", "lib", "mark.jsx"), encoding="utf-8").read()
+_shop_sp = _MARK[_MARK.index("function ShopSplash("):_MARK.index("export function Splash(")] \
+    if "function ShopSplash(" in _MARK and "export function Splash(" in _MARK else ""
 check("صفحه‌ی ورود لوگوی فروشگاه را با همان قاب نشان می‌دهد",
-      "<ShopLogo src={logo} name={name} style={logoStyle} size={84}" in
-      io.open(os.path.join(ROOT, "frontend", "src", "lib", "mark.jsx"), encoding="utf-8").read())
+      "<ShopLogo src={logo} name={name} style={logoStyle}" in _shop_sp)
+# مینی‌اپ اسپلشِ خودش را دارد و نه اسپلشِ نکسورا با لوگوی عوض‌شده:
+# مدارِ دوّار و نوارِ سیاهِ پایینِ قالبِ bold از آن‌جا می‌آمد.
+check("اسپلشِ مینی‌اپ اسپلشِ فروشگاه است، نه اسپلشِ پنل",
+      re.search(r"if \(neutral\)\s*\{?\s*return\s*<ShopSplash", _MARK) is not None)
+
+# فاصله‌ی حروف روی متنِ فارسی پیوندِ حروف را می‌شکند — «ف ر و ش گ ا ه».
+# نامِ فروشگاه اغلب فارسی است، پس هیچ قاعده‌ی .nx-shop-name نباید بدهدش.
+_shop_rules = [m.group(1) for m in re.finditer(
+    r"\.nx-shop-name[^{]*\{([^}]*)\}", _CSS_ALL)]
+check("نامِ فروشگاه در اسپلش letter-spacing ندارد (فارسی را از هم می‌پاشد)",
+      _shop_rules and not any(re.search(r"letter-spacing\s*:(?!\s*0\s*(;|$))", r) for r in _shop_rules),
+      f"{len(_shop_rules)} قاعده")
+
+# پرتالِ نماینده: مالک گفت «نمودارِ خطی نگذار». خطِ روندِ کوچک
+# (spark) در کارت‌ها همان بود.
+_PORT = ALL.get("portal/index.jsx", "")
+_DASH = ALL.get("portal/dash.jsx", "")
+check("پرتالِ نماینده نمودارِ خطی ندارد",
+      "spark" not in _PORT and "spark" not in _DASH and "<polyline" not in _DASH)
+check("خانه‌ی پرتال داشبوردِ تازه است",
+      "<HomeDash " in _PORT and "function HomeDash(" in _DASH)
+# صفحه‌ی درون‌خطی کارتِ باریکِ وسطِ صفحه نیست — نصفِ صفحه خالی می‌ماند
+_frame = _PORT[_PORT.index("function Frame("):_PORT.index("async function api(")] \
+    if "function Frame(" in _PORT and "async function api(" in _PORT else ""
+# روشن/تیره پیش از اولین رندر — وگرنه صفحه‌ی ورودِ مشتریِ پوسته‌ی
+# روشن سیاه است و بعد ناگهان سفید می‌شود. و یک قاعده، نه دو: هر جا
+# colorScheme خوانده شود جز tgScheme، دو پاسخِ متفاوت ممکن می‌شود.
+_MAIN = ALL.get("main.jsx", "")
+_boot = _MAIN[:_MAIN.index("function Booting(")] if "function Booting(" in _MAIN else ""
+check("پوسته‌ی روشن/تیره پیش از صفحه‌ی ورود روی ریشه است",
+      "markScheme(" in _boot and "markScheme(" in ALL.get("mini/index.jsx", ""))
+_cs = [f for f, src in ALL.items() if "colorScheme" in src and f != "lib/mini-themes.js"]
+check("colorScheme فقط در tgScheme خوانده می‌شود", not _cs, ", ".join(_cs))
+
+# ستون‌های صفر/یکِ SQLite (is_trial، is_active) عدد می‌رسند نه بولی، و
+# `{r.is_trial && …}` در React خودِ «0» را چاپ می‌کند. کنارِ نامِ هر
+# پلنِ پولیِ نماینده یک صفرِ تنها نشسته بود و هیچ‌کس نپرسید چیست.
+_zero = []
+for _f, _src in ALL.items():
+    for _m in re.finditer(r"\{\s*[\w.?]*\b(is_trial|is_active)\s*&&", _src):
+        _zero.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
+check("ستونِ صفر/یک مستقیم با && رندر نمی‌شود (صفر چاپ می‌شود)", not _zero,
+      ", ".join(_zero[:5]))
+
+check("صفحه‌های پرتال تمام‌عرض‌اند، نه کارتِ شناورِ باریک",
+      'className="nx-page"' in _frame and "width + 220" not in _frame)
 
 # هر توکنِ پالت در :root پیش‌فرض دارد — وگرنه بدونِ رنگِ نماینده شفاف می‌شود
 _ROOT_TOK = set(re.findall(r"^\s*(--[a-z0-9-]+)\s*:", _CSS_ALL.split(":root")[1].split("}")[0], re.M))

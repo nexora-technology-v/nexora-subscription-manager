@@ -466,7 +466,8 @@
                   series: { new:   [0,1,0,2,1,0,3,1,2,0,1,4,2,3],
                             renew: [1,0,2,1,3,2,0,1,4,2,1,0,3,2] },
                   needsAttention: 14,
-                  sales: { orders: 23, revenue: 5600000, pending: 2 } };
+                  sales: { hasBot: true, orders: 23, sold: 5600000, received: 4350000,
+                           monthOrders: 9, monthSold: 2150000, pending: 2 } };
 
   var P_PLANS = { credit: 1200000, prepaid: true, perGb: 0,
                   plans: [{ gb: 30, label: "۳۰ گیگ", price: 70000, perDevice: 15000 },
@@ -512,7 +513,10 @@
   // رنگِ فروشگاه — نماینده‌ای که پوسته‌ی شخصی گرفته. خالی یعنی
   // پوسته‌ی پیش‌فرض، و آن حالت هم باید دیده شود: `?accent=` در
   // نشانیِ هارنس خاموشش می‌کند.
-  var M_ME = { name: "مریم کاظمی", brand: "نکسورا", balance: 240000, coins: 36,
+  // ?brand= — فروشگاهِ یک نماینده. بدونش همه‌ی آزمون‌های اسپلش و
+  // سربرگ «نکسورا» می‌دیدند، یعنی همان نامی که مشتریِ نماینده هرگز
+  // نباید ببیند؛ نامِ فارسی/لاتینِ مخلوط هم فقط این‌طور دیده می‌شود.
+  var M_ME = { name: "مریم کاظمی", brand: Q0.get("brand") || "نکسورا", balance: 240000, coins: 36,
                accent: MINI_ACCENT,
                // ?tpl=mono|bold|neon و ?shape=circle — قالب و قابِ لوگو
                theme: { tpl: Q0.get("tpl") || "aurora",

@@ -29,7 +29,7 @@ export const MINI_TEMPLATES = [
 ];
 
 /*
- * پالت‌های آماده. `shift` جهتِ رنگِ دوم است (پیش‌فرض ۳۰ درجه) — اقیانوس
+ * پالت‌های آماده. `shift` جهتِ رنگِ دوم است (پیش‌فرض ۱۶ درجه) — اقیانوس
  * به فیروزه‌ای می‌رود تا همان ظاهرِ آشنای آبی و فیروزه‌ای بماند.
  * `bg` زمینه‌ی حالتِ تیره است؛ سطح‌ها از همان فام و
  * اشباع با روشنایی‌های ثابت ساخته می‌شوند — همان فاصله‌هایی که
@@ -88,10 +88,10 @@ function surfacesFrom(bg) {
 export function resolvePalette(paletteId, customAccent) {
   if (paletteId === "custom" && HEX.test(String(customAccent || ""))) {
     const [h] = hexHsl(customAccent);
-    return { accent: customAccent, bg: hsl(h, 0.35, 0.045), shift: 30 };
+    return { accent: customAccent, bg: hsl(h, 0.35, 0.045), shift: 16 };
   }
   const p = MINI_PALETTES.find((x) => x.id === paletteId);
-  if (p) return { accent: p.accent, bg: p.bg, shift: p.shift ?? 30 };
+  if (p) return { accent: p.accent, bg: p.bg, shift: p.shift ?? 16 };
   // سازگاری: پیش از قالب‌ها فقط `mini_accent` بود
   if (HEX.test(String(customAccent || ""))) return resolvePalette("custom", customAccent);
   return null;
@@ -112,6 +112,25 @@ export function themeVars({ palette, accent }, scheme = "dark") {
 const ALL_KEYS = Object.keys({
   ...accentPalette("#2b7fd6"), ...surfacesFrom("#070A12"),
 });
+
+/**
+ * روشن یا تیره — از خودِ تلگرام، یک قاعده برای دو جا.
+ *
+ * صفحه‌ی ورود (main.jsx) و خودِ مینی‌اپ (syncTheme) هر دو می‌پرسند.
+ * تا امروز فقط مینی‌اپ می‌پرسید، آن هم بعد از بارشدنِ تکه‌اش؛ پس
+ * صفحه‌ی ورود برای مشتریِ پوسته‌ی روشن همیشه سیاه بود و بعد ناگهان
+ * سفید می‌شد. یک تابع، تا دو پاسخِ متفاوت ممکن نباشد.
+ */
+export function tgScheme(w) {
+  return (w && w.colorScheme) === "light" ? "light" : "dark";
+}
+
+/** صفتِ پوسته روی ریشه — همان که قاعده‌های روشنِ index.css می‌خوانند */
+export function markScheme(w, el = document.documentElement) {
+  const s = tgScheme(w);
+  el.dataset.mnScheme = s;
+  return s;
+}
 
 /**
  * پوسته را روی ریشه بگذار — و هر چه قبلاً گذاشته شده بود، اگر این

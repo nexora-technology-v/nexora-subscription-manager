@@ -165,9 +165,59 @@ function OrbitRing({ size = 168, state = "load" }) {
  * `note` متنِ وضعیت است و باید *واقعی* باشد. درصدِ ساختگی نشان
  * نمی‌دهیم؛ اگر چیزی برای گفتن نیست، هیچ نمی‌گوییم.
  */
+/**
+ * صفحه‌ی ورودِ **فروشگاه** — مینی‌اپِ مشتری.
+ *
+ * چرا جدا از صفحه‌ی ورودِ پنل: آن یکی برای «NEXORA» طراحی شده بود —
+ * مدارِ نقطه‌چین، واژه‌ای که از فاصله‌ی باز جمع می‌شود. روی نامِ
+ * فروشگاه این‌ها خراب می‌شدند:
+ *
+ *   · حرکتِ «فاصله‌ی باز → بسته» حرف‌های فارسی را از هم جدا می‌کرد؛
+ *     «نکسورا» تا آخرِ حرکت «ن ک س و ر ا» بود. قالبِ نئون هم فاصله‌ی
+ *     ثابت داشت — نام برای همیشه شکسته.
+ *   · قالبِ پررنگ پایینِ صفحه یک نوارِ سیاه داشت (شیب تا زمینه).
+ *   · زیرِ نامِ فروشگاه «اشتراک من» تکرار می‌شد.
+ *
+ * حالا: لوگو، نام، و یک نوارِ پیشرفتِ باریک. هر قالب شکلِ خودش را از
+ * CSS می‌گیرد (`html[data-mn-tpl]`). حرکت فقط شفافیت و جابه‌جایی است —
+ * هیچ‌وقت فاصله‌ی حروف.
+ */
+function ShopSplash({ logo, name, logoStyle, phase, note, onRetry, label }) {
+  const known = !!(logo || name);
+  return (
+    <div className={`nx-splash nx-shop ${phase}`} dir="rtl" role="status" aria-live="polite">
+      <div className="nx-shop-glow" aria-hidden="true" />
+      <div className="nx-shop-stage">
+        {known ? (
+          <ShopLogo src={logo} name={name} style={logoStyle} size={96}
+            className="nx-shop-logo" />
+        ) : (
+          // هنوز نمی‌دانیم فروشگاه کیست (اولین بازکردن): جای لوگو،
+          // نه نشانِ کسِ دیگری
+          <span className="nx-shop-ghost" aria-hidden="true" />
+        )}
+        <div className="nx-shop-name">{name || label}</div>
+        {phase === "error" ? (
+          <div className="nx-fail">
+            <p>{note || "اتصال برقرار نشد."}</p>
+            {onRetry && <button className="nx-retry" onClick={onRetry}>تلاش دوباره</button>}
+          </div>
+        ) : (
+          <div className="nx-shop-bar" aria-label={note || "در حال آماده‌سازی"}><i /></div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function Splash({ label = "", logo = "", name = "",
                         phase = "load", note = "", onRetry,
                         neutral = false, logoStyle = null }) {
+  // مینی‌اپِ فروشگاه صفحه‌ی ورودِ خودش را دارد
+  if (neutral) {
+    return <ShopSplash logo={logo} name={name} logoStyle={logoStyle} phase={phase}
+      note={note} onRetry={onRetry} label={label} />;
+  }
   return (
     <div className={`nx-splash ${phase}`} dir="rtl" role="status" aria-live="polite">
       {/* نورِ محیطی — دو لکه‌ی بسیار محو که آرام جابه‌جا می‌شوند */}
@@ -180,13 +230,7 @@ export function Splash({ label = "", logo = "", name = "",
           {/* مینی‌اپِ فروشگاهی که می‌شناسیم: لوگوی خودش با همان قاب و
               زمینه‌ای که در سربرگ دارد — یا نشانِ خودکار از نامش.
               نشانِ خنثی فقط وقتی هنوز هیچ نمی‌دانیم. */}
-          {neutral && (logo || name) ? (
-            <ShopLogo src={logo} name={name} style={logoStyle} size={84}
-              className="go" />
-          ) : (
-            <NexoraMark size={84} animate src={logo} alt={name}
-              neutral={neutral && !logo} />
-          )}
+          <NexoraMark size={84} animate src={logo} alt={name} />
         </div>
       </div>
 

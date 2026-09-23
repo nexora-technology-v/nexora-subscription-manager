@@ -12,11 +12,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
-  Activity, AlertTriangle, Bot, Camera, Check, Clock, Coins, Copy, CreditCard,
+  Activity, AlertTriangle, Bot, Camera, Check, Coins, Copy, CreditCard,
   Database, ExternalLink, FileText, Gift, Link2, Menu, MessageCircle, Moon, Play,
   Settings2, Sun,
   LayoutGrid, Loader2, LogOut, Package, Palette, Plus, Power, QrCode, RefreshCw, Search,
-  ShoppingCart, Trash2, TrendingUp, Users, Wallet, X, XCircle,
+  Trash2, Users, X, XCircle,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
@@ -27,11 +27,12 @@ import { isoToJalaliLabel } from "../ui/jalali";
 // می‌شوند. این‌جا فقط همان چیزی گرفته می‌شود که ui/jalali هم هست —
 // ابزار عمومی، نه کدِ پنل مدیر.
 import { Avatar, EmptyState, MoneyInput, NumberInput, SkeletonCards, SkeletonTable,
-         StatTile, Toggle, usePager } from "../ui/index";
+         Toggle, usePager } from "../ui/index";
 import { NexoraMark } from "../lib/mark.jsx";
 // همان صفحه‌های پنلِ مالک، با داده‌ی خودِ نماینده — نه کپی.
 // چرا: lib/botsrc.js. مرزِ واقعی بکند است (`portal_tenant`).
 import { portalSrc } from "../lib/botsrc";
+import { HomeDash } from "./dash.jsx";
 import { MINI_PALETTES, MINI_TEMPLATES, paletteSwatch, themeVars } from "../lib/mini-themes.js";
 import { LOGO_BGS, LOGO_SHAPES, ShopLogo, cleanLogoStyle } from "../lib/shoplogo.jsx";
 import { BotUsersSection } from "../sections/bot/users";
@@ -67,8 +68,12 @@ export { portalSlug };
  * این‌جا سوارند) `transform` ماندگار هست و `fixed` در آن حبس می‌شود.
  */
 function Frame({ inline, onClose, width = 420, children }) {
+  // صفحه، نه کارتِ شناور. قبلاً هر صفحه یک کارتِ ۶۴۰ پیکسلی وسطِ
+  // ناحیه‌ی ۱۱۸۰ پیکسلی بود — نصفِ صفحه خالی، و روی گوشی کارت داخلِ
+  // کارت. حالا خودِ صفحه شبکه است و عنوان را نوارِ بالا می‌گوید؛
+  // عنوانِ خودِ پنجره (nx-box-head) در این حالت پنهان است.
   if (inline) {
-    return <div className="fx-card p-5" style={{ maxWidth: width + 220 }}>{children}</div>;
+    return <section className="nx-page">{children}</section>;
   }
   return createPortal(
     <div style={{
@@ -163,24 +168,6 @@ function Login({ slug, onIn }) {
 
 // ═══════════════════════════════════════════════════════════
 
-/**
- * کارت شاخصِ پنل نماینده.
- *
- * حالا همان `StatTile` مشترک است — قدِ یکسان، آیکونِ داخل مربع،
- * و تپش وقتی عدد عوض می‌شود. سیزده جای این صفحه صدایش می‌زنند و
- * هیچ‌کدام لازم نبود عوض شوند.
- *
- * `StatTile` از `ui/index` می‌آید که ابزارِ عمومی است، نه کدِ پنل
- * مدیر — همان مرزی که این فایل از اول داشته.
- */
-function Stat({ icon, label, value, unit, hint, color, spark, sparkColor }) {
-  return (
-    <StatTile icon={icon} label={label} value={value} unit={unit} hint={hint}
-      color={color || "var(--text)"} tone={color || "var(--accent-2)"}
-      spark={spark} sparkColor={sparkColor} />
-  );
-}
-
 function RenewBox({ inline, token, row, plans, onDone, onClose }) {
   const [months, setMonths] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -213,7 +200,7 @@ function RenewBox({ inline, token, row, plans, onDone, onClose }) {
 
   return (
     <Frame inline={inline} onClose={onClose} width={360}>
-        <div className="flex items-center justify-between mb-3">
+        <div className="nx-box-head flex items-center justify-between mb-3">
           <div className="text-[14px] font-semibold text-white">تمدید کانفیگ</div>
           {!inline && (
             <button onClick={onClose} className="fx-ico-btn"
@@ -394,7 +381,7 @@ function NewBox({ inline, token, plans, slug, onDone, onClose }) {
 
   return (
     <Frame inline={inline} onClose={onClose} width={380}>
-        <div className="flex items-center justify-between mb-3">
+        <div className="nx-box-head flex items-center justify-between mb-3">
           <div className="text-[14px] font-semibold text-white">کانفیگ تازه</div>
           {!inline && (
             <button onClick={onClose} className="fx-ico-btn"
@@ -880,134 +867,142 @@ function BotBox({ inline, token, onClose, onNote }) {
     }
   };
 
+  // چک‌لیستِ آمادگی — موارد درست هم دیده می‌شوند، نه فقط کمبودها:
+  // «سه از چهار آماده است» از «یک مشکل» روشن‌تر می‌گوید کجای کارید.
+  const gaps = saleGaps(st);
+  const gapOf = (k) => gaps.find((g) => g.key === k);
+  const checks = st?.hasBot ? [
+    { k: "bot", ok: true, t: "ربات وصل است" },
+    { k: "group", ok: !gapOf("group"), t: gapOf("group")?.title || "گروهِ فروش تعیین شده",
+      why: gapOf("group")?.why, owner: true },
+    { k: "cards", ok: !gapOf("cards"), t: gapOf("cards")?.title || `${faNum(st.activeCards)} کارتِ فعال`,
+      why: gapOf("cards")?.why },
+    { k: "link", ok: !gapOf("link"), t: gapOf("link")?.title || "رسیدها به تلگرامِ شما می‌آیند",
+      why: gapOf("link")?.why },
+  ] : [];
+
   return (
     <Frame inline={inline} onClose={onClose} width={420}>
-        <div className="flex items-center justify-between mb-4">
-          <div className="text-[14px] font-semibold text-white">ربات تلگرام شما</div>
-          {!inline && (
-            <button onClick={onClose} className="fx-ico-btn"
-              style={{ width: 28, height: 28 }} aria-label="بستن">
-              <X size={13} />
-            </button>
+      <div className="bb-grid">
+        <div className="bb-col">
+          <section className="nx-tile">
+            <header className="pd-head">
+              <div>
+                <h3>ربات تلگرامِ شما</h3>
+                <p>{st?.hasBot ? "مشتری‌ها از این ربات می‌خرند و برندِ شما را می‌بینند"
+                  : "یک ربات از @BotFather بسازید و توکنش را این‌جا بگذارید"}</p>
+              </div>
+              <span className={`bb-pill ${st?.hasBot ? "t-ok" : "t-muted"}`}>
+                {st?.hasBot ? "وصل" : "وصل نیست"}
+              </span>
+            </header>
+            {st?.hasBot && (
+              <div className="bb-bot">
+                <Bot size={16} />
+                <span dir="ltr">@{st.username}</span>
+                <button onClick={drop} disabled={busy} className="fx-ico-btn"
+                  style={{ width: 30, height: 30 }} aria-label="جداکردن ربات" title="جداکردن">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            )}
+            <label className="bb-label">{st?.hasBot ? "جایگزینی توکن" : "توکن ربات"}</label>
+            <div className="bb-row">
+              <input dir="ltr" value={tok} onChange={(e) => setTok(e.target.value)}
+                placeholder="123456:ABC-DEF..." className="fx-input text-[13px]"
+                style={{ fontFamily: "var(--mono)" }} />
+              <button onClick={save} disabled={busy || !tok.trim()}
+                className="fx-btn px-4 text-[13px] flex items-center gap-1.5 shrink-0">
+                {busy && <Loader2 size={13} className="animate-spin" />} ثبت
+              </button>
+            </div>
+          </section>
+
+          {st?.hasBot && (
+            <section className="nx-tile">
+              <header className="pd-head">
+                <div>
+                  <h3>آمادگیِ فروش</h3>
+                  <p>{gaps.length ? `${faNum(checks.length - gaps.length)} از ${faNum(checks.length)} آماده است`
+                    : "ربات آماده‌ی فروش است"}</p>
+                </div>
+              </header>
+              <ul className="bb-checks">
+                {checks.map((c) => (
+                  <li key={c.k} className={c.ok ? "t-ok" : "t-warn"}>
+                    <span className="ico">{c.ok ? <Check size={13} /> : <AlertTriangle size={13} />}</span>
+                    <div>
+                      <b>{c.t}{!c.ok && c.owner && <em> · کارِ مدیر</em>}</b>
+                      {!c.ok && c.why && <span>{c.why}</span>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {st?.hasBot && (
+            <section className="nx-tile">
+              <header className="pd-head">
+                <div>
+                  <h3>رسیدها و هشدارها</h3>
+                  <p>رسیدِ هر خرید با دکمه‌ی تایید به تلگرامِ خودتان می‌آید</p>
+                </div>
+              </header>
+              <OwnerLink token={token} linked={!!st.ownerLinked} onChange={load} />
+            </section>
           )}
         </div>
 
-        {st?.hasBot ? (
-          <div className="rounded-xl p-3 mb-4 flex items-center justify-between gap-2"
-            style={{ background: "var(--ok-wash)",
-                     border: "1px solid var(--ok-fill)" }}>
-            <div>
-              <div className="text-[13px]" style={{ color: "var(--ok)" }}>
-                وصل است
+        <div className="bb-col">
+          {st?.hasBot && (
+            <section className="nx-tile">
+              <header className="pd-head">
+                <div>
+                  <h3>کارت‌های واریز</h3>
+                  <p>مشتری به یکی از کارت‌های فعال واریز می‌کند — اگر چندتا باشد، تصادفی</p>
+                </div>
+                <CreditCard size={16} className="pd-head-ico" />
+              </header>
+              <CardsEditor token={token} onSaved={load} />
+            </section>
+          )}
+
+          <section className="nx-tile">
+            <header className="pd-head">
+              <div>
+                <h3>برند و پشتیبانی</h3>
+                <p>نامی که مشتری در ربات و مینی‌اپ می‌بیند</p>
               </div>
-              <div dir="ltr" className="text-[13px] mt-0.5"
-                style={{ fontFamily: "var(--mono)", color: "var(--dim)" }}>
-                @{st.username}
+            </header>
+            <div className="bb-two">
+              <div>
+                <label className="bb-label">نامِ فروشگاه</label>
+                <input value={brand} onChange={(e) => setBrand(e.target.value)}
+                  className="fx-input w-full text-[13px]" />
+              </div>
+              <div>
+                <label className="bb-label">یوزرنیمِ پشتیبانی</label>
+                <input dir="ltr" value={support}
+                  onChange={(e) => setSupport(e.target.value.replace("@", ""))}
+                  placeholder="yoursupport" className="fx-input w-full text-[13px]"
+                  style={{ fontFamily: "var(--mono)" }} />
               </div>
             </div>
-            <button onClick={drop} disabled={busy} className="fx-ico-btn"
-              style={{ width: 32, height: 32 }} aria-label="جداکردن ربات"
-              title="جداکردن">
-              <Trash2 size={13} />
-            </button>
-          </div>
-        ) : (
-          <p className="text-[13px] mb-4 leading-relaxed"
-            style={{ color: "var(--muted)" }}>
-            یک ربات از <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>@BotFather</span>
-            {" "}بسازید و توکنش را این‌جا بگذارید. مشتری‌های شما با آن خرید
-            می‌کنند و برند خودتان را می‌بینند.
-          </p>
-        )}
-
-        {st?.hasBot && (() => {
-          const gaps = saleGaps(st);
-          return (
-            <div className="mb-4">
-              <div className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
-                آمادگیِ فروش
-              </div>
-              {gaps.length === 0 ? (
-                <div className="rounded-xl p-3 text-[13px]"
-                  style={{ background: "var(--ok-wash)", color: "var(--ok)" }}>
-                  <Check size={13} className="inline" /> ربات آماده‌ی فروش است
-                </div>
-              ) : gaps.map((g) => (
-                <div key={g.key} className="rounded-xl p-3 mb-2"
-                  style={{ background: "var(--warn-wash)",
-                           border: "1px solid var(--warn-line)" }}>
-                  <div className="text-[13px] font-medium" style={{ color: "var(--warn)" }}>
-                    {g.title}{g.who === "owner" && " · کارِ مدیر"}
-                  </div>
-                  <div className="text-[12px] mt-0.5 leading-relaxed"
-                    style={{ color: "var(--dim)" }}>{g.why}</div>
-                </div>
-              ))}
-
-              <div className="rounded-xl p-3 mt-3" style={{ border: "1px solid var(--border)" }}>
-                <div className="text-[12px] mb-2 flex items-center gap-1.5"
-                  style={{ color: "var(--muted)" }}>
-                  <Bot size={12} /> رسیدها و هشدارها
-                </div>
-                <OwnerLink token={token} linked={!!st.ownerLinked} onChange={load} />
-              </div>
-
-              <div className="rounded-xl p-3 mt-3" style={{ border: "1px solid var(--border)" }}>
-                <div className="text-[12px] mb-2 flex items-center gap-1.5"
-                  style={{ color: "var(--muted)" }}>
-                  <CreditCard size={12} /> کارت‌های واریز
-                </div>
-                <CardsEditor token={token} onSaved={load} />
-              </div>
-            </div>
-          );
-        })()}
-
-        <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
-          {st?.hasBot ? "جایگزینی توکن" : "توکن ربات"}
-        </label>
-        <input dir="ltr" value={tok} onChange={(e) => setTok(e.target.value)}
-          placeholder="123456:ABC-DEF..."
-          className="fx-input w-full mb-2 text-[13px]"
-          style={{ fontFamily: "var(--mono)" }} />
-        <button onClick={save} disabled={busy || !tok.trim()}
-          className="fx-btn w-full py-2.5 text-[13px] flex items-center
-                     justify-center gap-2 mb-4">
-          {busy && <Loader2 size={13} className="animate-spin" />} ثبت توکن
-        </button>
-
-        <div className="pt-4" style={{ borderTop: "1px solid var(--border)" }}>
-          <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
-            نام برند شما
-          </label>
-          <input value={brand} onChange={(e) => setBrand(e.target.value)}
-            className="fx-input w-full mb-2 text-[13px]" />
-
-          <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
-            یوزرنیم پشتیبانی
-          </label>
-          <input dir="ltr" value={support}
-            onChange={(e) => setSupport(e.target.value.replace("@", ""))}
-            placeholder="yoursupport"
-            className="fx-input w-full mb-2 text-[13px]"
-            style={{ fontFamily: "var(--mono)" }} />
-
-          <button onClick={saveBrand} disabled={busy}
-            className="fx-btn-g w-full py-2.5 text-[13px]">
-            ذخیره‌ی برند
-          </button>
+            <button onClick={saveBrand} disabled={busy}
+              className="fx-btn-g px-4 py-2.5 text-[13px] mt-3">ذخیره‌ی برند</button>
+          </section>
         </div>
+      </div>
 
-        {err && (
-          <p className="text-[13px] mt-3 flex items-start gap-1.5"
-            style={{ color: "var(--danger)" }}>
-            <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
-          </p>
-        )}
+      {err && (
+        <p className="text-[13px] mt-3 flex items-start gap-1.5" style={{ color: "var(--danger)" }}>
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+        </p>
+      )}
     </Frame>
   );
 }
-
 
 /**
  * کف، قیمت، و سودِ یک پلن.
@@ -1396,7 +1391,7 @@ function ThemeBox({ inline, token, onClose, onNote }) {
 
   return (
     <Frame inline={inline} onClose={onClose} width={900}>
-      <div className="flex items-center justify-between mb-3">
+      <div className="nx-box-head flex items-center justify-between mb-3">
         <div className="text-[14px] font-semibold text-white">پوسته‌ی مینی‌اپِ شما</div>
         {!inline && (
           <button onClick={onClose} className="fx-ico-btn" style={{ width: 28, height: 28 }}
@@ -1688,7 +1683,7 @@ function PlansBox({ inline, token, onClose, onNote }) {
 
   return (
     <Frame inline={inline} onClose={onClose} width={620}>
-        <div className="flex items-center justify-between mb-2">
+        <div className="nx-box-head flex items-center justify-between mb-2">
           <div className="text-[14px] font-semibold text-white">
             پلن‌های ربات شما
           </div>
@@ -1758,12 +1753,10 @@ function PlansBox({ inline, token, onClose, onNote }) {
                 } />
             )}
 
-            {rows.map((r, i) => (
-              <div key={i} className="rounded-xl p-3 mb-2.5"
-                style={{ background: "var(--surface-3)",
-                         border: `1px solid ${r.is_trial ? "var(--ok-line)" : "var(--border)"}` }}>
+            {rows.length > 0 && <div className="pd-cards mb-3">{rows.map((r, i) => (
+              <div key={i} className={`nx-tile${r.is_trial ? " pl-trial" : ""}`}>
                 <div className="flex items-center gap-2 mb-2">
-                  {r.is_trial && (
+                  {!!r.is_trial && (
                     <span className="fx-pill text-[11.5px] shrink-0"
                       style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
                       <Gift size={11} className="inline" /> تست رایگان
@@ -1864,6 +1857,10 @@ function PlansBox({ inline, token, onClose, onNote }) {
                 )}
               </div>
             ))}
+              <button onClick={add} className="pd-add">
+                <Plus size={18} /> پلن تازه
+              </button>
+            </div>}
 
             {/* تستِ رایگان: یکی، و فقط وقتی مالک تستی دارد. نبودنش گفته
                 می‌شود — دکمه‌ای که کار نمی‌کند از نبودنش بدتر است. */}
@@ -1879,16 +1876,6 @@ function PlansBox({ inline, token, onClose, onNote }) {
                   تستِ رایگان فعلاً ممکن نیست — مدیر هنوز تستی تعریف نکرده.
                 </p>
               )
-            )}
-
-            {/* در حالتِ خالی، دکمه‌ی خودِ کارتِ خالی کافی است —
-                دو دکمه‌ی یک‌کاره کنار هم فقط شلوغی است. */}
-            {rows.length > 0 && (
-              <button onClick={add}
-                className="fx-btn-g w-full py-2.5 text-[13px] flex items-center
-                           justify-center gap-1.5 mb-3">
-                <Plus size={13} /> پلن تازه
-              </button>
             )}
 
             {err && (
@@ -1979,7 +1966,7 @@ function OrdersBox({ inline, token, onClose, onNote }) {
   return (
     <>
     <Frame inline={inline} onClose={onClose} width={640}>
-        <div className="flex items-center justify-between mb-3">
+        <div className="nx-box-head flex items-center justify-between mb-3">
           <div className="text-[14px] font-semibold text-white">
             سفارش‌های مشتری‌های شما
           </div>
@@ -2020,10 +2007,8 @@ function OrdersBox({ inline, token, onClose, onNote }) {
             hint={tab === "open"
               ? "هر رسیدی که مشتری در ربات شما بفرستد، همین‌جا برای تایید می‌آید."
               : "سفارش‌های بسته‌شده این‌جا بایگانی می‌شوند."} />
-        ) : pageOrders.map((o) => (
-          <div key={o.id} className="rounded-xl p-3.5 mb-2.5"
-            style={{ background: "var(--surface-3)",
-                     border: "1px solid var(--border)" }}>
+        ) : (<div className="pd-cards">{pageOrders.map((o) => (
+          <div key={o.id} className={`nx-tile od-tile od-${o.status}`}>
             <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
               <div>
                 <span className="text-[13px] text-white font-semibold">
@@ -2098,7 +2083,7 @@ function OrdersBox({ inline, token, onClose, onNote }) {
               </div>
             )}
           </div>
-        ))}
+        ))}</div>)}
 
         {ordersPager}
 
@@ -2501,97 +2486,6 @@ const PORTAL_BEHAVIOUR = BOT_BEHAVIOUR
     : f));
 
 /**
- * کارهای امروز — چیزی که همین حالا از دستِ نماینده برمی‌آید.
- *
- * جای کارتِ «نیاز به پیگیری» را گرفت: هر دو همان عددها را نشان
- * می‌دادند، یکی زیرِ دیگری. «۶ تا تا یک هفته دیگر تمام می‌شوند» فقط
- * وقتی به درد می‌خورد که کنارش دکمه‌ای باشد که به همان‌جا ببرد.
- */
-function TodayBox({ stats, sum, go }) {
-  const todo = [];
-  const pending = stats?.sales?.pending || 0;
-  if (pending > 0) {
-    todo.push({ t: `${faNum(pending)} سفارش در انتظار تایید`, b: "دیدن سفارش‌ها",
-                on: () => go("orders"), tone: "var(--warn)" });
-  }
-  if (stats?.expiringSoon > 0) {
-    todo.push({ t: `${faNum(stats.expiringSoon)} اشتراک تا یک هفته تمام می‌شود`,
-                b: "مشتری‌ها", on: () => go("users"), tone: "var(--warn)" });
-  }
-  if (stats?.expired > 0) {
-    todo.push({ t: `${faNum(stats.expired)} اشتراک منقضی شده`,
-                b: "کانفیگ‌ها", on: () => go("configs"), tone: "var(--danger)" });
-  }
-  if (stats?.overQuota > 0) {
-    todo.push({ t: `${faNum(stats.overQuota)} مشتری حجمش تمام شده`,
-                b: "کانفیگ‌ها", on: () => go("configs"), tone: "var(--danger)" });
-  }
-  if (stats?.nearQuota > 0) {
-    todo.push({ t: `${faNum(stats.nearQuota)} مشتری بالای ۸۰٪ حجمش را مصرف کرده`,
-                tone: "var(--muted)" });
-  }
-  if (sum?.unpriced > 0) {
-    todo.push({ t: `${faNum(sum.unpriced)} کانفیگ هنوز نرخ ندارد`, tone: "var(--muted)" });
-  }
-  if (!stats && !sum) return null;
-  return (
-    <div className="fx-card p-4 mb-4">
-      <div className="text-[13px] font-semibold text-white mb-2">کارهای امروز</div>
-      {!todo.length ? (
-        <div className="text-[13px]" style={{ color: "var(--ok)" }}>
-          <Check size={13} className="inline" /> چیزی منتظرِ شما نیست.
-        </div>
-      ) : todo.map((x, i) => (
-        <div key={i} className="flex items-center justify-between gap-3 py-1.5 flex-wrap">
-          <span className="text-[13px]" style={{ color: x.tone }}>• {x.t}</span>
-          {x.b && (
-            <button onClick={x.on} className="fx-btn-g px-3 py-1.5 text-[12px]">{x.b}</button>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/**
- * قیفِ تبدیل — از بازکردنِ ربات تا خرید.
- *
- * همان `_funnel` پنلِ مالک، با مستاجرِ خودِ نماینده. تستِ رایگان خرید
- * شمرده نمی‌شود (`SQL_REAL_BUY`).
- */
-function FunnelBox({ src }) {
-  const [f, setF] = useState(null);
-  useEffect(() => {
-    let alive = true;
-    src.funnel().then((j) => { if (alive) setF(j); }).catch(() => { if (alive) setF(null); });
-    return () => { alive = false; };
-  }, [src]);
-  if (!f || !f.ready || !f.started) return null;
-  return (
-    <div className="fx-card p-4 mb-4">
-      <div className="text-[13px] font-semibold text-white mb-3">از بازکردنِ ربات تا خرید</div>
-      {f.steps.map((st) => (
-        <div key={st.label} className="mb-2">
-          <div className="flex justify-between text-[12.5px] mb-1">
-            <span style={{ color: "var(--dim)" }}>{st.label}</span>
-            <span style={{ color: "var(--muted)" }}>
-              {faNum(st.n)} · {faNum(st.pct)}٪
-            </span>
-          </div>
-          <div className="fx-usebar">
-            <i style={{ width: `${Math.max(2, Math.min(100, st.pct))}%`,
-                        background: "var(--accent)" }} />
-          </div>
-        </div>
-      ))}
-      <div className="text-[12px] mt-2" style={{ color: "var(--muted)" }}>
-        {faNum(f.segments.trialOnly)} نفر فقط تست گرفتند و نخریدند.
-      </div>
-    </div>
-  );
-}
-
-/**
  * قفلِ کانال — مشتری تا عضوِ کانالِ نماینده نشود، پلن نمی‌بیند.
  *
  * ربات باید در آن کانال مدیر باشد؛ وگرنه عضویت را نمی‌تواند بپرسد.
@@ -2832,7 +2726,7 @@ function Dashboard({ token, onOut }) {
           )}
         </header>
 
-        <main className="fx-main flex-1 p-7 w-full mx-auto" style={{ maxWidth: 1180 }}>
+        <main className="fx-main flex-1 p-7 w-full mx-auto" style={{ maxWidth: 1440 }}>
         {/* رباتی که وصل است ولی نمی‌فروشد. بدون این، نماینده فقط
             وقتی می‌فهمید که مشتری شکایت می‌کرد. */}
         {gaps.length > 0 && page !== "bot" && (
@@ -2876,89 +2770,7 @@ function Dashboard({ token, onOut }) {
         )}
 
         {page === "home" && (
-          <>
-            <TodayBox stats={stats} sum={sum} go={go} />
-        {/* تا رسیدنِ آمار، شکلِ همان کارت‌ها — نه فضای خالی که بعد
-            ناگهان پر شود و بقیه‌ی صفحه را هل بدهد */}
-        {!stats && busy && <SkeletonCards n={4} />}
-
-        {stats && (
-          <div className="fx-g4 grid grid-cols-4 gap-3 mb-3">
-            <Stat icon={Users} label="کاربران فعال" value={faNum(stats.active)}
-              color="var(--ok)" spark={stats.series?.new} sparkColor="var(--ok)"
-              hint={stats.inactive ? `${faNum(stats.inactive)} غیرفعال` : ""} />
-            <Stat icon={Clock} label="رو به اتمام"
-              value={faNum(stats.expiringSoon)}
-              color={stats.expiringSoon ? "var(--warn)" : undefined}
-              hint="تا هفت روز دیگر" />
-            <Stat icon={Database} label="مصرف"
-              value={`${faNum(stats.usedGB)} GB`}
-              hint={stats.usagePct !== null
-                ? `${faNum(stats.usagePct)}٪ از ${faNum(stats.quotaGB)} GB` : ""} />
-            <Stat icon={TrendingUp} label="این ماه"
-              value={faNum(stats.thisMonth.new + stats.thisMonth.renewals)}
-              color="var(--accent-2)"
-              spark={stats.series?.renew} sparkColor="var(--cy)"
-              hint={`${faNum(stats.thisMonth.new)} تازه · `
-                + `${faNum(stats.thisMonth.renewals)} تمدید`} />
-          </div>
-        )}
-
-        {sum && (
-          <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
-            <Stat icon={Users} label="کل کانفیگ‌ها" value={faNum(sum.configs)}
-              hint={stats ? `${faNum(stats.neverExpires)} بدون انقضا` : ""} />
-            <Stat icon={RefreshCw} label="تمدیدها" value={faNum(sum.renewals)}
-              hint={`${faNum(sum.months)} ماه در مجموع`} />
-            <Stat icon={Package} label="نامحدود"
-              value={stats ? faNum(stats.unlimitedQuota) : "—"}
-              hint="بدون سقف حجم" />
-            {/* «تومان» واحد است نه بخشی از عدد: با فونت و اندازه‌ی
-                عدد، رشته ۲۲۵ پیکسل می‌شد در کارتی که ۲۰۴ جا دارد و
-                انتهایش بی‌صدا بریده می‌شد. */}
-            {sum.prepaid ? (
-              <Stat icon={Wallet} label="اعتبار باقی‌مانده"
-                value={faNum(sum.credit)} unit="تومان"
-                color={sum.credit > 0 ? "var(--ok)" : "var(--danger)"}
-                hint={sum.credit > 0 ? "" : "اعتبار تمام شده"} />
-            ) : (
-              <Stat icon={Wallet} label="مانده‌ی بدهی"
-                value={faNum(sum.balance)} unit="تومان"
-                color={sum.balance > 0 ? "var(--warn)" : "var(--ok)"}
-                hint={`از ${faNum(sum.due)} تومان`} />
-            )}
-          </div>
-        )}
-
-        {/* فروشِ ربات خودش. تا امروز نماینده هیچ عددی از فروشش
-            نمی‌دید، با اینکه ربات و سفارش و رسید داشت. */}
-        {stats?.sales?.hasBot && (
-          <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
-            <Stat icon={ShoppingCart} label="فروش این ماه"
-              value={faNum(stats.sales.monthSold)} unit="تومان"
-              color="var(--accent-2)"
-              hint={`${faNum(stats.sales.monthOrders)} سفارش`} />
-            <Stat icon={TrendingUp} label="فروش کل"
-              value={faNum(stats.sales.sold)} unit="تومان"
-              hint={`${faNum(stats.sales.orders)} سفارش`} />
-            <Stat icon={Wallet} label="دریافتی کارت‌به‌کارت"
-              value={faNum(stats.sales.received)} unit="تومان"
-              hint="خرید با کیف پول پول تازه نیست" />
-            <Stat icon={FileText} label="در انتظار بررسی"
-              value={faNum(stats.sales.pending)}
-              color={stats.sales.pending ? "var(--warn)" : undefined}
-              hint={stats.sales.pending ? "رسید منتظر شماست" : "چیزی نمانده"} />
-          </div>
-        )}
-
-        {sum?.unpriced > 0 && (
-          <div className="fx-card p-4 mb-4 text-[13px]" style={{ color: "var(--warn)" }}>
-            {faNum(sum.unpriced)} کانفیگ هنوز نرخ ندارد و در مبلغ بالا حساب نشده.
-          </div>
-        )}
-
-            <FunnelBox src={S} />
-          </>
+          <HomeDash stats={stats} sum={sum} go={go} src={S} busy={busy} />
         )}
 
         {page === "configs" && (
