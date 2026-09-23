@@ -13137,7 +13137,8 @@ def portal_addon_grant(payload: dict, x_admin_password: str = Header(...)):
                 if have > base:
                     base = have
             except (TypeError, ValueError):
-                pass
+                log.warning("theme_until مستاجر %s خوانده نشد (%r) — "
+                            "تمدید از امروز حساب شد", tid, str(cur)[:32])
         st["theme_until"] = (base + _td(days=days)).isoformat(timespec="seconds")
     _save_tenant_settings(tid, st)
     return {"ok": True, "until": st.get("theme_until") or ""}
@@ -14727,7 +14728,11 @@ def portal_theme_buy(t: dict = Depends(portal_tenant)):
                 if have > base:
                     base = have
             except (TypeError, ValueError):
-                pass
+                # تاریخِ خراب یعنی روزهای باقی‌مانده را نمی‌دانیم و
+                # از «الان» شروع می‌کنیم. این به ضررِ نماینده است،
+                # پس دست‌کم دیده شود — مسیرِ خرابِ بی‌صدا ممنوع.
+                log.warning("theme_until مستاجر %s خوانده نشد (%r) — "
+                            "تمدید از امروز حساب شد", t["id"], cur[:32])
         until = (base + _td(days=cfg["days"])).isoformat(timespec="seconds")
         st = _tenant_settings(t)
         st["theme_until"] = until
