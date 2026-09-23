@@ -14,6 +14,7 @@ import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { Avatar, EmptyState, Field, InfoBox, Msg, MoneyInput, NumberInput, SectionHead, StatTile } from "../ui/index";
 import { BotInboundsSection } from "./bot/inbounds";
+import { isoToJalaliLabel } from "../ui/jalali";
 
 
 /** همان الگوی بقیه‌ی بخش‌ها: بخوان، نگه دار، دوباره بخوان. */
@@ -683,7 +684,7 @@ export function PortalAddon({ password }) {
                 style={{ color: "var(--dim)" }}>{r.name || `#${r.id}`}</span>
               <span className="text-[11.5px]"
                 style={{ color: r.open ? "var(--ok)" : "var(--muted)" }}>
-                {r.open ? (r.until ? `تا ${String(r.until).slice(0, 10)}` : "باز")
+                {r.open ? (r.until ? `تا ${isoToJalaliLabel(r.until)}` : "باز")
                   : "بسته"}
               </span>
               <button onClick={() => grant(r.id, Number(days) || 30)}

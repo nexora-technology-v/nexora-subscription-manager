@@ -24,7 +24,7 @@ import {
   ConfirmModal, EmptyState, Field, InfoBox, Modal, Msg, NumberStepper,
   PageSkeleton, SectionHead, Toggle,
 } from "../../ui/index";
-import { JalaliDate } from "../../ui/jalali";
+import { JalaliDate, isoToJalaliLabel } from "../../ui/jalali";
 
 async function call(path, password, opt = {}) {
   const res = await fetch(`${API_URL}${path}`, {
@@ -412,7 +412,7 @@ export function BotDiscountsSection({ password }) {
                     {r.givenToman > 0 && (
                       <> · {faNum(r.givenToman)} تومان تخفیف داده</>
                     )}
-                    {r.expiresAt && <> · تا {r.expiresAt.slice(0, 10)}</>}
+                    {r.expiresAt && <> · تا {isoToJalaliLabel(r.expiresAt)}</>}
                   </div>
                 </div>
 

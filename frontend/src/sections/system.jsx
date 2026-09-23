@@ -11,6 +11,7 @@ import {
 import { errText } from "../lib/format";
 import { API_URL } from "../lib/constants";
 import { ConfirmModal, Field, InfoBox, Msg, PageSkeleton, SectionHead } from "../ui/index";
+import { isoToJalaliLabel } from "../ui/jalali";
 
 export function RollbackCard({ password }) {
   const [snaps, setSnaps] = useState([]);
@@ -100,7 +101,7 @@ export function RollbackCard({ password }) {
       {confirm && (
         <ConfirmModal
           title={`بازگشت به نسخه ${confirm.version}؟`}
-          desc={`پنل به وضعیت ${confirm.createdAt?.slice(0, 10)} برمی‌گردد و حدود یک دقیقه در دسترس نخواهد بود.${keepSettings ? " تنظیمات فعلی حفظ می‌شود." : " تنظیمات هم به همان نسخه برمی‌گردد."}`}
+          desc={`پنل به وضعیت ${isoToJalaliLabel(confirm.createdAt)} برمی‌گردد و حدود یک دقیقه در دسترس نخواهد بود.${keepSettings ? " تنظیمات فعلی حفظ می‌شود." : " تنظیمات هم به همان نسخه برمی‌گردد."}`}
           confirmLabel="بله، برگرد"
           onConfirm={run}
           onCancel={() => setConfirm(null)} />

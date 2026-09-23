@@ -3728,9 +3728,6 @@ html[data-mn-tpl="neon"] .nx-amb-b { opacity: .26; }
   width: 360px; height: 690px; border: 0; border-radius: 30px; display: block;
   transform: scale(.8333); transform-origin: top right; background: var(--bg);
 }
-@media (max-width: 520px) {
-  .nx-studio-tpls { grid-template-columns: repeat(2, 1fr) !important; }
-}
 
 /* ── کارت‌های سفارشِ باز و سکه هم پیرو قالب ──
    بدونِ این، همین دو کارت در هر چهار قالب یکسان می‌ماندند. */
@@ -3990,4 +3987,246 @@ button.pd-kpi:active { transform: scale(.985); }
   .pd-ring { width: 140px; height: 140px; }
   .nx-tile { padding: 13px; }
   .pd-add { min-height: 64px; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   استودیوی پوسته — سه مرحله، پیش‌نمایشِ چسبان، نوارِ ذخیره
+   مالک: «خیلی ساده است، از همه لحاظ». قبلاً فهرستی از برچسب و
+   دکمه بود با شِماهای بلندِ خالی؛ حالا هر انتخاب با رنگِ خودِ پالت
+   دیده می‌شود و هیچ‌جا رنگِ پرتال جای رنگِ فروشگاه نمی‌نشیند.
+   ═══════════════════════════════════════════════════════════ */
+.st-wrap { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+.st-main { display: grid; gap: 14px; min-width: 0; }
+.st-side { position: sticky; top: 86px; display: grid; justify-items: center; gap: 10px; }
+.st-side .nx-phone { margin: 0; }
+
+/* سربرگ با رنگِ فروشگاه */
+.st-hero {
+  position: relative; overflow: hidden; border-radius: 20px; padding: 20px 22px;
+  display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+  background:
+    radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--accent) 34%, transparent), transparent 55%),
+    radial-gradient(90% 120% at 0% 100%, color-mix(in srgb, var(--cy) 22%, transparent), transparent 60%),
+    var(--bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.st-hero-id { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.st-hero-id .nx-shoplogo { box-shadow: 0 14px 34px -14px color-mix(in srgb, var(--accent) 80%, transparent); }
+.st-hero h2 { margin: 0; font-size: 19px; font-weight: 800; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-hero-id p { margin: 3px 0 0; font-size: 12.5px; color: var(--dim); }
+.st-hero-state { display: grid; justify-items: end; gap: 7px; text-align: left; }
+.st-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
+  padding: 5px 11px; border-radius: 99px; color: var(--t);
+  background: color-mix(in srgb, var(--t) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--t) 30%, transparent); }
+.st-badge.t-accent { color: var(--accent-2); }
+.st-until { font-size: 12.5px; color: var(--dim); }
+.st-until b { color: var(--text); font-weight: 700; }
+.st-fine { font-size: 11.5px; color: var(--muted); margin: 0; }
+.st-cta { display: inline-flex; align-items: center; gap: 7px; border: 0; cursor: pointer;
+  font-family: inherit; font-size: 13.5px; font-weight: 700; padding: 10px 18px; border-radius: 12px;
+  color: var(--on-cy); background: linear-gradient(135deg, var(--accent), var(--cy));
+  box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--accent) 85%, transparent);
+  transition: transform var(--m-fast) var(--sp-snappy), filter var(--m-fast) linear; }
+.st-cta:hover { filter: brightness(1.07); }
+.st-cta:active { transform: scale(.98); }
+.st-ghost { display: inline-flex; align-items: center; gap: 6px; font-family: inherit; font-size: 12.5px;
+  padding: 7px 12px; border-radius: 10px; cursor: pointer; color: var(--text);
+  background: var(--hair-1); border: 1px solid var(--hair-2); }
+.st-ghost:hover { background: var(--hair-2); }
+
+/* مرحله */
+.st-step { padding: 18px; }
+.st-step-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.st-step-n { flex: none; width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center;
+  font-size: 13px; font-weight: 800; color: var(--accent-2); background: var(--accent-soft);
+  border: 1px solid var(--accent-line); }
+.st-step-head h3 { margin: 0; font-size: 14.5px; font-weight: 700; color: var(--text); }
+.st-step-head p { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
+
+/* گزینه‌ی انتخاب — یک شکل برای همه */
+.st-pick { position: relative; display: grid; gap: 7px; justify-items: stretch; padding: 7px;
+  border-radius: 14px; cursor: pointer; font-family: inherit; text-align: center;
+  background: var(--surface-2); border: 1.5px solid var(--border);
+  transition: border-color var(--m-fast) linear, transform var(--m-fast) var(--sp-snappy), background var(--m-fast) linear; }
+.st-pick:hover { border-color: var(--border-2); transform: translateY(-2px); }
+.st-pick.on { border-color: var(--accent-edge); background: var(--accent-wash);
+  box-shadow: 0 0 0 3px var(--accent-soft); }
+.st-pick-lbl { font-size: 12.5px; color: var(--dim); }
+.st-pick.on .st-pick-lbl { color: var(--accent-2); font-weight: 600; }
+.st-tick { position: absolute; top: -7px; left: -7px; z-index: 2; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--on-accent); background: var(--accent);
+  box-shadow: 0 0 0 3px var(--surface); }
+
+/* شِمای قالب — با متغیرهای پالتِ انتخابی */
+.st-tpls { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.st-thumb { --t-r: 7px; position: relative; aspect-ratio: 4 / 5; border-radius: 10px; overflow: hidden;
+  background: var(--bg); display: flex; flex-direction: column; }
+.st-thumb i, .st-thumb b { display: block; border-radius: 2px; }
+.st-thumb .tx { display: grid; gap: 3px; }
+.st-thumb .tx i { height: 3px; width: 26px; background: var(--hair-4); }
+.st-thumb .tx i + i { width: 15px; background: var(--hair-2); }
+.st-thumb-top { flex: none; display: flex; align-items: center; gap: 6px; padding: 7px 8px;
+  border-bottom: 1px solid var(--hair-1); }
+.st-thumb-top .lg { width: 13px; height: 13px; border-radius: 4px;
+  background: linear-gradient(135deg, var(--accent), var(--cy)); }
+.st-thumb-body { display: grid; gap: 5px; padding: 7px; }
+.st-thumb .bal { display: grid; gap: 4px; padding: 7px; border-radius: var(--t-r);
+  background: linear-gradient(135deg, var(--accent), var(--cy)); }
+.st-thumb .bal i { height: 3px; width: 18px; background: var(--on-cy); opacity: .55; }
+.st-thumb .bal b { height: 8px; width: 42%; background: var(--on-cy); opacity: .9; }
+.st-thumb .bal i + b + i { width: 34%; opacity: .4; }
+.st-thumb .row { display: flex; align-items: center; justify-content: space-between; gap: 4px;
+  padding: 5px 6px; border-radius: var(--t-r); background: var(--surface); }
+.st-thumb .row .btn { width: 20px; height: 9px; border-radius: min(var(--t-r), 4px);
+  background: linear-gradient(90deg, var(--accent), var(--cy)); }
+.st-thumb-tabs { position: absolute; inset-inline: 0; bottom: 0; height: 17px; display: flex;
+  align-items: center; justify-content: space-around; background: var(--surface);
+  border-top: 1px solid var(--hair-1); }
+.st-thumb-tabs span { width: 7px; height: 6px; border-radius: 3px; background: var(--hair-3); }
+.st-thumb-tabs span.on { width: 14px; background: var(--accent); }
+/* مینیمال: تخت، خطِ مو، زبانه با خطِ زیرین */
+.st-thumb.t-mono { --t-r: 3px; }
+.st-thumb.t-mono .bal { background: var(--surface); border: 1px solid var(--hair-2); }
+.st-thumb.t-mono .bal i { background: var(--hair-3); opacity: 1; }
+.st-thumb.t-mono .bal b { background: var(--accent-2); }
+.st-thumb.t-mono .row { border: 1px solid var(--hair-1); }
+.st-thumb.t-mono .row .btn { background: transparent; border: 1px solid var(--accent); }
+.st-thumb.t-mono .st-thumb-tabs span.on { height: 2px; align-self: flex-start; }
+/* پررنگ: سربرگِ رنگی، زبانه‌ی شناور، دکمه‌ی قرصی */
+.st-thumb.t-bold { --t-r: 11px; }
+.st-thumb.t-bold .st-thumb-top { background: var(--accent); border-bottom: 0; }
+.st-thumb.t-bold .st-thumb-top .lg { background: var(--on-accent-hi); }
+.st-thumb.t-bold .st-thumb-top .tx i { background: var(--on-accent-hi); opacity: .8; }
+.st-thumb.t-bold .row .btn { border-radius: 9px; }
+.st-thumb.t-bold .st-thumb-tabs { inset-inline: 7px; bottom: 6px; border-radius: 9px; border-top: 0;
+  box-shadow: 0 6px 14px -6px var(--scrim-4); }
+.st-thumb.t-bold .st-thumb-tabs span.on { background: var(--cy); }
+/* نئون: گوشه‌ی تیز، لبه‌ی درخشان */
+.st-thumb.t-neon { --t-r: 2px; }
+.st-thumb.t-neon .st-thumb-top { border-bottom-color: var(--accent); }
+.st-thumb.t-neon .bal { background: var(--surface); border: 1px solid var(--accent);
+  box-shadow: 0 0 12px -3px var(--accent), inset 0 0 10px -6px var(--accent); }
+.st-thumb.t-neon .bal i { background: var(--hair-3); opacity: 1; }
+.st-thumb.t-neon .bal b { background: var(--accent-2); box-shadow: 0 0 6px var(--accent); }
+.st-thumb.t-neon .row { border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+.st-thumb.t-neon .row .btn { background: transparent; border: 1px solid var(--accent); box-shadow: 0 0 6px -1px var(--accent); }
+.st-thumb.t-neon .st-thumb-tabs span.on { height: 2px; align-self: flex-start; box-shadow: 0 0 6px var(--accent); }
+
+/* پالت‌ها */
+.st-pals { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); }
+.st-pal { position: relative; display: block; height: 46px; border-radius: 10px; overflow: hidden;
+  background: var(--bg); }
+.st-pal .band { position: absolute; inset: 0; background:
+  radial-gradient(90% 140% at 100% 0%, color-mix(in srgb, var(--accent) 55%, transparent), transparent 60%),
+  radial-gradient(80% 140% at 0% 100%, color-mix(in srgb, var(--cy) 45%, transparent), transparent 65%); }
+.st-pal .chip { position: absolute; left: 8px; bottom: 8px; width: 28px; height: 11px; border-radius: 99px;
+  background: linear-gradient(90deg, var(--accent), var(--cy)); box-shadow: 0 3px 8px -2px var(--accent); }
+.st-pal-any { display: grid; place-items: center; color: var(--text);
+  background: conic-gradient(from 200deg, #e84393, #f0a500, #00b894, #0aa2c0, #7c5cff, #e84393); }
+
+.st-custom { display: flex; gap: 14px; align-items: center; margin-top: 12px; padding: 12px;
+  border-radius: 14px; background: var(--surface-2); border: 1px solid var(--border); flex-wrap: wrap; }
+.st-wheel { position: relative; width: 58px; height: 58px; border-radius: 50%; flex: none; cursor: pointer;
+  background: linear-gradient(135deg, var(--accent), var(--cy));
+  box-shadow: 0 0 0 3px var(--surface), 0 0 0 4px var(--border-2); }
+.st-wheel input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.st-custom-body { display: grid; gap: 10px; flex: 1; min-width: 200px; }
+.st-dots { display: flex; gap: 6px; flex-wrap: wrap; }
+.st-dots button { width: 24px; height: 24px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent; box-shadow: 0 0 0 1px var(--hair-3); }
+.st-dots button.on { border-color: var(--surface); box-shadow: 0 0 0 2px var(--text); }
+.st-derived { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--dim); }
+.st-derived span { display: inline-flex; align-items: center; gap: 6px; }
+.st-derived i { width: 14px; height: 14px; border-radius: 5px; box-shadow: 0 0 0 1px var(--hair-3); }
+.st-derived i.a { background: var(--accent); }
+.st-derived i.c { background: var(--cy); }
+.st-derived i.b { background: var(--bg); }
+
+/* لوگو و نام */
+.st-logo { display: grid; gap: 18px; grid-template-columns: 220px minmax(0, 1fr); align-items: start; }
+.st-stage { position: relative; display: grid; justify-items: center; align-content: center; gap: 12px;
+  min-height: 250px; padding: 20px 12px; border-radius: 16px; overflow: hidden;
+  background: radial-gradient(70% 55% at 50% 38%, var(--accent-soft), transparent 70%), var(--bg);
+  border: 1px solid var(--hair-2); }
+.st-stage .nx-shoplogo { box-shadow: 0 16px 40px -16px color-mix(in srgb, var(--accent) 85%, transparent); }
+.st-stage > b { font-size: 16px; font-weight: 800; color: var(--text); text-align: center;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-stage .bar { width: 96px; height: 4px; border-radius: 99px; overflow: hidden; background: var(--hair-2); }
+.st-stage .bar i { display: block; width: 42%; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--cy));
+  animation: nx-shop-slide 1.15s var(--sp-inout) infinite; }
+.st-logo-ctl { display: grid; gap: 14px; min-width: 0; }
+.st-field { display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; gap: 10px; }
+.st-field > span { font-size: 12.5px; color: var(--muted); }
+.st-mini-picks { display: flex; gap: 8px; flex-wrap: wrap; }
+.st-mini-picks .st-pick { grid-auto-flow: column; align-items: center; gap: 7px; padding: 6px 11px 6px 9px; border-radius: 11px; }
+.st-mini-picks .st-pick:hover { transform: none; }
+.st-mini-picks .st-tick { width: 16px; height: 16px; top: -6px; left: -6px; }
+.st-mini-picks .st-tick svg { width: 9px; height: 9px; }
+.st-shape { display: block; width: 18px; height: 18px; border: 1.5px solid var(--dim); }
+.st-shape.s-rounded { border-radius: 28%; }
+.st-shape.s-circle { border-radius: 50%; }
+.st-shape.s-square { border-radius: 3px; }
+.st-pick.on .st-shape { border-color: var(--accent-2); background: var(--accent-soft); }
+.st-bgsw { display: block; width: 18px; height: 18px; border-radius: 6px; box-shadow: 0 0 0 1px var(--hair-3); }
+.st-bgsw.b-none { background: repeating-conic-gradient(var(--hair-3) 0 25%, transparent 0 50%) 0 0 / 8px 8px; }
+.st-bgsw.b-light { background: #FFFFFF; }
+.st-bgsw.b-accent { background: linear-gradient(135deg, var(--accent), var(--cy)); }
+.st-range { display: flex; align-items: center; gap: 10px; max-width: 320px; }
+.st-range input { flex: 1; accent-color: var(--accent); }
+.st-range b { min-width: 44px; font-weight: 500; font-size: 12.5px; color: var(--text); text-align: center;
+  font-variant-numeric: tabular-nums; }
+
+/* نوارِ ذخیره — چسبان پایینِ ستون */
+.st-savebar { position: sticky; bottom: 14px; z-index: 6; display: flex; align-items: center; gap: 10px;
+  flex-wrap: wrap; padding: 10px 12px 10px 14px; border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(12px);
+  border: 1px solid var(--border-2); box-shadow: var(--e-3); }
+.st-save-state { flex: 1; min-width: 160px; display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--dim); }
+.st-save-state i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+.st-save-state .short { display: none; }
+.st-savebar.dirty { border-color: var(--warn-line); }
+.st-savebar.dirty .st-save-state { color: var(--text); }
+.st-savebar.dirty .st-save-state i { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }
+
+/* ستونِ گوشی */
+.st-live { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--dim); }
+.st-live i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
+  box-shadow: 0 0 0 0 var(--ok-line); animation: st-pulse 1.8s ease-out infinite; }
+@keyframes st-pulse { 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.st-phone-ctl { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.st-seg { display: inline-flex; padding: 3px; border-radius: 11px; background: var(--hair-1); border: 1px solid var(--hair-2); }
+.st-seg button { display: inline-flex; align-items: center; gap: 5px; font-family: inherit; font-size: 12.5px;
+  padding: 5px 11px; border-radius: 8px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.st-seg button.on { background: var(--surface-3); color: var(--text); box-shadow: var(--e-1); }
+
+/* دکمه‌ی «پیش‌نمایش» فقط وقتی گوشی زیرِ فرم می‌افتد — وگرنه روی
+   گوشیِ خودِ نماینده، هر انتخاب یعنی تا تهِ صفحه پایین رفتن */
+.st-peek { display: none; }
+@media (max-width: 1180px) {
+  .st-wrap { grid-template-columns: 1fr; }
+  .st-side { position: static; scroll-margin-top: 80px; }
+  .st-peek { display: inline-flex; }
+}
+@media (max-width: 640px) {
+  .st-hero { padding: 16px; }
+  .st-hero-state { justify-items: start; text-align: right; }
+  .st-tpls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .st-pals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .st-pal { height: 38px; }
+  .st-logo { grid-template-columns: 1fr; }
+  .st-stage { min-height: 190px; }
+  .st-step { padding: 14px; }
+  .st-field { grid-template-columns: 1fr; gap: 6px; }
+  .st-savebar { bottom: 8px; gap: 6px; padding: 8px 8px 8px 10px; flex-wrap: nowrap; }
+  .st-save-state { min-width: 0; font-size: 12px; line-height: 1.5; }
+  .st-save-state .long { display: none; }
+  .st-save-state .short { display: inline; }
+  .st-savebar .fx-btn, .st-savebar .fx-btn-g, .st-savebar .st-ghost { padding-inline: 10px; white-space: nowrap; flex: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-stage .bar i, .st-live i { animation: none; }
 }

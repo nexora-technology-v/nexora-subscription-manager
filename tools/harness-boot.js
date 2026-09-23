@@ -1010,7 +1010,7 @@ var D_CODES = { ready: true,
     if (u.indexOf("/mini/plans") >= 0) return M_PLANS;
     if (u.indexOf("/portal/theme/buy") >= 0) {
       P_THEME.open = true;
-      P_THEME.until = "1405-08-22T12:00:00";
+      P_THEME.until = "2026-11-12T12:00:00";   // همان ISOِ میلادیِ بکند
       return { ok: true, until: P_THEME.until, paid: P_THEME.price };
     }
     if (u.indexOf("/portal/brand") >= 0) {

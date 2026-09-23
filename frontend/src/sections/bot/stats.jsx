@@ -11,6 +11,7 @@ import {
 import { API_URL } from "../../lib/constants";
 import { errText, esc0, faNum } from "../../lib/format";
 import { AreaChart, Avatar, CountUp, EmptyState, PageSkeleton, SectionHead, Segmented, StatTile } from "../../ui/index";
+import { isoToJalaliLabel } from "../../ui/jalali";
 
 export function BotStatsSection({ password }) {
   const [d, setD] = useState(null);
@@ -325,7 +326,7 @@ export function BotReportSection({ password }) {
                     <td style={{ fontFamily: "var(--mono)", color: "var(--ok)" }}>
                       {faNum(b.spent)}
                     </td>
-                    <td style={{ color: "var(--muted)" }}>{String(b.lastBuy || "").slice(0, 10)}</td>
+                    <td style={{ color: "var(--muted)" }}>{isoToJalaliLabel(b.lastBuy)}</td>
                   </tr>
                 ))}
               </tbody>

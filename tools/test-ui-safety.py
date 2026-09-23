@@ -458,6 +458,17 @@ check("پوسته‌ی روشن/تیره پیش از صفحه‌ی ورود رو
 _cs = [f for f, src in ALL.items() if "colorScheme" in src and f != "lib/mini-themes.js"]
 check("colorScheme فقط در tgScheme خوانده می‌شود", not _cs, ", ".join(_cs))
 
+# تاریخِ ISO که مستقیم رندر شود، میلادی است و در RTL وارونه هم خوانده
+# می‌شود: «فعال تا 22-10-2026» در استودیوی پوسته همین بود. تاریخ برای
+# کاربر از isoToJalaliLabel می‌گذرد؛ slice(0, 10) فقط برای API و نامِ فایل.
+_isoraw = []
+for _f, _src in ALL.items():
+    if not _f.endswith(".jsx"):
+        continue
+    for _m in re.finditer(r"\{\s*(String\([^)]*\)|[\w.?]+)\.slice\(0,\s*10\)\s*\}", _src):
+        _isoraw.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
+check("هیچ تاریخِ میلادیِ خامی رندر نمی‌شود", not _isoraw, ", ".join(_isoraw[:5]))
+
 # ستون‌های صفر/یکِ SQLite (is_trial، is_active) عدد می‌رسند نه بولی، و
 # `{r.is_trial && …}` در React خودِ «0» را چاپ می‌کند. کنارِ نامِ هر
 # پلنِ پولیِ نماینده یک صفرِ تنها نشسته بود و هیچ‌کس نپرسید چیست.

@@ -13,9 +13,10 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { createPortal } from "react-dom";
 import {
   Activity, AlertTriangle, Bot, Camera, Check, Coins, Copy, CreditCard,
-  Database, ExternalLink, FileText, Gift, Link2, Menu, MessageCircle, Moon, Play,
+  Database, ExternalLink, Eye, FileText, Gift, Link2, Menu, MessageCircle, Moon, Play,
   Settings2, Sun,
-  LayoutGrid, Loader2, LogOut, Package, Palette, Plus, Power, QrCode, RefreshCw, Search,
+  LayoutGrid, Loader2, LogOut, Package, Palette, Plus, Power, QrCode, RefreshCw, RotateCcw, Search,
+  Sparkles,
   Trash2, Users, X, XCircle,
 } from "lucide-react";
 
@@ -33,7 +34,7 @@ import { NexoraMark } from "../lib/mark.jsx";
 // چرا: lib/botsrc.js. مرزِ واقعی بکند است (`portal_tenant`).
 import { portalSrc } from "../lib/botsrc";
 import { HomeDash } from "./dash.jsx";
-import { MINI_PALETTES, MINI_TEMPLATES, paletteSwatch, themeVars } from "../lib/mini-themes.js";
+import { MINI_PALETTES, MINI_TEMPLATES, themeVars } from "../lib/mini-themes.js";
 import { LOGO_BGS, LOGO_SHAPES, ShopLogo, cleanLogoStyle } from "../lib/shoplogo.jsx";
 import { BotUsersSection } from "../sections/bot/users";
 import { BotInboxSection } from "../sections/bot/inbox";
@@ -1120,43 +1121,34 @@ const ACCENTS = [
  * قفل در بکند است.
  */
 
-/** شِمای کوچکِ هر قالب — ساختار را نشان می‌دهد، با رنگِ پالتِ انتخابی. */
-function TemplateThumb({ id, sw }) {
-  const c = sw || { accent: "#2B7FD6", cy: "#2DD4BF", bg: "#070A12", surface: "#101827" };
-  const box = (extra) => ({ borderRadius: 4, background: c.surface, ...extra });
-  const radius = { aurora: 6, mono: 3, bold: 9, neon: 1 }[id] ?? 6;
+/**
+ * شِمای هر قالب — ساختار را نشان می‌دهد، با رنگِ پالتِ انتخابی.
+ *
+ * رنگ‌ها از متغیرهای خودِ پالت می‌آیند (`themeVars` روی همین عنصر)،
+ * نه مقدارِ خام در JSX؛ شکلِ هر قالب در index.css زیر `.st-thumb.t-*`.
+ * نسخه‌ی قبلی چهار نوارِ خالی بود در قابی بلند — نماینده نمی‌فهمید
+ * فرقِ «مینیمال» و «نئون» چیست. حالا هر شِما سربرگ، کارتِ موجودی،
+ * دو ردیفِ پلن با دکمه و نوارِ زبانه دارد، همان چیزهایی که قالب
+ * عوضشان می‌کند.
+ */
+function TemplateThumb({ id, vars }) {
   return (
-    <div style={{ width: "100%", aspectRatio: "3 / 4", borderRadius: 10, overflow: "hidden",
-                  background: c.bg, position: "relative", padding: 6, display: "flex",
-                  flexDirection: "column", gap: 5 }}>
-      {/* نوارِ بالا */}
-      <div style={{ height: 12, borderRadius: 3, flex: "none",
-        background: id === "bold" ? c.accent : "transparent",
-        borderBottom: id === "neon" ? `1px solid ${c.accent}` : id === "mono" ? `1px solid ${c.surface}` : "none" }} />
-      {/* کارتِ موجودی */}
-      <div style={{ height: 30, flex: "none", borderRadius: radius,
-        background: id === "mono" || id === "neon" ? c.surface
-          : `linear-gradient(135deg, ${c.accent}, ${c.cy})`,
-        border: id === "neon" ? `1px solid ${c.accent}` : "none",
-        boxShadow: id === "neon" ? `0 0 8px ${c.accent}` : "none" }} />
-      {[0, 1].map((i) => (
-        <div key={i} style={box({ height: 16, borderRadius: radius, display: "flex",
-          alignItems: "center", justifyContent: "flex-end", paddingInline: 4,
-          border: id === "neon" ? `1px solid ${c.accent}` : "none" })}>
-          <span style={{ width: 16, height: 7, borderRadius: id === "bold" ? 9 : radius,
-            background: id === "mono" || id === "neon" ? "transparent" : c.cy,
-            border: id === "mono" || id === "neon" ? `1px solid ${c.accent}` : "none" }} />
-        </div>
-      ))}
-      {/* نوارِ زبانه‌ها */}
-      <div style={{ position: "absolute", insetInline: id === "bold" ? 6 : 0, bottom: id === "bold" ? 5 : 0,
-        height: 13, borderRadius: id === "bold" ? 8 : 0, background: c.surface,
-        display: "flex", alignItems: "center", justifyContent: "space-around" }}>
-        {[0, 1, 2].map((i) => (
-          <span key={i} style={{ width: 10, height: i === 0 ? (id === "mono" || id === "neon" ? 2 : 7) : 4,
-            borderRadius: 3, background: i === 0 ? (id === "bold" ? c.cy : c.accent) : c.bg,
-            alignSelf: (id === "mono" || id === "neon") && i === 0 ? "flex-start" : "center" }} />
+    <div className={`st-thumb t-${id}`} style={vars || undefined} aria-hidden="true">
+      <div className="st-thumb-top">
+        <span className="lg" />
+        <span className="tx"><i /><i /></span>
+      </div>
+      <div className="st-thumb-body">
+        <div className="bal"><i /><b /><i /></div>
+        {[0, 1].map((k) => (
+          <div key={k} className="row">
+            <span className="tx"><i /><i /></span>
+            <span className="btn" />
+          </div>
         ))}
+      </div>
+      <div className="st-thumb-tabs">
+        {[0, 1, 2, 3].map((k) => <span key={k} className={k ? "" : "on"} />)}
       </div>
     </div>
   );
@@ -1260,19 +1252,32 @@ function LogoCropper({ file, shape, onCancel, onDone }) {
 }
 
 /** دکمه‌های کنارِ هم برای انتخابِ یکی از چند گزینه. */
-function Seg({ value, options, onChange }) {
+/** یک مرحله از استودیو — شماره، عنوان، و آنچه همین حالا انتخاب شده. */
+function Step({ n, title, hint, aside, children }) {
   return (
-    <div className="flex gap-1.5 flex-wrap">
-      {options.map((o) => (
-        <button key={o.id} onClick={() => onChange(o.id)}
-          className="px-3 py-1.5 rounded-lg text-[12.5px]"
-          style={{
-            background: value === o.id ? "var(--accent-fill)" : "transparent",
-            border: `1px solid ${value === o.id ? "var(--accent-edge)" : "var(--border)"}`,
-            color: value === o.id ? "var(--accent-2)" : "var(--muted)",
-          }}>{o.fa}</button>
-      ))}
-    </div>
+    <section className="nx-tile st-step">
+      <header className="st-step-head">
+        <span className="st-step-n">{faNum(n)}</span>
+        <div className="min-w-0 flex-1">
+          <h3>{title}</h3>
+          {hint && <p>{hint}</p>}
+        </div>
+        {aside}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+/** دکمه‌ی انتخاب با نشانِ تیک — یک شکل برای قالب، پالت، قاب و زمینه. */
+function Pick({ on, onClick, label, children, className = "", ...rest }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={on}
+      className={`st-pick ${on ? "on" : ""} ${className}`} {...rest}>
+      {on && <span className="st-tick"><Check size={11} /></span>}
+      {children}
+      {label && <span className="st-pick-lbl">{label}</span>}
+    </button>
   );
 }
 
@@ -1291,15 +1296,20 @@ function ThemeBox({ inline, token, onClose, onNote }) {
   const [err, setErr] = useState("");
   const logoRef = useRef(null);
   const frameRef = useRef(null);
+  const sideRef = useRef(null);
+
+  const fromSaved = (j) => {
+    setTpl(j.tpl || "aurora");
+    setPalette(j.palette || "ocean");
+    setAccent(j.accent || "");
+    setLs(cleanLogoStyle(j.logoStyle));
+  };
 
   const load = useCallback(async () => {
     try {
       const j = await api("/api/portal/theme", { token });
       setD(j);
-      setTpl(j.tpl || "aurora");
-      setPalette(j.palette || "ocean");
-      setAccent(j.accent || "");
-      setLs(cleanLogoStyle(j.logoStyle));
+      fromSaved(j);
       setBrand(j.brand || "");
     } catch (e) { setErr(e.message); }
     // پلن‌های واقعیِ خودش در پیش‌نمایش — نبودشان نمونه را نشان می‌دهد
@@ -1310,6 +1320,9 @@ function ThemeBox({ inline, token, onClose, onNote }) {
 
   const logo = d?.logo ? `${d.logo}?v=${logoV}` : "";
   const theme = { tpl, palette, accent: palette === "custom" ? accent : "", logoStyle: ls };
+  // متغیرهای پالتِ انتخابی — هر پیش‌نمایشِ این صفحه با همین رنگ می‌شود،
+  // نه با آبیِ خودِ پرتال
+  const vars = themeVars(theme, "dark") || undefined;
 
   // هر تغییر همان لحظه به مینی‌اپِ داخلِ قاب می‌رسد
   const send = useCallback(() => {
@@ -1387,7 +1400,12 @@ function ThemeBox({ inline, token, onClose, onNote }) {
   };
 
   const open = !!d?.open;
-  const label = (t) => <div className="text-[12px] mb-2 mt-4" style={{ color: "var(--muted)" }}>{t}</div>;
+  const tplOf = MINI_TEMPLATES.find((t) => t.id === tpl);
+  const palName = palette === "custom" ? "رنگِ دلخواه"
+    : (MINI_PALETTES.find((p) => p.id === palette)?.fa || "");
+  // تاریخ شمسی — «فعال تا 22-10-2026» تنها تاریخِ میلادیِ پرتال بود
+  const left = d?.until ? Math.max(0, Math.ceil((Date.parse(d.until) - Date.now()) / 864e5)) : null;
+  const name = brand.trim() || d?.brand || "";
 
   return (
     <Frame inline={inline} onClose={onClose} width={900}>
@@ -1400,188 +1418,247 @@ function ThemeBox({ inline, token, onClose, onNote }) {
       </div>
 
       {!d ? <SkeletonCards n={2} /> : (
-        <>
-          {!open ? (
-            <div className="rounded-xl p-4 mb-2"
-              style={{ background: "var(--accent-wash)", border: "1px solid var(--accent-fill)" }}>
-              <div className="text-[13px] font-semibold mb-1" style={{ color: "var(--accent-2)" }}>
-                همه را امتحان کنید — پیش‌نمایش آزاد است
-              </div>
-              <p className="text-[12px] leading-relaxed mb-3" style={{ color: "var(--dim)" }}>
-                قالب، طیفِ رنگ و سبکِ لوگو را هر طور خواستید عوض کنید و در قابِ
-                کنار ببینید. برای اینکه مشتری‌هایتان همین را ببینند، پوسته‌ی شخصی را
-                فعال کنید.
-              </p>
-              <div className="flex items-center gap-3 flex-wrap">
-                <button onClick={buy} disabled={busy === "buy"}
-                  className="fx-btn px-4 py-2 text-[13px] flex items-center gap-1.5">
-                  {busy === "buy" ? <Loader2 size={13} className="animate-spin" /> : <Palette size={13} />}
-                  {faNum(d.price)} تومان برای {faNum(d.days)} روز
-                </button>
-                <span className="text-[11.5px]" style={{ color: "var(--muted)" }}>
-                  {d.postpaid ? "به صورتحسابِ این دوره‌تان اضافه می‌شود"
-                    : `از اعتبارتان کم می‌شود — موجودی: ${faNum(d.credit)} تومان`}
-                </span>
-              </div>
-            </div>
-          ) : d.until ? (
-            <div className="text-[11.5px] mb-1 flex items-center gap-2 flex-wrap" style={{ color: "var(--muted)" }}>
-              <Check size={12} style={{ color: "var(--ok)" }} /> فعال تا {String(d.until).slice(0, 10)}
-              {d.price > 0 && (
-                <button onClick={buy} disabled={busy === "buy"} className="fx-btn-g px-2.5 py-1 text-[11.5px]">تمدید</button>
-              )}
-            </div>
-          ) : null}
-
-          <div className="flex gap-6 flex-wrap items-start">
-            <div className="flex-1 min-w-0" style={{ minWidth: 280 }}>
-              {label("قالب — ساختارِ کلِ اپ، از صفحه‌ی ورود تا نوارِ پایین")}
-              <div className="grid grid-cols-4 gap-2 nx-studio-tpls">
-                {MINI_TEMPLATES.map((t) => (
-                  <button key={t.id} onClick={() => setTpl(t.id)} data-tpl={t.id}
-                    className="rounded-xl p-1.5 text-right"
-                    style={{ border: `1.5px solid ${tpl === t.id ? "var(--accent-edge)" : "var(--border)"}`,
-                             background: tpl === t.id ? "var(--accent-wash)" : "transparent" }}
-                    title={t.desc}>
-                    <TemplateThumb id={t.id} sw={paletteSwatch(palette, accent)} />
-                    <div className="text-[12px] mt-1.5 text-center"
-                      style={{ color: tpl === t.id ? "var(--accent-2)" : "var(--dim)" }}>{t.fa}</div>
-                  </button>
-                ))}
-              </div>
-              <p className="text-[11.5px] mt-1.5" style={{ color: "var(--muted)" }}>
-                {MINI_TEMPLATES.find((t) => t.id === tpl)?.desc}
-              </p>
-
-              {label("طیفِ رنگ — زمینه، سطح‌ها و رنگ‌های اصلی با هم")}
-              <div className="grid grid-cols-5 gap-2">
-                {MINI_PALETTES.map((p) => {
-                  const sw = paletteSwatch(p.id);
-                  return (
-                    <button key={p.id} onClick={() => setPalette(p.id)} data-pal={p.id}
-                      className="rounded-xl p-1.5"
-                      style={{ border: `1.5px solid ${palette === p.id ? "var(--accent-edge)" : "var(--border)"}` }}>
-                      {/* مقدارِ رنگ این‌جا خودِ داده است — همان استثنای انتخاب‌گرِ پوسته */}
-                      <div style={{ height: 34, borderRadius: 8, background: sw.bg, display: "flex",
-                                    alignItems: "center", justifyContent: "center", gap: 4 }}>
-                        <span style={{ width: 14, height: 14, borderRadius: 7, background: sw.accent }} />
-                        <span style={{ width: 14, height: 14, borderRadius: 7, background: sw.cy }} />
-                      </div>
-                      <div className="text-[11px] mt-1" style={{ color: palette === p.id ? "var(--accent-2)" : "var(--muted)" }}>{p.fa}</div>
-                    </button>
-                  );
-                })}
-                <button onClick={() => { setPalette("custom"); if (!accent) setAccent("#7c5cff"); }}
-                  data-pal="custom" className="rounded-xl p-1.5"
-                  style={{ border: `1.5px solid ${palette === "custom" ? "var(--accent-edge)" : "var(--border)"}` }}>
-                  <div style={{ height: 34, borderRadius: 8, display: "grid", placeItems: "center",
-                                background: "conic-gradient(#e84393, #f0a500, #00b894, #0aa2c0, #7c5cff, #e84393)" }}>
-                    <Palette size={14} style={{ color: "var(--text)" }} />
-                  </div>
-                  <div className="text-[11px] mt-1" style={{ color: palette === "custom" ? "var(--accent-2)" : "var(--muted)" }}>دلخواه</div>
-                </button>
-              </div>
-              {palette === "custom" && (
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  <input type="color" value={accent || "#7c5cff"} onChange={(e) => setAccent(e.target.value)}
-                    aria-label="رنگِ دلخواه"
-                    style={{ width: 42, height: 34, borderRadius: 9, border: "1px solid var(--border)",
-                             background: "transparent", padding: 2 }} />
-                  <input value={accent} dir="ltr" placeholder="#7c5cff" maxLength={7}
-                    onChange={(e) => setAccent(e.target.value.trim())}
-                    className="fx-input text-[13px]" style={{ fontFamily: "var(--mono)", width: 110 }} />
-                  {ACCENTS.map((c) => (
-                    <button key={c} onClick={() => setAccent(c)} aria-label={`رنگ ${c}`}
-                      style={{ width: 24, height: 24, borderRadius: 8, background: c, flex: "none",
-                               border: accent === c ? "2px solid var(--text)" : "1px solid var(--hair-3)" }} />
-                  ))}
-                  <span className="text-[11px] w-full" style={{ color: "var(--muted)" }}>
-                    زمینه و رنگِ دوم از همین ساخته می‌شوند تا با هم بخوانند.
-                  </span>
+        <div className="st-wrap">
+          <div className="st-main">
+            {/* سربرگ — فروشگاه با همان رنگی که انتخاب شده، و وضعیتِ اشتراک */}
+            <section className="st-hero" style={vars}>
+              <div className="st-hero-id">
+                <ShopLogo src={logo} name={name} style={ls} size={56} />
+                <div className="min-w-0">
+                  <h2>{name || "فروشگاهِ شما"}</h2>
+                  <p>{tplOf?.fa} · {palName}</p>
                 </div>
-              )}
-
-              {label("لوگو")}
-              <div className="flex items-center gap-3 flex-wrap">
-                {/* نمونه با **همان پالتِ انتخابی** — نه آبیِ خودِ پرتال */}
-                <span style={{ padding: 6, borderRadius: 14, background: "var(--surface-3)",
-                               ...(themeVars(theme) || {}) }}>
-                  <ShopLogo src={logo} name={brand || d.brand} style={ls} size={60} />
-                </span>
-                <input ref={logoRef} type="file" className="hidden"
-                  accept="image/png,image/jpeg,image/webp" onChange={pickLogo} />
-                <button onClick={() => logoRef.current?.click()}
-                  className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
-                  <Camera size={12} /> {d.logo ? "عوض‌کردن" : "آپلود"} و برش
-                </button>
-                {d.logo && (
-                  <button onClick={dropLogo} disabled={busy === "logo"}
-                    className="fx-btn-g px-3 py-2 text-[12.5px]">حذف</button>
+              </div>
+              <div className="st-hero-state">
+                {open ? (
+                  <>
+                    <span className="st-badge t-ok"><Check size={12} /> پوسته‌ی شخصی فعال است</span>
+                    {d.until && (
+                      <span className="st-until">
+                        {left !== null && <b>{faNum(left)} روز</b>} مانده · تا {isoToJalaliLabel(d.until)}
+                      </span>
+                    )}
+                    {d.price > 0 && (
+                      <button onClick={buy} disabled={busy === "buy"} className="st-ghost">
+                        {busy === "buy" ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        تمدید {faNum(d.days)} روزه
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span className="st-badge t-accent"><Sparkles size={12} /> پیش‌نمایش آزاد است</span>
+                    <span className="st-until">
+                      همه را امتحان کنید؛ برای اینکه مشتری‌ها هم ببینند، فعالش کنید.
+                    </span>
+                    <button onClick={buy} disabled={busy === "buy"} className="st-cta">
+                      {busy === "buy" ? <Loader2 size={13} className="animate-spin" /> : <Palette size={13} />}
+                      {faNum(d.price)} تومان · {faNum(d.days)} روز
+                    </button>
+                    <span className="st-fine">
+                      {d.postpaid ? "به صورتحسابِ این دوره‌تان اضافه می‌شود"
+                        : `از اعتبارتان کم می‌شود — موجودی: ${faNum(d.credit)} تومان`}
+                    </span>
+                  </>
                 )}
               </div>
-              {!d.logo && (
-                <p className="text-[11.5px] mt-1.5" style={{ color: "var(--muted)" }}>
-                  بدونِ لوگو، نشانی از حرفِ اولِ نامِ فروشگاه با رنگِ پالت ساخته می‌شود.
-                </p>
+            </section>
+
+            <Step n={1} title="قالب" hint={tplOf?.desc}>
+              <div className="st-tpls">
+                {MINI_TEMPLATES.map((t) => (
+                  <Pick key={t.id} on={tpl === t.id} onClick={() => setTpl(t.id)}
+                    label={t.fa} data-tpl={t.id} title={t.desc}>
+                    <TemplateThumb id={t.id} vars={vars} />
+                  </Pick>
+                ))}
+              </div>
+            </Step>
+
+            <Step n={2} title="طیفِ رنگ" hint="زمینه، سطح‌ها و رنگ‌های اصلی با هم عوض می‌شوند">
+              <div className="st-pals">
+                {MINI_PALETTES.map((p) => (
+                  <Pick key={p.id} on={palette === p.id} onClick={() => setPalette(p.id)}
+                    label={p.fa} data-pal={p.id}>
+                    {/* رنگ از متغیرهای خودِ همان پالت — مقدارِ خام در JSX نیست */}
+                    <span className="st-pal" style={themeVars({ palette: p.id }, "dark") || undefined}>
+                      <i className="band" /><i className="chip" />
+                    </span>
+                  </Pick>
+                ))}
+                <Pick on={palette === "custom"} label="دلخواه" data-pal="custom"
+                  onClick={() => { setPalette("custom"); if (!accent) setAccent("#7c5cff"); }}>
+                  <span className="st-pal st-pal-any"><Palette size={16} /></span>
+                </Pick>
+              </div>
+
+              {palette === "custom" && (
+                <div className="st-custom">
+                  <label className="st-wheel" style={vars}>
+                    <input type="color" value={accent || "#7c5cff"}
+                      onChange={(e) => setAccent(e.target.value)} aria-label="رنگِ دلخواه" />
+                  </label>
+                  <div className="st-custom-body">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <input value={accent} dir="ltr" placeholder="#7c5cff" maxLength={7}
+                        onChange={(e) => setAccent(e.target.value.trim())}
+                        className="fx-input text-[13px]" style={{ fontFamily: "var(--mono)", width: 110 }} />
+                      <div className="st-dots">
+                        {ACCENTS.map((c) => (
+                          <button key={c} type="button" onClick={() => setAccent(c)} aria-label={`رنگ ${c}`}
+                            className={accent === c ? "on" : ""} style={{ background: c }} />
+                        ))}
+                      </div>
+                    </div>
+                    {/* آنچه از این یک رنگ ساخته می‌شود — تا بداند چرا زمینه عوض شد */}
+                    <div className="st-derived" style={vars}>
+                      <span><i className="a" />رنگِ اصلی</span>
+                      <span><i className="c" />رنگِ دوم</span>
+                      <span><i className="b" />زمینه</span>
+                    </div>
+                  </div>
+                </div>
               )}
-              <div className="grid gap-2 mt-3" style={{ gridTemplateColumns: "auto 1fr", alignItems: "center" }}>
-                <span className="text-[12px]" style={{ color: "var(--muted)" }}>قاب</span>
-                <Seg value={ls.shape} options={LOGO_SHAPES} onChange={(v) => setLs({ ...ls, shape: v })} />
-                <span className="text-[12px]" style={{ color: "var(--muted)" }}>زمینه</span>
-                <Seg value={ls.bg} options={LOGO_BGS} onChange={(v) => setLs({ ...ls, bg: v })} />
-                <span className="text-[12px]" style={{ color: "var(--muted)" }}>فاصله</span>
-                <input type="range" min="0" max="24" value={ls.pad} aria-label="فاصله‌ی لوگو از قاب"
-                  onChange={(e) => setLs({ ...ls, pad: Number(e.target.value) })} />
-              </div>
+            </Step>
 
-              {label("نامِ فروشگاه")}
-              <div className="flex items-center gap-2">
-                <input value={brand} maxLength={40} placeholder="مثلاً: حسین وی‌پی‌ان"
-                  onChange={(e) => setBrand(e.target.value)} className="fx-input text-[13px] flex-1" />
-                <button onClick={saveBrand}
-                  disabled={busy === "brand" || !brand.trim() || brand.trim() === (d.brand || "")}
-                  className="fx-btn-g px-3 py-2 text-[12.5px]">
-                  {busy === "brand" ? <Loader2 size={12} className="animate-spin" /> : "ذخیره"}
-                </button>
-              </div>
+            <Step n={3} title="لوگو و نام"
+              hint={d.logo ? "قاب و زمینه‌ی لوگو هم جزوِ پوسته‌اند"
+                : "بدونِ لوگو، نشانی از حرفِ اولِ نامِ فروشگاه با رنگِ پالت ساخته می‌شود"}>
+              <div className="st-logo">
+                {/* همان صفحه‌ی ورودِ مشتری، کوچک: لوگو و نام روی زمینه‌ی پالت */}
+                <div className="st-stage" style={vars}>
+                  <ShopLogo src={logo} name={name} style={ls} size={76} />
+                  <b>{name || "نام فروشگاه"}</b>
+                  <span className="bar"><i /></span>
+                </div>
 
-              {err && (
-                <p className="text-[12.5px] mt-3 flex items-start gap-1.5" style={{ color: "var(--danger)" }}>
-                  <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
-                </p>
-              )}
+                <div className="st-logo-ctl">
+                  <input ref={logoRef} type="file" className="hidden"
+                    accept="image/png,image/jpeg,image/webp" onChange={pickLogo} />
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => logoRef.current?.click()}
+                      className="fx-btn px-3.5 py-2 text-[12.5px] flex items-center gap-1.5">
+                      <Camera size={13} /> {d.logo ? "عوض‌کردن و برش" : "آپلودِ لوگو"}
+                    </button>
+                    {d.logo && (
+                      <button onClick={dropLogo} disabled={busy === "logo"}
+                        className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
+                        <Trash2 size={12} /> حذف
+                      </button>
+                    )}
+                  </div>
 
-              <button onClick={save} disabled={!open || saved || busy === "save"}
-                className="fx-btn w-full py-2.5 text-[13px] flex items-center justify-center gap-1.5 mt-5">
-                {busy === "save" ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                {!open ? "برای ذخیره، پوسته‌ی شخصی را فعال کنید"
-                  : saved ? "ذخیره شده" : "ذخیره‌ی پوسته"}
-              </button>
-            </div>
+                  <div className="st-field">
+                    <span>قاب</span>
+                    <div className="st-mini-picks">
+                      {LOGO_SHAPES.map((o) => (
+                        <Pick key={o.id} on={ls.shape === o.id} label={o.fa}
+                          onClick={() => setLs({ ...ls, shape: o.id })}>
+                          <i className={`st-shape s-${o.id}`} />
+                        </Pick>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="st-field">
+                    <span>زمینه</span>
+                    <div className="st-mini-picks" style={vars}>
+                      {LOGO_BGS.map((o) => (
+                        <Pick key={o.id} on={ls.bg === o.id} label={o.fa}
+                          onClick={() => setLs({ ...ls, bg: o.id })}>
+                          <i className={`st-bgsw b-${o.id}`} />
+                        </Pick>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="st-field">
+                    <span>فاصله</span>
+                    <div className="st-range">
+                      <input type="range" min="0" max="24" value={ls.pad} aria-label="فاصله‌ی لوگو از قاب"
+                        onChange={(e) => setLs({ ...ls, pad: Number(e.target.value) })} />
+                      {/* صفرِ فارسی یک نقطه است — «۰» کنارِ لغزنده شبیهِ لکه بود */}
+                      <b>{ls.pad ? faNum(ls.pad) : "بی‌فاصله"}</b>
+                    </div>
+                  </div>
 
-            {/* خودِ مینی‌اپ، در قابِ گوشی — نه ماکت */}
-            <div className="nx-phone-col">
-              <div className="nx-phone">
-                <iframe ref={frameRef} src="/app?preview=1" title="پیش‌نمایشِ مینی‌اپ"
-                  onLoad={send} />
+                  <div className="st-field">
+                    <span>نام</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <input value={brand} maxLength={40} placeholder="مثلاً: حسین وی‌پی‌ان"
+                        onChange={(e) => setBrand(e.target.value)}
+                        className="fx-input text-[13px] flex-1 min-w-0" />
+                      <button onClick={saveBrand}
+                        disabled={busy === "brand" || !brand.trim() || brand.trim() === (d.brand || "")}
+                        className="fx-btn-g px-3 py-2 text-[12.5px] shrink-0">
+                        {busy === "brand" ? <Loader2 size={12} className="animate-spin" /> : "ذخیره‌ی نام"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="flex gap-2 mt-3 justify-center flex-wrap">
-                <button onClick={replaySplash}
-                  className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
-                  <Play size={12} /> صفحه‌ی ورود
-                </button>
-                <button onClick={() => setScheme(scheme === "dark" ? "light" : "dark")}
-                  className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
-                  {scheme === "dark" ? <Sun size={12} /> : <Moon size={12} />}
-                  {scheme === "dark" ? "تلگرامِ روشن" : "تلگرامِ تیره"}
-                </button>
-              </div>
-              <p className="text-[11px] mt-2 text-center" style={{ color: "var(--muted)" }}>
-                داده‌ی نمونه، با پلن‌های خودتان
+            </Step>
+
+            {err && (
+              <p className="text-[12.5px] flex items-start gap-1.5" style={{ color: "var(--danger)" }}>
+                <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
               </p>
+            )}
+
+            {/* نوارِ ذخیره — همیشه در دسترس، و می‌گوید چیزی مانده یا نه */}
+            <div className={`st-savebar ${saved ? "" : "dirty"}`}>
+              <span className="st-save-state">
+                <i />
+                {/* روی گوشی جمله‌ی کامل چهار خط می‌شد و نصفِ صفحه را می‌گرفت */}
+                <span className="long">{!open ? "پیش‌نمایش — برای ذخیره، پوسته‌ی شخصی را فعال کنید"
+                  : saved ? "همه‌چیز ذخیره شده" : "تغییراتِ ذخیره‌نشده"}</span>
+                <span className="short">{!open ? "فقط پیش‌نمایش" : saved ? "ذخیره شده" : "ذخیره‌نشده"}</span>
+              </span>
+              <button type="button" className="st-ghost st-peek"
+                onClick={() => sideRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                <Eye size={12} /> پیش‌نمایش
+              </button>
+              {open && !saved && (
+                <button onClick={() => fromSaved(d)} className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
+                  <RotateCcw size={12} /> برگرداندن
+                </button>
+              )}
+              {open ? (
+                <button onClick={save} disabled={saved || busy === "save"}
+                  className="fx-btn px-5 py-2 text-[13px] flex items-center gap-1.5">
+                  {busy === "save" ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                  ذخیره‌ی پوسته
+                </button>
+              ) : (
+                <button onClick={buy} disabled={busy === "buy"}
+                  className="fx-btn px-4 py-2 text-[13px] flex items-center gap-1.5">
+                  <Palette size={13} /> فعال‌سازی
+                </button>
+              )}
             </div>
           </div>
-        </>
+
+          {/* خودِ مینی‌اپ، در قابِ گوشی — نه ماکت */}
+          <aside className="st-side" ref={sideRef}>
+            <div className="st-live"><i /> پیش‌نمایشِ زنده</div>
+            <div className="nx-phone">
+              <iframe ref={frameRef} src="/app?preview=1" title="پیش‌نمایشِ مینی‌اپ"
+                onLoad={send} />
+            </div>
+            <div className="st-phone-ctl">
+              <button onClick={replaySplash} className="st-ghost">
+                <Play size={12} /> صفحه‌ی ورود
+              </button>
+              <div className="st-seg" role="group" aria-label="پوسته‌ی تلگرام">
+                <button className={scheme === "dark" ? "on" : ""} onClick={() => setScheme("dark")}>
+                  <Moon size={12} /> تیره
+                </button>
+                <button className={scheme === "light" ? "on" : ""} onClick={() => setScheme("light")}>
+                  <Sun size={12} /> روشن
+                </button>
+              </div>
+            </div>
+            <p className="st-fine text-center">داده‌ی نمونه، با پلن‌های خودتان</p>
+          </aside>
+        </div>
       )}
 
       {crop && (
