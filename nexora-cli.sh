@@ -915,6 +915,25 @@ PY
     fi
     ;;
 
+  reseller-why|nemayande-why)
+    # چرا این نماینده نمی‌تواند بفروشد — هفت قدمِ لازم، به ترتیب، و
+    # اولین چیزی که گیر کرده. چهار باگِ پشتِ سرِ هم یک نشانه داشتند
+    # («نماینده نمی‌تواند پلن تعریف کند») و هیچ‌کدام از پنل دیده
+    # نمی‌شد؛ این همه را یک‌جا می‌گذارد.
+    #
+    # هیچ رمز، توکن، نام مشتری یا شماره‌ای چاپ نمی‌شود، پس خروجی
+    # قابل فرستادن است.
+    if [ -f "$INSTALL_DIR/tools/reseller-why.py" ]; then
+      shift
+      BOT_DB_PATH="$INSTALL_DIR/data/bot.db" \
+      BILLING_DB="$INSTALL_DIR/data/billing.db" \
+        python3 "$INSTALL_DIR/tools/reseller-why.py" "$@"
+    else
+      err "tools/reseller-why.py پیدا نشد — اول nexora update بزنید"
+      exit 1
+    fi
+    ;;
+
   fix-flow)
     # همه‌ی کلاینت‌های vless روی یک flow. بدون آرگومان فقط گزارش
     # می‌دهد؛ با --fix می‌نویسد.
@@ -1241,6 +1260,7 @@ PYEOF
     echo -e "  ${C_WHITE}nexora repair-orders${C_RESET}          ${C_DIM}fix wallet order statuses written before 1.34${C_RESET}"
     echo -e "  ${C_WHITE}nexora repair-referrals${C_RESET}       ${C_DIM}pay referral coins wallet buys never paid${C_RESET}"
     echo -e "  ${C_WHITE}nexora reseller list${C_RESET}          ${C_DIM}reseller portal accounts${C_RESET}"
+    echo -e "  ${C_WHITE}nexora reseller-why${C_RESET}           ${C_DIM}why a reseller cannot sell yet${C_RESET}"
     echo -e "  ${C_WHITE}nexora fix-flow${C_RESET}               ${C_DIM}put every vless client on the same flow${C_RESET}"
     echo -e "  ${C_WHITE}nexora password${C_RESET}               ${C_DIM}change admin password${C_RESET}"
     echo -e "  ${C_WHITE}nexora diagnose${C_RESET}               ${C_DIM}troubleshoot template issues${C_RESET}"

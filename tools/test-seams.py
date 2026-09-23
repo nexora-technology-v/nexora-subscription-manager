@@ -1047,12 +1047,29 @@ check("هر ابزاری که CLI صدا می‌زند وجود دارد", not _
 if _missing:
     bullets(_missing)
 
-# و در راهنما دیده شود، وگرنه کسی پیدایش نمی‌کند
-_help = CLI[CLI.rfind("nexora update"):] if "nexora update" in CLI else CLI
-_cmds = {"reseller", "billing-why", "fix-flow", "import-topups"}
+# و در راهنما دیده شود، وگرنه کسی پیدایش نمی‌کند.
+#
+# فهرست **استخراج می‌شود**، نه دستی نوشته. نسخه‌ی قبلی چهار نام را
+# ثابت داشت، یعنی دستورِ تازه‌ای که به CLI اضافه شود از دیدِ دروازه
+# پنهان می‌ماند — همان الگویی که یک‌بار سرِ صفحه‌ی «کانال» افتاد و
+# با `data-navhead` حل شد.
+_cmds = set()
+for _m in re.finditer(r"^  ([a-z0-9][a-z0-9|-]*)\)\s*$", CLI, re.M):
+    _label = _m.group(1)
+    _body = CLI[_m.end():]
+    _body = _body[:_body.find(";;")] if ";;" in _body else _body
+    if "tools/" in _body:
+        # نامِ اصلی، نه نام‌های مستعار
+        _cmds.add(_label.split("|")[0])
+
+check("شاخه‌های ابزاری استخراج شدند", len(_cmds) >= 4,
+      "، ".join(sorted(_cmds)))
+
 _unlisted = [c for c in sorted(_cmds) if f"nexora {c}" not in CLI]
 check("دستورهای ابزاری در راهنما فهرست شده‌اند", not _unlisted,
       "، ".join(_unlisted) if _unlisted else "، ".join(sorted(_cmds)))
+if _unlisted:
+    bullets([f"{c} — شاخه دارد، در راهنما نیست" for c in _unlisted])
 
 
 # ═══════════════════════════════════════════════════════════
