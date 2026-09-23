@@ -23,6 +23,13 @@ No password, token, customer name or phone number is printed.
 
 Run:  python3 tools/reseller-why.py
       python3 tools/reseller-why.py --name hossein
+      python3 tools/reseller-why.py --set-miniapp https://panel.example.com
+
+The mini-app url is normally written the first time the owner opens the
+panel over https. On installs where that never happens -- an older nginx
+block that does not forward the proto header, or a panel opened over
+plain http -- it stays empty and nothing says why. --set-miniapp writes
+it directly, for every tenant.
 """
 import argparse
 import glob
@@ -62,10 +69,60 @@ def _find(paths, pattern=None):
     return None
 
 
-def _open(path):
-    con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+def _open(path, write=False):
+    uri = f"file:{path}" if write else f"file:{path}?mode=ro"
+    con = sqlite3.connect(uri, uri=True)
     con.row_factory = sqlite3.Row
     return con
+
+
+def set_miniapp(bot_path, url):
+    """
+    آدرسِ مینی‌اپ را برای **همه‌ی** مستاجرها می‌نویسد.
+
+    یکی برای همه درست است: مستاجر از روی امضای توکنِ ربات تشخیص
+    داده می‌شود، نه از روی آدرس.
+    """
+    url = url.strip().rstrip("/")
+    if not url.lower().startswith("https://"):
+        print(f"{R}the url must start with https://{X}")
+        print("Telegram rejects anything else -- and rejects the whole")
+        print("message, not just the button.")
+        return 2
+    if not url.lower().endswith("/app"):
+        url = url + "/app"
+
+    con = _open(bot_path, write=True)
+    try:
+        rows = con.execute("SELECT id, name, settings FROM tenants").fetchall()
+        changed = kept = 0
+        for r in rows:
+            try:
+                st = json.loads(r["settings"] or "{}")
+            except (TypeError, ValueError):
+                st = {}
+            if not isinstance(st, dict):
+                st = {}
+            if str(st.get("miniapp_url") or "").strip() == url:
+                kept += 1
+                continue
+            st["miniapp_url"] = url
+            con.execute("UPDATE tenants SET settings=? WHERE id=?",
+                        (json.dumps(st, ensure_ascii=False), r["id"]))
+            changed += 1
+        con.commit()
+    finally:
+        con.close()
+
+    print()
+    print(f"  {G}{url}{X}")
+    print(f"  written for {changed} tenant(s), {kept} already had it")
+    print()
+    print("  Bots pick this up within about half a minute. If the button")
+    print("  still does not show, the bot thread has not restarted yet:")
+    print("      nexora bot restart")
+    print()
+    return 0
 
 
 def _settings(row):
@@ -185,6 +242,8 @@ def steps_for(con, bcon, t, cols):
 def main():
     ap = argparse.ArgumentParser(description="Why can't a reseller sell?")
     ap.add_argument("--name", help="only this reseller (name or slug)")
+    ap.add_argument("--set-miniapp", metavar="URL", dest="set_miniapp",
+                    help="write the mini-app url for every tenant")
     args = ap.parse_args()
 
     bot = _find(BOT_PATHS, "/opt/*/data/bot.db")
@@ -192,6 +251,9 @@ def main():
         print(f"{R}bot.db not found{X} — set BOT_DB_PATH and try again")
         return 2
     billing = _find(BILLING_PATHS, "/opt/*/data/billing.db")
+
+    if args.set_miniapp:
+        return set_miniapp(bot, args.set_miniapp)
 
     con = _open(bot)
     bcon = _open(billing) if billing else None
@@ -210,9 +272,27 @@ def main():
                 if want in str(r.get("name") or "").lower()
                 or want in str(r.get("portal_slug") or "").lower()]
 
+    # آدرسِ مینی‌اپِ خودِ مالک: اگر آن هم خالی باشد، مشکل از
+    # نماینده نیست — پنل هیچ‌وقت روی https باز نشده و تشخیصِ
+    # خودکار اصلاً فعال نشده.
+    owner_mini = ""
+    try:
+        orow = con.execute(
+            "SELECT settings FROM tenants WHERE parent_id IS NULL "
+            "ORDER BY id LIMIT 1").fetchone()
+        owner_mini = str(_settings(orow or {}).get("miniapp_url") or "")
+    except sqlite3.Error:
+        owner_mini = ""
+
     print()
     print(f"{D}bot.db     {X}{bot}")
     print(f"{D}billing.db {X}{billing or '(not found — rates unknown)'}")
+    print(f"{D}owner mini-app {X}{owner_mini or R + 'not set' + X}")
+    if not owner_mini:
+        print(f"{Y}  the owner has no mini-app url either.{X}")
+        print("  That means the panel was never opened over https, so the")
+        print("  address was never learned. Set it once, by hand:")
+        print(f"      {D}nexora reseller-why --set-miniapp https://<your-panel>{X}")
     print()
 
     if not rows:

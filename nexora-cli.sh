@@ -1261,6 +1261,7 @@ PYEOF
     echo -e "  ${C_WHITE}nexora repair-referrals${C_RESET}       ${C_DIM}pay referral coins wallet buys never paid${C_RESET}"
     echo -e "  ${C_WHITE}nexora reseller list${C_RESET}          ${C_DIM}reseller portal accounts${C_RESET}"
     echo -e "  ${C_WHITE}nexora reseller-why${C_RESET}           ${C_DIM}why a reseller cannot sell yet${C_RESET}"
+    echo -e "  ${C_WHITE}nexora reseller-why --set-miniapp URL${C_RESET}  ${C_DIM}set the mini-app address by hand${C_RESET}"
     echo -e "  ${C_WHITE}nexora fix-flow${C_RESET}               ${C_DIM}put every vless client on the same flow${C_RESET}"
     echo -e "  ${C_WHITE}nexora password${C_RESET}               ${C_DIM}change admin password${C_RESET}"
     echo -e "  ${C_WHITE}nexora diagnose${C_RESET}               ${C_DIM}troubleshoot template issues${C_RESET}"
