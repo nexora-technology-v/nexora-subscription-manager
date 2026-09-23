@@ -12280,6 +12280,8 @@ def mini_me(tu: tuple = Depends(mini_user)):
         # بیفتد — تا اگر دوباره تهیه کرد، همان رنگِ قبلی برگردد.
         "accent": (_clean_accent(st.get("mini_accent"))
                    if _addon_open(t) else ""),
+        # قالب، پالت و سبکِ لوگو — همه پشتِ همان قفل
+        "theme": _mini_theme(t, st),
         "avatar": _avatar_url(t["id"], u["id"]),
         "phone": u.get("phone") or "",
         # دعوتِ دوست — کدِ خودِ کاربر و اینکه چند نفر با آن آمده‌اند.
@@ -15080,6 +15082,56 @@ def _clean_accent(raw):
     return v.lower() if _HEX_RE.match(v) else ""
 
 
+# ── پوسته‌ی مینی‌اپ: قالب × پالت × سبکِ لوگو ──
+#
+# برگه: docs/specs/2026-09-23-mini-theme-studio.md
+#
+# فهرستِ مجاز، نه دلخواه: شناسه‌ای که رابط نمی‌شناسد، مینی‌اپ را روی
+# پیش‌فرض می‌برد و نماینده فکر می‌کند ذخیره نشده. ظاهرِ هر کدام در
+# `frontend/src/lib/mini-themes.js` است؛ `test-ui-safety` برابریِ دو
+# فهرست را می‌سنجد.
+MINI_TEMPLATES = ("aurora", "mono", "bold", "neon")
+MINI_PALETTES = ("ocean", "violet", "emerald", "sunset", "rose", "gold",
+                 "crimson", "slate", "custom")
+LOGO_SHAPES = ("rounded", "circle", "square")
+LOGO_BGS = ("none", "light", "accent")
+
+
+def _clean_logo_style(v):
+    """سبکِ لوگو — هر چه نامعتبر است پیش‌فرض می‌شود (همان `cleanLogoStyle` رابط)."""
+    v = v if isinstance(v, dict) else {}
+    try:
+        pad = max(0, min(24, int(round(float(v.get("pad") or 0)))))
+    except (TypeError, ValueError):
+        pad = 0
+    return {"shape": v.get("shape") if v.get("shape") in LOGO_SHAPES else "rounded",
+            "bg": v.get("bg") if v.get("bg") in LOGO_BGS else "none",
+            "pad": pad}
+
+
+def _mini_theme(t, st=None):
+    """
+    پوسته‌ای که مینی‌اپِ این مستاجر واقعاً نشان می‌دهد.
+
+    قفل همین‌جا سنجیده می‌شود: اشتراک که تمام شود پوسته بی‌آنکه پاک
+    شود از کار می‌افتد — تا اگر دوباره تهیه کرد، همان برگردد. لوگو
+    خودش از این قفل بیرون است (آپلودش از قبل رایگان بود)؛ فقط
+    **سبکش** پشتِ قفل است.
+    """
+    st = st if st is not None else _tenant_settings(t)
+    if not _addon_open(t):
+        return {"tpl": "aurora", "palette": "", "accent": "",
+                "logoStyle": _clean_logo_style({})}
+    accent = _clean_accent(st.get("mini_accent"))
+    palette = st.get("mini_palette") if st.get("mini_palette") in MINI_PALETTES else ""
+    # پیش از قالب‌ها فقط رنگ بود — همان رنگ، پالتِ دلخواه است
+    if not palette and accent:
+        palette = "custom"
+    return {"tpl": st.get("mini_tpl") if st.get("mini_tpl") in MINI_TEMPLATES else "aurora",
+            "palette": palette, "accent": accent,
+            "logoStyle": _clean_logo_style(st.get("logo_style"))}
+
+
 def _addon_config():
     """
     قیمت و مدتِ «پوسته‌ی شخصی»، از تنظیماتِ مالک.
@@ -15130,6 +15182,11 @@ def portal_theme_get(t: dict = Depends(portal_tenant)):
     cfg = _addon_config()
     return {
         "accent": _clean_accent(st.get("mini_accent")),
+        # آنچه ذخیره شده — حتی اگر قفل بسته باشد، تا رابط نشانش بدهد
+        "tpl": st.get("mini_tpl") if st.get("mini_tpl") in MINI_TEMPLATES else "aurora",
+        "palette": (st.get("mini_palette") if st.get("mini_palette") in MINI_PALETTES
+                    else ("custom" if _clean_accent(st.get("mini_accent")) else "ocean")),
+        "logoStyle": _clean_logo_style(st.get("logo_style")),
         "brand": st.get("brand") or t.get("name") or "",
         "logo": _logo_url(t["id"]),
         "open": _addon_open(t),
@@ -15156,15 +15213,34 @@ def portal_theme_set(payload: dict, t: dict = Depends(portal_tenant)):
             status_code=402,
             detail="پوسته‌ی شخصی برای شما فعال نیست — اول تهیه‌اش کنید")
 
-    accent = _clean_accent((payload or {}).get("accent"))
-    if (payload or {}).get("accent") and not accent:
-        raise HTTPException(status_code=400,
-                            detail="رنگ باید به شکل ‎#RRGGBB باشد")
+    p = payload or {}
+    st = _tenant_settings(_tenant_row(t["id"]) or t)
 
-    st = _tenant_settings(t)
-    st["mini_accent"] = accent
+    # فقط آنچه آمده عوض می‌شود — رابطِ قدیمی که فقط رنگ می‌فرستاد
+    # نباید قالب و لوگو را پاک کند.
+    if "accent" in p:
+        accent = _clean_accent(p.get("accent"))
+        if p.get("accent") and not accent:
+            raise HTTPException(status_code=400,
+                                detail="رنگ باید به شکل ‎#RRGGBB باشد")
+        st["mini_accent"] = accent
+    if "tpl" in p:
+        if p.get("tpl") not in MINI_TEMPLATES:
+            raise HTTPException(status_code=400, detail="این قالب وجود ندارد")
+        st["mini_tpl"] = p["tpl"]
+    if "palette" in p:
+        if p.get("palette") not in MINI_PALETTES:
+            raise HTTPException(status_code=400, detail="این پالت وجود ندارد")
+        if p["palette"] == "custom" and not _clean_accent(st.get("mini_accent")):
+            raise HTTPException(status_code=400,
+                                detail="برای رنگِ دلخواه اول یک رنگ انتخاب کنید")
+        st["mini_palette"] = p["palette"]
+    if "logo_style" in p:
+        st["logo_style"] = _clean_logo_style(p.get("logo_style"))
+
     _save_tenant_settings(t["id"], st)
-    return {"ok": True, "accent": accent}
+    return {"ok": True, "accent": _clean_accent(st.get("mini_accent")),
+            "theme": _mini_theme(_tenant_row(t["id"]) or t, st)}
 
 
 @app.post("/api/portal/theme/buy")

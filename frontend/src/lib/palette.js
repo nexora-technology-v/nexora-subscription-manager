@@ -122,9 +122,11 @@ function steps(prefix, rgb) {
 /**
  * @param {string} color  رنگِ انتخابی، `#RRGGBB`
  * @param {"dark"|"light"} scheme  پوسته‌ی تلگرام
+ * @param {number} shift  رنگِ دوم چند درجه آن‌طرف‌تر — پالتِ آماده می‌تواند
+ *                        جهتش را خودش بگوید (اقیانوس: آبی → فیروزه‌ای)
  * @returns {Object<string,string>|null}  نگاشتِ متغیرهای CSS
  */
-export function accentPalette(color, scheme = "dark") {
+export function accentPalette(color, scheme = "dark", shift = 30) {
   if (!HEX.test(String(color || ""))) return null;
   const [h, s0, l0] = hexToHsl(color);
   const light = scheme === "light";
@@ -170,8 +172,8 @@ export function accentPalette(color, scheme = "dark") {
   const la = luminance(accent);
   const darkInk = la >= 0.185;
   const sc = clamp(s + 0.04, 0.4, 0.95);
-  const cy = toLum(h + 30, sc, darkInk ? Math.max(la, 0.2) : Math.min(la, 0.17));
-  const cy2 = toLum(h + 30, sc, darkInk ? Math.max(la * 0.8, 0.19) : Math.min(la * 0.8, 0.15));
+  const cy = toLum(h + shift, sc, darkInk ? Math.max(la, 0.2) : Math.min(la, 0.17));
+  const cy2 = toLum(h + shift, sc, darkInk ? Math.max(la * 0.8, 0.19) : Math.min(la * 0.8, 0.15));
 
   // سرِ روشنِ شیب‌های سطحی — همان سمتِ مرز
   const accent2s = toLum(h, s, darkInk ? Math.max(la * 1.35, 0.3) : Math.min(la * 1.4, 0.17));

@@ -13,7 +13,8 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { createPortal } from "react-dom";
 import {
   Activity, AlertTriangle, Bot, Camera, Check, Clock, Coins, Copy, CreditCard,
-  Database, ExternalLink, FileText, Gift, Link2, Menu, MessageCircle, Settings2,
+  Database, ExternalLink, FileText, Gift, Link2, Menu, MessageCircle, Moon, Play,
+  Settings2, Sun,
   LayoutGrid, Loader2, LogOut, Package, Palette, Plus, Power, QrCode, RefreshCw, Search,
   ShoppingCart, Trash2, TrendingUp, Users, Wallet, X, XCircle,
 } from "lucide-react";
@@ -31,7 +32,8 @@ import { NexoraMark } from "../lib/mark.jsx";
 // همان صفحه‌های پنلِ مالک، با داده‌ی خودِ نماینده — نه کپی.
 // چرا: lib/botsrc.js. مرزِ واقعی بکند است (`portal_tenant`).
 import { portalSrc } from "../lib/botsrc";
-import { accentPalette } from "../lib/palette.js";
+import { MINI_PALETTES, MINI_TEMPLATES, paletteSwatch, themeVars } from "../lib/mini-themes.js";
+import { LOGO_BGS, LOGO_SHAPES, ShopLogo, cleanLogoStyle } from "../lib/shoplogo.jsx";
 import { BotUsersSection } from "../sections/bot/users";
 import { BotInboxSection } from "../sections/bot/inbox";
 import { BOT_BEHAVIOUR, BotTextsSection } from "../sections/bot/texts";
@@ -1107,156 +1109,277 @@ const ACCENTS = [
   "#e84393", "#f0a500", "#0aa2c0", "#8d6e63",
 ];
 
-function ThemePreview({ accent, brand, logo }) {
-  // **همان تابعی** که مینی‌اپ صدا می‌زند (lib/palette.js). قبلاً این‌جا
-  // حسابِ خودش را داشت و فقط `--accent` را می‌ساخت — پیش‌نمایش چیزی
-  // نشان می‌داد که مشتری نمی‌دید، چون دکمه‌های مینی‌اپ `--cy` بودند.
-  const pal = accentPalette(accent);
-  const vars = pal ? {
-    "--pv-accent": pal["--accent"],
-    "--pv-soft": pal["--accent-soft"],
-    "--pv-fill": pal["--accent-fill"],
-    "--pv-line": pal["--accent-line"],
-    "--pv-cta": `linear-gradient(140deg, ${pal["--accent"]}, ${pal["--cy"]})`,
-    "--pv-on-cta": pal["--on-cy"],
-  } : {
-    "--pv-accent": "var(--accent)",
-    "--pv-soft": "var(--accent-soft)",
-    "--pv-fill": "var(--accent-fill)",
-    "--pv-line": "var(--accent-line)",
-    "--pv-cta": "linear-gradient(140deg, var(--accent), var(--cy))",
-    "--pv-on-cta": "var(--on-cy)",
-  };
+/*
+ * استودیوی پوسته‌ی مینی‌اپ — قالب × پالت × لوگو.
+ *
+ * برگه: docs/specs/2026-09-23-mini-theme-studio.md
+ *
+ * مالک: «پیش‌نمایش فقط یک سری جزئیات را عوض می‌کند». راست می‌گفت:
+ * پیش‌نمایشِ قبلی ماکتی دست‌ساز بود و فقط رنگِ دکمه‌اش عوض می‌شد.
+ * حالا **خودِ مینی‌اپ** در قابِ گوشی است (`/app?preview=1` با داده‌ی
+ * نمونه) و هر انتخاب از راهِ `postMessage` همان لحظه به آن می‌رسد —
+ * قالب، طیفِ رنگ، لوگو، نام، پلن‌های واقعیِ خودِ نماینده، و حتی صفحه‌ی
+ * ورود. پس چیزی جز آنچه مشتری می‌بیند نمی‌تواند نشان بدهد.
+ *
+ * پیش‌نمایش آزاد است؛ **ذخیره** پشتِ اشتراکِ پوسته (تصمیمِ مالک)، و
+ * قفل در بکند است.
+ */
 
+/** شِمای کوچکِ هر قالب — ساختار را نشان می‌دهد، با رنگِ پالتِ انتخابی. */
+function TemplateThumb({ id, sw }) {
+  const c = sw || { accent: "#2B7FD6", cy: "#2DD4BF", bg: "#070A12", surface: "#101827" };
+  const box = (extra) => ({ borderRadius: 4, background: c.surface, ...extra });
+  const radius = { aurora: 6, mono: 3, bold: 9, neon: 1 }[id] ?? 6;
   return (
-    <div style={{ ...vars, width: 232, flex: "none" }}>
-      <div style={{
-        borderRadius: 18, overflow: "hidden",
-        border: "1px solid var(--border)", background: "var(--surface-2)",
-      }}>
-        <div style={{ padding: "10px 12px", display: "flex",
-                      alignItems: "center", gap: 8,
-                      borderBottom: "1px solid var(--border)" }}>
-          {logo ? (
-            <img src={logo} alt="" style={{ width: 26, height: 26,
-              borderRadius: 9, objectFit: "cover", flex: "none" }} />
-          ) : (
-            <span style={{ width: 26, height: 26, borderRadius: 9,
-              flex: "none", display: "grid", placeItems: "center",
-              background: "var(--pv-soft)", color: "var(--pv-accent)",
-              fontSize: 12, fontWeight: 700 }}>
-              {(brand || "N").trim().charAt(0)}
-            </span>
-          )}
-          <b style={{ fontSize: 12, color: "var(--dim)" }}>
-            {brand || "فروشگاه شما"}
-          </b>
+    <div style={{ width: "100%", aspectRatio: "3 / 4", borderRadius: 10, overflow: "hidden",
+                  background: c.bg, position: "relative", padding: 6, display: "flex",
+                  flexDirection: "column", gap: 5 }}>
+      {/* نوارِ بالا */}
+      <div style={{ height: 12, borderRadius: 3, flex: "none",
+        background: id === "bold" ? c.accent : "transparent",
+        borderBottom: id === "neon" ? `1px solid ${c.accent}` : id === "mono" ? `1px solid ${c.surface}` : "none" }} />
+      {/* کارتِ موجودی */}
+      <div style={{ height: 30, flex: "none", borderRadius: radius,
+        background: id === "mono" || id === "neon" ? c.surface
+          : `linear-gradient(135deg, ${c.accent}, ${c.cy})`,
+        border: id === "neon" ? `1px solid ${c.accent}` : "none",
+        boxShadow: id === "neon" ? `0 0 8px ${c.accent}` : "none" }} />
+      {[0, 1].map((i) => (
+        <div key={i} style={box({ height: 16, borderRadius: radius, display: "flex",
+          alignItems: "center", justifyContent: "flex-end", paddingInline: 4,
+          border: id === "neon" ? `1px solid ${c.accent}` : "none" })}>
+          <span style={{ width: 16, height: 7, borderRadius: id === "bold" ? 9 : radius,
+            background: id === "mono" || id === "neon" ? "transparent" : c.cy,
+            border: id === "mono" || id === "neon" ? `1px solid ${c.accent}` : "none" }} />
         </div>
-
-        <div style={{ padding: 12 }}>
-          <div style={{
-            borderRadius: 14, padding: "12px 13px", marginBottom: 9,
-            background: "var(--pv-soft)",
-            border: "1px solid var(--pv-line)",
-          }}>
-            <div style={{ fontSize: 10, color: "var(--muted)" }}>موجودی</div>
-            <div style={{ fontSize: 17, fontWeight: 700,
-                          color: "var(--pv-accent)" }}>۲۴۰٬۰۰۰</div>
-          </div>
-
-          <div style={{ borderRadius: 12, padding: "9px 11px", marginBottom: 9,
-                        background: "var(--surface-3)",
-                        border: "1px solid var(--border)" }}>
-            <div style={{ fontSize: 11, color: "var(--dim)" }}>پلن یک‌ماهه</div>
-            <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>
-              ۵۰ گیگ · ۳۰ روز
-            </div>
-          </div>
-
-          <div style={{
-            borderRadius: 11, padding: "8px 0", textAlign: "center",
-            fontSize: 11.5, fontWeight: 700, color: "var(--pv-on-cta)",
-            background: "var(--pv-cta)",
-          }}>خرید</div>
-        </div>
+      ))}
+      {/* نوارِ زبانه‌ها */}
+      <div style={{ position: "absolute", insetInline: id === "bold" ? 6 : 0, bottom: id === "bold" ? 5 : 0,
+        height: 13, borderRadius: id === "bold" ? 8 : 0, background: c.surface,
+        display: "flex", alignItems: "center", justifyContent: "space-around" }}>
+        {[0, 1, 2].map((i) => (
+          <span key={i} style={{ width: 10, height: i === 0 ? (id === "mono" || id === "neon" ? 2 : 7) : 4,
+            borderRadius: 3, background: i === 0 ? (id === "bold" ? c.cy : c.accent) : c.bg,
+            alignSelf: (id === "mono" || id === "neon") && i === 0 ? "flex-start" : "center" }} />
+        ))}
       </div>
-      <p className="text-[10.5px] mt-2 text-center"
-        style={{ color: "var(--muted)" }}>
-        پیش‌نمایشِ مینی‌اپِ مشتریانِ شما
-      </p>
     </div>
   );
 }
 
+/**
+ * برش و زومِ لوگو پیش از آپلود.
+ *
+ * عکسِ هر اندازه‌ای می‌آید و مربع ذخیره می‌شود؛ بدونِ این، لوگوی
+ * مستطیلی در قابِ گرد نصفه می‌شد و نماینده نمی‌فهمید چرا. خروجی ۵۱۲
+ * پیکسل PNG (برای شفافیت)؛ اگر از سقفِ ۵۱۲ کیلوبایت بیشتر شد، WebP.
+ */
+function LogoCropper({ file, shape, onCancel, onDone }) {
+  const VIEW = 260;
+  const [img, setImg] = useState(null);
+  const [zoom, setZoom] = useState(1);
+  const [off, setOff] = useState({ x: 0, y: 0 });
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const drag = useRef(null);
+
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => setImg(im);
+    im.onerror = () => setErr("این فایل تصویر نیست یا خراب است");
+    im.src = url;
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  // اندازه‌ی «پوشاندن»: کوچک‌ترین ضلع قاب را پر می‌کند
+  const base = img ? VIEW / Math.min(img.width, img.height) : 1;
+  const w = img ? img.width * base * zoom : 0;
+  const h = img ? img.height * base * zoom : 0;
+  const clamp = (o) => ({
+    x: Math.min(0, Math.max(VIEW - w, o.x)),
+    y: Math.min(0, Math.max(VIEW - h, o.y)),
+  });
+  useEffect(() => {
+    if (img) setOff((o) => clamp(o.x === 0 && o.y === 0 ? { x: (VIEW - w) / 2, y: (VIEW - h) / 2 } : o));
+  }, [img, zoom]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const down = (e) => { drag.current = { x: e.clientX - off.x, y: e.clientY - off.y }; e.currentTarget.setPointerCapture?.(e.pointerId); };
+  const move = (e) => { if (drag.current) setOff(clamp({ x: e.clientX - drag.current.x, y: e.clientY - drag.current.y })); };
+  const up = () => { drag.current = null; };
+
+  const save = async () => {
+    if (!img) return;
+    setBusy(true); setErr("");
+    try {
+      const OUT = 512, k = OUT / VIEW;
+      const cv = document.createElement("canvas");
+      cv.width = OUT; cv.height = OUT;
+      const g = cv.getContext("2d");
+      g.imageSmoothingQuality = "high";
+      g.drawImage(img, off.x * k, off.y * k, w * k, h * k);
+      let data = cv.toDataURL("image/png");
+      if (data.length * 0.75 > 480 * 1024) data = cv.toDataURL("image/webp", 0.92);
+      if (data.length * 0.75 > 500 * 1024) data = cv.toDataURL("image/jpeg", 0.9);
+      await onDone(data);
+    } catch (e) { setErr(e.message || "ذخیره نشد"); }
+    finally { setBusy(false); }
+  };
+
+  const round = shape === "circle" ? "50%" : shape === "square" ? "10%" : "28%";
+  return (
+    <Frame onClose={onCancel} width={340}>
+      <div className="text-[14px] font-semibold text-white mb-3">برش و اندازه‌ی لوگو</div>
+      <div onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+        style={{ width: VIEW, height: VIEW, margin: "0 auto", position: "relative",
+                 overflow: "hidden", borderRadius: 14, cursor: "grab", touchAction: "none",
+                 background: "var(--surface-3)" }}>
+        {img && (
+          <img src={img.src} alt="" draggable={false}
+            style={{ position: "absolute", left: off.x, top: off.y, width: w, height: h,
+                     maxWidth: "none", userSelect: "none", pointerEvents: "none" }} />
+        )}
+        {/* قابِ همان شکلی که انتخاب شده — بیرونش تیره است */}
+        <div style={{ position: "absolute", inset: 14, borderRadius: round,
+                      boxShadow: "0 0 0 999px var(--scrim-3)",
+                      border: "2px solid var(--hair-4)", pointerEvents: "none" }} />
+      </div>
+      <label className="flex items-center gap-3 mt-4 text-[12px]" style={{ color: "var(--muted)" }}>
+        بزرگ‌نمایی
+        <input type="range" min="1" max="4" step="0.01" value={zoom}
+          onChange={(e) => setZoom(Number(e.target.value))} className="flex-1" />
+      </label>
+      <p className="text-[11.5px] mt-2" style={{ color: "var(--muted)" }}>
+        بکشید تا جابه‌جا شود.
+      </p>
+      {err && <p className="text-[12.5px] mt-2" style={{ color: "var(--danger)" }}>{err}</p>}
+      <div className="flex gap-2 mt-4">
+        <button onClick={onCancel} className="fx-btn-g flex-1 py-2 text-[13px]">انصراف</button>
+        <button onClick={save} disabled={!img || busy}
+          className="fx-btn flex-1 py-2 text-[13px] flex items-center justify-center gap-1.5">
+          {busy && <Loader2 size={13} className="animate-spin" />} ذخیره‌ی لوگو
+        </button>
+      </div>
+    </Frame>
+  );
+}
+
+/** دکمه‌های کنارِ هم برای انتخابِ یکی از چند گزینه. */
+function Seg({ value, options, onChange }) {
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      {options.map((o) => (
+        <button key={o.id} onClick={() => onChange(o.id)}
+          className="px-3 py-1.5 rounded-lg text-[12.5px]"
+          style={{
+            background: value === o.id ? "var(--accent-fill)" : "transparent",
+            border: `1px solid ${value === o.id ? "var(--accent-edge)" : "var(--border)"}`,
+            color: value === o.id ? "var(--accent-2)" : "var(--muted)",
+          }}>{o.fa}</button>
+      ))}
+    </div>
+  );
+}
 
 function ThemeBox({ inline, token, onClose, onNote }) {
   const [d, setD] = useState(null);
+  const [tpl, setTpl] = useState("aurora");
+  const [palette, setPalette] = useState("ocean");
   const [accent, setAccent] = useState("");
+  const [ls, setLs] = useState(cleanLogoStyle({}));
   const [brand, setBrand] = useState("");
+  const [plans, setPlans] = useState([]);
+  const [scheme, setScheme] = useState("dark");
+  const [crop, setCrop] = useState(null);
+  const [logoV, setLogoV] = useState(0);
   const [busy, setBusy] = useState("");
   const [err, setErr] = useState("");
   const logoRef = useRef(null);
+  const frameRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
       const j = await api("/api/portal/theme", { token });
       setD(j);
+      setTpl(j.tpl || "aurora");
+      setPalette(j.palette || "ocean");
       setAccent(j.accent || "");
+      setLs(cleanLogoStyle(j.logoStyle));
       setBrand(j.brand || "");
     } catch (e) { setErr(e.message); }
+    // پلن‌های واقعیِ خودش در پیش‌نمایش — نبودشان نمونه را نشان می‌دهد
+    api("/api/portal/bot-plans", { token }).then((j) => setPlans(j.plans || []))
+      .catch(() => setPlans([]));
   }, [token]);
-
   useEffect(() => { load(); }, [load]);
+
+  const logo = d?.logo ? `${d.logo}?v=${logoV}` : "";
+  const theme = { tpl, palette, accent: palette === "custom" ? accent : "", logoStyle: ls };
+
+  // هر تغییر همان لحظه به مینی‌اپِ داخلِ قاب می‌رسد
+  const send = useCallback(() => {
+    try {
+      frameRef.current?.contentWindow?.postMessage({
+        type: "nx-preview", theme, brand: brand || d?.brand || "", logo, plans, scheme,
+      }, window.location.origin);
+    } catch { /* قاب هنوز بالا نیامده */ }
+  }, [JSON.stringify(theme), brand, logo, plans, scheme, d?.brand]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { send(); }, [send]);
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (e.origin === window.location.origin && e.data?.type === "nx-ready") send();
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [send]);
+  const replaySplash = () => {
+    try { frameRef.current?.contentWindow?.postMessage({ type: "nx-splash" }, window.location.origin); }
+    catch { /* */ }
+  };
+
+  const saved = d && tpl === (d.tpl || "aurora") && palette === (d.palette || "ocean")
+    && (palette !== "custom" || accent === (d.accent || ""))
+    && JSON.stringify(ls) === JSON.stringify(cleanLogoStyle(d.logoStyle));
 
   const save = async () => {
     setBusy("save"); setErr("");
     try {
-      await api("/api/portal/theme", { token, method: "POST",
-                                       body: { accent } });
-      onNote("پوسته ذخیره شد");
+      await api("/api/portal/theme", { token, method: "POST", body: {
+        tpl, ...(palette === "custom" ? { accent } : {}), palette, logo_style: ls } });
+      onNote("پوسته ذخیره شد — مینی‌اپِ مشتری‌هایتان همین را نشان می‌دهد");
       load();
     } catch (e) { setErr(e.message); } finally { setBusy(""); }
   };
 
-  // نام از همان مسیری می‌رود که «ربات من» استفاده می‌کند — نه
-  // مسیرِ دوم. دو مسیر برای یک کلید یعنی روزی یکی اعتبارسنجی را
-  // عوض کند و دیگری نه.
+  // نام از همان مسیری می‌رود که «ربات و پرداخت» استفاده می‌کند —
+  // نه مسیرِ دوم.
   const saveBrand = async () => {
     setBusy("brand"); setErr("");
     try {
-      await api("/api/portal/brand", { token, method: "POST",
-                                       body: { brand: brand.trim() } });
+      await api("/api/portal/brand", { token, method: "POST", body: { brand: brand.trim() } });
       onNote("نام فروشگاه ذخیره شد");
       load();
     } catch (e) { setErr(e.message); } finally { setBusy(""); }
   };
 
-  const pickLogo = async (e) => {
+  const pickLogo = (e) => {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
-    setErr("");
-    if (f.size > 512 * 1024) { setErr("حجم فایل بیشتر از ۵۱۲ کیلوبایت است"); return; }
-    setBusy("logo");
-    try {
-      const data = await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(String(r.result || ""));
-        r.onerror = () => rej(new Error("فایل خوانده نشد"));
-        r.readAsDataURL(f);
-      });
-      await api("/api/portal/logo", { token, method: "POST", body: { data } });
-      onNote("لوگو ذخیره شد");
-      load();
-    } catch (e2) { setErr(e2.message); } finally { setBusy(""); }
+    if (!/^image\//.test(f.type || "")) { setErr("فقط تصویر"); return; }
+    if (f.size > 12 * 1024 * 1024) { setErr("تصویر بیشتر از ۱۲ مگابایت است"); return; }
+    setErr(""); setCrop(f);
   };
-
+  const uploadLogo = async (data) => {
+    await api("/api/portal/logo", { token, method: "POST", body: { data } });
+    setCrop(null); setLogoV(Date.now());
+    onNote("لوگو ذخیره شد");
+    await load();
+  };
   const dropLogo = async () => {
     setBusy("logo"); setErr("");
-    try {
-      await api("/api/portal/logo", { token, method: "DELETE" });
-      load();
-    } catch (e2) { setErr(e2.message); } finally { setBusy(""); }
+    try { await api("/api/portal/logo", { token, method: "DELETE" }); await load(); }
+    catch (e2) { setErr(e2.message); } finally { setBusy(""); }
   };
 
   const buy = async () => {
@@ -1269,187 +1392,206 @@ function ThemeBox({ inline, token, onClose, onNote }) {
   };
 
   const open = !!d?.open;
+  const label = (t) => <div className="text-[12px] mb-2 mt-4" style={{ color: "var(--muted)" }}>{t}</div>;
 
   return (
-    <Frame inline={inline} onClose={onClose} width={640}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-[14px] font-semibold text-white">
-            پوسته‌ی فروشگاه شما
-          </div>
-          {!inline && (
-            <button onClick={onClose} className="fx-ico-btn"
-              style={{ width: 28, height: 28 }} aria-label="بستن">
-              <X size={13} />
-            </button>
-          )}
-        </div>
+    <Frame inline={inline} onClose={onClose} width={900}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[14px] font-semibold text-white">پوسته‌ی مینی‌اپِ شما</div>
+        {!inline && (
+          <button onClick={onClose} className="fx-ico-btn" style={{ width: 28, height: 28 }}
+            aria-label="بستن"><X size={13} /></button>
+        )}
+      </div>
 
-        {!d ? <SkeletonCards n={2} /> : (
-          <>
-            {/* قفل — و اینکه چه چیزی می‌گیرد. صفحه‌ی قفل که فقط
-                بگوید «فعال نیست» از نبودنِ صفحه بدتر است. */}
-            {!open && (
-              <div className="rounded-xl p-4 mb-4"
-                style={{ background: "var(--accent-wash)",
-                         border: "1px solid var(--accent-fill)" }}>
-                <div className="text-[13px] font-semibold mb-1.5"
-                  style={{ color: "var(--accent-2)" }}>
-                  مینی‌اپِ مشتریانتان، با رنگ و نشانِ خودتان
-                </div>
-                <p className="text-[12px] leading-relaxed mb-3"
-                  style={{ color: "var(--dim)" }}>
-                  مشتری شما به‌جای پوسته‌ی پیش‌فرض، رنگ و لوگوی
-                  فروشگاهِ خودتان را می‌بیند — در کیف پول، فهرستِ
-                  پلن‌ها، و هر دکمه‌ای که می‌زند.
-                </p>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <button onClick={buy} disabled={busy === "buy"}
-                    className="fx-btn px-4 py-2 text-[13px] flex items-center gap-1.5">
-                    {busy === "buy" ? <Loader2 size={13} className="animate-spin" />
-                      : <Palette size={13} />}
-                    {faNum(d.price)} تومان برای {faNum(d.days)} روز
-                  </button>
-                  <span className="text-[11.5px]" style={{ color: "var(--muted)" }}>
-                    {d.postpaid
-                      ? "به صورتحسابِ این دوره‌تان اضافه می‌شود"
-                      : `از اعتبارتان کم می‌شود — موجودی: ${faNum(d.credit)} تومان`}
-                  </span>
-                </div>
+      {!d ? <SkeletonCards n={2} /> : (
+        <>
+          {!open ? (
+            <div className="rounded-xl p-4 mb-2"
+              style={{ background: "var(--accent-wash)", border: "1px solid var(--accent-fill)" }}>
+              <div className="text-[13px] font-semibold mb-1" style={{ color: "var(--accent-2)" }}>
+                همه را امتحان کنید — پیش‌نمایش آزاد است
               </div>
-            )}
-
-            {open && d.until && (
-              <div className="text-[11.5px] mb-3 flex items-center gap-2 flex-wrap"
-                style={{ color: "var(--muted)" }}>
-                <Check size={12} style={{ color: "var(--ok)" }} />
-                فعال تا {String(d.until).slice(0, 10)}
-                {d.price > 0 && (
-                  <button onClick={buy} disabled={busy === "buy"}
-                    className="fx-btn-g px-2.5 py-1 text-[11.5px]">
-                    تمدید
-                  </button>
-                )}
+              <p className="text-[12px] leading-relaxed mb-3" style={{ color: "var(--dim)" }}>
+                قالب، طیفِ رنگ و سبکِ لوگو را هر طور خواستید عوض کنید و در قابِ
+                کنار ببینید. برای اینکه مشتری‌هایتان همین را ببینند، پوسته‌ی شخصی را
+                فعال کنید.
+              </p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <button onClick={buy} disabled={busy === "buy"}
+                  className="fx-btn px-4 py-2 text-[13px] flex items-center gap-1.5">
+                  {busy === "buy" ? <Loader2 size={13} className="animate-spin" /> : <Palette size={13} />}
+                  {faNum(d.price)} تومان برای {faNum(d.days)} روز
+                </button>
+                <span className="text-[11.5px]" style={{ color: "var(--muted)" }}>
+                  {d.postpaid ? "به صورتحسابِ این دوره‌تان اضافه می‌شود"
+                    : `از اعتبارتان کم می‌شود — موجودی: ${faNum(d.credit)} تومان`}
+                </span>
               </div>
-            )}
+            </div>
+          ) : d.until ? (
+            <div className="text-[11.5px] mb-1 flex items-center gap-2 flex-wrap" style={{ color: "var(--muted)" }}>
+              <Check size={12} style={{ color: "var(--ok)" }} /> فعال تا {String(d.until).slice(0, 10)}
+              {d.price > 0 && (
+                <button onClick={buy} disabled={busy === "buy"} className="fx-btn-g px-2.5 py-1 text-[11.5px]">تمدید</button>
+              )}
+            </div>
+          ) : null}
 
-            <div className="flex gap-4 flex-wrap">
-              <div className="flex-1" style={{ minWidth: 240 }}>
-                {/* نام و لوگو **رایگان‌اند** — پشتِ قفل نمی‌روند.
-                    فقط رنگ پولی است. */}
-                <label className="text-[12px] block mb-1.5"
-                  style={{ color: "var(--muted)" }}>نام فروشگاه</label>
-                <div className="flex items-center gap-2 mb-3">
-                  <input value={brand} maxLength={40}
-                    placeholder="مثلاً: حسین وی‌پی‌ان"
-                    onChange={(e) => setBrand(e.target.value)}
-                    className="fx-input text-[13px] flex-1" />
-                  <button onClick={saveBrand}
-                    disabled={busy === "brand" || !brand.trim()
-                              || brand.trim() === (d.brand || "")}
-                    className="fx-btn-g px-3 py-2 text-[12.5px]">
-                    {busy === "brand" ? <Loader2 size={12} className="animate-spin" />
-                      : "ذخیره"}
+          <div className="flex gap-6 flex-wrap items-start">
+            <div className="flex-1 min-w-0" style={{ minWidth: 280 }}>
+              {label("قالب — ساختارِ کلِ اپ، از صفحه‌ی ورود تا نوارِ پایین")}
+              <div className="grid grid-cols-4 gap-2 nx-studio-tpls">
+                {MINI_TEMPLATES.map((t) => (
+                  <button key={t.id} onClick={() => setTpl(t.id)} data-tpl={t.id}
+                    className="rounded-xl p-1.5 text-right"
+                    style={{ border: `1.5px solid ${tpl === t.id ? "var(--accent-edge)" : "var(--border)"}`,
+                             background: tpl === t.id ? "var(--accent-wash)" : "transparent" }}
+                    title={t.desc}>
+                    <TemplateThumb id={t.id} sw={paletteSwatch(palette, accent)} />
+                    <div className="text-[12px] mt-1.5 text-center"
+                      style={{ color: tpl === t.id ? "var(--accent-2)" : "var(--dim)" }}>{t.fa}</div>
                   </button>
-                </div>
+                ))}
+              </div>
+              <p className="text-[11.5px] mt-1.5" style={{ color: "var(--muted)" }}>
+                {MINI_TEMPLATES.find((t) => t.id === tpl)?.desc}
+              </p>
 
-                <label className="text-[12px] block mb-1.5"
-                  style={{ color: "var(--muted)" }}>لوگو</label>
-                <div className="flex items-center gap-2 mb-4">
-                  <span style={{
-                    width: 38, height: 38, borderRadius: 11, flex: "none",
-                    display: "grid", placeItems: "center", overflow: "hidden",
-                    background: "var(--surface-3)",
-                    border: "1px solid var(--border)",
-                  }}>
-                    {d.logo
-                      ? <img src={d.logo} alt="" style={{ width: "100%",
-                          height: "100%", objectFit: "cover" }} />
-                      : <Camera size={15} style={{ color: "var(--muted)" }} />}
-                  </span>
-                  <input ref={logoRef} type="file" className="hidden"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={pickLogo} />
-                  <button onClick={() => logoRef.current?.click()}
-                    disabled={busy === "logo"}
-                    className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
-                    {busy === "logo" ? <Loader2 size={12} className="animate-spin" />
-                      : <Camera size={12} />}
-                    {d.logo ? "تغییر" : "انتخاب"}
-                  </button>
-                  {d.logo && (
-                    <button onClick={dropLogo} disabled={busy === "logo"}
-                      className="fx-btn-g px-3 py-2 text-[12.5px]">حذف</button>
-                  )}
-                  <span className="text-[11px]" style={{ color: "var(--muted)" }}>
-                    تا ۵۱۲ کیلوبایت
-                  </span>
-                </div>
-
-                <label className="text-[12px] block mb-2"
-                  style={{ color: "var(--muted)" }}>رنگِ اصلی</label>
-
-                <div className="flex items-center gap-2 flex-wrap mb-3">
-                  {ACCENTS.map((c) => (
-                    <button key={c} onClick={() => open && setAccent(c)}
-                      disabled={!open} aria-label={`رنگ ${c}`}
-                      style={{
-                        width: 30, height: 30, borderRadius: 10,
-                        // این یکی از دو استثنای قاعده‌ی توکن است:
-                        // مقدارِ رنگ این‌جا خودِ داده است.
-                        background: c, flex: "none",
-                        opacity: open ? 1 : 0.4,
-                        cursor: open ? "pointer" : "not-allowed",
-                        border: accent === c
-                          ? "2px solid var(--text)" : "1px solid var(--hair-3)",
-                      }} />
-                  ))}
-                  <button onClick={() => open && setAccent("")}
-                    disabled={!open}
-                    className="fx-btn-g px-2.5 py-1 text-[11.5px]"
-                    style={{ opacity: open ? 1 : 0.4 }}>
-                    پیش‌فرض
-                  </button>
-                </div>
-
-                <label className="text-[12px] block mb-1.5"
-                  style={{ color: "var(--muted)" }}>یا رنگِ دلخواه</label>
-                <div className="flex items-center gap-2 mb-4">
-                  <input type="color" value={accent || "#2b7fd6"}
-                    disabled={!open}
-                    onChange={(e) => setAccent(e.target.value)}
-                    style={{ width: 42, height: 34, borderRadius: 9,
-                             border: "1px solid var(--border)",
+              {label("طیفِ رنگ — زمینه، سطح‌ها و رنگ‌های اصلی با هم")}
+              <div className="grid grid-cols-5 gap-2">
+                {MINI_PALETTES.map((p) => {
+                  const sw = paletteSwatch(p.id);
+                  return (
+                    <button key={p.id} onClick={() => setPalette(p.id)} data-pal={p.id}
+                      className="rounded-xl p-1.5"
+                      style={{ border: `1.5px solid ${palette === p.id ? "var(--accent-edge)" : "var(--border)"}` }}>
+                      {/* مقدارِ رنگ این‌جا خودِ داده است — همان استثنای انتخاب‌گرِ پوسته */}
+                      <div style={{ height: 34, borderRadius: 8, background: sw.bg, display: "flex",
+                                    alignItems: "center", justifyContent: "center", gap: 4 }}>
+                        <span style={{ width: 14, height: 14, borderRadius: 7, background: sw.accent }} />
+                        <span style={{ width: 14, height: 14, borderRadius: 7, background: sw.cy }} />
+                      </div>
+                      <div className="text-[11px] mt-1" style={{ color: palette === p.id ? "var(--accent-2)" : "var(--muted)" }}>{p.fa}</div>
+                    </button>
+                  );
+                })}
+                <button onClick={() => { setPalette("custom"); if (!accent) setAccent("#7c5cff"); }}
+                  data-pal="custom" className="rounded-xl p-1.5"
+                  style={{ border: `1.5px solid ${palette === "custom" ? "var(--accent-edge)" : "var(--border)"}` }}>
+                  <div style={{ height: 34, borderRadius: 8, display: "grid", placeItems: "center",
+                                background: "conic-gradient(#e84393, #f0a500, #00b894, #0aa2c0, #7c5cff, #e84393)" }}>
+                    <Palette size={14} style={{ color: "var(--text)" }} />
+                  </div>
+                  <div className="text-[11px] mt-1" style={{ color: palette === "custom" ? "var(--accent-2)" : "var(--muted)" }}>دلخواه</div>
+                </button>
+              </div>
+              {palette === "custom" && (
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <input type="color" value={accent || "#7c5cff"} onChange={(e) => setAccent(e.target.value)}
+                    aria-label="رنگِ دلخواه"
+                    style={{ width: 42, height: 34, borderRadius: 9, border: "1px solid var(--border)",
                              background: "transparent", padding: 2 }} />
-                  <input value={accent} dir="ltr" placeholder="#2b7fd6"
-                    disabled={!open} maxLength={7}
+                  <input value={accent} dir="ltr" placeholder="#7c5cff" maxLength={7}
                     onChange={(e) => setAccent(e.target.value.trim())}
-                    className="fx-input text-[13px] flex-1"
-                    style={{ fontFamily: "var(--mono)" }} />
+                    className="fx-input text-[13px]" style={{ fontFamily: "var(--mono)", width: 110 }} />
+                  {ACCENTS.map((c) => (
+                    <button key={c} onClick={() => setAccent(c)} aria-label={`رنگ ${c}`}
+                      style={{ width: 24, height: 24, borderRadius: 8, background: c, flex: "none",
+                               border: accent === c ? "2px solid var(--text)" : "1px solid var(--hair-3)" }} />
+                  ))}
+                  <span className="text-[11px] w-full" style={{ color: "var(--muted)" }}>
+                    زمینه و رنگِ دوم از همین ساخته می‌شوند تا با هم بخوانند.
+                  </span>
                 </div>
+              )}
 
-                {err && (
-                  <p className="text-[12.5px] mb-3 flex items-start gap-1.5"
-                    style={{ color: "var(--danger)" }}>
-                    <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
-                  </p>
+              {label("لوگو")}
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* نمونه با **همان پالتِ انتخابی** — نه آبیِ خودِ پرتال */}
+                <span style={{ padding: 6, borderRadius: 14, background: "var(--surface-3)",
+                               ...(themeVars(theme) || {}) }}>
+                  <ShopLogo src={logo} name={brand || d.brand} style={ls} size={60} />
+                </span>
+                <input ref={logoRef} type="file" className="hidden"
+                  accept="image/png,image/jpeg,image/webp" onChange={pickLogo} />
+                <button onClick={() => logoRef.current?.click()}
+                  className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
+                  <Camera size={12} /> {d.logo ? "عوض‌کردن" : "آپلود"} و برش
+                </button>
+                {d.logo && (
+                  <button onClick={dropLogo} disabled={busy === "logo"}
+                    className="fx-btn-g px-3 py-2 text-[12.5px]">حذف</button>
                 )}
+              </div>
+              {!d.logo && (
+                <p className="text-[11.5px] mt-1.5" style={{ color: "var(--muted)" }}>
+                  بدونِ لوگو، نشانی از حرفِ اولِ نامِ فروشگاه با رنگِ پالت ساخته می‌شود.
+                </p>
+              )}
+              <div className="grid gap-2 mt-3" style={{ gridTemplateColumns: "auto 1fr", alignItems: "center" }}>
+                <span className="text-[12px]" style={{ color: "var(--muted)" }}>قاب</span>
+                <Seg value={ls.shape} options={LOGO_SHAPES} onChange={(v) => setLs({ ...ls, shape: v })} />
+                <span className="text-[12px]" style={{ color: "var(--muted)" }}>زمینه</span>
+                <Seg value={ls.bg} options={LOGO_BGS} onChange={(v) => setLs({ ...ls, bg: v })} />
+                <span className="text-[12px]" style={{ color: "var(--muted)" }}>فاصله</span>
+                <input type="range" min="0" max="24" value={ls.pad} aria-label="فاصله‌ی لوگو از قاب"
+                  onChange={(e) => setLs({ ...ls, pad: Number(e.target.value) })} />
+              </div>
 
-                <button onClick={save} disabled={!open || busy === "save"}
-                  className="fx-btn w-full py-2.5 text-[13px] flex items-center
-                             justify-center gap-1.5">
-                  {busy === "save" ? <Loader2 size={14} className="animate-spin" />
-                    : <Check size={14} />}
-                  ذخیره‌ی پوسته
+              {label("نامِ فروشگاه")}
+              <div className="flex items-center gap-2">
+                <input value={brand} maxLength={40} placeholder="مثلاً: حسین وی‌پی‌ان"
+                  onChange={(e) => setBrand(e.target.value)} className="fx-input text-[13px] flex-1" />
+                <button onClick={saveBrand}
+                  disabled={busy === "brand" || !brand.trim() || brand.trim() === (d.brand || "")}
+                  className="fx-btn-g px-3 py-2 text-[12.5px]">
+                  {busy === "brand" ? <Loader2 size={12} className="animate-spin" /> : "ذخیره"}
                 </button>
               </div>
 
-              {/* پیش‌نمایش حتی وقتی قفل است دیده می‌شود — این همان
-                  چیزی است که نماینده را قانع می‌کند تهیه‌اش کند. */}
-              <ThemePreview accent={accent} brand={brand || d.brand}
-                logo={d.logo} />
+              {err && (
+                <p className="text-[12.5px] mt-3 flex items-start gap-1.5" style={{ color: "var(--danger)" }}>
+                  <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+                </p>
+              )}
+
+              <button onClick={save} disabled={!open || saved || busy === "save"}
+                className="fx-btn w-full py-2.5 text-[13px] flex items-center justify-center gap-1.5 mt-5">
+                {busy === "save" ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                {!open ? "برای ذخیره، پوسته‌ی شخصی را فعال کنید"
+                  : saved ? "ذخیره شده" : "ذخیره‌ی پوسته"}
+              </button>
             </div>
-          </>
-        )}
+
+            {/* خودِ مینی‌اپ، در قابِ گوشی — نه ماکت */}
+            <div className="nx-phone-col">
+              <div className="nx-phone">
+                <iframe ref={frameRef} src="/app?preview=1" title="پیش‌نمایشِ مینی‌اپ"
+                  onLoad={send} />
+              </div>
+              <div className="flex gap-2 mt-3 justify-center flex-wrap">
+                <button onClick={replaySplash}
+                  className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
+                  <Play size={12} /> صفحه‌ی ورود
+                </button>
+                <button onClick={() => setScheme(scheme === "dark" ? "light" : "dark")}
+                  className="fx-btn-g px-3 py-2 text-[12.5px] flex items-center gap-1.5">
+                  {scheme === "dark" ? <Sun size={12} /> : <Moon size={12} />}
+                  {scheme === "dark" ? "تلگرامِ روشن" : "تلگرامِ تیره"}
+                </button>
+              </div>
+              <p className="text-[11px] mt-2 text-center" style={{ color: "var(--muted)" }}>
+                داده‌ی نمونه، با پلن‌های خودتان
+              </p>
+            </div>
+          </div>
+        </>
+      )}
+
+      {crop && (
+        <LogoCropper file={crop} shape={ls.shape} onCancel={() => setCrop(null)} onDone={uploadLogo} />
+      )}
     </Frame>
   );
 }

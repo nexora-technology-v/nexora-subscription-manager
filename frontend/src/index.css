@@ -146,12 +146,6 @@
      نبود یا رنگ نامعتبر بود، پیش‌نمایش پوسته‌ی معمولی را نشان
      می‌دهد — نه اینکه بی‌صدا شفاف شود، که همان چیزی است که
      دروازه‌ی ui-safety جلویش را می‌گیرد. */
-  --pv-accent: var(--accent);
-  --pv-soft: var(--accent-soft);
-  --pv-fill: var(--accent-fill);
-  --pv-line: var(--accent-line);
-  --pv-cta: linear-gradient(140deg, var(--accent), var(--cy));
-  --pv-on-cta: var(--on-cy);
 
   --cy-wash: rgba(45, 212, 191, 0.07);
   --cy-soft: rgba(45, 212, 191, 0.12);
@@ -3565,3 +3559,184 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 
 /* و عنوان تا خودِ کارت کمی بازتر */
 .mn-sec-head { margin-bottom: 12px; }
+
+
+/* ═══════════════════════════════════════════════════════════
+   لوگوی فروشگاه — lib/shoplogo.jsx
+   قاب و زمینه این‌جاست، نه در JSX: رنگ جای CSS است.
+   ═══════════════════════════════════════════════════════════ */
+.nx-shoplogo {
+  display: inline-grid; place-items: center; flex: none;
+  overflow: hidden; box-sizing: border-box;
+  border-radius: 28%;
+}
+.nx-shoplogo.shape-circle { border-radius: 50%; }
+.nx-shoplogo.shape-square { border-radius: 10%; }
+.nx-shoplogo > img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.nx-shoplogo.bg-none { background: transparent; }
+.nx-shoplogo.bg-light { background: #FFFFFF; }
+.nx-shoplogo.bg-accent { background: linear-gradient(140deg, var(--accent), var(--cy)); }
+/* نشانِ خودکار از نام — وقتی لوگو نیست */
+.nx-shoplogo.bg-mono {
+  background: linear-gradient(140deg, var(--accent), var(--accent-deep) 60%, var(--cy));
+  color: var(--on-accent-hi);
+}
+.nx-shoplogo.bg-mono > b { font-family: var(--sans); font-weight: 800; line-height: 1; }
+
+
+/* ═══════════════════════════════════════════════════════════
+   قالب‌های مینی‌اپ — lib/mini-themes.js
+   برگه: docs/specs/2026-09-23-mini-theme-studio.md
+
+   «شفق» خودِ ظاهرِ پیش‌فرض است و قاعده‌ای ندارد. سه قالبِ دیگر
+   ساختار را عوض می‌کنند، نه فقط رنگ: نوارِ بالا، زبانه‌ها، کارت‌ها،
+   دکمه‌ها، گوشه‌ها — و صفحه‌ی ورود. هر قالبِ تازه باید برای همین
+   قاعده‌های کلیدی چیزی بگوید؛ test-ui-safety می‌سنجد.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── مینیمال: تخت و آرام ── */
+html[data-mn-tpl="mono"] { --r-m: 10px; --r-l: 12px; --r-xl: 14px; --e-2: none; }
+html[data-mn-tpl="mono"] .mn-top { background: var(--bg); backdrop-filter: none; }
+html[data-mn-tpl="mono"] .mn-tabs { background: var(--bg); backdrop-filter: none;
+  border-top: 1px solid var(--border); box-shadow: none; }
+html[data-mn-tpl="mono"] .mn-tab.on { background: none; color: var(--accent-2);
+  border-radius: 0; box-shadow: inset 0 2px 0 var(--accent); }
+html[data-mn-tpl="mono"] .mn-card-bal { background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-2); box-shadow: inset -3px 0 0 var(--accent); }
+html[data-mn-tpl="mono"] .mn-card-bal .mn-bal-amount b { color: var(--accent-2); }
+html[data-mn-tpl="mono"] .mn-hero,
+html[data-mn-tpl="mono"] .mn-plan,
+html[data-mn-tpl="mono"] .mn-row { background: var(--surface); box-shadow: none; }
+html[data-mn-tpl="mono"] .mn-hero::after { display: none; }
+html[data-mn-tpl="mono"] .mn-plan-strip { background: var(--surface-2); }
+html[data-mn-tpl="mono"] .mn-plan-btn { background: transparent; color: var(--accent-2);
+  border: 1px solid var(--accent-line); box-shadow: none; }
+html[data-mn-tpl="mono"] .mn-pay-btn,
+html[data-mn-tpl="mono"] .mn-rw-share { background: var(--accent); color: var(--on-accent); }
+html[data-mn-tpl="mono"] .mn-renew { background: var(--accent); color: var(--on-accent); }
+html[data-mn-tpl="mono"] .nx-amb-a,
+html[data-mn-tpl="mono"] .nx-amb-b,
+html[data-mn-tpl="mono"] .nx-orbit { display: none; }
+html[data-mn-tpl="mono"] .nx-word { background: none; color: var(--text);
+  -webkit-text-fill-color: currentColor; font-weight: 700; }
+
+/* کارتِ موجودیِ روی سطح (نه رنگ): دکمه و خطِ سفیدِ نیمه‌شفاف روی
+   زمینه‌ی روشنِ تلگرام دیده نمی‌شد */
+html[data-mn-tpl="mono"] .mn-bal-add,
+html[data-mn-tpl="neon"] .mn-bal-add { background: var(--accent-soft);
+  border-color: var(--accent-line); color: var(--accent-2); }
+html[data-mn-tpl="mono"] .mn-bal-foot,
+html[data-mn-tpl="neon"] .mn-bal-foot { border-top-color: var(--border); }
+
+/* ── پررنگ: نوارِ رنگی، زبانه‌های شناور، دکمه‌های قرصی ── */
+html[data-mn-tpl="bold"] { --r-m: 16px; --r-l: 22px; --r-xl: 28px; }
+html[data-mn-tpl="bold"] .mn-top {
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  backdrop-filter: none; border-bottom: 0; }
+html[data-mn-tpl="bold"] .mn-brand > div > b,
+html[data-mn-tpl="bold"] .mn-brand > div > span,
+html[data-mn-tpl="bold"] .mn-head-busy { color: var(--on-accent-hi); }
+html[data-mn-tpl="bold"] .mn-tabs {
+  inset-inline: calc(12px + var(--mn-sa-start)) calc(12px + var(--mn-sa-end));
+  bottom: calc(10px + var(--mn-sa-bottom)); padding: 6px;
+  border-radius: 24px; border: 1px solid var(--border-2); box-shadow: var(--e-3); }
+html[data-mn-tpl="bold"] .mn-tab.on {
+  background: linear-gradient(140deg, var(--accent), var(--cy)); color: var(--on-cy);
+  border-radius: 18px; }
+html[data-mn-tpl="bold"] .mn-plan { border: 0; background: var(--surface); box-shadow: var(--e-2); }
+html[data-mn-tpl="bold"] .mn-plan-btn,
+html[data-mn-tpl="bold"] .mn-pay-btn,
+html[data-mn-tpl="bold"] .mn-rw-share,
+html[data-mn-tpl="bold"] .mn-renew { border-radius: 999px; }
+html[data-mn-tpl="bold"] .mn-card-bal { box-shadow: 0 18px 40px -18px rgba(var(--accent-rgb), .8); }
+html[data-mn-tpl="bold"] .mn-hero {
+  background: linear-gradient(140deg, var(--accent-soft), var(--surface));
+  border-color: var(--accent-line); }
+html[data-mn-tpl="bold"] .nx-splash {
+  background: linear-gradient(160deg, var(--accent), var(--accent-deep) 62%, var(--bg)); }
+html[data-mn-tpl="bold"] .nx-amb-a,
+html[data-mn-tpl="bold"] .nx-amb-b { display: none; }
+html[data-mn-tpl="bold"] .nx-orbit { color: var(--on-accent-hi); }
+html[data-mn-tpl="bold"] .nx-orbit .nx-node { fill: var(--on-accent-hi); }
+html[data-mn-tpl="bold"] .nx-word { background: none; color: var(--on-accent-hi);
+  -webkit-text-fill-color: currentColor; }
+html[data-mn-tpl="bold"] .nx-sub,
+html[data-mn-tpl="bold"] .nx-note { color: var(--on-accent-hi); opacity: .8; }
+
+/* ── نئون: گوشه‌های تیز، درخشش روی لبه‌ها ── */
+html[data-mn-tpl="neon"] { --r-s: 4px; --r-m: 6px; --r-l: 8px; --r-xl: 10px; }
+html[data-mn-tpl="neon"] .mn-top { background: var(--bg); backdrop-filter: none;
+  border-bottom: 1px solid var(--accent-line);
+  box-shadow: 0 1px 18px -6px rgba(var(--accent-rgb), .6); }
+html[data-mn-tpl="neon"] .mn-tabs { background: var(--bg); backdrop-filter: none;
+  border-top: 1px solid var(--accent-line);
+  box-shadow: 0 -8px 24px -12px rgba(var(--accent-rgb), .6); }
+html[data-mn-tpl="neon"] .mn-tab.on { background: none; color: var(--accent-2);
+  text-shadow: 0 0 10px rgba(var(--accent-rgb), .9);
+  box-shadow: inset 0 -2px 0 var(--accent-2); }
+html[data-mn-tpl="neon"] .mn-card-bal { background: var(--surface-3); color: var(--text);
+  border: 1px solid var(--accent-edge);
+  box-shadow: 0 0 24px -6px rgba(var(--accent-rgb), .7),
+              inset 0 0 30px -12px rgba(var(--accent-rgb), .6); }
+html[data-mn-tpl="neon"] .mn-hero,
+html[data-mn-tpl="neon"] .mn-plan,
+html[data-mn-tpl="neon"] .mn-row { background: var(--surface-3); border-color: var(--accent-line);
+  box-shadow: 0 0 16px -8px rgba(var(--accent-rgb), .55); }
+html[data-mn-tpl="neon"] .mn-plan-btn,
+html[data-mn-tpl="neon"] .mn-pay-btn,
+html[data-mn-tpl="neon"] .mn-rw-share,
+html[data-mn-tpl="neon"] .mn-renew { background: transparent; color: var(--accent-2);
+  border: 1px solid var(--accent-edge);
+  box-shadow: 0 0 14px -4px rgba(var(--accent-rgb), .8),
+              inset 0 0 10px -4px rgba(var(--accent-rgb), .7); }
+/* عددِ «ترمینالی» با ارقامِ هم‌پهنا، نه با فونتِ تک‌فاصله: فونتِ
+   تک‌فاصله رقمِ فارسی ندارد و «۲۴۰٬۰۰۰» را «۲ ۴ ۰ , ۰ ۰ ۰» می‌کرد. */
+html[data-mn-tpl="neon"] .mn-bal-amount b,
+html[data-mn-tpl="neon"] .mn-plan-price,
+html[data-mn-tpl="neon"] .mn-cell-value { font-variant-numeric: tabular-nums;
+  letter-spacing: .02em; text-shadow: 0 0 14px rgba(var(--accent-rgb), .55); }
+html[data-mn-tpl="neon"] .nx-word { background: none; color: var(--accent-2);
+  -webkit-text-fill-color: currentColor; font-family: var(--mono);
+  letter-spacing: .18em; text-shadow: 0 0 18px rgba(var(--accent-rgb), .9); }
+html[data-mn-tpl="neon"] .nx-amb-a,
+html[data-mn-tpl="neon"] .nx-amb-b { opacity: .26; }
+
+/* لوگوی فروشگاه در صفحه‌ی ورود — همان ورودِ نشانِ نکسورا */
+.nx-shoplogo.go { animation: nx-reveal .82s var(--sp-soft) both; }
+.nx-splash .nx-shoplogo { box-shadow: var(--e-2); }
+
+/* پخشِ دوباره‌ی صفحه‌ی ورود در پیش‌نمایشِ پرتال — روی همه‌چیز */
+.mn-splash-replay { position: fixed; inset: 0; z-index: 9999; }
+.mn-splash-replay .nx-splash { min-height: 100%; }
+
+
+/* ═══════════════════════════════════════════════════════════
+   استودیوی پوسته — قابِ گوشی با خودِ مینی‌اپ
+   ═══════════════════════════════════════════════════════════ */
+.nx-phone-col { flex: none; width: 320px; margin-inline: auto; }
+.nx-phone {
+  width: 320px; height: 640px; border-radius: 38px; padding: 10px;
+  background: var(--surface-3); border: 1px solid var(--border-2);
+  box-shadow: var(--e-3); overflow: hidden;
+}
+/* خودِ اپ ۳۶۰ پیکسل پهن است — اندازه‌ی گوشیِ واقعی — و کوچک نمایش
+   داده می‌شود؛ با پهنای ۳۰۰، چیدمانِ گوشیِ باریک را نشان می‌داد. */
+.nx-phone iframe {
+  width: 360px; height: 690px; border: 0; border-radius: 30px; display: block;
+  transform: scale(.8333); transform-origin: top right; background: var(--bg);
+}
+@media (max-width: 520px) {
+  .nx-studio-tpls { grid-template-columns: repeat(2, 1fr) !important; }
+}
+
+/* ── کارت‌های سفارشِ باز و سکه هم پیرو قالب ──
+   بدونِ این، همین دو کارت در هر چهار قالب یکسان می‌ماندند. */
+html[data-mn-tpl="mono"] .mn-card-bal::after { display: none; }
+html[data-mn-tpl="mono"] .mn-pend-row,
+html[data-mn-tpl="mono"] .mn-rw { background: var(--surface); box-shadow: none; }
+html[data-mn-tpl="bold"] .mn-pend-row { border: 0; background: var(--surface); box-shadow: var(--e-2); }
+html[data-mn-tpl="bold"] .mn-rw { border: 0; box-shadow: var(--e-2); }
+html[data-mn-tpl="neon"] .mn-card-bal::after { opacity: .35; }
+html[data-mn-tpl="neon"] .mn-pend-row,
+html[data-mn-tpl="neon"] .mn-rw { background: var(--surface-3); border-color: var(--accent-line);
+  box-shadow: 0 0 16px -8px rgba(var(--accent-rgb), .55); }

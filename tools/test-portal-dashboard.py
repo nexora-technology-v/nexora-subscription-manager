@@ -238,6 +238,73 @@ check("سقف در پاسخِ پلن‌ها هم هست",
       (AP.portal_bot_plans(t=TA).get("trialCap") or {}).get("gb") == 2)
 
 # ═══════════════════════════════════════════════════════════
+head("استودیوی پوسته — قالب × پالت × سبکِ لوگو")
+# ═══════════════════════════════════════════════════════════
+# برگه: docs/specs/2026-09-23-mini-theme-studio.md
+
+def _owner_addon(price):
+    st = AP._tenant_settings(AP._tenant_row(OWNER))
+    st["portal_addon"] = {"price": price, "days": 30}
+    AP._save_tenant_settings(OWNER, st)
+
+
+_owner_addon(250000)                         # پولی، و نماینده نخریده
+check("بدونِ اشتراک، ذخیره‌ی پوسته قفل است (در بکند)",
+      status_of(lambda: AP.portal_theme_set({"tpl": "bold"}, t=AP._tenant_row(A))) == 402)
+check("و مینی‌اپ پیش‌فرض را نشان می‌دهد",
+      AP._mini_theme(AP._tenant_row(A))["tpl"] == "aurora")
+
+_owner_addon(0)                              # رایگان برای همه
+TA2 = AP._tenant_row(A)
+check("قالبِ ناشناخته رد می‌شود",
+      status_of(lambda: AP.portal_theme_set({"tpl": "hacker"}, t=TA2)) == 400)
+check("پالتِ ناشناخته رد می‌شود",
+      status_of(lambda: AP.portal_theme_set({"palette": "neon-green"}, t=TA2)) == 400)
+check("رنگِ دلخواه بدونِ رنگ رد می‌شود",
+      status_of(lambda: AP.portal_theme_set({"palette": "custom"}, t=TA2)) == 400)
+
+AP.portal_theme_set({"tpl": "bold", "palette": "sunset",
+                     "logo_style": {"shape": "circle", "bg": "evil", "pad": 99}}, t=TA2)
+_mt = AP._mini_theme(AP._tenant_row(A))
+check("قالب و پالت ذخیره شدند", _mt["tpl"] == "bold" and _mt["palette"] == "sunset", str(_mt))
+check("سبکِ لوگو پاک‌سازی شد (زمینه‌ی ناشناخته → پیش‌فرض، فاصله ≤ ۲۴)",
+      _mt["logoStyle"] == {"shape": "circle", "bg": "none", "pad": 24}, str(_mt["logoStyle"]))
+
+AP.portal_theme_set({"accent": "#e84393"}, t=AP._tenant_row(A))
+_mt2 = AP._mini_theme(AP._tenant_row(A))
+check("ذخیره‌ی جزئی بقیه را پاک نمی‌کند",
+      _mt2["tpl"] == "bold" and _mt2["palette"] == "sunset"
+      and _mt2["logoStyle"]["shape"] == "circle", str(_mt2))
+AP.portal_theme_set({"palette": "custom"}, t=AP._tenant_row(A))
+check("رنگِ دلخواه با رنگِ ذخیره‌شده پذیرفته می‌شود",
+      AP._mini_theme(AP._tenant_row(A))["palette"] == "custom")
+
+_g2 = AP.portal_theme_get(t=AP._tenant_row(A))
+check("پرتال همان را برمی‌گرداند", _g2["tpl"] == "bold" and _g2["palette"] == "custom"
+      and _g2["logoStyle"]["shape"] == "circle")
+
+_owner_addon(250000)                         # اشتراک تمام شد
+_mt3 = AP._mini_theme(AP._tenant_row(A))
+check("اشتراک که تمام شد مینی‌اپ پیش‌فرض می‌شود — بی‌آنکه پاک شود",
+      _mt3["tpl"] == "aurora" and _mt3["palette"] == ""
+      and AP.portal_theme_get(t=AP._tenant_row(A))["tpl"] == "bold")
+_owner_addon(0)
+
+# برابری با رابط — شناسه‌ای که یک طرف نمی‌شناسد، بی‌صدا پیش‌فرض می‌شود
+_JS = (ROOT / "frontend" / "src" / "lib" / "mini-themes.js").read_text(encoding="utf-8")
+import re as _re                                         # noqa: E402
+_js_tpls = _re.findall(r'\{ id: "([a-z]+)", fa:', _JS.split("export const MINI_PALETTES")[0])
+_js_pals = _re.findall(r'\{ id: "([a-z]+)", fa:[^}]*accent:', _JS)
+check("قالب‌های بکند و رابط یکی‌اند", tuple(_js_tpls) == AP.MINI_TEMPLATES,
+      f"{_js_tpls} / {AP.MINI_TEMPLATES}")
+check("پالت‌های بکند و رابط یکی‌اند", tuple(_js_pals) + ("custom",) == AP.MINI_PALETTES,
+      f"{_js_pals}")
+_SL = (ROOT / "frontend" / "src" / "lib" / "shoplogo.jsx").read_text(encoding="utf-8")
+check("شکل‌ها و زمینه‌های لوگو یکی‌اند",
+      tuple(_re.findall(r'\{ id: "([a-z]+)", fa: "[^"]+" \}', _SL.split("LOGO_BGS")[0])) == AP.LOGO_SHAPES
+      and tuple(_re.findall(r'\{ id: "([a-z]+)", fa: "[^"]+" \}', _SL.split("LOGO_BGS")[1].split("];")[0])) == AP.LOGO_BGS)
+
+# ═══════════════════════════════════════════════════════════
 head("نسخه")
 # ═══════════════════════════════════════════════════════════
 _me = AP.portal_me(t=TA)

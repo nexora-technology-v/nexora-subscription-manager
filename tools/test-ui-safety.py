@@ -384,14 +384,44 @@ if _ink:
     for _x in _ink[:8]:
         print(f"      ▸ {_x}")
 
-check("مینی‌اپ پالت را روی ریشه می‌گذارد، نه روی .mn-app",
-      "applyPalette(" in _MINI_SRC and "style={accentVars" not in _MINI_SRC,
+check("مینی‌اپ پوسته را روی ریشه می‌گذارد، نه روی .mn-app",
+      "applyTheme(" in _MINI_SRC and "style={accentVars" not in _MINI_SRC,
       "پنجره‌های پورتال‌شده بیرونِ .mn-app‌اند")
-check("اسپلش هم رنگِ کش‌شده را می‌گیرد",
-      "applyPalette(SHOP.accent" in _MAIN_SRC and "accent: String(me?.accent" in _MINI_SRC)
-check("پیش‌نمایشِ پرتال همان پالت را صدا می‌زند",
-      "accentPalette(accent)" in _PORTAL_SRC and "parseInt(accent.slice(1), 16)" not in _PORTAL_SRC,
+check("اسپلش هم پوسته‌ی کش‌شده را می‌گیرد (قالب و رنگ)",
+      "applyTheme(SHOP_THEME" in _MAIN_SRC and "theme: me?.theme" in _MINI_SRC)
+# پیش‌نمایش **خودِ مینی‌اپ** است در قاب، نه ماکت. مالک: «فقط یک
+# پیش‌نمایشِ خیلی عادی نمایش می‌دهد» — ماکتِ دست‌ساز فقط رنگِ دکمه را
+# عوض می‌کرد. قاب با postMessage پوسته را می‌گیرد.
+check("پیش‌نمایشِ پرتال خودِ مینی‌اپ است، نه ماکت",
+      'src="/app?preview=1"' in _PORTAL_SRC and '"nx-preview"' in _PORTAL_SRC
+      and "function ThemePreview" not in _PORTAL_SRC,
       "وگرنه نماینده چیزی می‌بیند که مشتری نمی‌بیند")
+check("و مینی‌اپ در پیش‌نمایش به سرور نمی‌زند",
+      "if (PREVIEW) return demoApi(" in _MINI_SRC)
+
+# هر قالبِ غیرپیش‌فرض باید ساختار را عوض کند — نه فقط یک رنگ. اگر
+# قالبی برای یکی از این‌ها چیزی نگوید، در همان بخش شبیهِ «شفق» است و
+# نماینده فکر می‌کند قالب کامل عوض نشده.
+_THEMES_JS = io.open(os.path.join(ROOT, "frontend", "src", "lib", "mini-themes.js"),
+                     encoding="utf-8").read()
+_tpl_ids = re.findall(r'\{ id: "([a-z]+)", fa:',
+                      _THEMES_JS.split("export const MINI_PALETTES")[0])
+_KEY_PARTS = (".mn-top", ".mn-tabs", ".mn-tab.on", ".mn-card-bal", ".mn-plan-btn", ".nx-")
+_thin = []
+for _t in _tpl_ids:
+    if _t == "aurora":
+        continue
+    _rules = "\n".join(m.group(1) for m in re.finditer(
+        r'html\[data-mn-tpl="' + _t + r'"\]\s*([^{]*)\{', _CSS_ALL))
+    for _k in _KEY_PARTS:
+        if _k not in _rules:
+            _thin.append(f"{_t}: {_k}")
+check("هر قالب نوار، زبانه، کارت، دکمه و صفحه‌ی ورود را عوض می‌کند",
+      _tpl_ids and not _thin, ", ".join(_thin[:6]) if _thin else f"{len(_tpl_ids)} قالب")
+
+check("صفحه‌ی ورود لوگوی فروشگاه را با همان قاب نشان می‌دهد",
+      "<ShopLogo src={logo} name={name} style={logoStyle} size={84}" in
+      io.open(os.path.join(ROOT, "frontend", "src", "lib", "mark.jsx"), encoding="utf-8").read())
 
 # هر توکنِ پالت در :root پیش‌فرض دارد — وگرنه بدونِ رنگِ نماینده شفاف می‌شود
 _ROOT_TOK = set(re.findall(r"^\s*(--[a-z0-9-]+)\s*:", _CSS_ALL.split(":root")[1].split("}")[0], re.M))

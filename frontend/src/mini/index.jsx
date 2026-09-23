@@ -35,7 +35,10 @@ import {
 import { API_URL } from "../lib/constants";
 import { errText, faDate, faNum, toFaDigits as faDigits } from "../lib/format";
 import { shrinkImage } from "../lib/image.js";
-import { applyPalette } from "../lib/palette.js";
+import { applyTheme } from "../lib/mini-themes.js";
+import { ShopLogo } from "../lib/shoplogo.jsx";
+import { Splash } from "../lib/mark.jsx";
+import { demoApi, makeDemo, plansFromPortal } from "./demo.js";
 import { Avatar, EmptyState, Lightbox, MoneyInput, Skeleton } from "../ui/index";
 
 /* آیا این آدرس مینی‌اپ است؟ — نام باید در دامنه‌ی خودِ ماژول هم
@@ -129,7 +132,24 @@ function syncTheme() {
   return true;
 }
 
+/*
+ * حالتِ پیش‌نمایش — همین مینی‌اپ، داخلِ قابِ پرتالِ نماینده.
+ *
+ * برگه: docs/specs/2026-09-23-mini-theme-studio.md
+ *
+ * قبلاً «پیش‌نمایش» یک ماکتِ کوچکِ دست‌ساز بود که چند جزئیاتش رنگ
+ * می‌گرفت؛ مالک: «فقط یک پیش‌نمایشِ خیلی عادی». حالا خودِ اپ است، پس
+ * هر قالب و پالتی دقیقاً همان‌طور دیده می‌شود که مشتری می‌بیند.
+ * داده از `demo.js` می‌آید و هیچ درخواستی به سرور نمی‌رود.
+ */
+const PREVIEW = (() => {
+  try { return new URLSearchParams(window.location.search).get("preview") === "1"; }
+  catch { return false; }
+})();
+const DEMO = PREVIEW ? makeDemo() : null;
+
 async function api(path, opt = {}) {
+  if (PREVIEW) return demoApi(DEMO, path, opt);
   const init = tg()?.initData || "";
   const headers = { "X-Telegram-Init-Data": init };
   if (opt.body) headers["Content-Type"] = "application/json";
@@ -1376,6 +1396,9 @@ export default function Mini() {
   const [toast, setToast] = useState(null);
   // عکسی که تمام‌صفحه باز است
   const [zoom, setZoom] = useState("");
+  // پیش‌نمایش: پوسته‌ای که پرتال فرستاده، و پخشِ دوباره‌ی صفحه‌ی ورود
+  const [pv, setPv] = useState(null);
+  const [splash, setSplash] = useState(0);
   // سکه، نردبانِ تخفیف و کدِ دعوت — همه از سرور، هیچ‌کدام این‌جا
   // حساب نمی‌شوند
   const [rw, setRw] = useState(null);
@@ -1405,8 +1428,50 @@ export default function Mini() {
     } finally { setBusy(false); }
   }, []);
 
+  /*
+   * پیش‌نمایش با پرتال حرف می‌زند: پرتال پوسته و نام و لوگو و پلن‌ها را
+   * می‌فرستد، اپ همان لحظه عوض می‌شود — بی‌بارگذاریِ دوباره. فقط پیامِ
+   * همان مبدأ پذیرفته می‌شود.
+   */
   useEffect(() => {
-    const w = tg();
+    if (!PREVIEW) return undefined;
+    const onMsg = (e) => {
+      if (e.origin !== window.location.origin) return;
+      const d = e.data || {};
+      if (d.type === "nx-preview") {
+        DEMO.brand = String(d.brand || "");
+        DEMO.logo = String(d.logo || "");
+        DEMO.theme = d.theme || null;
+        if (Array.isArray(d.plans) && d.plans.length) {
+          DEMO.plans = { plans: plansFromPortal(d.plans) };
+        }
+        if (d.scheme === "light" || d.scheme === "dark") {
+          document.documentElement.dataset.mnScheme = d.scheme;
+        }
+        setPv({ ...(d.theme || {}), brand: DEMO.brand, logo: DEMO.logo,
+                scheme: document.documentElement.dataset.mnScheme || "dark" });
+        load();
+      } else if (d.type === "nx-splash") {
+        setSplash(Date.now());
+      }
+    };
+    window.addEventListener("message", onMsg);
+    document.documentElement.dataset.mnScheme ||= "dark";
+    try { window.parent.postMessage({ type: "nx-ready" }, window.location.origin); }
+    catch { /* بیرون از قاب */ }
+    return () => window.removeEventListener("message", onMsg);
+  }, [load]);
+
+  useEffect(() => {
+    if (!splash) return undefined;
+    const id = setTimeout(() => setSplash(0), 2600);
+    return () => clearTimeout(id);
+  }, [splash]);
+
+  useEffect(() => {
+    // پیش‌نمایش داخلِ پرتال است، نه تلگرام: SDK بیرون از تلگرام همیشه
+    // «روشن» می‌گوید و پوسته‌ای را که پرتال خواسته عوض می‌کرد
+    const w = PREVIEW ? null : tg();
     if (w) {
       w.ready();
       w.expand();
@@ -1845,16 +1910,18 @@ export default function Mini() {
    */
   useEffect(() => {
     const brand = String(me?.brand || "").trim();
-    if (!brand) return;
+    // پیش‌نمایش کشِ مرورگرِ نماینده را با فروشگاهِ نمونه پر نکند
+    if (!brand || PREVIEW) return;
     try {
       window.localStorage.setItem("nx_shop", JSON.stringify({
-        // رنگ هم — تا صفحه‌ی ورودِ دفعه‌ی بعد از همان اول رنگِ خودش را
-        // داشته باشد. رنگِ خالی هم نوشته می‌شود: اگر قفلِ پوسته بسته
-        // شد، اسپلش نباید رنگِ قدیمی را نگه دارد.
+        // پوسته هم — تا صفحه‌ی ورودِ دفعه‌ی بعد از همان اول قالب و
+        // رنگ و لوگوی خودش را داشته باشد. پوسته‌ی خالی هم نوشته
+        // می‌شود: اگر قفل بسته شد، اسپلش نباید قبلی را نگه دارد.
         brand, logo: String(me?.logo || ""), accent: String(me?.accent || ""),
+        theme: me?.theme || null,
       }));
     } catch { /* بی‌اهمیت */ }
-  }, [me?.brand, me?.logo, me?.accent]);
+  }, [me?.brand, me?.logo, me?.accent, me?.theme]);
 
   /*
    * رنگِ فروشگاه روی **ریشه**، نه روی `.mn-app`.
@@ -1862,23 +1929,35 @@ export default function Mini() {
    * قبلاً متغیرها روی `.mn-app` می‌نشستند. برگه‌های پایینی و پنجره‌ها
    * از راهِ پورتال روی `body` می‌روند و بیرون از `.mn-app`اند — پس
    * آن‌ها آبیِ پیش‌فرض می‌ماندند. و فقط `--accent` ساخته می‌شد، در
-   * حالی که دکمه‌های اصلی `--cy` بودند. `applyPalette` همه را می‌سازد
+   * حالی که دکمه‌های اصلی `--cy` بودند. `applyTheme` همه را می‌سازد — و قالب را
    * (lib/palette.js — چرا).
    *
    * روشن/تیره هم مهم است: رنگِ متن روی زمینه‌ی روشن تیره‌تر ساخته
    * می‌شود. پس با عوض‌شدنِ پوسته‌ی تلگرام دوباره ساخته می‌شود.
    */
+  // سرورِ قدیمی فقط `accent` می‌فرستاد — همان، پالتِ دلخواه است
+  const theme = (PREVIEW && pv) ? pv
+    : (me?.theme || (me?.accent ? { palette: "custom", accent: me.accent } : null));
+  const themeKey = JSON.stringify(theme || {});
   useEffect(() => {
-    const paint = () => applyPalette(
-      me?.accent, document.documentElement.dataset.mnScheme || "dark");
+    const paint = () => applyTheme(
+      theme, document.documentElement.dataset.mnScheme || "dark");
     paint();
     const w = tg();
     w?.onEvent?.("themeChanged", paint);
     return () => { try { w?.offEvent?.("themeChanged", paint); } catch { /* */ } };
-  }, [me?.accent]);
+  }, [themeKey]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const logoStyle = theme?.logoStyle;
 
   return (
     <div className="mn-app" dir="rtl">
+      {PREVIEW && splash > 0 && (
+        <div className="mn-splash-replay" key={splash}>
+          <Splash name={me?.brand || ""} logo={me?.logo || ""} logoStyle={logoStyle}
+            neutral phase="load" />
+        </div>
+      )}
       {/* ── نوار برند ── */}
       <header className="mn-top">
         <div className="mn-brand">
@@ -1887,11 +1966,12 @@ export default function Mini() {
               گذاشته باید همان را نشان دهد — تا امروز `src` نداشت و
               کاربر عکسش را در تنظیمات می‌دید ولی بالا نه.
               نامِ فروشگاه همان بالا نوشته شده، پس برند گم نمی‌شود. */}
-          {me?.avatar
-            ? <Avatar name={me?.name} id={me?.tgId} size={38} src={me.avatar} ring />
-            : me?.logo
-              ? <img src={me.logo} alt={me.brand || ""} className="mn-logo" />
-              : <Avatar name={me?.name} id={me?.tgId} size={38} ring />}
+          {/* هویتِ فروشگاه، نه چهره‌ی مشتری.
+              قبلاً عکسِ خودِ کاربر این‌جا می‌نشست و لوگو فقط وقتی
+              عکسی نبود — یعنی شخصی‌سازیِ لوگو برای بیشترِ مشتری‌ها
+              اصلاً دیده نمی‌شد. چهره‌ی کاربر در «تنظیمات» است. وقتی
+              لوگو نیست، نشانِ خودکار از نامِ فروشگاه. */}
+          <ShopLogo src={me?.logo} name={me?.brand} style={logoStyle} size={38} />
           <div className="min-w-0">
             <b>{me?.brand || "اشتراک من"}</b>
             <span>{me?.name || "—"}</span>

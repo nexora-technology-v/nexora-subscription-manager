@@ -354,23 +354,27 @@ def steps_for(con, bcon, t, cols):
     ))
 
     accent = str(st.get("mini_accent") or "").strip()
+    palette = str(st.get("mini_palette") or ("custom" if accent else "")).strip()
+    tpl = str(st.get("mini_tpl") or "").strip()
     price = addon_price(con)
     unlocked = theme_open(st, price)
 
-    # رنگ دو شرط دارد و هر دو باید دیده شوند: گذاشته شده؟ و اجازه
-    # هست؟ نبودِ هر کدام نتیجه‌اش یکی است — رنگ اعمال نمی‌شود — ولی
-    # کارِ لازم فرق می‌کند.
-    if not accent:
-        why, fix = ("no colour chosen",
-                    "their panel > theme > pick a colour, then save")
+    # پوسته دو شرط دارد و هر دو باید دیده شوند: انتخاب شده؟ و اجازه
+    # هست؟ نبودِ هر کدام نتیجه‌اش یکی است — پوسته اعمال نمی‌شود — ولی
+    # کارِ لازم فرق می‌کند. از ۱.۸۸ قالب و پالت هم هست، نه فقط رنگ.
+    chosen = bool(tpl or palette)
+    desc = (f"template={tpl or 'aurora'} palette={palette or 'default'}"
+            + (f" {accent}" if palette == "custom" else ""))
+    if not chosen:
+        why, fix = ("no template or palette chosen",
+                    "their panel > mini-app theme > pick, then save")
     elif not unlocked:
-        why, fix = (f"{accent} chosen but the theme add-on is locked",
+        why, fix = (f"{desc} chosen but the theme add-on is locked",
                     "panel > reseller panel > shop theme > open it for them, "
                     "or they buy it from their own panel")
     else:
-        why, fix = (accent, "")
-    out.append(("shop colour", bool(accent) and unlocked, why,
-                fix or "nothing to do"))
+        why, fix = (desc, "")
+    out.append(("shop theme", chosen and unlocked, why, fix or "nothing to do"))
 
     return out
 

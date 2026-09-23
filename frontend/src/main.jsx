@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import { isAff, isMini, portalSlug } from "./lib/route.js";
 import { Splash } from "./lib/mark.jsx";
 import "./index.css";
-import { applyPalette } from "./lib/palette.js";
+import { applyTheme } from "./lib/mini-themes.js";
 
 // آدرس تعیین می‌کند کدام اپ بالا بیاید.
 //
@@ -59,6 +59,9 @@ const SHOP_KEY = "nx_shop";
 
 function cachedShop() {
   if (WHICH !== "mini") return null;
+  // پیش‌نمایشِ پرتال فروشگاهِ نمونه است؛ کشِ مرورگرِ نماینده را نخواند
+  try { if (new URLSearchParams(window.location.search).get("preview") === "1") return null; }
+  catch { /* */ }
   try {
     const raw = window.localStorage.getItem(SHOP_KEY);
     const v = raw ? JSON.parse(raw) : null;
@@ -68,13 +71,17 @@ function cachedShop() {
 
 const SHOP = cachedShop();
 
-// رنگِ فروشگاه پیش از اولین رندر، تا اسپلش هم رنگِ خودش را داشته باشد.
+// پوسته‌ی فروشگاه (قالب + پالت) پیش از اولین رندر، تا صفحه‌ی ورود هم
+// مالِ خودش باشد — قالبِ «پررنگ» اسپلشِ تمام‌رنگ دارد، «مینیمال» بی‌مدار.
 // پوسته‌ی تلگرام این‌جا هنوز روی ریشه ننشسته، پس از خودِ SDK پرسیده
 // می‌شود؛ مینی‌اپ بعداً با پوسته‌ی قطعی دوباره می‌سازدش.
+const SHOP_THEME = SHOP
+  ? (SHOP.theme || (SHOP.accent ? { palette: "custom", accent: SHOP.accent } : null))
+  : null;
 try {
-  if (WHICH === "mini" && SHOP && SHOP.accent) {
+  if (WHICH === "mini" && SHOP_THEME) {
     const w = window.Telegram && window.Telegram.WebApp;
-    applyPalette(SHOP.accent, (w && w.colorScheme) === "light" ? "light" : "dark");
+    applyTheme(SHOP_THEME, (w && w.colorScheme) === "light" ? "light" : "dark");
   }
 } catch { /* رنگ تزئین است، نه شرطِ بالاآمدن */ }
 
@@ -98,6 +105,7 @@ function Booting({ phase, note, onRetry }) {
     onRetry={onRetry}
     name={(SHOP && SHOP.brand) || ""}
     logo={(SHOP && SHOP.logo) || ""}
+    logoStyle={SHOP_THEME && SHOP_THEME.logoStyle}
     neutral={WHICH === "mini"} />;
 }
 

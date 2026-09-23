@@ -452,9 +452,12 @@
   // پوسته‌ی شخصی — عمداً **قفل** شروع می‌شود، چون صفحه‌ی قفل همان
   // چیزی است که بیشترِ نماینده‌ها می‌بینند و اگر باز باشد هیچ‌وقت
   // دیده نمی‌شود.
+  // ?addon=1 یعنی پوسته‌ی شخصی فعال است — تا حالتِ قفل‌باز هم دیده شود
   var P_THEME = { accent: "", brand: "حسین VPN", logo: "",
-                  open: false, until: "", price: 250000, days: 30,
-                  credit: 1800000, postpaid: false };
+                  tpl: "aurora", palette: "ocean",
+                  logoStyle: { shape: "rounded", bg: "none", pad: 0 },
+                  open: Q0.get("addon") === "1", until: Q0.get("addon") === "1" ? "2026-10-23" : "",
+                  price: 250000, days: 30, credit: 1800000, postpaid: false };
 
   var P_STATS = { total: 96, active: 84, inactive: 12, expired: 5,
                   expiringSoon: 7, neverExpires: 2, nearQuota: 6, overQuota: 2,
@@ -511,7 +514,12 @@
   // نشانیِ هارنس خاموشش می‌کند.
   var M_ME = { name: "مریم کاظمی", brand: "نکسورا", balance: 240000, coins: 36,
                accent: MINI_ACCENT,
-               logo: FAKE_LOGO,
+               // ?tpl=mono|bold|neon و ?shape=circle — قالب و قابِ لوگو
+               theme: { tpl: Q0.get("tpl") || "aurora",
+                        palette: MINI_ACCENT ? (Q0.get("pal") || "custom") : "",
+                        accent: MINI_ACCENT,
+                        logoStyle: { shape: Q0.get("shape") || "rounded", bg: "none", pad: 0 } },
+               logo: Q0.get("logo") === "off" ? "" : FAKE_LOGO,
                support: "nexora_support", channel: "nexora_vpn",
                phone: "", avatar: "",
                refCode: "NX7K2M", refCount: 3,
@@ -1010,7 +1018,15 @@ var D_CODES = { ready: true,
       return { ok: true };
     }
     if (u.indexOf("/portal/theme") >= 0) {
-      if (method === "POST") { P_THEME.accent = (body || {}).accent || ""; return { ok: true }; }
+      if (method === "POST") {
+        if (!P_THEME.open) { var te = new Error("پوسته‌ی شخصی برای شما فعال نیست — اول تهیه‌اش کنید"); te.status = 402; throw te; }
+        var tb = body || {};
+        if ("accent" in tb) P_THEME.accent = tb.accent || "";
+        if (tb.tpl) P_THEME.tpl = tb.tpl;
+        if (tb.palette) P_THEME.palette = tb.palette;
+        if (tb.logo_style) P_THEME.logoStyle = tb.logo_style;
+        return { ok: true };
+      }
       return P_THEME;
     }
     if (u.indexOf("/portal/plan-cost") >= 0) {

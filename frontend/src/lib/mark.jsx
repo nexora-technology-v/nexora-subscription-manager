@@ -10,6 +10,7 @@
  * `lib/route.js`.
  */
 import React from "react";
+import { ShopLogo } from "./shoplogo.jsx";
 
 /* شناسه‌ی یکتا برای گرادیان‌ها: اگر دو نشان هم‌زمان رندر شوند و هر دو
    یک id داشته باشند، مرورگر اولی را به هر دو می‌دهد و دومی رنگِ
@@ -166,7 +167,7 @@ function OrbitRing({ size = 168, state = "load" }) {
  */
 export function Splash({ label = "", logo = "", name = "",
                         phase = "load", note = "", onRetry,
-                        neutral = false }) {
+                        neutral = false, logoStyle = null }) {
   return (
     <div className={`nx-splash ${phase}`} dir="rtl" role="status" aria-live="polite">
       {/* نورِ محیطی — دو لکه‌ی بسیار محو که آرام جابه‌جا می‌شوند */}
@@ -176,8 +177,16 @@ export function Splash({ label = "", logo = "", name = "",
       <div className="nx-stage">
         {phase !== "error" && <OrbitRing state={phase} />}
         <div className="nx-mark-wrap">
-          <NexoraMark size={84} animate src={logo} alt={name}
-            neutral={neutral && !logo} />
+          {/* مینی‌اپِ فروشگاهی که می‌شناسیم: لوگوی خودش با همان قاب و
+              زمینه‌ای که در سربرگ دارد — یا نشانِ خودکار از نامش.
+              نشانِ خنثی فقط وقتی هنوز هیچ نمی‌دانیم. */}
+          {neutral && (logo || name) ? (
+            <ShopLogo src={logo} name={name} style={logoStyle} size={84}
+              className="go" />
+          ) : (
+            <NexoraMark size={84} animate src={logo} alt={name}
+              neutral={neutral && !logo} />
+          )}
         </div>
       </div>
 
