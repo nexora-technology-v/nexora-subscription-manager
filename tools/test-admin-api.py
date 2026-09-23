@@ -4277,6 +4277,24 @@ check("nginx هم هدر پروتکل را جلو می‌فرستد",
       _INST.count("X-Forwarded-Proto") >= 3,
       "%d بلوک — ریشه‌ی خودِ باگ" % _INST.count("X-Forwarded-Proto"))
 
+# ولی `install.sh` فقط نصبِ **تازه** را درست می‌کند. نصبی که پیش از
+# آن اصلاح بالا آمده، فایلِ قدیمی را دارد و تا ابد این باگ را
+# خواهد داشت — مگر اینکه به‌روزرسانی تعمیرش کند.
+#
+# روی سرورِ واقعیِ مالک دقیقاً همین شد: آدرس مینی‌اپ هیچ‌وقت ثبت
+# نشد و دکمه در هیچ رباتی ظاهر نشد.
+_FIXNG = io.open(os.path.join(str(ROOT), "fix-nginx-cache.py"),
+                 encoding="utf-8").read()
+check("به‌روزرسانی نصب‌های قدیمی را هم تعمیر می‌کند",
+      "X-Forwarded-Proto" in _FIXNG and "def add_proto(" in _FIXNG,
+      "نصبِ موجود فایلِ قدیمی را دارد")
+
+_CLI = io.open(os.path.join(str(ROOT), "nexora-cli.sh"),
+               encoding="utf-8").read()
+check("و آن تعمیر در هر به‌روزرسانی اجرا می‌شود",
+      "fix-nginx-cache.py" in _CLI,
+      "تعمیری که صدا زده نشود، وجود ندارد")
+
 _clear_mini()
 AP._learn_panel_origin(_Req(host="evil.com/x?a=b",
                             **{"x-forwarded-proto": "https"}))

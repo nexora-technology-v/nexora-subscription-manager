@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
 """
-Add cache-control headers to the panel's nginx config.
+Repair the panel's nginx config. Two fixes, both idempotent.
 
-Why this matters: index.html points to hashed asset files. If the browser
-caches index.html itself, it keeps asking for the old bundle after every
-update — a bundle that no longer exists or no longer matches the new code.
-The result is a blank page or errors like "useState is not defined".
+1. Cache-control headers.
+   index.html points to hashed asset files. If the browser caches
+   index.html itself, it keeps asking for the old bundle after every
+   update — a bundle that no longer exists or no longer matches the new
+   code. The result is a blank page or "useState is not defined".
+
+2. The X-Forwarded-Proto header.
+   TLS terminates at nginx, so without this header the request reaches
+   uvicorn looking like plain http. The backend then believes the panel
+   is not on https and never records the mini-app address — so the
+   mini-app button never appears in any bot, the owner's or a
+   reseller's, and nothing says why.
+
+   install.sh has had this since the fix, but installs created before it
+   still carry the old file and update never rewrote it. This script
+   runs on every update, so the repair reaches them.
 
 Usage:
     python3 fix-nginx-cache.py [path to conf]
@@ -33,6 +45,34 @@ BLOCK = """
 """
 
 
+PROTO = "proxy_set_header X-Forwarded-Proto $scheme;"
+
+
+def add_proto(text):
+    """
+    Put the proto header next to every proxy_pass that lacks it.
+
+    Anchored on `proxy_set_header Host`, which every block that proxies
+    already has — matching `proxy_pass` itself would also hit blocks
+    that set no headers at all, where the indentation is unknown.
+
+    Returns (new text, how many blocks were fixed).
+    """
+    out, fixed, pos = [], 0, 0
+    for m in re.finditer(r"([ \t]*)proxy_set_header\s+Host\b[^\n]*\n", text):
+        # آیا همین بلوک از قبل هدر را دارد؟ پنجره‌ی کوچک دور خودش،
+        # نه کلِ فایل — یک بلوکِ درست نباید بقیه را هم درست جلوه دهد.
+        around = text[max(0, m.start() - 400):m.end() + 400]
+        if "X-Forwarded-Proto" in around:
+            continue
+        out.append(text[pos:m.end()])
+        out.append(f"{m.group(1)}{PROTO}\n")
+        pos = m.end()
+        fixed += 1
+    out.append(text[pos:])
+    return "".join(out), fixed
+
+
 def main():
     path = Path(sys.argv[1] if len(sys.argv) > 1 else DEFAULT)
 
@@ -41,21 +81,42 @@ def main():
         return 1
 
     text = path.read_text(encoding="utf-8")
+    original = text
 
-    if "no-store, no-cache" in text:
-        print("OK Cache headers already configured")
+    need_cache = "no-store, no-cache" not in text
+    text, n_proto = add_proto(text)
+
+    if not need_cache and not n_proto:
+        print("OK Cache headers and X-Forwarded-Proto already configured")
         return 0
 
     backup = path.with_suffix(path.suffix + ".bak")
     shutil.copy2(path, backup)
 
-    # Insert before each "location / {" (both http and https blocks)
-    new_text, n = re.subn(r"(\n\s*location / \{)", BLOCK + r"\1", text)
-    if n == 0:
-        print("!  No 'location /' block found — nothing changed")
-        return 1
+    n = 0
+    if need_cache:
+        # Insert before each "location / {" (both http and https blocks)
+        text, n = re.subn(r"(\n\s*location / \{)", BLOCK + r"\1", text)
+        if n == 0 and not n_proto:
+            print("!  No 'location /' block found — nothing changed")
+            return 1
 
-    path.write_text(new_text, encoding="utf-8")
+    if text == original:
+        print("OK Nothing to change")
+        return 0
+
+    path.write_text(text, encoding="utf-8")
+
+    # خلاصه یک‌بار ساخته می‌شود و در هر دو مسیر چاپ — چه nginx
+    # باشد چه نباشد. نسخه‌ی قبلی در نبودِ nginx زودتر برمی‌گشت و
+    # هیچ‌وقت نمی‌گفت چه عوض کرده؛ تغییر روی دیسک بود و کاربر
+    # بی‌خبر.
+    done = []
+    if n:
+        done.append(f"cache headers in {n} block(s)")
+    if n_proto:
+        done.append(f"X-Forwarded-Proto in {n_proto} block(s)")
+    summary = ", ".join(done) or "nothing"
 
     # Validate; roll back if broken
     try:
@@ -66,11 +127,14 @@ def main():
             print((r.stderr or b"").decode()[:300])
             return 1
     except FileNotFoundError:
-        print("!  nginx not available — change applied but not verified")
+        print(f"!  nginx not available — {summary} applied but not verified")
         return 0
 
     subprocess.run(["systemctl", "reload", "nginx"], capture_output=True, timeout=20)
-    print(f"OK Cache headers added to {n} block(s), nginx reloaded")
+    print(f"OK {summary}, nginx reloaded")
+    if n_proto:
+        print("   The panel can now tell it is on https, so the mini-app")
+        print("   address gets recorded the next time you open it.")
     return 0
 
 
