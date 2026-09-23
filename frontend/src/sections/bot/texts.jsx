@@ -64,13 +64,69 @@ export const BOT_BEHAVIOUR = [
   { k: "sub_base_url", type: "text", label: "دامنه‌ی لینک اشتراک",
     ph: "https://sub.nexora.ir",
     hint: "خالی بماند، از تنظیمات خود پنل 3x-ui خوانده می‌شود" },
-  { k: "miniapp_url", type: "text", label: "آدرس مینی‌اپ",
-    ph: "خودکار — از دامنه‌ی لینک اشتراک",
-    hint: "خالی بماند، خودش از دامنه‌ی لینک اشتراک ساخته می‌شود "
-        + "(همان دامنه + ‎/app‎). فقط اگر مینی‌اپ را جای دیگری سرو "
-        + "می‌کنید این را پر کنید — و حتماً https، چون تلگرام با "
-        + "http پیام را اصلاً نمی‌فرستد." },
+  // راهنمای قبلی می‌گفت «خودش از دامنه‌ی لینک اشتراک ساخته
+  // می‌شود» — که غلط بود و کد صریحاً این کار را نمی‌کند. مالک
+  // خالی گذاشت، آدرس هیچ‌وقت نوشته نشد، و مینی‌اپ بی‌صدا نیامد.
+  { k: "miniapp_url", type: "miniapp", label: "آدرس مینی‌اپ",
+    ph: "https://panel.example.com/app",
+    hint: "دامنه‌ی همین پنل + ‎/app‎. معمولاً اولین باری که پنل را "
+        + "روی https باز می‌کنید خودش پر می‌شود؛ اگر خالی مانده "
+        + "یعنی آن تشخیص کار نکرده و باید دستی بگذاریدش. "
+        + "حتماً https — تلگرام با http کلِ پیام را رد می‌کند، نه "
+        + "فقط دکمه را. بدون این، دکمه‌ی مینی‌اپ در هیچ رباتی "
+        + "(نه شما، نه نماینده‌ها) ظاهر نمی‌شود." },
 ];
+
+/**
+ * آدرسِ مینی‌اپ — با دکمه‌ی «آدرسِ همین پنل».
+ *
+ * چرا دکمه: این مقدار قرار بود خودکار پر شود، ولی فقط وقتی پنل
+ * روی https باز شود **و** هدرش به بک‌اند برسد. روی نصب‌هایی با
+ * بلوکِ nginx قدیمی هیچ‌وقت نمی‌رسد و آدرس خالی می‌ماند — بی‌صدا،
+ * و مینی‌اپ در هیچ رباتی ظاهر نمی‌شود.
+ *
+ * مرورگر دامنه را می‌داند. یک دکمه، و تمام.
+ */
+function MiniappField({ value, ph, onChange }) {
+  const here = typeof window !== "undefined" ? window.location : null;
+  const secure = !!here && here.protocol === "https:";
+  const guess = secure ? `${here.origin}/app` : "";
+  const empty = !String(value || "").trim();
+  const bad = !empty && !/^https:\/\//i.test(String(value).trim());
+
+  return (
+    <div>
+      <input className="fx-input" value={value} placeholder={ph}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ fontFamily: "var(--mono)", direction: "ltr",
+                 textAlign: "left" }} />
+
+      {guess && guess !== value && (
+        <button onClick={() => onChange(guess)}
+          className="fx-btn-g w-full mt-2 py-1.5 text-[12px]"
+          title={guess}>
+          آدرسِ همین پنل را بگذار
+        </button>
+      )}
+
+      {/* خالی‌بودن باید *دیده* شود. تا امروز فقط یک فیلدِ خالی بود
+          و هیچ‌جا نمی‌گفت نتیجه‌اش چیست. */}
+      {empty && (
+        <p className="text-[11.5px] mt-2 leading-relaxed"
+          style={{ color: "var(--warn)" }}>
+          خالی است — دکمه‌ی مینی‌اپ در هیچ رباتی ظاهر نمی‌شود.
+          {!secure && " این صفحه روی https نیست، پس آدرس را دستی بگذارید."}
+        </p>
+      )}
+      {bad && (
+        <p className="text-[11.5px] mt-2" style={{ color: "var(--danger)" }}>
+          باید با ‎https://‎ شروع شود — تلگرام با http کلِ پیام را رد می‌کند.
+        </p>
+      )}
+    </div>
+  );
+}
+
 
 /**
  * یادآوری‌ها: روشن/خاموش، آستانه‌ها، و متنِ هشدارِ حجم.
@@ -277,6 +333,12 @@ export function BotTextsSection({ password }) {
                 <input className="fx-input" value={s[f.k] || ""} placeholder={f.ph}
                   onChange={(e) => upS({ [f.k]: e.target.value })}
                   style={{ fontFamily: "var(--mono)", direction: "ltr", textAlign: "left" }} />
+              )}
+              {/* آدرسِ مینی‌اپ: مرورگر دامنه‌ی پنل را می‌داند، پس
+                  لازم نیست کسی تایپش کند یا ssh بزند. */}
+              {f.type === "miniapp" && (
+                <MiniappField value={s[f.k] || ""} ph={f.ph}
+                  onChange={(v) => upS({ [f.k]: v })} />
               )}
             </div>
           </div>
