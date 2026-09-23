@@ -915,14 +915,18 @@ class XUI:
         return f"{prefix}_{secrets.token_hex(8)}"
 
     def create_subscription(self, inbound_id, email, gb, days, ip_limit=2,
-                            tg_id=None, sub_base_url=None, inbound_ids=None):
+                            tg_id=None, sub_base_url=None, inbound_ids=None,
+                            group=None):
         """
         ساخت اشتراک کامل و برگرداندن اطلاعات لازم برای ارسال به مشتری.
+
+        `group` برای فروشگاهِ نماینده است: کانفیگ در پنلِ مالک ساخته
+        می‌شود و گروه تنها چیزی است که می‌گوید مالِ کیست.
         """
         sub_id = self.make_sub_id(email)
         client = self.add_client(inbound_id, email, gb=gb, days=days,
                                  ip_limit=ip_limit, tg_id=tg_id, sub_id=sub_id,
-                                 inbound_ids=inbound_ids)
+                                 inbound_ids=inbound_ids, group=group)
 
         sub_url = None
         configs = []

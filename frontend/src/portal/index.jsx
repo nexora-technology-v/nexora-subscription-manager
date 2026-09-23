@@ -11,7 +11,8 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  AlertTriangle, Bot, Camera, Check, Clock, Copy, Database, FileText, Link2,
+  AlertTriangle, Bot, Camera, Check, Clock, Copy, CreditCard, Database,
+  ExternalLink, FileText, Link2,
   LayoutGrid, Loader2, LogOut, Package, Palette, Plus, Power, QrCode, RefreshCw, Search,
   ShoppingCart, Trash2, TrendingUp, Users, Wallet, X, XCircle,
 } from "lucide-react";
@@ -24,7 +25,7 @@ import { isoToJalaliLabel } from "../ui/jalali";
 // می‌شوند. این‌جا فقط همان چیزی گرفته می‌شود که ui/jalali هم هست —
 // ابزار عمومی، نه کدِ پنل مدیر.
 import { Avatar, EmptyState, MoneyInput, NumberInput, SkeletonCards, SkeletonTable,
-         StatTile, usePager } from "../ui/index";
+         StatTile, Toggle, usePager } from "../ui/index";
 import { NexoraMark } from "../lib/mark.jsx";
 
 const TOKEN_KEY = "nexora_portal_token";
@@ -564,6 +565,228 @@ function NewBox({ token, plans, slug, onDone, onClose }) {
 }
 
 
+/**
+ * رباتِ نماینده چه چیزی کم دارد تا واقعاً بفروشد؟
+ *
+ * چرا یک تابع: هم بنرِ داشبورد این را می‌پرسد هم پنجره‌ی «ربات من».
+ * اگر هر کدام فهرستِ خودش را داشت، روزی یکی قلمِ تازه را نداشت و
+ * بنر می‌گفت «همه چیز آماده است» در حالی که ربات نمی‌فروخت.
+ *
+ * هر قلم می‌گوید **چه کسی** باید درستش کند. گروه دستِ مالک است؛ اگر
+ * همان‌جا نگوییم، نماینده دنبالِ دکمه‌ای می‌گردد که وجود ندارد.
+ */
+export function saleGaps(st) {
+  if (!st || !st.hasBot) return [];
+  const out = [];
+  if (!st.hasGroup) {
+    out.push({ key: "group", who: "owner",
+      title: "گروهِ شما هنوز تعیین نشده",
+      why: "ربات تا آن موقع هیچ کانفیگی نمی‌سازد — به مدیر بگویید." });
+  }
+  if (!st.activeCards) {
+    out.push({ key: "cards", who: "you",
+      title: "شماره کارتی ثبت نشده",
+      why: "مشتری نمی‌تواند پرداخت کند و کیف پول هم شارژ نمی‌شود." });
+  }
+  if (!st.ownerLinked) {
+    out.push({ key: "link", who: "you",
+      title: "رسیدها به شما نمی‌رسند",
+      why: "یک‌بار خودتان را به ربات وصل کنید تا رسیدِ هر خرید با دکمه‌ی تایید برایتان بیاید." });
+  }
+  return out;
+}
+
+const CARD_BLANK = { number: "", holder: "", bank: "", active: true };
+
+/** شماره کارت چهاررقم‌چهاررقم، فقط برای نمایش — ذخیره بی‌خط است */
+function cardShown(v) {
+  const d = String(v || "").replace(/[^0-9۰-۹]/g, "").slice(0, 16);
+  return d.replace(/(.{4})(?=.)/g, "$1 ");
+}
+
+/**
+ * کارت‌هایی که مشتری به آن‌ها واریز می‌کند.
+ *
+ * تا امروز نماینده هیچ راهی برای ثبتشان نداشت و ربات برای هر خرید
+ * «هنوز شماره کارتی ثبت نشده» می‌گفت.
+ */
+function CardsEditor({ token, onSaved }) {
+  const [rows, setRows] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+
+  useEffect(() => {
+    api("/api/portal/cards", { token })
+      .then((j) => setRows(j.cards || []))
+      .catch((e) => { setRows([]); setErr(e.message); });
+  }, [token]);
+
+  const up = (i, patch) => {
+    setOk("");
+    setRows((l) => l.map((c, x) => (x === i ? { ...c, ...patch } : c)));
+  };
+
+  const save = async () => {
+    setBusy(true); setErr(""); setOk("");
+    try {
+      const j = await api("/api/portal/cards", {
+        token, method: "PUT", body: { cards: rows },
+      });
+      setOk(`${faNum(j.active)} کارتِ فعال ذخیره شد`);
+      onSaved && onSaved();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (rows === null) {
+    return <div className="text-[13px] py-3" style={{ color: "var(--muted)" }}>
+      <Loader2 size={13} className="inline animate-spin" /> در حال خواندن…</div>;
+  }
+
+  return (
+    <div>
+      {!rows.length && (
+        <p className="text-[13px] mb-2 leading-relaxed" style={{ color: "var(--muted)" }}>
+          هنوز کارتی ندارید. اگر چند کارت بگذارید، هر خرید تصادفی یکی را
+          می‌گیرد تا واریزها روی یک حساب جمع نشوند.
+        </p>
+      )}
+      {rows.map((c, i) => (
+        <div key={i} className="rounded-xl p-3 mb-2"
+          style={{ border: "1px solid var(--border)",
+                   opacity: c.active ? 1 : 0.6 }}>
+          {/* کلید و حذف در ردیفِ خودشان: کنارِ شماره که بودند، روی
+              گوشی ۲۳ پیکسل از شانزده رقم را می‌بریدند. */}
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-[12px]" style={{ color: "var(--muted)" }}>
+              کارت {faNum(i + 1)} · {c.active ? "فعال" : "غیرفعال"}
+            </span>
+            <div className="flex items-center gap-2">
+              <Toggle checked={!!c.active} label="فعال"
+                onChange={() => up(i, { active: !c.active })} />
+              <button onClick={() => setRows((l) => l.filter((_, x) => x !== i))}
+                className="fx-ico-btn" style={{ width: 30, height: 30 }}
+                aria-label="حذف این کارت" title="حذف">
+                <Trash2 size={12} />
+              </button>
+            </div>
+          </div>
+          <input dir="ltr" inputMode="numeric" value={cardShown(c.number)}
+            onChange={(e) => up(i, { number: e.target.value.replace(/\s/g, "") })}
+            placeholder="6037 9911 2222 3333"
+            className="fx-input w-full text-[13px] mb-2"
+            style={{ fontFamily: "var(--mono)" }}
+            aria-label="شماره کارت" />
+          <div className="grid grid-cols-2 gap-2">
+            <input value={c.holder} onChange={(e) => up(i, { holder: e.target.value })}
+              placeholder="نام صاحب کارت" className="fx-input text-[13px] min-w-0" />
+            <input value={c.bank} onChange={(e) => up(i, { bank: e.target.value })}
+              placeholder="بانک" className="fx-input text-[13px] min-w-0" />
+          </div>
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <button onClick={() => { setOk(""); setRows((l) => [...l, { ...CARD_BLANK }]); }}
+          disabled={rows.length >= 10}
+          className="fx-btn-g flex-1 py-2 text-[13px] flex items-center justify-center gap-1.5">
+          <Plus size={13} /> کارتِ تازه
+        </button>
+        <button onClick={save} disabled={busy}
+          className="fx-btn flex-1 py-2 text-[13px] flex items-center justify-center gap-1.5">
+          {busy && <Loader2 size={13} className="animate-spin" />} ذخیره‌ی کارت‌ها
+        </button>
+      </div>
+      {ok && <p className="text-[13px] mt-2" style={{ color: "var(--ok)" }}>{ok}</p>}
+      {err && (
+        <p className="text-[13px] mt-2 flex items-start gap-1.5" style={{ color: "var(--danger)" }}>
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * وصل‌شدنِ نماینده به رباتش — تا رسیدها به او برسند.
+ *
+ * لینک یک‌بارمصرف است و نیم ساعت کار می‌کند. عمداً در تبِ تازه باز
+ * می‌شود و خودِ لینک هم نشان داده می‌شود: روی دسکتاپ ممکن است
+ * تلگرامِ وب باز نباشد و نماینده بخواهد لینک را روی گوشی باز کند.
+ */
+function OwnerLink({ token, linked, onChange }) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const make = async () => {
+    setBusy(true); setErr("");
+    try {
+      const j = await api("/api/portal/bot/link", { token, method: "POST" });
+      setUrl(j.url);
+      try { window.open(j.url, "_blank", "noopener"); } catch { /* نشانش می‌دهیم */ }
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unlink = async () => {
+    setBusy(true); setErr("");
+    try {
+      await api("/api/portal/bot/link", { token, method: "DELETE" });
+      setUrl("");
+      onChange && onChange();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (linked) {
+    return (
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[13px]" style={{ color: "var(--ok)" }}>
+          <Check size={13} className="inline" /> رسیدها به تلگرامِ شما می‌آیند
+        </span>
+        <button onClick={unlink} disabled={busy}
+          className="fx-btn-g px-3 py-1.5 text-[12px]">جداشدن</button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <button onClick={make} disabled={busy}
+        className="fx-btn w-full py-2.5 text-[13px] flex items-center justify-center gap-2">
+        {busy ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}
+        وصلِ من به ربات
+      </button>
+      {url && (
+        <div className="mt-2 text-[12px] leading-relaxed" style={{ color: "var(--muted)" }}>
+          در تلگرام «Start» را بزنید. اگر باز نشد، این لینک را روی گوشی باز کنید
+          (نیم ساعت و یک‌بار کار می‌کند):
+          <div dir="ltr" className="mt-1 break-all select-all"
+            style={{ fontFamily: "var(--mono)", color: "var(--dim)" }}>{url}</div>
+          <button onClick={onChange} className="fx-btn-g w-full py-1.5 mt-2 text-[12px]">
+            Start را زدم — دوباره بررسی کن
+          </button>
+        </div>
+      )}
+      {err && (
+        <p className="text-[13px] mt-2 flex items-start gap-1.5" style={{ color: "var(--danger)" }}>
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" />{err}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function BotBox({ token, onClose, onNote }) {
   const [st, setSt] = useState(null);
   const [tok, setTok] = useState("");
@@ -675,6 +898,49 @@ function BotBox({ token, onClose, onNote }) {
             می‌کنند و برند خودتان را می‌بینند.
           </p>
         )}
+
+        {st?.hasBot && (() => {
+          const gaps = saleGaps(st);
+          return (
+            <div className="mb-4">
+              <div className="text-[12px] mb-2" style={{ color: "var(--muted)" }}>
+                آمادگیِ فروش
+              </div>
+              {gaps.length === 0 ? (
+                <div className="rounded-xl p-3 text-[13px]"
+                  style={{ background: "var(--ok-wash)", color: "var(--ok)" }}>
+                  <Check size={13} className="inline" /> ربات آماده‌ی فروش است
+                </div>
+              ) : gaps.map((g) => (
+                <div key={g.key} className="rounded-xl p-3 mb-2"
+                  style={{ background: "var(--warn-wash)",
+                           border: "1px solid var(--warn-line)" }}>
+                  <div className="text-[13px] font-medium" style={{ color: "var(--warn)" }}>
+                    {g.title}{g.who === "owner" && " · کارِ مدیر"}
+                  </div>
+                  <div className="text-[12px] mt-0.5 leading-relaxed"
+                    style={{ color: "var(--dim)" }}>{g.why}</div>
+                </div>
+              ))}
+
+              <div className="rounded-xl p-3 mt-3" style={{ border: "1px solid var(--border)" }}>
+                <div className="text-[12px] mb-2 flex items-center gap-1.5"
+                  style={{ color: "var(--muted)" }}>
+                  <Bot size={12} /> رسیدها و هشدارها
+                </div>
+                <OwnerLink token={token} linked={!!st.ownerLinked} onChange={load} />
+              </div>
+
+              <div className="rounded-xl p-3 mt-3" style={{ border: "1px solid var(--border)" }}>
+                <div className="text-[12px] mb-2 flex items-center gap-1.5"
+                  style={{ color: "var(--muted)" }}>
+                  <CreditCard size={12} /> کارت‌های واریز
+                </div>
+                <CardsEditor token={token} onSaved={load} />
+              </div>
+            </div>
+          );
+        })()}
 
         <label className="text-[12px] block mb-1.5" style={{ color: "var(--muted)" }}>
           {st?.hasBot ? "جایگزینی توکن" : "توکن ربات"}
@@ -2370,6 +2636,30 @@ function Dashboard({ token, onOut }) {
             </button>
           </div>
         </div>
+
+        {/* رباتی که وصل است ولی نمی‌فروشد. بدون این، نماینده فقط
+            وقتی می‌فهمید که مشتری شکایت می‌کرد. */}
+        {saleGaps(me).length > 0 && (
+          <div className="fx-card p-4 mb-4 flex items-start gap-3 flex-wrap"
+            style={{ borderColor: "var(--warn-line)" }}>
+            <AlertTriangle size={16} className="shrink-0 mt-0.5"
+              style={{ color: "var(--warn)" }} />
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-medium" style={{ color: "var(--warn)" }}>
+                ربات شما هنوز نمی‌تواند بفروشد
+              </div>
+              <ul className="text-[13px] mt-1 leading-relaxed" style={{ color: "var(--dim)" }}>
+                {saleGaps(me).map((g) => (
+                  <li key={g.key}>• {g.title}{g.who === "owner" && " (کارِ مدیر)"}</li>
+                ))}
+              </ul>
+            </div>
+            <button onClick={() => setBotOpen(true)}
+              className="fx-btn-g px-3 py-2 text-[13px] shrink-0">
+              درست‌کردن
+            </button>
+          </div>
+        )}
 
         {note && (
           <div className="fx-card p-4 mb-4 flex items-start gap-2"

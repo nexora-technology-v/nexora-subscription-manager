@@ -89,7 +89,9 @@ class Ctx:
 
     @property
     def xui(self):
-        t = self.tenant
+        # نماینده پنلِ جدا ندارد — به پنلِ مالک وصل می‌شود و کانفیگ‌هایش
+        # با گروهِ خودش جدا می‌شوند. دلیلِ کامل در `DB.panel_source`.
+        t = DB.panel_source(self.tenant) or self.tenant
         # امضای اتصال — اگر عوض شود یعنی ادمین تنظیمات پنل را تغییر داده
         sig = (t.get("panel_url"), t.get("panel_user"),
                t.get("panel_pass"), t.get("panel_token"))
@@ -210,22 +212,47 @@ class Ctx:
                 return True
         return False
 
+    #: اعلان‌هایی که اگر گروه نباشد به پیویِ صاحبِ ربات می‌روند.
+    #
+    # فقط آن‌هایی که کسی منتظرِ جوابشان است: رسید (مشتری پول داده)،
+    # هشدار (پولِ مشتری معلق مانده)، و پیامِ پشتیبانی. عضوِ تازه و
+    # آمار نه — اینها در گروه خوب‌اند، در پیوی سیل.
+    DM_TOPICS = ("receipts", "alerts", "tickets")
+
+    def staff_chat(self, topic=None):
+        """
+        (chat_id, topic_id) برای اعلانِ مدیریتی.
+
+        اول گروهِ مدیریت. اگر نیست و اعلان از آن‌هایی است که کسی
+        منتظرش است، پیویِ صاحبِ ربات — که نماینده با یک دکمه در پرتال
+        خودش را به آن وصل می‌کند (`own_` در `/start`).
+
+        هر دو مسیر از همین‌جا رد می‌شوند؛ نسخه‌ی دومی از «کجا بفرستم»
+        یعنی روزی یکی‌شان پیوی را فراموش می‌کند.
+        """
+        t = DB.get_tenant(self.tid) or {}
+        gid = t.get("admin_group_id")
+        if gid:
+            try:
+                topics = json.loads(t.get("topics") or "{}")
+            except json.JSONDecodeError:
+                topics = {}
+            return gid, topics.get(topic)
+        if topic in self.DM_TOPICS and t.get("owner_tg_id"):
+            return t["owner_tg_id"], None
+        return None, None
+
     def notify_group(self, text, keyboard=None, topic=None, photo=None):
         """
-        ارسال به گروه مدیریت در تاپیک مشخص.
+        ارسال به گروه مدیریت در تاپیک مشخص — یا پیویِ صاحبِ ربات.
 
         `photo` بایت‌های تصویر است و متن به زیرنویسش می‌رود. چرا
         این‌جا و نه یک تابع دوم: پیداکردنِ گروه و تاپیک همین‌جاست و
         نسخه‌ی دومی از آن یعنی روزی یکی‌شان تاپیک را فراموش می‌کند.
         """
-        t = DB.get_tenant(self.tid)
-        gid = t.get("admin_group_id")
+        gid, tpid = self.staff_chat(topic)
         if not gid:
             return None
-        try:
-            topics = json.loads(t.get("topics") or "{}")
-        except json.JSONDecodeError:
-            topics = {}
         try:
             if photo:
                 return self.bot.send_photo_bytes(
@@ -234,9 +261,9 @@ class Ctx:
                     # بلندتر که باشد، کلِ ارسال رد می‌شود — نه اینکه
                     # کوتاه شود.
                     caption=text[:1000], keyboard=keyboard,
-                    topic_id=topics.get(topic))
+                    topic_id=tpid)
             return self.bot.send(gid, text, keyboard=keyboard,
-                                 topic_id=topics.get(topic))
+                                 topic_id=tpid)
         except TelegramError as e:
             log.warning("ارسال به گروه ناموفق: %s", e)
             return None
@@ -460,6 +487,65 @@ def _deep_link(ctx, user, chat_id, arg):
         show_renew(ctx, user, chat_id, None, sid)
         return True
     return False
+
+
+#: لینکِ وصل‌شدن چقدر معتبر است
+OWNER_CLAIM_MINUTES = 30
+
+
+def claim_owner(ctx, msg, code):
+    """
+    صاحبِ فروشگاه خودش را به رباتش وصل می‌کند.
+
+    چرا لازم شد: رسیدها و هشدارها به گروهِ مدیریت می‌رفتند و
+    نماینده نه گروه داشت نه راهی برای تعریفش. `owner_tg_id` هم که
+    راهِ دوم است از هیچ فرمی پر نمی‌شد. پس مشتریِ نماینده رسید
+    می‌فرستاد و **هیچ‌کس** خبردار نمی‌شد.
+
+    چرا لینک و نه «آیدیِ عددی‌تان را وارد کنید»: کسی آیدیِ عددیِ
+    خودش را نمی‌داند، و عددِ اشتباه یعنی رسیدها به غریبه برسد.
+    این‌جا خودِ تلگرام می‌گوید چه کسی دکمه را زده.
+
+    کد یک‌بارمصرف و کوتاه‌عمر است — هرکس این لینک را داشته باشد
+    می‌تواند سفارش‌های این فروشگاه را تایید کند.
+    """
+    import hmac as _hmac
+
+    frm = msg.get("from") or {}
+    chat_id = (msg.get("chat") or {}).get("id") or frm.get("id")
+
+    st = DB.tenant_settings(ctx.tid)
+    want = st.get("owner_claim") if isinstance(st.get("owner_claim"), dict) else {}
+    good = bool(code) and bool(want.get("code")) and \
+        _hmac.compare_digest(str(code), str(want.get("code")))
+
+    fresh = False
+    try:
+        fresh = datetime.fromisoformat(str(want.get("until"))[:19]) > datetime.now()
+    except (TypeError, ValueError):
+        fresh = False
+
+    if not (good and fresh):
+        return ctx.bot.send(
+            chat_id,
+            "⚠️ این لینک دیگر معتبر نیست.\n\n"
+            "از پنلِ خودتان دوباره «وصلِ من به ربات» را بزنید — لینک "
+            f"فقط {core.fa(OWNER_CLAIM_MINUTES)} دقیقه و یک‌بار کار می‌کند.")
+
+    # اول کد را می‌سوزانیم، بعد وصل می‌کنیم: اگر دو نفر هم‌زمان
+    # بزنند، فقط یکی کدِ زنده می‌بیند.
+    st.pop("owner_claim", None)
+    DB.save_tenant_settings(ctx.tid, st)
+    DB.update_tenant(ctx.tid, owner_tg_id=int(frm["id"]))
+    ctx.invalidate()
+    ctx.db.log("owner_linked", None, {"tg": frm.get("id")})
+    log.info("صاحبِ فروشگاه %s به ربات وصل شد: %s", ctx.tid, frm.get("id"))
+
+    return ctx.bot.send(
+        chat_id,
+        "✅ <b>وصل شدید</b>\n\n"
+        "از این به بعد رسیدِ هر خرید با دکمه‌های تایید و رد همین‌جا "
+        "می‌آید، و اگر ساختِ کانفیگی گیر کند همین‌جا خبردار می‌شوید.")
 
 
 def cmd_start(ctx, msg, args=None):
@@ -1032,7 +1118,8 @@ def receipt_submit(ctx, user, order_id, rtype, rfile=None, rtext=None,
             pass
 
     t = DB.get_tenant(ctx.tid)
-    gid = t.get("admin_group_id")
+    # گروه، یا پیویِ صاحبِ ربات — همان قاعده‌ی `notify_group`.
+    gid, receipts_topic = ctx.staff_chat("receipts")
 
     # عکسی که از تلگرام نیامده باید اول آپلود شود تا `file_id` بگیرد.
     #
@@ -1042,14 +1129,13 @@ def receipt_submit(ctx, user, order_id, rtype, rfile=None, rtext=None,
     uploaded = None
     if photo_bytes and gid:
         try:
-            topics = json.loads(t.get("topics") or "{}")
             r = ctx.bot.send_photo_bytes(
                 gid, photo_bytes, filename=f"receipt-{order_id}.jpg",
-                caption=_receipt_caption(ctx, user, order, rtext))
+                caption=_receipt_caption(ctx, user, order, rtext),
+                topic_id=receipts_topic)
             ph = ((r or {}).get("result") or {}).get("photo") or []
             if ph:
                 uploaded = ph[-1].get("file_id")
-            del topics                      # موضوع را send_photo_bytes ندارد
         except (TelegramError, KeyError, TypeError) as e:
             log.warning("آپلود رسید مینی‌اپ ناموفق: %s", e)
 
@@ -1077,11 +1163,10 @@ def receipt_submit(ctx, user, order_id, rtype, rfile=None, rtext=None,
                          keyboard=buttons, topic="receipts")
         return True, None
 
-    if gid and rtype == "photo" and rfile:
+    if gid and rtype == "photo" and rfile and not str(rfile).startswith("local:"):
         try:
-            topics = json.loads(t.get("topics") or "{}")
             ctx.bot.send_photo(gid, rfile, caption=info, keyboard=buttons,
-                               topic_id=topics.get("receipts"))
+                               topic_id=receipts_topic)
             return True, None
         except TelegramError as e:
             log.warning("ارسال عکس رسید ناموفق: %s", e)
@@ -1609,7 +1694,44 @@ def _provision(ctx, order_id):
 
     user = ctx.db.get_user_by_id(order["user_id"])
     t = DB.get_tenant(ctx.tid)
+
+    # ── فروشگاهِ نماینده ───────────────────────────────────────────
+    #
+    # سه چیز برای نماینده فرق می‌کند، و هر سه تا امروز جا مانده بودند:
+    #
+    #   گروه    تنها چیزی که می‌گوید این کانفیگ مالِ کیست. بدونش کانفیگ
+    #           در پنلِ مالک ساخته می‌شد و در صورتحسابِ هیچ‌کس نمی‌آمد
+    #           — مالک کانفیگ را داده و پولش را از کسی نمی‌گیرد.
+    #   پیشوند  نامِ ردیفِ نماینده فارسی است («حسین دهلگی») و `isalnum`
+    #           حرفِ فارسی را نگه می‌دارد؛ یعنی شناسه‌ی کانفیگ و لینکِ
+    #           اشتراک فارسی می‌شد. پرتال از اول `portal_slug` را
+    #           می‌گذاشت و صفحه‌ی اشتراک برند را از همان تشخیص می‌دهد.
+    #   اعتبار  نماینده‌ی پیش‌پرداخت نباید بیشتر از آنچه داده بفروشد.
+    #
+    # شکستِ هر کدام **پیش از** ساختِ کانفیگ است، نه بعدش.
+    reseller = bool(t.get("parent_id"))
+    group = None
+    if reseller:
+        group = str(t.get("portal_group") or "").strip()
+        if not group:
+            return False, ("این فروشگاه هنوز گروهِ x-ui ندارد. کانفیگِ "
+                           "بی‌گروه در صورتحسابِ کسی شمرده نمی‌شود، پس "
+                           "ساخته نشد — مالک باید گروه را تعیین کند")
+
     inbound = plan.get("inbound_id") or t.get("default_inbound")
+    if not inbound and reseller:
+        # همان ترتیبِ `_portal_inbound` در پرتال: انتخابِ خودش، بعد
+        # پیش‌فرضِ مالک. بدونِ این، کانفیگی که نماینده از ربات می‌فروشد
+        # روی اینباندی می‌نشست که از پرتالش نمی‌نشست.
+        try:
+            own = json.loads(t.get("inbound_ids") or "[]") \
+                if (t.get("inbound_mode") or "all") == "custom" else []
+        except (json.JSONDecodeError, TypeError):
+            own = []
+        if own:
+            inbound = own[0]
+        else:
+            inbound = (DB.root_tenant() or {}).get("default_inbound")
     if not inbound:
         # اینباند پیش‌فرض تنظیم نشده.
         #
@@ -1633,8 +1755,31 @@ def _provision(ctx, order_id):
         log.warning("اینباند پیش‌فرض تنظیم نشده — به‌طور خودکار از #%s "
                     "استفاده شد", inbound)
 
-    prefix = ctx.s.get("email_prefix") or (t.get("name") or "nx")
+    if reseller:
+        prefix = t.get("portal_slug") or "nx"
+    else:
+        prefix = ctx.s.get("email_prefix") or (t.get("name") or "nx")
     sub_base = ctx.s.get("sub_base_url")
+    if not sub_base and reseller:
+        # همان ترتیبِ `_sub_base` در پرتال: خودش، بعد مالک، بعد خودِ پنل
+        # (که `create_subscription` وقتی خالی باشد می‌پرسد).
+        try:
+            sub_base = (json.loads((DB.root_tenant() or {}).get("settings")
+                                   or "{}") or {}).get("sub_base_url")
+        except (json.JSONDecodeError, TypeError):
+            sub_base = None
+
+    # کفِ این پلن برای نماینده‌ی پیش‌پرداخت. بکند موقعِ ذخیره‌ی پلن
+    # حسابش کرده (`plans.cost`)؛ این‌جا فقط خوانده می‌شود.
+    charge = 0
+    if reseller and DB.is_prepaid(t):
+        charge = max(0, int(plan.get("cost") or 0))
+        if not charge:
+            # کف معلوم نیست — فروش را نمی‌ایستانیم چون مشتری پول داده؛
+            # صورتحسابِ گروه به‌هرحال این کانفیگ را می‌شمارد. ولی
+            # بی‌صدا هم نه.
+            log.warning("پلن %s نماینده %s کف ندارد — از اعتبار چیزی کم "
+                        "نشد، صورتحسابِ گروه می‌شماردش", plan.get("id"), ctx.tid)
 
     try:
         # تمدید اشتراک موجود یا ساخت جدید
@@ -1663,14 +1808,28 @@ def _provision(ctx, order_id):
                 # ما پول را برمی‌گرداند.
                 if not ctx.db.claim_renewal(sub["id"]):
                     return False, "این اشتراک همین حالا در حال تمدید است"
+                if charge:
+                    okc, have = DB.charge_credit(
+                        ctx.tid, charge, f"تمدید {sub.get('client_email')}")
+                    if not okc:
+                        ctx.db.release_renewal(sub["id"])
+                        return False, (f"اعتبارِ فروشگاه کافی نیست — لازم "
+                                       f"{charge:,}، موجودی {have:,} تومان")
                 try:
                     # ایمیل را هم می‌دهیم: در 3x-ui نسخه‌ی ۳ شناسه‌ی
                     # اصلی کلاینت ایمیل است و جست‌وجو با آن مطمئن‌تر
                     # از uuid است
-                    ext = ctx.xui.extend_subscription(
-                        sub["inbound_id"], sub["client_uuid"],
-                        plan["days"], plan["gb"],
-                        email=sub.get("client_email"))
+                    try:
+                        ext = ctx.xui.extend_subscription(
+                            sub["inbound_id"], sub["client_uuid"],
+                            plan["days"], plan["gb"],
+                            email=sub.get("client_email"))
+                    except Exception:
+                        if charge:
+                            DB.refund_credit(
+                                ctx.tid, charge,
+                                "بازگشت — تمدید روی پنل انجام نشد")
+                        raise
                     new_exp = _add_days_iso(sub["expires_at"], plan["days"])
 
                     # حجم را از همان چیزی می‌گیریم که روی پنل نشست.
@@ -1722,11 +1881,26 @@ def _provision(ctx, order_id):
             except (json.JSONDecodeError, TypeError):
                 pl_inbounds = [x.strip() for x in str(raw).split(",") if x.strip()]
 
-        res = ctx.xui.create_subscription(
-            inbound, email, plan["gb"], plan["days"],
-            ip_limit=plan["ip_limit"], tg_id=user["tg_id"],
-            sub_base_url=sub_base, inbound_ids=pl_inbounds
-        )
+        # یادداشت شناسه‌ی کانفیگ را دارد: `_portal_charge_for` موقعِ
+        # حذف، برگشتی را از روی همین متن پیدا می‌کند.
+        if charge:
+            okc, have = DB.charge_credit(ctx.tid, charge, f"ساخت {email}")
+            if not okc:
+                return False, (f"اعتبارِ فروشگاه کافی نیست — لازم "
+                               f"{charge:,}، موجودی {have:,} تومان")
+        # گروه فقط برای نماینده فرستاده می‌شود؛ مسیرِ مالک همان است که بود.
+        extra = {"group": group} if group else {}
+        try:
+            res = ctx.xui.create_subscription(
+                inbound, email, plan["gb"], plan["days"],
+                ip_limit=plan["ip_limit"], tg_id=user["tg_id"],
+                sub_base_url=sub_base, inbound_ids=pl_inbounds, **extra,
+            )
+        except Exception:
+            if charge:
+                DB.refund_credit(ctx.tid, charge,
+                                 "بازگشت — کار روی پنل انجام نشد")
+            raise
 
         exp_iso = None
         if res["expiry_ms"]:
@@ -3404,6 +3578,10 @@ def _on_message(ctx, msg):
     if text.startswith("/start"):
         parts = text.split(maxsplit=1)
         ref = parts[1].strip() if len(parts) > 1 else None
+        # وصل‌شدنِ صاحبِ فروشگاه — پیش از هر کارِ دیگر، چون این کد
+        # کدِ معرف نیست و نباید به‌جای آن ثبت شود.
+        if ref and ref.startswith("own_"):
+            return claim_owner(ctx, msg, ref[4:])
         user = _get_or_create(ctx, frm, ref)
         if user.get("is_blocked"):
             return None

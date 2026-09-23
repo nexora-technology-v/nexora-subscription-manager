@@ -142,6 +142,31 @@ def _cols(con, table):
 
 #: هر قدم: (برچسب, آیا درست است؟, چه چیزی دیده شد, چه باید کرد)
 #: ترتیب مهم است — اولین قرمز، همان چیزی است که باید درست شود.
+def addon_price(con):
+    """قیمتِ «پوسته‌ی شخصی» از تنظیماتِ مالک. صفر یعنی رایگان."""
+    try:
+        r = con.execute("SELECT settings FROM tenants WHERE parent_id IS NULL "
+                        "ORDER BY id LIMIT 1").fetchone()
+        cfg = _settings(r or {}).get("portal_addon") or {}
+        return max(0, int(cfg.get("price") or 0))
+    except (sqlite3.Error, TypeError, ValueError):
+        return 0
+
+
+def theme_open(st, price):
+    """آیا پوسته‌ی شخصیِ این نماینده باز است؟"""
+    if price <= 0:
+        return True
+    until = str(st.get("theme_until") or "")
+    if not until:
+        return False
+    try:
+        from datetime import datetime as _dt
+        return _dt.fromisoformat(until[:19]) > _dt.now()
+    except (TypeError, ValueError):
+        return False
+
+
 def steps_for(con, bcon, t, cols):
     st = _settings(t)
     out = []
@@ -164,8 +189,9 @@ def steps_for(con, bcon, t, cols):
         bool(group),
         group or "not set",
         "panel > reseller panel > pick their group from the list. "
-        "Without it they can still make plans, but the price floor is "
-        "unknown and they see no configs.",
+        "Without it their bot refuses to build configs (a config with no "
+        "group is billed to nobody), the price floor is unknown, and they "
+        "see no configs.",
     ))
 
     # ۳. نرخ‌ها — کفِ قیمت از این می‌آید
@@ -236,6 +262,116 @@ def steps_for(con, bcon, t, cols):
         "a plan with price 0 is free; set a price above the floor",
     ))
 
+    # ── پلنِ زیرِ کف ──────────────────────────────────────────────
+    #
+    # ذخیره‌ی پلنِ زیرِ کف رد می‌شود، ولی اگر مالک بعداً نرخ را بالا
+    # ببرد، پلن‌های قبلی زیرِ کفِ تازه می‌افتند و هر فروششان ضرر است.
+    try:
+        under = con.execute(
+            "SELECT COUNT(*) c FROM plans WHERE tenant_id=? AND is_active=1 "
+            "AND COALESCE(cost,0)>0 AND price<cost", (t["id"],)).fetchone()["c"]
+    except sqlite3.Error:
+        under = 0
+    out.append((
+        "plans above the floor",
+        under == 0,
+        "all" if under == 0 else f"{under} active plan(s) priced below cost",
+        "they lose money on every sale of those plans. Their panel > bot "
+        "plans shows the floor and the loss next to each one.",
+    ))
+
+    # ── پول: کارت ─────────────────────────────────────────────────
+    #
+    # ربات کارت را از تنظیماتِ خودِ نماینده می‌خواند. بدونش هر خرید با
+    # کارت و هر شارژِ کیف پول می‌ایستد — یعنی ربات هیچ راهی برای
+    # گرفتنِ پول ندارد.
+    cards = [c for c in (st.get("cards") or [])
+             if isinstance(c, dict) and c.get("number") and c.get("active", True)]
+    out.append((
+        "payment card",
+        bool(cards),
+        f"{len(cards)} active" if cards else "none",
+        "their panel > my bot > payment cards. Without one, every card "
+        "purchase and every wallet top-up stops at 'no card number yet'.",
+    ))
+
+    # ── رسید: به کسی می‌رسد؟ ─────────────────────────────────────
+    owner_tg = t["owner_tg_id"] if "owner_tg_id" in cols else None
+    group_id = t["admin_group_id"] if "admin_group_id" in cols else None
+    if group_id:
+        where = f"admin group {group_id}"
+    elif owner_tg:
+        where = f"private chat {owner_tg}"
+    else:
+        where = "NOBODY"
+    out.append((
+        "receipts reach someone",
+        bool(group_id or owner_tg),
+        where,
+        "their panel > my bot > 'link me to the bot', then Start in Telegram. "
+        "Until then receipts from their customers are seen by no one.",
+    ))
+
+    # ── پیش‌پرداخت: کفِ ذخیره‌شده ──────────────────────────────────
+    #
+    # نماینده‌ی پیش‌پرداخت با هر فروش `plans.cost` از اعتبارش کم
+    # می‌شود. پلنی که پیش از ۱.۸۶ ذخیره شده این ستون را صفر دارد، پس
+    # فروشش از اعتبار چیزی کم نمی‌کند (صورتحساب هنوز می‌شماردش).
+    try:
+        credit = int(t["credit"]) if "credit" in cols and t["credit"] is not None else -1
+    except (TypeError, ValueError):
+        credit = -1
+    if credit >= 0:
+        try:
+            zero = con.execute(
+                "SELECT COUNT(*) c FROM plans WHERE tenant_id=? AND is_active=1 "
+                "AND COALESCE(cost,0)=0", (t["id"],)).fetchone()["c"]
+        except sqlite3.Error:
+            zero = -1
+        out.append((
+            "prepaid: plan floors stored",
+            zero == 0,
+            ("all active plans have a floor" if zero == 0 else
+             "cost column missing - update nexora" if zero < 0 else
+             f"{zero} active plan(s) with no stored floor"),
+            "they open their panel > bot plans and press save once; the "
+            "floor is computed and stored. Until then those sales do not "
+            "reduce their credit (the invoice still counts them).",
+        ))
+
+    # ── هویتِ فروشگاه ───────────────────────────────────────────────
+    #
+    # اینها نماینده را از فروش بازنمی‌دارند، ولی بدونشان مشتریِ او
+    # یک فروشگاهِ بی‌نام می‌بیند — و اگر لوگو نباشد، صفحه‌ی ورود هم
+    # چیزی برای نشان‌دادن ندارد.
+    brand = str(st.get("brand") or "").strip()
+    out.append((
+        "shop name",
+        bool(brand),
+        brand or "not set",
+        "their panel > theme > shop name. Without it the customer sees "
+        "a nameless shop.",
+    ))
+
+    accent = str(st.get("mini_accent") or "").strip()
+    price = addon_price(con)
+    unlocked = theme_open(st, price)
+
+    # رنگ دو شرط دارد و هر دو باید دیده شوند: گذاشته شده؟ و اجازه
+    # هست؟ نبودِ هر کدام نتیجه‌اش یکی است — رنگ اعمال نمی‌شود — ولی
+    # کارِ لازم فرق می‌کند.
+    if not accent:
+        why, fix = ("no colour chosen",
+                    "their panel > theme > pick a colour, then save")
+    elif not unlocked:
+        why, fix = (f"{accent} chosen but the theme add-on is locked",
+                    "panel > reseller panel > shop theme > open it for them, "
+                    "or they buy it from their own panel")
+    else:
+        why, fix = (accent, "")
+    out.append(("shop colour", bool(accent) and unlocked, why,
+                fix or "nothing to do"))
+
     return out
 
 
@@ -288,6 +424,10 @@ def main():
     print(f"{D}bot.db     {X}{bot}")
     print(f"{D}billing.db {X}{billing or '(not found — rates unknown)'}")
     print(f"{D}owner mini-app {X}{owner_mini or R + 'not set' + X}")
+    _price = addon_price(con)
+    print(f"{D}theme add-on   {X}"
+          + ("free for everyone" if _price <= 0
+             else f"{_price:,} toman — resellers must buy it"))
     if not owner_mini:
         print(f"{Y}  the owner has no mini-app url either.{X}")
         print("  That means the panel was never opened over https, so the")

@@ -1861,6 +1861,26 @@ export default function Mini() {
     if (b) document.title = b;
   }, [me?.brand]);
 
+  /*
+   * برند و لوگو را برای **صفحه‌ی ورودِ دفعه‌ی بعد** نگه می‌داریم.
+   *
+   * موقعِ اسپلش هنوز چیزی از سرور نیامده، پس بدونِ این، مشتریِ
+   * نماینده هر بار اول یک صفحه‌ی بی‌نام (یا بدتر، نشانِ ما) می‌بیند
+   * و بعد فروشگاهِ خودش. با این، از همان لحظه‌ی اول مالِ خودش است.
+   *
+   * `localStorage` در حالتِ ناشناس یا با کوکیِ بسته می‌تواند خطا
+   * بدهد؛ نوشتنش راحتی است، نه شرطِ کارکردن.
+   */
+  useEffect(() => {
+    const brand = String(me?.brand || "").trim();
+    if (!brand) return;
+    try {
+      window.localStorage.setItem("nx_shop", JSON.stringify({
+        brand, logo: String(me?.logo || ""),
+      }));
+    } catch { /* بی‌اهمیت */ }
+  }, [me?.brand, me?.logo]);
+
   return (
     <div className="mn-app" dir="rtl" style={accentVars(me?.accent)}>
       {/* ── نوار برند ── */}

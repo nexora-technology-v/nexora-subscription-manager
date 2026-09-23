@@ -85,6 +85,10 @@ KINDS = {
         "label": "کاربر تازه",
         "level": "info", "alert": False,
     },
+    "owner_linked": {
+        "label": "صاحبِ فروشگاه به ربات وصل شد",
+        "level": "info", "alert": False,
+    },
 }
 
 #: نوعی که در `KINDS` نباشد. بی‌صدا دور انداخته نمی‌شود — با همین

@@ -1344,27 +1344,46 @@ check("مسیرِ کفِ قیمت وجود دارد",
       and "/api/portal/plan-cost" in _PORTAL_JSX,
       "دو سمتِ درز")
 
-# کف باید از همان تابعی بیاید که فاکتور را می‌سازد، نه ضربِ تازه
-_cost_fn = APP_PY.split("def portal_plan_cost(")[1].split("\n@app.")[0] \
-    if "def portal_plan_cost(" in APP_PY else ""
+# کف باید از همان تابعی بیاید که فاکتور را می‌سازد، نه ضربِ تازه.
+#
+# از ۱.۸۶ محاسبه در `_plan_floor` است — چون ذخیره‌ی پلن هم همان عدد
+# را لازم دارد (`plans.cost`) و دو محاسبه یعنی نماینده یک کف ببیند و
+# از اعتبارش کفِ دیگری کم شود. پس سه چیز سنجیده می‌شود: پیش‌نمایش
+# `_plan_floor` را صدا می‌زند، ذخیره هم، و خودِ `_plan_floor` از
+# توابعِ صورتحساب می‌خواند.
+def _fn(name):
+    if f"def {name}(" not in APP_PY:
+        return ""
+    body = APP_PY.split(f"def {name}(")[1]
+    m = re.search(r"\n(?:def |@app\.)", body)
+    return body[:m.start()] if m else body
+
+
+_cost_fn = _fn("portal_plan_cost")
+_floor_fn = _fn("_plan_floor")
+_save_fn = _fn("portal_bot_plans_save")
 check("کف از _line_amount می‌آید، نه ضربِ تازه",
-      "_line_amount(" in _cost_fn and "_months_from_days(" in _cost_fn
-      and "_price_with_reason(" in _cost_fn,
+      "_plan_floor(" in _cost_fn
+      and "_line_amount(" in _floor_fn and "_months_from_days(" in _floor_fn
+      and "_price_with_reason(" in _floor_fn,
       "همان تابعی که صورتحساب از آن می‌خواند")
+check("پیش‌نمایش و ذخیره یک کف دارند",
+      "_plan_floor(" in _save_fn and "_line_amount(" not in _save_fn,
+      "کفی که نماینده می‌بیند همان است که از اعتبارش کم می‌شود")
 
 # و «نمی‌دانم» صفر برنگردد — صفر یعنی رایگان
 # جاروی شکستن: با برداشتنِ همین یک شاخه، دروازه‌ی قبلی سبز ماند
 # چون رشته‌ی `"ready": False` جای دیگری از همان تابع هم بود. حالا
 # خودِ شاخه سنجیده می‌شود، نه وجودِ یک رشته.
 _no_rate = ""
-if "        base, why = _price_with_reason(gb, rates)" in _cost_fn:
-    _no_rate = _cost_fn.split(
-        "        base, why = _price_with_reason(gb, rates)")[1].split(
-        "\n        months =")[0]
+if "    base, why = _price_with_reason(gb, rates)" in _floor_fn:
+    _no_rate = _floor_fn.split(
+        "    base, why = _price_with_reason(gb, rates)")[1].split(
+        "\n    months =")[0]
 check("نبودِ نرخ صفر برنمی‌گرداند",
       "if base is None:" in _no_rate
       and '"ready": False' in _no_rate and '"why": why' in _no_rate
-      and '"cost": 0' not in _cost_fn,
+      and '"cost": 0' not in _floor_fn,
       "صفر یعنی «رایگان»، نه «نرخ ندارد»")
 
 # پرتال دیگر خودش ضرب نکند

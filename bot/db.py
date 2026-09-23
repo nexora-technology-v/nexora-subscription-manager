@@ -442,6 +442,14 @@ def _migrate(con):
         # ناچار است یا همه را نشان بدهد یا از روی نام حدس بزند. هیچ
         # کدام قابل قبول نیست.
         ("tenants", "portal_group", "TEXT"),
+        # کفِ قیمتِ پلنِ نماینده — آنچه مالک بابتِ هر فروش از او
+        # می‌گیرد.
+        #
+        # نرخ‌ها در دیتابیسِ حسابداری‌اند و ربات به آن دسترسی ندارد.
+        # پس بکند همان لحظه‌ی ذخیره‌ی پلن با همان `_line_amount` حسابش
+        # می‌کند و این‌جا می‌گذارد، و ربات فقط می‌خواندش. محاسبه‌ی
+        # دوم در ربات یعنی دو عدد برای یک پلن.
+        ("plans", "cost", "INTEGER DEFAULT 0"),
     ]
     for table, col, spec in adds:
         try:
@@ -1667,6 +1675,91 @@ def get_tenant(tid):
     with conn() as c:
         r = c.execute("SELECT * FROM tenants WHERE id=?", (tid,)).fetchone()
     return dict(r) if r else None
+
+
+def root_tenant():
+    """مستاجرِ ریشه (مالک). نه «کوچک‌ترین شناسه» — ریشه."""
+    with conn() as c:
+        r = c.execute("SELECT * FROM tenants WHERE parent_id IS NULL "
+                      "ORDER BY id LIMIT 1").fetchone()
+    return dict(r) if r else None
+
+
+def panel_source(t):
+    """
+    ردیفی که اتصالِ x-ui از آن خوانده می‌شود.
+
+    نماینده پنلِ جدا ندارد؛ کانفیگ‌هایش در پنلِ مالک و داخلِ گروهِ
+    خودش ساخته می‌شوند. پرتال از روز اول همین را می‌دانست
+    (`_portal_xui` در بکند) ولی ربات نه — ربات با ستون‌های خالیِ
+    ردیفِ نماینده وصل می‌شد، یعنی به هیچ‌جا. نتیجه: رباتِ هیچ
+    نماینده‌ای نمی‌توانست حتی یک کانفیگ بسازد، و تاییدِ سفارش از
+    پرتال هم (که همین کد را صدا می‌زند) با همان خطا می‌ایستاد.
+
+    این قاعده دو جا نوشته شده؛ `test-seams` برابری‌شان را می‌سنجد.
+    """
+    if not t or t.get("panel_url"):
+        return t
+    if t.get("parent_id"):
+        return root_tenant() or t
+    return t
+
+
+def is_prepaid(t):
+    """اعتبارِ منفی یا خالی یعنی بدهکاری — آخرِ ماه صورتحساب."""
+    try:
+        return t is not None and t.get("credit") is not None \
+            and int(t.get("credit")) >= 0
+    except (TypeError, ValueError):
+        return False
+
+
+def charge_credit(tid, amount, note):
+    """
+    کسرِ اعتبارِ نماینده‌ی پیش‌پرداخت — اتمی.
+
+    برمی‌گرداند: (اجازه هست؟, موجودیِ فعلی)
+
+    شرط داخلِ خودِ UPDATE است، مثل `_portal_charge` در بکند: الگوی
+    «بخوان، اگر بس بود کم کن» بینِ دو قدم برای فروشِ هم‌زمانِ دیگری
+    جا باز می‌گذارد و اعتبار منفی می‌شود.
+
+    `note` باید شناسه‌ی کانفیگ را داشته باشد — `_portal_charge_for`
+    موقعِ حذف، برگشتی را از روی همین متن پیدا می‌کند.
+    """
+    amount = max(0, int(amount or 0))
+    with conn() as c:
+        if amount:
+            cur = c.execute(
+                "UPDATE tenants SET credit = credit - ? "
+                "WHERE id=? AND credit >= ?", (amount, tid, amount))
+            if not cur.rowcount:
+                r = c.execute("SELECT credit FROM tenants WHERE id=?",
+                              (tid,)).fetchone()
+                return False, int((r["credit"] if r else 0) or 0)
+        r = c.execute("SELECT credit FROM tenants WHERE id=?",
+                      (tid,)).fetchone()
+        left = int((r["credit"] if r else 0) or 0)
+        if amount:
+            c.execute("INSERT INTO credit_tx (tenant_id, amount, balance, note) "
+                      "VALUES (?,?,?,?)", (tid, -amount, left, str(note)[:200]))
+    return True, left
+
+
+def refund_credit(tid, amount, note):
+    """برگرداندنِ همان کسر، وقتی کار روی پنل انجام نشد."""
+    amount = max(0, int(amount or 0))
+    if not amount:
+        return
+    with conn() as c:
+        c.execute("UPDATE tenants SET credit = credit + ? WHERE id=?",
+                  (amount, tid))
+        r = c.execute("SELECT credit FROM tenants WHERE id=?",
+                      (tid,)).fetchone()
+        c.execute("INSERT INTO credit_tx (tenant_id, amount, balance, note) "
+                  "VALUES (?,?,?,?)",
+                  (tid, amount, int((r["credit"] if r else 0) or 0),
+                   str(note)[:200]))
 
 
 def tenant_by_slug(slug):

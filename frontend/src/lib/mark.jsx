@@ -27,7 +27,7 @@ let _seq = 0;
  * برمی‌گردد — نه قابِ خالیِ شکسته.
  */
 export function NexoraMark({ size = 96, animate = false, src = "",
-                             alt = "", className = "" }) {
+                             alt = "", className = "", neutral = false }) {
   const uid = React.useMemo(() => "nx" + (++_seq), []);
   const [failed, setFailed] = React.useState(false);
   React.useEffect(() => { setFailed(false); }, [src]);
@@ -37,6 +37,28 @@ export function NexoraMark({ size = 96, animate = false, src = "",
       <img src={src} alt={alt || "لوگو"} width={size} height={size}
         className={`nx-logo ${animate ? "go" : ""} ${className}`}
         onError={() => setFailed(true)} />
+    );
+  }
+
+  // نشانِ خنثی: وقتی نمی‌دانیم فروشگاه مالِ کیست، نشانِ **خودمان**
+  // را نشان نمی‌دهیم. مشتریِ نماینده نباید بفهمد پشتش نکسوراست.
+  if (neutral) {
+    return (
+      <svg viewBox="0 0 120 120" width={size} height={size}
+        className={`nx-mark ${animate ? "go" : ""} ${className}`}
+        role="img" aria-label={alt || "فروشگاه"}>
+        <defs>
+          <linearGradient id={uid + "q"} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="currentColor" stopOpacity=".55" />
+            <stop offset="100%" stopColor="currentColor" stopOpacity=".18" />
+          </linearGradient>
+        </defs>
+        <rect x="18" y="18" width="84" height="84" rx="26"
+          fill={`url(#${uid}q)`} />
+        <circle cx="60" cy="60" r="17" fill="none" stroke="currentColor"
+          strokeWidth="5" strokeLinecap="round" opacity=".85"
+          strokeDasharray="80 27" />
+      </svg>
     );
   }
 
@@ -143,7 +165,8 @@ function OrbitRing({ size = 168, state = "load" }) {
  * نمی‌دهیم؛ اگر چیزی برای گفتن نیست، هیچ نمی‌گوییم.
  */
 export function Splash({ label = "", logo = "", name = "",
-                        phase = "load", note = "", onRetry }) {
+                        phase = "load", note = "", onRetry,
+                        neutral = false }) {
   return (
     <div className={`nx-splash ${phase}`} dir="rtl" role="status" aria-live="polite">
       {/* نورِ محیطی — دو لکه‌ی بسیار محو که آرام جابه‌جا می‌شوند */}
@@ -153,11 +176,16 @@ export function Splash({ label = "", logo = "", name = "",
       <div className="nx-stage">
         {phase !== "error" && <OrbitRing state={phase} />}
         <div className="nx-mark-wrap">
-          <NexoraMark size={84} animate src={logo} alt={name} />
+          <NexoraMark size={84} animate src={logo} alt={name}
+            neutral={neutral && !logo} />
         </div>
       </div>
 
-      <div className="nx-word">{name || "NEXORA"}</div>
+      {/* «NEXORA» فقط وقتی نوشته می‌شود که خودمان باشیم. روی
+          مینی‌اپِ نماینده، یا نامِ فروشگاهِ اوست یا هیچ. */}
+      {(name || !neutral) && (
+        <div className="nx-word">{name || "NEXORA"}</div>
+      )}
       {label ? <div className="nx-sub">{label}</div> : null}
 
       {phase === "error" ? (

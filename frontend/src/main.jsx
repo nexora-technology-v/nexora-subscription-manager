@@ -40,6 +40,41 @@ const Root = lazy(() => CHUNK);
 const BOOT_LABEL = { mini: "اشتراک من", portal: "پنل نمایندگی",
                      aff: "پنل همکار فروش", admin: "پنل مدیریت" }[WHICH];
 
+/*
+ * برندِ فروشگاه، از کشِ دفعه‌ی قبل.
+ *
+ * موقعِ اسپلش هنوز `/api/mini/me` نیامده، پس نمی‌دانیم مشتریِ کدام
+ * فروشگاه است. دفعه‌ی قبل می‌دانستیم و نگهش داشتیم.
+ *
+ * و اگر هیچ‌وقت ندانستیم، نشانِ **خودمان** را نشان نمی‌دهیم —
+ * مشتریِ نماینده نباید بفهمد پشتِ فروشگاه نکسوراست. یک نشانِ خنثی
+ * می‌آید تا وقتی برند برسد.
+ *
+ * `localStorage` ممکن است در حالتِ ناشناس یا با کوکیِ بسته اصلاً
+ * کار نکند، پس هر خواندنی داخلِ try است و نبودنش فقط یعنی اسپلشِ
+ * خنثی.
+ */
+const SHOP_KEY = "nx_shop";
+
+function cachedShop() {
+  if (WHICH !== "mini") return null;
+  try {
+    const raw = window.localStorage.getItem(SHOP_KEY);
+    const v = raw ? JSON.parse(raw) : null;
+    return v && typeof v === "object" ? v : null;
+  } catch { return null; }
+}
+
+const SHOP = cachedShop();
+
+// عنوانِ پنجره هم همین است — تلگرام آن را بالای مینی‌اپ نشان
+// می‌دهد، و `index.html` یک عنوانِ مشترک برای هر چهار اپ دارد.
+try {
+  if (WHICH === "mini") {
+    document.title = (SHOP && SHOP.brand) || "اشتراک من";
+  }
+} catch { /* عنوان تزئین است، نه شرطِ بالاآمدن */ }
+
 /**
  * صفحه‌ی ورود، با وضعیتِ واقعی.
  *
@@ -48,7 +83,11 @@ const BOOT_LABEL = { mini: "اشتراک من", portal: "پنل نمایندگی
  * درصدِ ساختگی نشان نمی‌دهیم — دروغ است و کاربر هم می‌فهمد.
  */
 function Booting({ phase, note, onRetry }) {
-  return <Splash label={BOOT_LABEL} phase={phase} note={note} onRetry={onRetry} />;
+  return <Splash label={BOOT_LABEL} phase={phase} note={note}
+    onRetry={onRetry}
+    name={(SHOP && SHOP.brand) || ""}
+    logo={(SHOP && SHOP.logo) || ""}
+    neutral={WHICH === "mini"} />;
 }
 
 /**

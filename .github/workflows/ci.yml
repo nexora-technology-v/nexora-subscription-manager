@@ -57,6 +57,7 @@ jobs:
           python bot/test_wallet.py
           python bot/test_reminders.py
           python bot/test_tg.py
+          python bot/test_reseller.py
 
       - name: تست‌های پنل و ابزارها
         run: |

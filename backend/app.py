@@ -5236,6 +5236,23 @@ def _start_health_loop():
         pass
 
 
+def _selfheal_plan_costs():
+    """
+    پلن‌هایی که پیش از ۱.۸۶ ذخیره شده‌اند کفِ ذخیره‌شده ندارند.
+
+    حلقه‌ی `_selfheal` خطا را بی‌صدا می‌بلعد؛ این یکی پول است، پس
+    خودش می‌گوید.
+    """
+    if not BOT_DB.exists():
+        return None
+    try:
+        n = _refresh_plan_costs()
+    except Exception:
+        log.warning("همگام‌سازیِ کفِ پلن‌ها موقعِ بالاآمدن ناموفق", exc_info=True)
+        return None
+    return f"کفِ {n} پلن" if n else None
+
+
 @app.on_event("startup")
 def _selfheal():
     """
@@ -5252,6 +5269,7 @@ def _selfheal():
         ("bot-deps", _selfheal_bot_deps),
         ("bot-service", _selfheal_bot_service),
         ("cron", _selfheal_backup_cron),
+        ("plan-costs", _selfheal_plan_costs),
     ]
     done = []
     for name, fn in steps:
@@ -8151,6 +8169,13 @@ def billing_group_put(group_key: str, payload: dict, x_admin_password: str = Hea
              per_gb, period_days, period_start or None, settled_until or None,
              (payload.get("note") or "").strip()))
         con.commit()
+        # نرخ عوض شد → کفِ پلن‌های نماینده‌های این گروه هم. شکستش ذخیره‌ی
+        # نرخ را برنمی‌گرداند، ولی بی‌صدا هم نمی‌ماند.
+        try:
+            _refresh_plan_costs(group_key)
+        except Exception:
+            log.warning("همگام‌سازیِ کفِ پلن‌های گروه %s ناموفق", group_key,
+                        exc_info=True)
         return {"ok": True, "rates": clean, "per_gb": per_gb, "perGb": per_gb,
                 "periodDays": period_days, "periodStart": period_start,
                 "settledUntil": settled_until,
@@ -13560,6 +13585,28 @@ def portal_summary(t: dict = Depends(portal_tenant)):
 #       شکست خورد برمی‌گردد.
 # ═══════════════════════════════════════════════════════════
 
+def _panel_row(t):
+    """
+    ردیفی که اتصالِ x-ui این مستاجر از آن خوانده می‌شود: خودش اگر پنل
+    دارد، وگرنه ریشه.
+
+    همین قاعده در ربات هم هست (`bot/db.py: panel_source`) چون دو پردازه‌ی
+    جدایند. تا ۱.۸۵ فقط این‌جا بود و رباتِ نماینده به هیچ‌جا وصل
+    می‌شد. `test-admin-api` برابریِ این دو را می‌سنجد.
+    """
+    if t.get("panel_url"):
+        return t
+    con = _bot_conn()
+    try:
+        r = con.execute(
+            "SELECT * FROM tenants WHERE parent_id IS NULL "
+            "ORDER BY id LIMIT 1").fetchone() if con else None
+        return dict(r) if r else None
+    finally:
+        if con:
+            con.close()
+
+
 def _portal_xui(t):
     """
     اتصال x-ui برای این نماینده.
@@ -13573,17 +13620,7 @@ def _portal_xui(t):
     _m = _iu.module_from_spec(_sp)
     _sp.loader.exec_module(_m)
 
-    row = t if t.get("panel_url") else None
-    if row is None:
-        con = _bot_conn()
-        try:
-            r = con.execute(
-                "SELECT * FROM tenants WHERE parent_id IS NULL "
-                "ORDER BY id LIMIT 1").fetchone() if con else None
-            row = dict(r) if r else None
-        finally:
-            if con:
-                con.close()
+    row = _panel_row(t)
     if not row or not row.get("panel_url"):
         raise HTTPException(status_code=503,
                             detail="اتصال به پنل تنظیم نشده — با پشتیبانی تماس بگیرید")
@@ -14486,12 +14523,20 @@ def portal_bot_get(t: dict = Depends(portal_tenant)):
         st = json.loads(t.get("settings") or "{}")
     except (json.JSONDecodeError, TypeError):
         st = {}
+    cards = [c for c in (st.get("cards") or [])
+             if isinstance(c, dict) and c.get("number")
+             and c.get("active", True)]
     return {
         "hasBot": bool(t.get("bot_token")),
         "username": t.get("bot_username") or "",
         "brand": st.get("brand") or t.get("name") or "",
         "supportUsername": st.get("support_username") or "",
         "channelUsername": st.get("channel_username") or "",
+        # بدونِ این دو، ربات نمی‌فروشد یا فروخته‌اش به کسی نمی‌رسد —
+        # رابط باید همین را بگوید، نه اینکه نماینده خودش کشف کند.
+        "ownerLinked": bool(t.get("owner_tg_id")),
+        "activeCards": len(cards),
+        "hasGroup": bool(str(t.get("portal_group") or "").strip()),
     }
 
 
@@ -14578,6 +14623,119 @@ def portal_bot_del(t: dict = Depends(portal_tenant)):
     try:
         con.execute("UPDATE tenants SET bot_token=NULL, bot_username=NULL "
                     "WHERE id=?", (t["id"],))
+        con.commit()
+    finally:
+        con.close()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════
+#  کارتِ نماینده — تا ربات بتواند پول بگیرد
+#
+#  رباتِ نماینده کارت را از تنظیماتِ *خودش* می‌خواند
+#  (`ctx.s.get("cards")`)، و نماینده هیچ راهی برای نوشتنش نداشت.
+#  یعنی هر خرید با کارت و هر شارژِ کیف پول در رباتِ هر نماینده با
+#  «هنوز شماره کارتی ثبت نشده» می‌ایستاد — و چون کیف پول هم فقط با
+#  کارت شارژ می‌شود، رباتِ نماینده عملاً هیچ راهی برای گرفتنِ پول
+#  نداشت.
+# ═══════════════════════════════════════════════════════════
+
+#: شکلِ کارت همان است که پنلِ مالک می‌نویسد و `core.pick_card` می‌خواند
+PORTAL_MAX_CARDS = 10
+
+
+def _clean_card(c):
+    """یک کارت، یا None. فقط همین چهار کلید — فهرستِ مجاز، نه ممنوع."""
+    if not isinstance(c, dict):
+        return None
+    raw = str(c.get("number") or "").translate(
+        str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if not digits:
+        return None
+    if len(digits) != 16:
+        raise HTTPException(
+            status_code=400,
+            detail=f"شماره کارت باید ۱۶ رقم باشد — «{raw.strip()[:24]}» "
+                   f"{len(digits)} رقم است")
+    return {
+        "number": digits,
+        "holder": str(c.get("holder") or "").strip()[:60],
+        "bank": str(c.get("bank") or "").strip()[:40],
+        "active": bool(c.get("active", True)),
+    }
+
+
+@app.get("/api/portal/cards")
+def portal_cards_get(t: dict = Depends(portal_tenant)):
+    """کارت‌هایی که مشتریِ این فروشگاه به آن‌ها واریز می‌کند."""
+    st = _tenant_settings(t)
+    out = []
+    for c in (st.get("cards") or []):
+        if isinstance(c, dict) and c.get("number"):
+            out.append({"number": str(c.get("number")),
+                        "holder": c.get("holder") or "",
+                        "bank": c.get("bank") or "",
+                        "active": bool(c.get("active", True))})
+    return {"cards": out}
+
+
+@app.put("/api/portal/cards")
+def portal_cards_set(payload: dict, t: dict = Depends(portal_tenant)):
+    """
+    ذخیره‌ی کارت‌ها. فقط کلیدِ `cards` نوشته می‌شود؛ بقیه‌ی تنظیمات
+    دست نمی‌خورد.
+    """
+    rows = (payload or {}).get("cards")
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=400, detail="فهرست کارت نامعتبر است")
+    if len(rows) > PORTAL_MAX_CARDS:
+        raise HTTPException(status_code=400,
+                            detail=f"حداکثر {PORTAL_MAX_CARDS} کارت")
+    clean = [c for c in (_clean_card(r) for r in rows) if c]
+
+    st = _tenant_settings(t)
+    st["cards"] = clean
+    _save_tenant_settings(t["id"], st)
+    return {"ok": True, "count": len(clean),
+            "active": sum(1 for c in clean if c["active"])}
+
+
+# ── وصل‌شدنِ صاحبِ فروشگاه به رباتش ──────────────────────────────────
+#
+# رسید و هشدار به گروهِ مدیریت می‌روند و نماینده گروه ندارد. راهِ دوم
+# `owner_tg_id` است — ربات اگر گروه نباشد به پیویِ او می‌فرستد
+# (`Ctx.staff_chat`). این لینک همان را پر می‌کند: نماینده آن را در
+# تلگرام باز می‌کند، Start می‌زند، و ربات از خودِ تلگرام می‌فهمد او
+# کیست. نه عددی تایپ می‌شود، نه چیزی حدس زده می‌شود.
+
+#: هم‌اندازه‌ی `OWNER_CLAIM_MINUTES` در ربات
+PORTAL_CLAIM_MINUTES = 30
+
+
+@app.post("/api/portal/bot/link")
+def portal_bot_link(t: dict = Depends(portal_tenant)):
+    """لینکِ یک‌بارمصرفِ وصل‌شدن به ربات."""
+    if not t.get("bot_token") or not t.get("bot_username"):
+        raise HTTPException(status_code=409,
+                            detail="اول ربات خودتان را وصل کنید")
+    code = _secrets.token_urlsafe(18)
+    until = (datetime.now() + timedelta(minutes=PORTAL_CLAIM_MINUTES)
+             ).isoformat(timespec="seconds")
+    st = _tenant_settings(t)
+    st["owner_claim"] = {"code": code, "until": until}
+    _save_tenant_settings(t["id"], st)
+    return {"ok": True, "minutes": PORTAL_CLAIM_MINUTES,
+            "url": f"https://t.me/{t['bot_username']}?start=own_{code}"}
+
+
+@app.delete("/api/portal/bot/link")
+def portal_bot_unlink(t: dict = Depends(portal_tenant)):
+    """جداشدن — مثلاً وقتی گوشی یا حسابِ تلگرام عوض شده."""
+    con = _bot_rw()
+    try:
+        con.execute("UPDATE tenants SET owner_tg_id=NULL WHERE id=?",
+                    (t["id"],))
         con.commit()
     finally:
         con.close()
@@ -14876,28 +15034,84 @@ def portal_plan_cost(payload: dict, t: dict = Depends(portal_tenant)):
             out.append({"ready": False, "why": "عدد نامعتبر"})
             continue
 
-        base, why = _price_with_reason(gb, rates)
-        if base is None:
-            # صفر برنمی‌گردانیم: صفر یعنی «رایگان است» و این یعنی
-            # «نمی‌دانیم». نماینده باید تفاوتشان را ببیند.
-            out.append({"ready": False, "why": why})
-            continue
-
-        months = _months_from_days(days) if days else 1
-        cost, base2, per, extra = _line_amount(gb, rates, months, ips)
-        out.append({
-            "ready": True,
-            "cost": int(cost or 0),
-            "base": int(base2 or 0),
-            "perDevice": int(per or 0),
-            "extraDevices": int(extra or 0),
-            "months": int(months),
-            # پلنِ بی‌انقضا چند ماه می‌ماند معلوم نیست؛ یک ماه
-            # حساب می‌شود و همین‌جا گفته می‌شود که تخمین است.
-            "estimated": not days,
-        })
+        out.append(_plan_floor(rates, gb, days, ips))
 
     return {"rows": out}
+
+
+def _plan_floor(rates, gb, days, ips):
+    """
+    کفِ یک پلن — همان عددی که پیش‌نمایش نشان می‌دهد و همان که
+    موقعِ ذخیره در `plans.cost` می‌نشیند.
+
+    یک تابع، چون دو مصرف‌کننده دارد: اگر پیش‌نمایش و ذخیره هر کدام
+    جدا حساب کنند، نماینده یک کف می‌بیند و از اعتبارش کفِ دیگری کم
+    می‌شود.
+    """
+    base, why = _price_with_reason(gb, rates)
+    if base is None:
+        # صفر برنمی‌گردانیم: صفر یعنی «رایگان است» و این یعنی
+        # «نمی‌دانیم». نماینده باید تفاوتشان را ببیند.
+        return {"ready": False, "why": why}
+
+    months = _months_from_days(days) if days else 1
+    cost, base2, per, extra = _line_amount(gb, rates, months, ips)
+    return {
+        "ready": True,
+        "cost": int(cost or 0),
+        "base": int(base2 or 0),
+        "perDevice": int(per or 0),
+        "extraDevices": int(extra or 0),
+        "months": int(months),
+        # پلنِ بی‌انقضا چند ماه می‌ماند معلوم نیست؛ یک ماه
+        # حساب می‌شود و همین‌جا گفته می‌شود که تخمین است.
+        "estimated": not days,
+    }
+
+
+def _refresh_plan_costs(group_key=None):
+    """
+    `plans.cost` هر نماینده را از نرخِ **امروزِ** مالک دوباره می‌سازد.
+
+    کف موقعِ ذخیره‌ی پلن حساب می‌شود، ولی نرخ مالِ مالک است و هر وقت
+    بخواهد عوضش می‌کند. بدونِ این، نرخ بالا می‌رفت و ربات همچنان کفِ
+    قدیمی را از اعتبارِ نماینده‌ی پیش‌پرداخت کم می‌کرد — و پلن‌هایی که
+    پیش از ۱.۸۶ ذخیره شده‌اند اصلاً کفی نداشتند.
+
+    دو جا صدا زده می‌شود: بعد از ذخیره‌ی نرخِ یک گروه، و یک‌بار موقعِ
+    بالاآمدن. برمی‌گرداند: چند پلن عوض شد.
+    """
+    con = _bot_rw()
+    changed = 0
+    try:
+        cols = {r[1] for r in con.execute("PRAGMA table_info(plans)")}
+        if "cost" not in cols:
+            con.execute("ALTER TABLE plans ADD COLUMN cost INTEGER DEFAULT 0")
+        sql = ("SELECT * FROM tenants WHERE parent_id IS NOT NULL "
+               "AND COALESCE(portal_group,'')<>''")
+        args = ()
+        if group_key:
+            sql += " AND portal_group=?"
+            args = (group_key,)
+        for r in con.execute(sql, args).fetchall():
+            t = dict(r)
+            _conf, rates = _portal_rates(t)
+            for p in con.execute(
+                    "SELECT id, gb, days, ip_limit, cost FROM plans "
+                    "WHERE tenant_id=?", (t["id"],)).fetchall():
+                fl = _plan_floor(rates, int(p["gb"] or 0), int(p["days"] or 0),
+                                 int(p["ip_limit"] or 0)) if rates else {}
+                new = int(fl.get("cost") or 0) if fl.get("ready") else 0
+                if new != int(p["cost"] or 0):
+                    con.execute("UPDATE plans SET cost=? WHERE id=? AND tenant_id=?",
+                                (new, p["id"], t["id"]))
+                    changed += 1
+        con.commit()
+    finally:
+        con.close()
+    if changed:
+        log.info("کفِ %s پلنِ نماینده با نرخِ تازه همگام شد", changed)
+    return changed
 
 
 @app.put("/api/portal/bot-plans")
@@ -14921,6 +15135,7 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
     # این اعتبارسنجی **در بکند** است، نه فقط در رابط: رابط فقط
     # راحتی است و کسی می‌تواند درخواست را مستقیم بفرستد.
     mode, allowed, _per_gb = _portal_gb_policy(t)
+    _conf, rates = _portal_rates(t)
 
     clean = []
     for i, p in enumerate(plans):
@@ -14948,10 +15163,29 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
                 detail=f"حجم {gb} گیگ در نرخ‌های شما نیست — "
                        f"یکی از این‌ها را بردارید: {opts}")
 
+        # کف: همان عددی که پیش‌نمایش نشان داد.
+        #
+        # مالک گفته بود «باید از نرخ من بالاتر باشد تا سود کند». رابط
+        # سود و ضرر را نشان می‌داد ولی بکند هر قیمتی را می‌پذیرفت —
+        # حتی صفر. پلنِ زیرِ کف یعنی هر فروش از جیبِ خودِ نماینده، و
+        # این معمولاً اشتباهِ تایپی است نه تصمیم.
+        #
+        # کفِ نامعلوم (بدونِ گروه یا حجمِ بی‌نرخ) جلوی ذخیره را نمی‌گیرد
+        # — پیش‌نمایش همان‌جا گفته که معلوم نیست — ولی `cost` صفر
+        # می‌ماند و ربات این را در لاگ می‌گوید.
+        floor = _plan_floor(rates, gb, days, ip_limit) if rates else {"ready": False}
+        cost = int(floor.get("cost") or 0) if floor.get("ready") else 0
+        if cost and price < cost:
+            raise HTTPException(
+                status_code=400,
+                detail=f"قیمتِ «{name}» ({price:,} تومان) زیرِ کفِ شماست "
+                       f"({cost:,} تومان) — با این قیمت هر فروش ضرر است")
+
         clean.append({
             "id": p.get("id"), "name": name,
             "description": str(p.get("description") or "").strip()[:200],
             "gb": gb, "days": days, "ip_limit": ip_limit, "price": price,
+            "cost": cost,
             "is_active": 1 if p.get("is_active", True) else 0,
             # آزمایشی فقط دست مالک است: پلن رایگان یعنی کانفیگی که
             # کسی پولش را نمی‌دهد ولی روی سرور او ساخته می‌شود.
@@ -14961,6 +15195,11 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
 
     con = _bot_rw()
     try:
+        # ستونِ `cost` را مهاجرتِ ربات می‌سازد، ولی بعد از به‌روزرسانی
+        # پنل ممکن است چند ثانیه زودتر از ربات بالا بیاید — و آن‌وقت
+        # اولین ذخیره با «no such column» می‌افتاد.
+        if "cost" not in {r[1] for r in con.execute("PRAGMA table_info(plans)")}:
+            con.execute("ALTER TABLE plans ADD COLUMN cost INTEGER DEFAULT 0")
         keep = [int(p["id"]) for p in clean if p.get("id")]
         if keep:
             ph = ",".join("?" * len(keep))
@@ -14973,17 +15212,18 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
         for p in clean:
             vals = (p["name"], p["description"], p["gb"], p["days"],
                     p["ip_limit"], p["price"], p["is_active"], p["is_trial"],
-                    p["sort"])
+                    p["sort"], p["cost"])
             if p.get("id"):
                 con.execute(
                     "UPDATE plans SET name=?,description=?,gb=?,days=?,"
-                    "ip_limit=?,price=?,is_active=?,is_trial=?,sort_order=? "
-                    "WHERE id=? AND tenant_id=?", vals + (p["id"], t["id"]))
+                    "ip_limit=?,price=?,is_active=?,is_trial=?,sort_order=?,"
+                    "cost=? WHERE id=? AND tenant_id=?",
+                    vals + (p["id"], t["id"]))
             else:
                 con.execute(
                     "INSERT INTO plans (name,description,gb,days,ip_limit,"
-                    "price,is_active,is_trial,sort_order,tenant_id) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?)", vals + (t["id"],))
+                    "price,is_active,is_trial,sort_order,cost,tenant_id) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)", vals + (t["id"],))
         con.commit()
     except HTTPException:
         raise
@@ -15471,6 +15711,9 @@ def portal_me(t: dict = Depends(portal_tenant)):
     """
     نماینده‌ی وارد‌شده. عمداً کم: نه توکن ربات، نه رمز پنل x-ui.
     """
+    st = _tenant_settings(t)
+    cards = [c for c in (st.get("cards") or [])
+             if isinstance(c, dict) and c.get("number") and c.get("active", True)]
     return {
         "id": t["id"],
         "name": t["name"],
@@ -15480,6 +15723,11 @@ def portal_me(t: dict = Depends(portal_tenant)):
         "hasBot": bool(t.get("bot_token")),
         "botUsername": t.get("bot_username") or "",
         "logo": _logo_url(t["id"]),
+        # همان سه چیزی که `/api/portal/bot` می‌دهد — داشبورد با همین‌ها
+        # می‌گوید رباتِ وصل‌شده هنوز نمی‌فروشد (`saleGaps` در پرتال).
+        "ownerLinked": bool(t.get("owner_tg_id")),
+        "activeCards": len(cards),
+        "hasGroup": bool(str(t.get("portal_group") or "").strip()),
     }
 
 

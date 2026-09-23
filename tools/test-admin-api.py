@@ -1428,10 +1428,11 @@ check("پلن نماینده‌ی دیگر دست‌نخورده ماند",
 #
 # حجم باید یکی از پله‌های مجاز باشد، وگرنه قاعده‌ی تازه‌ی «حجم از
 # نرخِ مالک می‌آید» جلوترش را می‌گیرد و این تست دیگر آن چیزی را که
-# می‌خواهد نمی‌سنجد (جداییِ مستاجرها).
+# می‌خواهد نمی‌سنجد (جداییِ مستاجرها). قیمت هم به همان دلیل بالای
+# کف است — قیمتِ زیرِ کف حالا خودش رد می‌شود.
 AP.portal_bot_plans_save(
     {"plans": [{"id": _oid, "name": "دزدیده", "gb": 50, "days": 1,
-                "price": 1}]}, _T3)
+                "price": 300000}]}, _T3)
 _theirs2 = AP.portal_bot_plans(_other)
 check("شناسه‌ی پلن دیگری هم کاری نمی‌کند",
       _theirs2["plans"] and _theirs2["plans"][0]["name"] == "مال نماینده‌ی دیگر",
@@ -2616,10 +2617,11 @@ try:
     # ── اعتبارسنجی باید در بکند باشد، نه فقط در رابط ──
     _rates_as({}, [{"gb": 30, "price": 90000}, {"gb": 100, "price": 250000}])
 
+    # قیمت بالای بزرگ‌ترین کف است: این بلوک پله‌ها را می‌سنجد، نه قیمت
     def _save(gb):
         return app.portal_bot_plans_save(
             {"plans": [{"name": "پلن", "gb": gb, "days": 30,
-                        "ip_limit": 1, "price": 100000}]},
+                        "ip_limit": 1, "price": 300000}]},
             t={"id": tid, "portal_group": "g"})
 
     try:
@@ -4493,6 +4495,199 @@ check("وقتی x-ui جواب نمی‌دهد، دلیلش گزارش می‌ش�
 check("و فهرست نماینده‌ها همچنان می‌آید",
       _pl2.get("ready") is True and isinstance(_pl2.get("tenants"), list),
       "نخواندنِ گروه‌ها نباید کلِ صفحه را از کار بیندازد")
+
+
+# ═══════════════════════════════════════════════════════════
+head("فروشگاهِ نماینده · کارت، وصل‌شدن، کفِ پلن")
+
+# تا ۱.۸۵ رباتِ نماینده نه کارت داشت (پس پولی نمی‌گرفت)، نه راهی
+# برای رسیدنِ رسید به صاحبش، و بکند هر قیمتی را برای پلن می‌پذیرفت —
+# حتی زیرِ کفی که مالک از او می‌گیرد.
+
+_bw = _sq3.connect(str(AP.BOT_DB))
+try:
+    # فیکسچر جدولِ tenants را دستی ساخته؛ اسکیمای واقعی این ستون را دارد
+    try:
+        _bw.execute("ALTER TABLE tenants ADD COLUMN owner_tg_id INTEGER")
+    except Exception:
+        pass
+    _bw.execute("UPDATE tenants SET portal_group='goroh-a', owner_tg_id=NULL, "
+                "bot_token='555666777:DDHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw', "
+                "bot_username='shop_bot', settings=? WHERE portal_slug='hossein'",
+                (json.dumps({"brand": "فروشگاه"}, ensure_ascii=False),))
+    _bw.commit()
+finally:
+    _bw.close()
+_bcx = AP._billing_conn()
+try:
+    _bcx.execute("INSERT OR REPLACE INTO group_config (group_key,label,billable,"
+                 "rates) VALUES (?,?,?,?)",
+                 ("goroh-a", "گروه الف", 1,
+                  json.dumps([{"gb": 50, "price": 100000, "perDevice": 20000}])))
+    _bcx.commit()
+finally:
+    _bcx.close()
+
+_TS = AP._tenant_by_slug("hossein")
+_st0 = AP.portal_bot_get(_TS)
+check("وضعیت می‌گوید صاحب وصل نیست و کارتی نیست",
+      _st0.get("ownerLinked") is False and _st0.get("activeCards") == 0
+      and _st0.get("hasGroup") is True, str(_st0)[:90])
+
+# ── کارت ──
+try:
+    AP.portal_cards_set({"cards": [{"number": "6037 9911 1111 111"}]}, _TS)
+    _c15 = False
+except Exception as e:
+    _c15 = getattr(e, "status_code", 0) == 400 and "۱۶" in str(e.detail)
+check("کارتِ ۱۵ رقمی رد می‌شود و می‌گوید چرا", _c15)
+
+_cr = AP.portal_cards_set({"cards": [
+    {"number": "۶۰۳۷-۹۹۱۱-۲۲۲۲-۳۳۳۳", "holder": "حسین", "bank": "ملی",
+     "active": True, "panel_pass": "نفوذ"},
+    {"number": "6219861000000000", "active": False},
+    {"number": ""}]}, _TS)
+check("کارت با رقمِ فارسی پذیرفته می‌شود",
+      _cr.get("count") == 2 and _cr.get("active") == 1, str(_cr))
+_cg = AP.portal_cards_get(AP._tenant_by_slug("hossein"))["cards"]
+check("و به رقمِ لاتینِ بی‌خط ذخیره می‌شود",
+      _cg and _cg[0]["number"] == "6037991122223333", str(_cg[:1]))
+check("کلیدِ خارج از فهرستِ مجاز ننشست",
+      all(set(c) == {"number", "holder", "bank", "active"} for c in _cg))
+_js2 = AP._tenant_settings(AP._tenant_by_slug("hossein"))
+check("و بقیه‌ی تنظیمات دست نخورد", _js2.get("brand") == "فروشگاه")
+check("کارتی که ربات می‌خواند همین است",
+      __import__("core").pick_card(_js2.get("cards"))["number"]
+      == "6037991122223333",
+      "core.pick_card غیرفعال را کنار می‌گذارد")
+
+try:
+    AP.portal_cards_set({"cards": [{"number": "6037991122223333"}] * 11}, _TS)
+    _c11 = False
+except Exception as e:
+    _c11 = getattr(e, "status_code", 0) == 400
+check("بیش از ۱۰ کارت رد می‌شود", _c11)
+
+# ── لینکِ وصل‌شدن ──
+_lk = AP.portal_bot_link(AP._tenant_by_slug("hossein"))
+_code = AP._tenant_settings(AP._tenant_by_slug("hossein")).get(
+    "owner_claim", {}).get("code")
+check("لینکِ وصل‌شدن به رباتِ خودش است",
+      _lk["url"].startswith("https://t.me/shop_bot?start=own_"), _lk["url"][:40])
+check("و کدِ داخلش همان است که ربات می‌سنجد",
+      bool(_code) and _lk["url"].endswith("own_" + _code))
+check("کد برای start تلگرام مجاز است (حداکثر ۶۴، فقط A-Za-z0-9_-)",
+      len("own_" + _code) <= 64
+      and all(ch.isalnum() or ch in "_-" for ch in "own_" + _code))
+
+_bw = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bw.execute("UPDATE tenants SET owner_tg_id=4242 WHERE portal_slug='hossein'")
+    _bw.commit()
+finally:
+    _bw.close()
+check("بعد از وصل‌شدن، وضعیت می‌گوید وصل است",
+      AP.portal_bot_get(AP._tenant_by_slug("hossein"))["ownerLinked"] is True)
+AP.portal_bot_unlink(AP._tenant_by_slug("hossein"))
+check("جداشدن صاحب را پاک می‌کند",
+      AP.portal_bot_get(AP._tenant_by_slug("hossein"))["ownerLinked"] is False)
+
+_bw = _sq3.connect(str(AP.BOT_DB))
+try:
+    _bw.execute("UPDATE tenants SET bot_username=NULL WHERE portal_slug='hossein'")
+    _bw.commit()
+finally:
+    _bw.close()
+try:
+    AP.portal_bot_link(AP._tenant_by_slug("hossein"))
+    _nob = False
+except Exception as e:
+    _nob = getattr(e, "status_code", 0) == 409
+check("بی‌ربات لینکی ساخته نمی‌شود", _nob)
+
+# ── کفِ پلن: پیش‌نمایش و ذخیره یک عدد ──
+_TS = AP._tenant_by_slug("hossein")
+_pv = AP.portal_plan_cost({"rows": [{"gb": 50, "days": 30, "ip_limit": 2}]},
+                          _TS)["rows"][0]
+check("پیش‌نمایش کف را می‌دهد", _pv.get("cost") == 120000, str(_pv))
+
+try:
+    AP.portal_bot_plans_save({"plans": [{"name": "ارزان", "gb": 50, "days": 30,
+                                         "ip_limit": 2, "price": 110000}]}, _TS)
+    _below = False
+    _bmsg = ""
+except Exception as e:
+    _below = getattr(e, "status_code", 0) == 400
+    _bmsg = str(getattr(e, "detail", ""))
+check("قیمتِ زیرِ کف ذخیره نمی‌شود", _below)
+check("و پیام هر دو عدد را می‌گوید", "110,000" in _bmsg and "120,000" in _bmsg,
+      _bmsg[:80])
+
+AP.portal_bot_plans_save({"plans": [{"name": "سودده", "gb": 50, "days": 30,
+                                     "ip_limit": 2, "price": 150000}]}, _TS)
+_bw = _sq3.connect(str(AP.BOT_DB))
+try:
+    _cost = _bw.execute("SELECT cost FROM plans WHERE tenant_id=? AND name=?",
+                        (_TS["id"], "سودده")).fetchone()
+finally:
+    _bw.close()
+check("کفِ ذخیره‌شده همان کفِ پیش‌نمایش است",
+      _cost is not None and _cost[0] == _pv.get("cost"),
+      f"ذخیره {_cost[0] if _cost else '—'} · پیش‌نمایش {_pv.get('cost')}")
+
+# مالک نرخ را عوض می‌کند → کفِ ذخیره‌شده هم باید عوض شود، وگرنه ربات
+# کفِ کهنه را از اعتبارِ نماینده‌ی پیش‌پرداخت کم می‌کند.
+AP.billing_group_put("goroh-a", {"label": "گروه الف", "billable": True,
+                                 "rates": [{"gb": 50, "price": 130000,
+                                            "perDevice": 20000}]},
+                     x_admin_password="testpw")
+_bw = _sq3.connect(str(AP.BOT_DB))
+try:
+    _cost2 = _bw.execute("SELECT cost FROM plans WHERE tenant_id=? AND name=?",
+                         (_TS["id"], "سودده")).fetchone()
+    # و پلنی که پیش از ۱.۸۶ ذخیره شده (کف صفر) با بالاآمدن پر می‌شود
+    _bw.execute("UPDATE plans SET cost=0 WHERE tenant_id=? AND name=?",
+                (_TS["id"], "سودده"))
+    _bw.commit()
+finally:
+    _bw.close()
+check("تغییرِ نرخ کفِ پلن‌های گروه را همگام می‌کند",
+      _cost2 is not None and _cost2[0] == 150000,
+      f"{_cost2[0] if _cost2 else '—'} (باید ۱۵۰٬۰۰۰ باشد)")
+
+_n = AP._refresh_plan_costs()
+_bw = _sq3.connect(str(AP.BOT_DB))
+try:
+    _cost3 = _bw.execute("SELECT cost FROM plans WHERE tenant_id=? AND name=?",
+                         (_TS["id"], "سودده")).fetchone()
+finally:
+    _bw.close()
+check("پلنِ بی‌کف با همگام‌سازیِ آغاز پر می‌شود",
+      _n >= 1 and _cost3 and _cost3[0] == 150000, f"{_n} پلن · {_cost3}")
+
+# ── برابری: کدام پنل؟ ──
+#
+# بکند (`_panel_row`) و ربات (`panel_source`) دو پیاده‌سازیِ یک
+# قاعده‌اند. تا ۱.۸۵ فقط اولی وجود داشت.
+import db as _PBD                                       # noqa: E402
+_bw = _sq3.connect(str(AP.BOT_DB))
+_bw.row_factory = _sq3.Row
+try:
+    _rootp = dict(_bw.execute("SELECT * FROM tenants WHERE parent_id IS NULL "
+                              "ORDER BY id LIMIT 1").fetchone())
+finally:
+    _bw.close()
+_cases = [
+    ("نماینده‌ی بی‌پنل", dict(_TS, panel_url=None, parent_id=_rootp["id"])),
+    ("نماینده با پنلِ خودش", dict(_TS, panel_url="http://own:1",
+                                  parent_id=_rootp["id"])),
+    ("خودِ مالک", _rootp),
+]
+_PBD.DB_PATH = Path(str(AP.BOT_DB))
+for _nm, _tt in _cases:
+    _a = (AP._panel_row(_tt) or {}).get("id"), (AP._panel_row(_tt) or {}).get("panel_url")
+    _b = (_PBD.panel_source(_tt) or {}).get("id"), (_PBD.panel_source(_tt) or {}).get("panel_url")
+    check(f"پنل · {_nm}: بکند و ربات یکی می‌گویند", _a == _b, f"{_a} / {_b}")
 
 
 # شمارنده نباید جای دیگری بازنویسی شده باشد.

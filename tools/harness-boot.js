@@ -346,6 +346,19 @@
 
   var FAKE_LOGO = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiNGNTlFMEIiLz48dGV4dCB4PSIzMiIgeT0iNDIiIGZvbnQtc2l6ZT0iMzAiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXdlaWdodD0iODAwIiBmaWxsPSIjMDYwOTBGIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5IPC90ZXh0Pjwvc3ZnPg==";
 
+  // آمادگیِ فروشِ ربات. نماینده‌ی جاافتاده کارت دارد و وصل است؛
+  // نماینده‌ی تازه (`?plans=0`) هیچ‌کدام — همان حالتی که ربات
+  // نمی‌فروشد و تا امروز در هارنس هیچ‌وقت دیده نمی‌شد.
+  var P_CARDS = NEW_RESELLER ? [] : [
+    { number: "6037991122223333", holder: "حسین دهلگی", bank: "ملی", active: true },
+    { number: "6219861044445555", holder: "حسین دهلگی", bank: "سامان", active: false },
+  ];
+  var P_LINKED = !NEW_RESELLER;
+  function pReady() {
+    return { ownerLinked: P_LINKED, hasGroup: true,
+             activeCards: P_CARDS.filter(function (c) { return c.active; }).length };
+  }
+
   var P_ME = { ok: true, id: 2, name: "حسین", slug: "hossein",
                credit: 1200000, discount: 0, hasBot: true,
                botUsername: "hossein_vpn_bot", logo: FAKE_LOGO };
@@ -965,7 +978,20 @@ var D_CODES = { ready: true,
                  months: months, estimated: !days };
       }) };
     }
-    if (u.indexOf("/portal/me") >= 0) return P_ME;
+    if (u.indexOf("/portal/me") >= 0) return Object.assign({}, P_ME, pReady());
+    if (u.indexOf("/portal/cards") >= 0) {
+      if (method === "PUT") {
+        P_CARDS = ((body || {}).cards || []).filter(function (c) { return c && c.number; });
+        return { ok: true, count: P_CARDS.length,
+                 active: P_CARDS.filter(function (c) { return c.active; }).length };
+      }
+      return { cards: P_CARDS };
+    }
+    if (u.indexOf("/portal/bot/link") >= 0) {
+      if (method === "DELETE") { P_LINKED = false; return { ok: true }; }
+      return { ok: true, minutes: 30,
+               url: "https://t.me/hossein_vpn_bot?start=own_Hx7Kq2mZpL9wR4tY" };
+    }
     if (u.indexOf("/portal/summary") >= 0) return P_SUMMARY;
     if (u.indexOf("/portal/configs") >= 0) return P_CONFIGS;
     if (u.indexOf("/portal/stats") >= 0) return P_STATS;
@@ -978,7 +1004,11 @@ var D_CODES = { ready: true,
     }
     if (u.indexOf("/portal/plans") >= 0) return P_PLANS;
     if (u.indexOf("/portal/orders") >= 0) return portalOrders(u);
-    if (u.indexOf("/portal/bot") >= 0) return { hasBot: true, username: "hossein_vpn_bot" };
+    if (u.indexOf("/portal/bot") >= 0) {
+      return Object.assign({ hasBot: true, username: "hossein_vpn_bot",
+                             brand: "وی‌پی‌ان حسین", supportUsername: "hsupport",
+                             channelUsername: "" }, pReady());
+    }
     if (u.indexOf("/bot/inbounds") >= 0) return INBOUNDS;
     if (u.indexOf("/tenant/portal-list") >= 0) return PORTAL_LIST;
     if (u.indexOf("/billing/clients") >= 0) return CLIENTS;
