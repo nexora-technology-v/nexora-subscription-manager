@@ -9,6 +9,7 @@ import {
   Activity, AlertTriangle, CheckCircle2, HelpCircle, Loader2, Network, Package, RefreshCw, Save, Search, Server, ShieldCheck, TrendingUp, Users, XCircle, Zap,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
+import { isoToJalaliStamp } from "../ui/jalali";
 import { errText, esc0, faNum, fmtSize, fmtUptime, toFaDigits } from "../lib/format";
 import { usePolling } from "../lib/hooks";
 import { ConfirmModal, CountChip, EmptyState, Field, InfoBox, LongList, Msg, NumberInput, PageSkeleton, SectionHead, Segmented, Toggle } from "../ui/index";
@@ -38,42 +39,67 @@ export function Gauge({ pct, color }) {
   );
 }
 
+/* مشکل‌ها اول. ترتیبِ بکند ترتیبِ بخش‌هاست (پردازنده، حافظه، …)، پس
+   سرویسِ خاموش یا به‌روزرسانیِ امنیتی ته‌ی دوازده کارت می‌نشست. */
+const LEVEL_RANK = { crit: 0, warn: 1 };
+export function byLevel(metrics) {
+  return (metrics || []).map((m, i) => [m, i])
+    .sort((a, b) => ((LEVEL_RANK[a[0].level] ?? 2) - (LEVEL_RANK[b[0].level] ?? 2)) || a[1] - b[1])
+    .map((x) => x[0]);
+}
+
 export function MetricCard({ m }) {
   const [open, setOpen] = useState(false);
   const s = LEVEL_STYLE[m.level] || LEVEL_STYLE.ok;
+  const bad = m.level === "warn" || m.level === "crit";
   const val = m.value === null || m.value === undefined
     ? "—"
     : (typeof m.value === "number" ? faNum(m.value) : m.value);
 
+  /* «چرا مهم است؟» زیرِ هر دوازده کارت یک خطِ آبیِ تکراری بود و هر
+     کارت را ۲۴ پیکسل بلندتر می‌کرد. حالا یک آیکونِ کنارِ عنوان است؛ و
+     برای کارتِ مشکل‌دار «چه کار کنم» بی‌کلیک دیده می‌شود — همان لحظه
+     است که لازمش داری. */
   return (
-    <div className="fx-card p-4" style={{ borderColor: m.level === "ok" ? "var(--border)" : s.bd }}>
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <span className="text-[13px]" style={{ color: "var(--dim)" }}>{m.title}</span>
-        <s.Icon size={14} style={{ color: s.c, flexShrink: 0 }} />
+    <div className={`fx-card fx-metric p-3.5 ${bad ? "bad" : ""}`}
+      style={{ borderColor: m.level === "ok" ? "var(--border)" : s.bd, "--m-tone": s.c }}>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <s.Icon size={13} style={{ color: s.c, flexShrink: 0 }} />
+        {/* دو خط، نه بریده: روی گوشی «خطاهای Xray (۳۰ دقیقه اخیر)» به «خطاهای X…» می‌رسید */}
+        <span className="text-[12.5px] leading-snug min-w-0 fx-clamp2" style={{ color: "var(--dim)" }}>{m.title}</span>
+        {(m.why || m.hint) && (
+          <button title={open ? "بستن راهنما" : "چرا مهم است؟"} aria-label="چرا مهم است؟"
+            aria-expanded={open} onClick={() => setOpen(!open)}
+            className="fx-metric-help mr-auto" style={{ color: open ? "var(--accent-2)" : "var(--muted)" }}>
+            <HelpCircle size={13} />
+          </button>
+        )}
       </div>
 
-      <div className="flex items-baseline gap-1.5 mb-2">
-        <span className="text-[24px] font-bold" style={{ color: s.c, fontFamily: "var(--mono)" }}>
+      <div className="flex items-baseline gap-1.5 mb-1.5">
+        <span className="text-[21px] font-bold leading-tight" style={{ color: s.c, fontFamily: "var(--mono)" }}>
           {val}
         </span>
-        {m.unit && <span className="text-[13px]" style={{ color: "var(--muted)" }}>{m.unit}</span>}
+        {m.unit && <span className="text-[12px]" style={{ color: "var(--muted)" }}>{m.unit}</span>}
       </div>
 
       {m.pct !== null && m.pct !== undefined && <Gauge pct={m.pct} color={s.c} />}
 
       {errText(m.detail) && (
-        <div className="text-[12px] mt-2 leading-relaxed" style={{ color: "var(--muted)" }}>
+        <div className="text-[11.5px] mt-1.5 leading-relaxed" style={{ color: "var(--muted)" }}>
           {errText(m.detail)}
+        </div>
+      )}
+
+      {bad && m.hint && !open && (
+        <div className="text-[11.5px] mt-2 pt-2 flex gap-1.5" style={{ borderTop: "1px solid var(--border)" }}>
+          <span style={{ color: "var(--muted)" }} className="shrink-0">چه کار کنم:</span>
+          <span dir="auto" className="break-all" style={{ fontFamily: "var(--mono)", color: "var(--accent-2)" }}>{m.hint}</span>
         </div>
       )}
 
       {(m.why || m.hint) && (
         <>
-          <button title="راهنما" onClick={() => setOpen(!open)}
-            className="text-[12px] mt-2.5 flex items-center gap-1"
-            style={{ color: "var(--accent-2)" }}>
-            <HelpCircle size={11} /> {open ? "بستن" : "چرا مهم است؟"}
-          </button>
           {open && (
             <div className="mt-2 rounded-xl p-3 text-[12px] leading-relaxed"
               style={{ background: "var(--hair-1)", color: "var(--dim)" }}>
@@ -813,10 +839,16 @@ export function MaintenanceCard({ password }) {
 
       <div className="mt-3.5 pt-3 text-[13px] leading-relaxed"
         style={{ borderTop: "1px solid var(--border)", color: "var(--muted)" }}>
+        {/* تاریخِ میلادیِ خام این‌جا می‌نشست («2026-09-26 ساعت 05:00:00») و
+            در راست‌به‌چپ به «26-09-2026» برمی‌گشت */}
         {m.enabled && m.nextRun
-          ? <>اجرای بعدی: <b style={{ color: "var(--dim)" }}>{m.nextRun.replace("T", " ساعت ")}</b></>
+          ? <>اجرای بعدی: <b style={{ color: "var(--dim)" }}>{isoToJalaliStamp(m.nextRun)}</b></>
           : "زمان‌بندی خاموش است."}
-        {m.lastResult && <div className="mt-1">آخرین بار: {m.lastResult}</div>}
+        {m.lastResult && (
+          <div className="mt-1">
+            آخرین بار{m.lastRun ? ` (${isoToJalaliStamp(m.lastRun)})` : ""}: {m.lastResult}
+          </div>
+        )}
         {typeof m.activeConnections === "number" && (
           <div className="mt-1">الان {faNum(m.activeConnections)} اتصال فعال است.</div>
         )}
@@ -944,8 +976,8 @@ export function MonitorSection({ password }) {
       </div>
 
       {/* سنجه‌ها */}
-      <div className="fx-g4 grid grid-cols-3 gap-3 mb-4">
-        {(d?.metrics || []).map((m) => <MetricCard key={m.key} m={m} />)}
+      <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
+        {byLevel(d?.metrics).map((m) => <MetricCard key={m.key} m={m} />)}
       </div>
 
       {/* شبکه */}

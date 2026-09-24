@@ -540,36 +540,2689 @@
     }),
   };
 
+  /* مانیتورینگِ سرور — عیناً خروجیِ monitor.snapshot() (test-contract می‌سنجد).
+     با توابعِ خودِ monitor.py ساخته شده (tools/…/p_hmon)، چون روی
+     ویندوز همه‌ی بخش‌های لینوکسی خالی‌اند. نسخه‌ی قبلی summary.nodes و
+     ram داشت که در بکند نیست؛ صفحه در هارنس هیچ‌وقت شکلِ واقعی‌اش را نشان نداد. */
   var MONITOR = {
-    ready: true, summary: { nodes: 3, online: 3, cpu: 34, ram: 61, disk: 48 },
-    nodes: mk(3, function (i) {
-      return { id: i + 1, name: ["ایران-۱", "آلمان-۱", "فنلاند-۱"][i],
-               online: true, cpu: [22, 44, 36][i], ram: [51, 68, 64][i],
-               disk: [40, 55, 49][i], up: "۱۲ روز" };
-    }),
+    "level": "crit",
+    "summary": "۱ مشکل جدی و ۲ هشدار",
+    "headline": "به‌روزرسانی در انتظار",
+    "metrics": [
+      {
+        "key": "cpu",
+        "title": "مصرف پردازنده",
+        "value": 38.4,
+        "unit": "٪",
+        "level": "ok",
+        "detail": "بار ۱ دقیقه: ۱.۵۴ روی ۴ هسته",
+        "why": "بالای ۷۵٪ یعنی سرور دارد به سقف می‌رسد و تأخیر کاربران بالا می‌رود. بالای ۹۲٪ یعنی همین حالا کند شده.",
+        "hint": "با «سنگین‌ترین پردازه‌ها» پایین ببینید چه چیزی مصرف می‌کند.",
+        "pct": 38.4,
+        "extra": {
+          "cores": 4,
+          "load": [
+            1.54,
+            1.42,
+            1.28
+          ]
+        }
+      },
+      {
+        "key": "memory",
+        "title": "حافظه",
+        "value": 61.2,
+        "unit": "٪",
+        "level": "ok",
+        "detail": "۴.۹ GB از ۸.۰ GB — ۳.۱ GB آزاد",
+        "why": "بالای ۸۵٪ یعنی فضای مانور کم شده. اگر پر شود، هسته پردازه‌ها را می‌کشد و Xray هم می‌تواند قربانی شود — یعنی قطعی سرویس.",
+        "hint": "اگر همیشه بالاست، یا مصرف واقعی زیاد است یا نشتی حافظه دارید.",
+        "pct": 61.2,
+        "extra": {
+          "total": 8589934592,
+          "used": 5257039970,
+          "available": 3332894622
+        }
+      },
+      {
+        "key": "disk:/",
+        "title": "دیسک /",
+        "value": 47.5,
+        "unit": "٪",
+        "level": "ok",
+        "detail": "۳۸.۰ GB از ۸۰.۰ GB — ۴۲.۰ GB آزاد",
+        "why": "دیسک پر یعنی لاگ نوشته نمی‌شود، دیتابیس ربات خطا می‌دهد و بک‌آپ ساخته نمی‌شود. زیر ۸٪ آزاد وارد منطقه‌ی خطر می‌شوید.",
+        "hint": "بزرگ‌ترین مصرف‌کننده معمولاً لاگ‌هاست: journalctl --vacuum-size=200M",
+        "pct": 47.5,
+        "extra": {
+          "mount": "/",
+          "total": 85899345920,
+          "used": 40802189312
+        }
+      },
+      {
+        "key": "throughput",
+        "title": "ترافیک لحظه‌ای",
+        "value": 312.6,
+        "unit": "Mbps",
+        "level": "ok",
+        "detail": "دریافت ۲۳.۱ MB/s · ارسال ۱۴.۲ MB/s",
+        "why": "این همان چیزی است که مشتری‌های شما دارند مصرف می‌کنند. اگر به سقف پورت سرور (معمولاً ۱ گیگابیت) نزدیک شود، سرعت همه افت می‌کند.",
+        "hint": "اگر مدام نزدیک سقف است، یا کاربر را کم کنید یا پورت بالاتر بگیرید.",
+        "pct": 31,
+        "extra": {
+          "rx": 24226500,
+          "tx": 14848500,
+          "interfaces": [
+            {
+              "name": "eth0",
+              "rx": 24226500,
+              "tx": 14848500,
+              "rxTotal": 9812000000000,
+              "txTotal": 6120000000000
+            }
+          ]
+        }
+      },
+      {
+        "key": "established",
+        "title": "اتصال‌های برقرار",
+        "value": 1284,
+        "unit": "",
+        "level": "ok",
+        "detail": "۱۲۸۴ اتصال TCP/UDP",
+        "why": "تقریباً برابر با تعداد نشست‌های فعال مشتری‌ها.",
+        "hint": "",
+        "pct": null,
+        "extra": {}
+      },
+      {
+        "key": "xray",
+        "title": "سرویس Xray",
+        "value": "روشن",
+        "unit": "",
+        "level": "ok",
+        "detail": "وضعیت systemd: active",
+        "why": "اگر Xray خاموش باشد هیچ کاربری وصل نمی‌شود، حتی اگر پنل و ربات سالم کار کنند.",
+        "hint": "",
+        "pct": null,
+        "extra": {}
+      },
+      {
+        "key": "xray_errors",
+        "title": "خطاهای Xray (۳۰ دقیقه اخیر)",
+        "value": 3,
+        "unit": "",
+        "level": "ok",
+        "detail": "۳ خط هشدار یا خطا",
+        "why": "چند خطای پراکنده طبیعی است. انبوه خطا یعنی یا کانفیگ مشکل دارد یا سرور خارج در دسترس نیست.",
+        "hint": "برای دیدن: journalctl -u xray -p warning --since -30min",
+        "pct": null,
+        "extra": {
+          "lines": [
+            "Sep 24 20:11:02 xray[812]: [Warning] failed to handler mux client connection > context canceled"
+          ]
+        }
+      },
+      {
+        "key": "updates",
+        "title": "به‌روزرسانی در انتظار",
+        "value": 14,
+        "unit": "بسته",
+        "level": "crit",
+        "detail": "۱۴ بسته — ۲ مورد امنیتی",
+        "why": "به‌روزرسانی امنیتی یعنی حفره‌ای عمومی شده که کد سوءاستفاده‌اش هم معمولاً منتشر است. روی سروری که پورت باز به اینترنت دارد، این فوری‌ترین ریسک است.",
+        "hint": "apt update && apt upgrade",
+        "pct": null,
+        "extra": {
+          "security": 2,
+          "sample": [
+            "openssl",
+            "libssl3",
+            "openssh-server",
+            "curl"
+          ]
+        }
+      },
+      {
+        "key": "ssh_failed",
+        "title": "ورود ناموفق SSH (۲۴ ساعت)",
+        "value": 412,
+        "unit": "",
+        "level": "warn",
+        "detail": "۴۱۲ تلاش ناموفق از ۳۷ آدرس",
+        "why": "روی هر سرور عمومی چند صد تلاش خودکار در روز عادی است. عدد خیلی بالا از یک IP یعنی هدف‌گیری مشخص.",
+        "hint": "ورود با رمز را ببندید و فقط کلید بگذارید؛ یا fail2ban نصب کنید.",
+        "pct": null,
+        "extra": {
+          "topIps": [
+            {
+              "ip": "203.0.113.11",
+              "n": 96
+            },
+            {
+              "ip": "203.0.113.34",
+              "n": 71
+            },
+            {
+              "ip": "203.0.113.172",
+              "n": 40
+            }
+          ]
+        }
+      },
+      {
+        "key": "fail2ban",
+        "title": "fail2ban",
+        "value": "فعال",
+        "unit": "",
+        "level": "ok",
+        "detail": "جیل‌ها: sshd",
+        "why": "fail2ban آدرس‌هایی را که مکرر شکست می‌خورند خودکار می‌بندد.",
+        "hint": "",
+        "pct": null,
+        "extra": {}
+      },
+      {
+        "key": "firewall",
+        "title": "فایروال",
+        "value": "روشن",
+        "unit": "",
+        "level": "ok",
+        "detail": "Status: active",
+        "why": "فایروال خاموش یعنی هر پورتی که سهواً باز شود، مستقیم از اینترنت در دسترس است.",
+        "hint": "",
+        "pct": null,
+        "extra": {}
+      },
+      {
+        "key": "conn:192.0.2.9",
+        "title": "اتصال زیاد از 192.0.2.9",
+        "value": 214,
+        "unit": "اتصال",
+        "level": "warn",
+        "detail": "۱۶.۷٪ از کل اتصال‌های سرور",
+        "why": "یک IP با این سهم یعنی یا یک حساب بین چند نفر پخش شده یا کسی دارد سرور را اسکن می‌کند.",
+        "hint": "ss -tunp | grep 192.0.2.9",
+        "pct": null,
+        "extra": {}
+      }
+    ],
+    "sections": {
+      "cpu": [
+        {
+          "key": "cpu",
+          "title": "مصرف پردازنده",
+          "value": 38.4,
+          "unit": "٪",
+          "level": "ok",
+          "detail": "بار ۱ دقیقه: ۱.۵۴ روی ۴ هسته",
+          "why": "بالای ۷۵٪ یعنی سرور دارد به سقف می‌رسد و تأخیر کاربران بالا می‌رود. بالای ۹۲٪ یعنی همین حالا کند شده.",
+          "hint": "با «سنگین‌ترین پردازه‌ها» پایین ببینید چه چیزی مصرف می‌کند.",
+          "pct": 38.4,
+          "extra": {
+            "cores": 4,
+            "load": [
+              1.54,
+              1.42,
+              1.28
+            ]
+          }
+        }
+      ],
+      "memory": [
+        {
+          "key": "memory",
+          "title": "حافظه",
+          "value": 61.2,
+          "unit": "٪",
+          "level": "ok",
+          "detail": "۴.۹ GB از ۸.۰ GB — ۳.۱ GB آزاد",
+          "why": "بالای ۸۵٪ یعنی فضای مانور کم شده. اگر پر شود، هسته پردازه‌ها را می‌کشد و Xray هم می‌تواند قربانی شود — یعنی قطعی سرویس.",
+          "hint": "اگر همیشه بالاست، یا مصرف واقعی زیاد است یا نشتی حافظه دارید.",
+          "pct": 61.2,
+          "extra": {
+            "total": 8589934592,
+            "used": 5257039970,
+            "available": 3332894622
+          }
+        }
+      ],
+      "disk": [
+        {
+          "key": "disk:/",
+          "title": "دیسک /",
+          "value": 47.5,
+          "unit": "٪",
+          "level": "ok",
+          "detail": "۳۸.۰ GB از ۸۰.۰ GB — ۴۲.۰ GB آزاد",
+          "why": "دیسک پر یعنی لاگ نوشته نمی‌شود، دیتابیس ربات خطا می‌دهد و بک‌آپ ساخته نمی‌شود. زیر ۸٪ آزاد وارد منطقه‌ی خطر می‌شوید.",
+          "hint": "بزرگ‌ترین مصرف‌کننده معمولاً لاگ‌هاست: journalctl --vacuum-size=200M",
+          "pct": 47.5,
+          "extra": {
+            "mount": "/",
+            "total": 85899345920,
+            "used": 40802189312
+          }
+        }
+      ],
+      "network": [
+        {
+          "key": "throughput",
+          "title": "ترافیک لحظه‌ای",
+          "value": 312.6,
+          "unit": "Mbps",
+          "level": "ok",
+          "detail": "دریافت ۲۳.۱ MB/s · ارسال ۱۴.۲ MB/s",
+          "why": "این همان چیزی است که مشتری‌های شما دارند مصرف می‌کنند. اگر به سقف پورت سرور (معمولاً ۱ گیگابیت) نزدیک شود، سرعت همه افت می‌کند.",
+          "hint": "اگر مدام نزدیک سقف است، یا کاربر را کم کنید یا پورت بالاتر بگیرید.",
+          "pct": 31,
+          "extra": {
+            "rx": 24226500,
+            "tx": 14848500,
+            "interfaces": [
+              {
+                "name": "eth0",
+                "rx": 24226500,
+                "tx": 14848500,
+                "rxTotal": 9812000000000,
+                "txTotal": 6120000000000
+              }
+            ]
+          }
+        },
+        {
+          "key": "established",
+          "title": "اتصال‌های برقرار",
+          "value": 1284,
+          "unit": "",
+          "level": "ok",
+          "detail": "۱۲۸۴ اتصال TCP/UDP",
+          "why": "تقریباً برابر با تعداد نشست‌های فعال مشتری‌ها.",
+          "hint": "",
+          "pct": null,
+          "extra": {}
+        }
+      ],
+      "xray": [
+        {
+          "key": "xray",
+          "title": "سرویس Xray",
+          "value": "روشن",
+          "unit": "",
+          "level": "ok",
+          "detail": "وضعیت systemd: active",
+          "why": "اگر Xray خاموش باشد هیچ کاربری وصل نمی‌شود، حتی اگر پنل و ربات سالم کار کنند.",
+          "hint": "",
+          "pct": null,
+          "extra": {}
+        },
+        {
+          "key": "xray_errors",
+          "title": "خطاهای Xray (۳۰ دقیقه اخیر)",
+          "value": 3,
+          "unit": "",
+          "level": "ok",
+          "detail": "۳ خط هشدار یا خطا",
+          "why": "چند خطای پراکنده طبیعی است. انبوه خطا یعنی یا کانفیگ مشکل دارد یا سرور خارج در دسترس نیست.",
+          "hint": "برای دیدن: journalctl -u xray -p warning --since -30min",
+          "pct": null,
+          "extra": {
+            "lines": [
+              "Sep 24 20:11:02 xray[812]: [Warning] failed to handler mux client connection > context canceled"
+            ]
+          }
+        }
+      ],
+      "packages": [
+        {
+          "key": "updates",
+          "title": "به‌روزرسانی در انتظار",
+          "value": 14,
+          "unit": "بسته",
+          "level": "crit",
+          "detail": "۱۴ بسته — ۲ مورد امنیتی",
+          "why": "به‌روزرسانی امنیتی یعنی حفره‌ای عمومی شده که کد سوءاستفاده‌اش هم معمولاً منتشر است. روی سروری که پورت باز به اینترنت دارد، این فوری‌ترین ریسک است.",
+          "hint": "apt update && apt upgrade",
+          "pct": null,
+          "extra": {
+            "security": 2,
+            "sample": [
+              "openssl",
+              "libssl3",
+              "openssh-server",
+              "curl"
+            ]
+          }
+        }
+      ],
+      "security": [
+        {
+          "key": "ssh_failed",
+          "title": "ورود ناموفق SSH (۲۴ ساعت)",
+          "value": 412,
+          "unit": "",
+          "level": "warn",
+          "detail": "۴۱۲ تلاش ناموفق از ۳۷ آدرس",
+          "why": "روی هر سرور عمومی چند صد تلاش خودکار در روز عادی است. عدد خیلی بالا از یک IP یعنی هدف‌گیری مشخص.",
+          "hint": "ورود با رمز را ببندید و فقط کلید بگذارید؛ یا fail2ban نصب کنید.",
+          "pct": null,
+          "extra": {
+            "topIps": [
+              {
+                "ip": "203.0.113.11",
+                "n": 96
+              },
+              {
+                "ip": "203.0.113.34",
+                "n": 71
+              },
+              {
+                "ip": "203.0.113.172",
+                "n": 40
+              }
+            ]
+          }
+        },
+        {
+          "key": "fail2ban",
+          "title": "fail2ban",
+          "value": "فعال",
+          "unit": "",
+          "level": "ok",
+          "detail": "جیل‌ها: sshd",
+          "why": "fail2ban آدرس‌هایی را که مکرر شکست می‌خورند خودکار می‌بندد.",
+          "hint": "",
+          "pct": null,
+          "extra": {}
+        },
+        {
+          "key": "firewall",
+          "title": "فایروال",
+          "value": "روشن",
+          "unit": "",
+          "level": "ok",
+          "detail": "Status: active",
+          "why": "فایروال خاموش یعنی هر پورتی که سهواً باز شود، مستقیم از اینترنت در دسترس است.",
+          "hint": "",
+          "pct": null,
+          "extra": {}
+        }
+      ],
+      "services": [
+        {
+          "name": "xray",
+          "active": "active",
+          "sub": "running",
+          "pid": "812",
+          "memory": 184000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        },
+        {
+          "name": "x-ui",
+          "active": "active",
+          "sub": "running",
+          "pid": "790",
+          "memory": 96000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        },
+        {
+          "name": "nginx",
+          "active": "active",
+          "sub": "running",
+          "pid": "655",
+          "memory": 22000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        },
+        {
+          "name": "nexora-bot",
+          "active": "active",
+          "sub": "running",
+          "pid": "1021",
+          "memory": 71000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        },
+        {
+          "name": "nexora-api",
+          "active": "active",
+          "sub": "running",
+          "pid": "1003",
+          "memory": 118000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        },
+        {
+          "name": "fail2ban",
+          "active": "active",
+          "sub": "running",
+          "pid": "702",
+          "memory": 31000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        },
+        {
+          "name": "ssh",
+          "active": "active",
+          "sub": "running",
+          "pid": "640",
+          "memory": 6000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        }
+      ],
+      "ports": [
+        {
+          "port": 22,
+          "proto": "tcp",
+          "process": "sshd",
+          "public": true,
+          "bind": "0.0.0.0",
+          "scope": "public",
+          "known": "SSH",
+          "risk": "low"
+        },
+        {
+          "port": 443,
+          "proto": "tcp",
+          "process": "xray",
+          "public": true,
+          "bind": "0.0.0.0",
+          "scope": "public",
+          "known": "Xray",
+          "risk": "low"
+        },
+        {
+          "port": 2053,
+          "proto": "tcp",
+          "process": "x-ui",
+          "public": true,
+          "bind": "0.0.0.0",
+          "scope": "public",
+          "known": "پنل 3x-ui",
+          "risk": "low"
+        },
+        {
+          "port": 8000,
+          "proto": "tcp",
+          "process": "python3",
+          "public": false,
+          "bind": "127.0.0.1",
+          "scope": "local",
+          "known": "API نکسورا",
+          "risk": "low"
+        },
+        {
+          "port": 6379,
+          "proto": "tcp",
+          "process": "redis-server",
+          "public": true,
+          "bind": "0.0.0.0",
+          "scope": "public",
+          "known": "",
+          "risk": "medium"
+        }
+      ],
+      "processes": [
+        {
+          "pid": 812,
+          "name": "xray",
+          "cpu": 21.1,
+          "mem": 2.2,
+          "uptime": 1036800
+        },
+        {
+          "pid": 1003,
+          "name": "python3",
+          "cpu": 3.1,
+          "mem": 1.4,
+          "uptime": 259200
+        },
+        {
+          "pid": 790,
+          "name": "x-ui",
+          "cpu": 1.8,
+          "mem": 1.1,
+          "uptime": 1036800
+        },
+        {
+          "pid": 655,
+          "name": "nginx",
+          "cpu": 0.6,
+          "mem": 0.3,
+          "uptime": 1036800
+        },
+        {
+          "pid": 1021,
+          "name": "python3",
+          "cpu": 0.4,
+          "mem": 0.9,
+          "uptime": 259200
+        }
+      ],
+      "connections": {
+        "total": 1284,
+        "uniqueIps": 311,
+        "byIp": [
+          {
+            "ip": "203.0.113.4",
+            "count": 402,
+            "pct": 31.3,
+            "tunnel": "ایران-۱"
+          },
+          {
+            "ip": "192.0.2.77",
+            "count": 48,
+            "pct": 3.7,
+            "tunnel": ""
+          },
+          {
+            "ip": "192.0.2.110",
+            "count": 31,
+            "pct": 2.4,
+            "tunnel": ""
+          },
+          {
+            "ip": "192.0.2.9",
+            "count": 214,
+            "pct": 16.7,
+            "tunnel": ""
+          }
+        ],
+        "byPort": [
+          {
+            "port": 443,
+            "count": 1102
+          },
+          {
+            "port": 8443,
+            "count": 141
+          },
+          {
+            "port": 22,
+            "count": 41
+          }
+        ],
+        "heavy": [
+          {
+            "ip": "192.0.2.9",
+            "count": 214,
+            "pct": 16.7
+          }
+        ],
+        "tunnels": [
+          {
+            "ip": "203.0.113.4",
+            "name": "ایران-۱",
+            "count": 402,
+            "pct": 31.3
+          }
+        ],
+        "tunnelConns": 402
+      }
+    },
+    "counts": {
+      "ok": 9,
+      "warn": 2,
+      "crit": 1
+    },
+    "host": {
+      "uptime": 1054800,
+      "cores": 4,
+      "kernel": "5.15.0-119-generic",
+      "hostname": "de-fra-1"
+    },
+    "at": "2026-09-24 20:31:12",
+    "took": 1.12
+  };
+  /* مانیتورینگِ نودِ ۱ — همان شکل، با سرویسِ ناپایدار */
+  var SYSMON1 = {
+    "level": "warn",
+    "summary": "۱ هشدار",
+    "headline": "سرویس nexora-bot",
+    "metrics": [
+      {
+        "key": "cpu",
+        "title": "مصرف پردازنده",
+        "value": 22.0,
+        "unit": "٪",
+        "level": "ok",
+        "detail": "بار ۱ دقیقه: ۰.۸۸ روی ۴ هسته",
+        "why": "بالای ۷۵٪ یعنی سرور دارد به سقف می‌رسد و تأخیر کاربران بالا می‌رود. بالای ۹۲٪ یعنی همین حالا کند شده.",
+        "hint": "با «سنگین‌ترین پردازه‌ها» پایین ببینید چه چیزی مصرف می‌کند.",
+        "pct": 22.0,
+        "extra": {
+          "cores": 4,
+          "load": [
+            0.88,
+            0.81,
+            0.73
+          ]
+        }
+      },
+      {
+        "key": "memory",
+        "title": "حافظه",
+        "value": 44.0,
+        "unit": "٪",
+        "level": "ok",
+        "detail": "۳.۵ GB از ۸.۰ GB — ۴.۵ GB آزاد",
+        "why": "بالای ۸۵٪ یعنی فضای مانور کم شده. اگر پر شود، هسته پردازه‌ها را می‌کشد و Xray هم می‌تواند قربانی شود — یعنی قطعی سرویس.",
+        "hint": "اگر همیشه بالاست، یا مصرف واقعی زیاد است یا نشتی حافظه دارید.",
+        "pct": 44.0,
+        "extra": {
+          "total": 8589934592,
+          "used": 3779571220,
+          "available": 4810363372
+        }
+      },
+      {
+        "key": "disk:/",
+        "title": "دیسک /",
+        "value": 36.0,
+        "unit": "٪",
+        "level": "ok",
+        "detail": "۲۸.۸ GB از ۸۰.۰ GB — ۵۱.۲ GB آزاد",
+        "why": "دیسک پر یعنی لاگ نوشته نمی‌شود، دیتابیس ربات خطا می‌دهد و بک‌آپ ساخته نمی‌شود. زیر ۸٪ آزاد وارد منطقه‌ی خطر می‌شوید.",
+        "hint": "بزرگ‌ترین مصرف‌کننده معمولاً لاگ‌هاست: journalctl --vacuum-size=200M",
+        "pct": 36.0,
+        "extra": {
+          "mount": "/",
+          "total": 85899345920,
+          "used": 30923764531
+        }
+      },
+      {
+        "key": "throughput",
+        "title": "ترافیک لحظه‌ای",
+        "value": 188.2,
+        "unit": "Mbps",
+        "level": "ok",
+        "detail": "دریافت ۱۳.۹ MB/s · ارسال ۸.۵ MB/s",
+        "why": "این همان چیزی است که مشتری‌های شما دارند مصرف می‌کنند. اگر به سقف پورت سرور (معمولاً ۱ گیگابیت) نزدیک شود، سرعت همه افت می‌کند.",
+        "hint": "اگر مدام نزدیک سقف است، یا کاربر را کم کنید یا پورت بالاتر بگیرید.",
+        "pct": 19,
+        "extra": {
+          "rx": 14585500,
+          "tx": 8939500,
+          "interfaces": [
+            {
+              "name": "eth0",
+              "rx": 14585500,
+              "tx": 8939500,
+              "rxTotal": 9812000000000,
+              "txTotal": 6120000000000
+            }
+          ]
+        }
+      },
+      {
+        "key": "established",
+        "title": "اتصال‌های برقرار",
+        "value": 1284,
+        "unit": "",
+        "level": "ok",
+        "detail": "۱۲۸۴ اتصال TCP/UDP",
+        "why": "تقریباً برابر با تعداد نشست‌های فعال مشتری‌ها.",
+        "hint": "",
+        "pct": null,
+        "extra": {}
+      },
+      {
+        "key": "xray",
+        "title": "سرویس Xray",
+        "value": "روشن",
+        "unit": "",
+        "level": "ok",
+        "detail": "وضعیت systemd: active",
+        "why": "اگر Xray خاموش باشد هیچ کاربری وصل نمی‌شود، حتی اگر پنل و ربات سالم کار کنند.",
+        "hint": "",
+        "pct": null,
+        "extra": {}
+      },
+      {
+        "key": "xray_errors",
+        "title": "خطاهای Xray (۳۰ دقیقه اخیر)",
+        "value": 3,
+        "unit": "",
+        "level": "ok",
+        "detail": "۳ خط هشدار یا خطا",
+        "why": "چند خطای پراکنده طبیعی است. انبوه خطا یعنی یا کانفیگ مشکل دارد یا سرور خارج در دسترس نیست.",
+        "hint": "برای دیدن: journalctl -u xray -p warning --since -30min",
+        "pct": null,
+        "extra": {
+          "lines": [
+            "Sep 24 20:11:02 xray[812]: [Warning] failed to handler mux client connection > context canceled"
+          ]
+        }
+      },
+      {
+        "key": "updates",
+        "title": "به‌روزرسانی در انتظار",
+        "value": 3,
+        "unit": "بسته",
+        "level": "ok",
+        "detail": "۳ بسته — ۰ مورد امنیتی",
+        "why": "به‌روزرسانی امنیتی یعنی حفره‌ای عمومی شده که کد سوءاستفاده‌اش هم معمولاً منتشر است. روی سروری که پورت باز به اینترنت دارد، این فوری‌ترین ریسک است.",
+        "hint": "apt update && apt upgrade",
+        "pct": null,
+        "extra": {
+          "security": 0,
+          "sample": [
+            "openssl",
+            "libssl3",
+            "openssh-server",
+            "curl"
+          ]
+        }
+      },
+      {
+        "key": "ssh_failed",
+        "title": "ورود ناموفق SSH (۲۴ ساعت)",
+        "value": 96,
+        "unit": "",
+        "level": "ok",
+        "detail": "۹۶ تلاش ناموفق از ۳۷ آدرس",
+        "why": "روی هر سرور عمومی چند صد تلاش خودکار در روز عادی است. عدد خیلی بالا از یک IP یعنی هدف‌گیری مشخص.",
+        "hint": "ورود با رمز را ببندید و فقط کلید بگذارید؛ یا fail2ban نصب کنید.",
+        "pct": null,
+        "extra": {
+          "topIps": [
+            {
+              "ip": "203.0.113.11",
+              "n": 96
+            },
+            {
+              "ip": "203.0.113.34",
+              "n": 71
+            },
+            {
+              "ip": "203.0.113.172",
+              "n": 40
+            }
+          ]
+        }
+      },
+      {
+        "key": "fail2ban",
+        "title": "fail2ban",
+        "value": "فعال",
+        "unit": "",
+        "level": "ok",
+        "detail": "جیل‌ها: sshd",
+        "why": "fail2ban آدرس‌هایی را که مکرر شکست می‌خورند خودکار می‌بندد.",
+        "hint": "",
+        "pct": null,
+        "extra": {}
+      },
+      {
+        "key": "firewall",
+        "title": "فایروال",
+        "value": "روشن",
+        "unit": "",
+        "level": "ok",
+        "detail": "Status: active",
+        "why": "فایروال خاموش یعنی هر پورتی که سهواً باز شود، مستقیم از اینترنت در دسترس است.",
+        "hint": "",
+        "pct": null,
+        "extra": {}
+      },
+      {
+        "key": "svc:nexora-bot",
+        "title": "سرویس nexora-bot",
+        "value": "ناپایدار",
+        "unit": "",
+        "level": "warn",
+        "detail": "۶ بار ری‌استارت شده",
+        "why": "سرویسی که مدام بالا و پایین می‌شود از خاموش بدتر است، چون در نگاه اول سالم به نظر می‌رسد.",
+        "hint": "journalctl -u nexora-bot -n 50",
+        "pct": null,
+        "extra": {}
+      }
+    ],
+    "sections": {
+      "cpu": [
+        {
+          "key": "cpu",
+          "title": "مصرف پردازنده",
+          "value": 22.0,
+          "unit": "٪",
+          "level": "ok",
+          "detail": "بار ۱ دقیقه: ۰.۸۸ روی ۴ هسته",
+          "why": "بالای ۷۵٪ یعنی سرور دارد به سقف می‌رسد و تأخیر کاربران بالا می‌رود. بالای ۹۲٪ یعنی همین حالا کند شده.",
+          "hint": "با «سنگین‌ترین پردازه‌ها» پایین ببینید چه چیزی مصرف می‌کند.",
+          "pct": 22.0,
+          "extra": {
+            "cores": 4,
+            "load": [
+              0.88,
+              0.81,
+              0.73
+            ]
+          }
+        }
+      ],
+      "memory": [
+        {
+          "key": "memory",
+          "title": "حافظه",
+          "value": 44.0,
+          "unit": "٪",
+          "level": "ok",
+          "detail": "۳.۵ GB از ۸.۰ GB — ۴.۵ GB آزاد",
+          "why": "بالای ۸۵٪ یعنی فضای مانور کم شده. اگر پر شود، هسته پردازه‌ها را می‌کشد و Xray هم می‌تواند قربانی شود — یعنی قطعی سرویس.",
+          "hint": "اگر همیشه بالاست، یا مصرف واقعی زیاد است یا نشتی حافظه دارید.",
+          "pct": 44.0,
+          "extra": {
+            "total": 8589934592,
+            "used": 3779571220,
+            "available": 4810363372
+          }
+        }
+      ],
+      "disk": [
+        {
+          "key": "disk:/",
+          "title": "دیسک /",
+          "value": 36.0,
+          "unit": "٪",
+          "level": "ok",
+          "detail": "۲۸.۸ GB از ۸۰.۰ GB — ۵۱.۲ GB آزاد",
+          "why": "دیسک پر یعنی لاگ نوشته نمی‌شود، دیتابیس ربات خطا می‌دهد و بک‌آپ ساخته نمی‌شود. زیر ۸٪ آزاد وارد منطقه‌ی خطر می‌شوید.",
+          "hint": "بزرگ‌ترین مصرف‌کننده معمولاً لاگ‌هاست: journalctl --vacuum-size=200M",
+          "pct": 36.0,
+          "extra": {
+            "mount": "/",
+            "total": 85899345920,
+            "used": 30923764531
+          }
+        }
+      ],
+      "network": [
+        {
+          "key": "throughput",
+          "title": "ترافیک لحظه‌ای",
+          "value": 188.2,
+          "unit": "Mbps",
+          "level": "ok",
+          "detail": "دریافت ۱۳.۹ MB/s · ارسال ۸.۵ MB/s",
+          "why": "این همان چیزی است که مشتری‌های شما دارند مصرف می‌کنند. اگر به سقف پورت سرور (معمولاً ۱ گیگابیت) نزدیک شود، سرعت همه افت می‌کند.",
+          "hint": "اگر مدام نزدیک سقف است، یا کاربر را کم کنید یا پورت بالاتر بگیرید.",
+          "pct": 19,
+          "extra": {
+            "rx": 14585500,
+            "tx": 8939500,
+            "interfaces": [
+              {
+                "name": "eth0",
+                "rx": 14585500,
+                "tx": 8939500,
+                "rxTotal": 9812000000000,
+                "txTotal": 6120000000000
+              }
+            ]
+          }
+        },
+        {
+          "key": "established",
+          "title": "اتصال‌های برقرار",
+          "value": 1284,
+          "unit": "",
+          "level": "ok",
+          "detail": "۱۲۸۴ اتصال TCP/UDP",
+          "why": "تقریباً برابر با تعداد نشست‌های فعال مشتری‌ها.",
+          "hint": "",
+          "pct": null,
+          "extra": {}
+        }
+      ],
+      "xray": [
+        {
+          "key": "xray",
+          "title": "سرویس Xray",
+          "value": "روشن",
+          "unit": "",
+          "level": "ok",
+          "detail": "وضعیت systemd: active",
+          "why": "اگر Xray خاموش باشد هیچ کاربری وصل نمی‌شود، حتی اگر پنل و ربات سالم کار کنند.",
+          "hint": "",
+          "pct": null,
+          "extra": {}
+        },
+        {
+          "key": "xray_errors",
+          "title": "خطاهای Xray (۳۰ دقیقه اخیر)",
+          "value": 3,
+          "unit": "",
+          "level": "ok",
+          "detail": "۳ خط هشدار یا خطا",
+          "why": "چند خطای پراکنده طبیعی است. انبوه خطا یعنی یا کانفیگ مشکل دارد یا سرور خارج در دسترس نیست.",
+          "hint": "برای دیدن: journalctl -u xray -p warning --since -30min",
+          "pct": null,
+          "extra": {
+            "lines": [
+              "Sep 24 20:11:02 xray[812]: [Warning] failed to handler mux client connection > context canceled"
+            ]
+          }
+        }
+      ],
+      "packages": [
+        {
+          "key": "updates",
+          "title": "به‌روزرسانی در انتظار",
+          "value": 3,
+          "unit": "بسته",
+          "level": "ok",
+          "detail": "۳ بسته — ۰ مورد امنیتی",
+          "why": "به‌روزرسانی امنیتی یعنی حفره‌ای عمومی شده که کد سوءاستفاده‌اش هم معمولاً منتشر است. روی سروری که پورت باز به اینترنت دارد، این فوری‌ترین ریسک است.",
+          "hint": "apt update && apt upgrade",
+          "pct": null,
+          "extra": {
+            "security": 0,
+            "sample": [
+              "openssl",
+              "libssl3",
+              "openssh-server",
+              "curl"
+            ]
+          }
+        }
+      ],
+      "security": [
+        {
+          "key": "ssh_failed",
+          "title": "ورود ناموفق SSH (۲۴ ساعت)",
+          "value": 96,
+          "unit": "",
+          "level": "ok",
+          "detail": "۹۶ تلاش ناموفق از ۳۷ آدرس",
+          "why": "روی هر سرور عمومی چند صد تلاش خودکار در روز عادی است. عدد خیلی بالا از یک IP یعنی هدف‌گیری مشخص.",
+          "hint": "ورود با رمز را ببندید و فقط کلید بگذارید؛ یا fail2ban نصب کنید.",
+          "pct": null,
+          "extra": {
+            "topIps": [
+              {
+                "ip": "203.0.113.11",
+                "n": 96
+              },
+              {
+                "ip": "203.0.113.34",
+                "n": 71
+              },
+              {
+                "ip": "203.0.113.172",
+                "n": 40
+              }
+            ]
+          }
+        },
+        {
+          "key": "fail2ban",
+          "title": "fail2ban",
+          "value": "فعال",
+          "unit": "",
+          "level": "ok",
+          "detail": "جیل‌ها: sshd",
+          "why": "fail2ban آدرس‌هایی را که مکرر شکست می‌خورند خودکار می‌بندد.",
+          "hint": "",
+          "pct": null,
+          "extra": {}
+        },
+        {
+          "key": "firewall",
+          "title": "فایروال",
+          "value": "روشن",
+          "unit": "",
+          "level": "ok",
+          "detail": "Status: active",
+          "why": "فایروال خاموش یعنی هر پورتی که سهواً باز شود، مستقیم از اینترنت در دسترس است.",
+          "hint": "",
+          "pct": null,
+          "extra": {}
+        }
+      ],
+      "services": [
+        {
+          "name": "xray",
+          "active": "active",
+          "sub": "running",
+          "pid": "812",
+          "memory": 184000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        },
+        {
+          "name": "x-ui",
+          "active": "active",
+          "sub": "running",
+          "pid": "790",
+          "memory": 96000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        },
+        {
+          "name": "nginx",
+          "active": "active",
+          "sub": "running",
+          "pid": "655",
+          "memory": 22000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        },
+        {
+          "name": "nexora-bot",
+          "active": "active",
+          "sub": "running",
+          "pid": "1021",
+          "memory": 71000000,
+          "restarts": 6,
+          "level": "ok",
+          "flapping": true
+        },
+        {
+          "name": "nexora-api",
+          "active": "active",
+          "sub": "running",
+          "pid": "1003",
+          "memory": 118000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        },
+        {
+          "name": "fail2ban",
+          "active": "active",
+          "sub": "running",
+          "pid": "702",
+          "memory": 31000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        },
+        {
+          "name": "ssh",
+          "active": "active",
+          "sub": "running",
+          "pid": "640",
+          "memory": 6000000,
+          "restarts": 0,
+          "level": "ok",
+          "flapping": false
+        }
+      ],
+      "ports": [
+        {
+          "port": 22,
+          "proto": "tcp",
+          "process": "sshd",
+          "public": true,
+          "bind": "0.0.0.0",
+          "scope": "public",
+          "known": "SSH",
+          "risk": "low"
+        },
+        {
+          "port": 443,
+          "proto": "tcp",
+          "process": "xray",
+          "public": true,
+          "bind": "0.0.0.0",
+          "scope": "public",
+          "known": "Xray",
+          "risk": "low"
+        },
+        {
+          "port": 2053,
+          "proto": "tcp",
+          "process": "x-ui",
+          "public": true,
+          "bind": "0.0.0.0",
+          "scope": "public",
+          "known": "پنل 3x-ui",
+          "risk": "low"
+        },
+        {
+          "port": 8000,
+          "proto": "tcp",
+          "process": "python3",
+          "public": false,
+          "bind": "127.0.0.1",
+          "scope": "local",
+          "known": "API نکسورا",
+          "risk": "low"
+        },
+        {
+          "port": 6379,
+          "proto": "tcp",
+          "process": "redis-server",
+          "public": true,
+          "bind": "0.0.0.0",
+          "scope": "public",
+          "known": "",
+          "risk": "medium"
+        }
+      ],
+      "processes": [
+        {
+          "pid": 812,
+          "name": "xray",
+          "cpu": 12.1,
+          "mem": 2.2,
+          "uptime": 1036800
+        },
+        {
+          "pid": 1003,
+          "name": "python3",
+          "cpu": 3.1,
+          "mem": 1.4,
+          "uptime": 259200
+        },
+        {
+          "pid": 790,
+          "name": "x-ui",
+          "cpu": 1.8,
+          "mem": 1.1,
+          "uptime": 1036800
+        },
+        {
+          "pid": 655,
+          "name": "nginx",
+          "cpu": 0.6,
+          "mem": 0.3,
+          "uptime": 1036800
+        },
+        {
+          "pid": 1021,
+          "name": "python3",
+          "cpu": 0.4,
+          "mem": 0.9,
+          "uptime": 259200
+        }
+      ],
+      "connections": {
+        "total": 1284,
+        "uniqueIps": 311,
+        "byIp": [
+          {
+            "ip": "203.0.113.4",
+            "count": 402,
+            "pct": 31.3,
+            "tunnel": "ایران-۱"
+          },
+          {
+            "ip": "192.0.2.77",
+            "count": 48,
+            "pct": 3.7,
+            "tunnel": ""
+          },
+          {
+            "ip": "192.0.2.110",
+            "count": 31,
+            "pct": 2.4,
+            "tunnel": ""
+          }
+        ],
+        "byPort": [
+          {
+            "port": 443,
+            "count": 1102
+          },
+          {
+            "port": 8443,
+            "count": 141
+          },
+          {
+            "port": 22,
+            "count": 41
+          }
+        ],
+        "heavy": [],
+        "tunnels": [
+          {
+            "ip": "203.0.113.4",
+            "name": "ایران-۱",
+            "count": 402,
+            "pct": 31.3
+          }
+        ],
+        "tunnelConns": 402
+      }
+    },
+    "counts": {
+      "ok": 11,
+      "warn": 1,
+      "crit": 0
+    },
+    "host": {
+      "uptime": 1054800,
+      "cores": 4,
+      "kernel": "5.15.0-119-generic",
+      "hostname": "ir-thr-1"
+    },
+    "at": "2026-09-24 20:31:12",
+    "took": 1.12
+  };
+  /* تاریخچه‌ی ۲۴ ساعته — هر ۵ دقیقه، مثلِ حلقه‌ی بکند */
+  var USAGE = {
+    "samples": [
+    {"t": "2026-09-23T20:00", "cpu": 19.0, "mem": 54.1, "conn": 447, "ips": 109},
+    {"t": "2026-09-23T20:05", "cpu": 24.7, "mem": 53.9, "conn": 474, "ips": 115},
+    {"t": "2026-09-23T20:10", "cpu": 23.3, "mem": 53.8, "conn": 441, "ips": 107},
+    {"t": "2026-09-23T20:15", "cpu": 22.0, "mem": 53.7, "conn": 468, "ips": 114},
+    {"t": "2026-09-23T20:20", "cpu": 20.6, "mem": 53.6, "conn": 435, "ips": 106},
+    {"t": "2026-09-23T20:25", "cpu": 19.3, "mem": 53.5, "conn": 403, "ips": 98},
+    {"t": "2026-09-23T20:30", "cpu": 18.0, "mem": 53.4, "conn": 431, "ips": 105},
+    {"t": "2026-09-23T20:35", "cpu": 16.6, "mem": 53.4, "conn": 399, "ips": 97},
+    {"t": "2026-09-23T20:40", "cpu": 22.3, "mem": 53.3, "conn": 428, "ips": 104},
+    {"t": "2026-09-23T20:45", "cpu": 21.0, "mem": 53.2, "conn": 396, "ips": 96},
+    {"t": "2026-09-23T20:50", "cpu": 19.8, "mem": 53.1, "conn": 365, "ips": 89},
+    {"t": "2026-09-23T20:55", "cpu": 18.5, "mem": 53.0, "conn": 394, "ips": 96},
+    {"t": "2026-09-23T21:00", "cpu": 17.2, "mem": 52.9, "conn": 364, "ips": 88},
+    {"t": "2026-09-23T21:05", "cpu": 16.0, "mem": 52.9, "conn": 334, "ips": 81},
+    {"t": "2026-09-23T21:10", "cpu": 14.7, "mem": 52.8, "conn": 364, "ips": 88},
+    {"t": "2026-09-23T21:15", "cpu": 20.5, "mem": 52.7, "conn": 334, "ips": 81},
+    {"t": "2026-09-23T21:20", "cpu": 19.2, "mem": 52.7, "conn": 365, "ips": 89},
+    {"t": "2026-09-23T21:25", "cpu": 18.0, "mem": 52.6, "conn": 336, "ips": 81},
+    {"t": "2026-09-23T21:30", "cpu": 16.8, "mem": 52.5, "conn": 307, "ips": 74},
+    {"t": "2026-09-23T21:35", "cpu": 15.6, "mem": 52.5, "conn": 338, "ips": 82},
+    {"t": "2026-09-23T21:40", "cpu": 14.4, "mem": 52.4, "conn": 310, "ips": 75},
+    {"t": "2026-09-23T21:45", "cpu": 13.3, "mem": 52.4, "conn": 342, "ips": 83},
+    {"t": "2026-09-23T21:50", "cpu": 19.1, "mem": 52.3, "conn": 315, "ips": 76},
+    {"t": "2026-09-23T21:55", "cpu": 18.0, "mem": 52.3, "conn": 287, "ips": 70},
+    {"t": "2026-09-23T22:00", "cpu": 16.8, "mem": 52.2, "conn": 321, "ips": 78},
+    {"t": "2026-09-23T22:05", "cpu": 15.7, "mem": 52.2, "conn": 294, "ips": 71},
+    {"t": "2026-09-23T22:10", "cpu": 14.6, "mem": 52.2, "conn": 268, "ips": 65},
+    {"t": "2026-09-23T22:15", "cpu": 13.5, "mem": 52.1, "conn": 301, "ips": 73},
+    {"t": "2026-09-23T22:20", "cpu": 12.4, "mem": 52.1, "conn": 276, "ips": 67},
+    {"t": "2026-09-23T22:25", "cpu": 18.3, "mem": 52.1, "conn": 310, "ips": 75},
+    {"t": "2026-09-23T22:30", "cpu": 17.2, "mem": 52.1, "conn": 285, "ips": 69},
+    {"t": "2026-09-23T22:35", "cpu": 16.1, "mem": 52.0, "conn": 261, "ips": 63},
+    {"t": "2026-09-23T22:40", "cpu": 15.1, "mem": 52.0, "conn": 296, "ips": 72},
+    {"t": "2026-09-23T22:45", "cpu": 14.1, "mem": 52.0, "conn": 272, "ips": 66},
+    {"t": "2026-09-23T22:50", "cpu": 13.0, "mem": 52.0, "conn": 308, "ips": 75},
+    {"t": "2026-09-23T22:55", "cpu": 12.0, "mem": 52.0, "conn": 285, "ips": 69},
+    {"t": "2026-09-23T23:00", "cpu": 18.0, "mem": 52.0, "conn": 262, "ips": 63},
+    {"t": "2026-09-23T23:05", "cpu": 17.0, "mem": 52.0, "conn": 299, "ips": 72},
+    {"t": "2026-09-23T23:10", "cpu": 16.0, "mem": 52.0, "conn": 276, "ips": 67},
+    {"t": "2026-09-23T23:15", "cpu": 15.1, "mem": 52.0, "conn": 254, "ips": 61},
+    {"t": "2026-09-23T23:20", "cpu": 14.1, "mem": 52.0, "conn": 292, "ips": 71},
+    {"t": "2026-09-23T23:25", "cpu": 13.1, "mem": 52.0, "conn": 271, "ips": 66},
+    {"t": "2026-09-23T23:30", "cpu": 12.2, "mem": 52.1, "conn": 309, "ips": 75},
+    {"t": "2026-09-23T23:35", "cpu": 18.3, "mem": 52.1, "conn": 288, "ips": 70},
+    {"t": "2026-09-23T23:40", "cpu": 17.4, "mem": 52.1, "conn": 268, "ips": 65},
+    {"t": "2026-09-23T23:45", "cpu": 16.5, "mem": 52.1, "conn": 307, "ips": 74},
+    {"t": "2026-09-23T23:50", "cpu": 15.6, "mem": 52.2, "conn": 288, "ips": 70},
+    {"t": "2026-09-23T23:55", "cpu": 14.7, "mem": 52.2, "conn": 328, "ips": 80},
+    {"t": "2026-09-24T00:00", "cpu": 13.8, "mem": 52.2, "conn": 309, "ips": 75},
+    {"t": "2026-09-24T00:05", "cpu": 13.0, "mem": 52.3, "conn": 289, "ips": 70},
+    {"t": "2026-09-24T00:10", "cpu": 19.1, "mem": 52.3, "conn": 331, "ips": 80},
+    {"t": "2026-09-24T00:15", "cpu": 18.3, "mem": 52.4, "conn": 312, "ips": 76},
+    {"t": "2026-09-24T00:20", "cpu": 17.4, "mem": 52.4, "conn": 294, "ips": 71},
+    {"t": "2026-09-24T00:25", "cpu": 16.6, "mem": 52.5, "conn": 336, "ips": 81},
+    {"t": "2026-09-24T00:30", "cpu": 15.8, "mem": 52.5, "conn": 319, "ips": 77},
+    {"t": "2026-09-24T00:35", "cpu": 15.0, "mem": 52.6, "conn": 362, "ips": 88},
+    {"t": "2026-09-24T00:40", "cpu": 14.2, "mem": 52.7, "conn": 345, "ips": 84},
+    {"t": "2026-09-24T00:45", "cpu": 20.5, "mem": 52.7, "conn": 328, "ips": 80},
+    {"t": "2026-09-24T00:50", "cpu": 19.7, "mem": 52.8, "conn": 372, "ips": 90},
+    {"t": "2026-09-24T00:55", "cpu": 19.0, "mem": 52.9, "conn": 356, "ips": 86},
+    {"t": "2026-09-24T01:00", "cpu": 18.2, "mem": 52.9, "conn": 340, "ips": 82},
+    {"t": "2026-09-24T01:05", "cpu": 17.5, "mem": 53.0, "conn": 384, "ips": 93},
+    {"t": "2026-09-24T01:10", "cpu": 16.8, "mem": 53.1, "conn": 369, "ips": 90},
+    {"t": "2026-09-24T01:15", "cpu": 16.0, "mem": 53.2, "conn": 414, "ips": 100},
+    {"t": "2026-09-24T01:20", "cpu": 22.3, "mem": 53.3, "conn": 400, "ips": 97},
+    {"t": "2026-09-24T01:25", "cpu": 21.6, "mem": 53.4, "conn": 385, "ips": 93},
+    {"t": "2026-09-24T01:30", "cpu": 21.0, "mem": 53.4, "conn": 431, "ips": 105},
+    {"t": "2026-09-24T01:35", "cpu": 20.3, "mem": 53.5, "conn": 417, "ips": 101},
+    {"t": "2026-09-24T01:40", "cpu": 19.6, "mem": 53.6, "conn": 463, "ips": 112},
+    {"t": "2026-09-24T01:45", "cpu": 19.0, "mem": 53.7, "conn": 450, "ips": 109},
+    {"t": "2026-09-24T01:50", "cpu": 18.3, "mem": 53.8, "conn": 437, "ips": 106},
+    {"t": "2026-09-24T01:55", "cpu": 24.7, "mem": 53.9, "conn": 484, "ips": 118},
+    {"t": "2026-09-24T02:00", "cpu": 24.0, "mem": 54.1, "conn": 471, "ips": 114},
+    {"t": "2026-09-24T02:05", "cpu": 23.4, "mem": 54.2, "conn": 459, "ips": 111},
+    {"t": "2026-09-24T02:10", "cpu": 22.8, "mem": 54.3, "conn": 506, "ips": 123},
+    {"t": "2026-09-24T02:15", "cpu": 22.2, "mem": 54.4, "conn": 494, "ips": 120},
+    {"t": "2026-09-24T02:20", "cpu": 21.6, "mem": 54.5, "conn": 543, "ips": 132},
+    {"t": "2026-09-24T02:25", "cpu": 21.0, "mem": 54.6, "conn": 531, "ips": 129},
+    {"t": "2026-09-24T02:30", "cpu": 27.4, "mem": 54.7, "conn": 520, "ips": 126},
+    {"t": "2026-09-24T02:35", "cpu": 26.8, "mem": 54.9, "conn": 568, "ips": 138},
+    {"t": "2026-09-24T02:40", "cpu": 26.2, "mem": 55.0, "conn": 557, "ips": 135},
+    {"t": "2026-09-24T02:45", "cpu": 25.7, "mem": 55.1, "conn": 606, "ips": 147},
+    {"t": "2026-09-24T02:50", "cpu": 25.1, "mem": 55.2, "conn": 596, "ips": 145},
+    {"t": "2026-09-24T02:55", "cpu": 24.5, "mem": 55.4, "conn": 585, "ips": 142},
+    {"t": "2026-09-24T03:00", "cpu": 24.0, "mem": 55.5, "conn": 635, "ips": 154},
+    {"t": "2026-09-24T03:05", "cpu": 30.5, "mem": 55.6, "conn": 625, "ips": 152},
+    {"t": "2026-09-24T03:10", "cpu": 29.9, "mem": 55.8, "conn": 615, "ips": 150},
+    {"t": "2026-09-24T03:15", "cpu": 29.4, "mem": 55.9, "conn": 665, "ips": 162},
+    {"t": "2026-09-24T03:20", "cpu": 28.9, "mem": 56.0, "conn": 655, "ips": 159},
+    {"t": "2026-09-24T03:25", "cpu": 28.3, "mem": 56.2, "conn": 706, "ips": 172},
+    {"t": "2026-09-24T03:30", "cpu": 27.8, "mem": 56.3, "conn": 696, "ips": 169},
+    {"t": "2026-09-24T03:35", "cpu": 27.3, "mem": 56.5, "conn": 687, "ips": 167},
+    {"t": "2026-09-24T03:40", "cpu": 33.8, "mem": 56.6, "conn": 738, "ips": 180},
+    {"t": "2026-09-24T03:45", "cpu": 33.3, "mem": 56.7, "conn": 729, "ips": 177},
+    {"t": "2026-09-24T03:50", "cpu": 32.8, "mem": 56.9, "conn": 780, "ips": 190},
+    {"t": "2026-09-24T03:55", "cpu": 32.3, "mem": 57.0, "conn": 771, "ips": 188},
+    {"t": "2026-09-24T04:00", "cpu": 31.8, "mem": 57.2, "conn": 762, "ips": 185},
+    {"t": "2026-09-24T04:05", "cpu": 31.3, "mem": 57.3, "conn": 813, "ips": 198},
+    {"t": "2026-09-24T04:10", "cpu": 30.8, "mem": 57.5, "conn": 804, "ips": 196},
+    {"t": "2026-09-24T04:15", "cpu": 37.3, "mem": 57.6, "conn": 796, "ips": 194},
+    {"t": "2026-09-24T04:20", "cpu": 36.8, "mem": 57.8, "conn": 847, "ips": 206},
+    {"t": "2026-09-24T04:25", "cpu": 36.3, "mem": 57.9, "conn": 839, "ips": 204},
+    {"t": "2026-09-24T04:30", "cpu": 35.9, "mem": 58.1, "conn": 890, "ips": 217},
+    {"t": "2026-09-24T04:35", "cpu": 35.4, "mem": 58.2, "conn": 882, "ips": 215},
+    {"t": "2026-09-24T04:40", "cpu": 34.9, "mem": 58.4, "conn": 874, "ips": 213},
+    {"t": "2026-09-24T04:45", "cpu": 34.4, "mem": 58.5, "conn": 925, "ips": 225},
+    {"t": "2026-09-24T04:50", "cpu": 41.0, "mem": 58.7, "conn": 917, "ips": 223},
+    {"t": "2026-09-24T04:55", "cpu": 40.5, "mem": 58.8, "conn": 969, "ips": 236},
+    {"t": "2026-09-24T05:00", "cpu": 40.0, "mem": 59.0, "conn": 961, "ips": 234},
+    {"t": "2026-09-24T05:05", "cpu": 39.5, "mem": 59.2, "conn": 952, "ips": 232},
+    {"t": "2026-09-24T05:10", "cpu": 39.0, "mem": 59.3, "conn": 1004, "ips": 244},
+    {"t": "2026-09-24T05:15", "cpu": 38.6, "mem": 59.5, "conn": 996, "ips": 242},
+    {"t": "2026-09-24T05:20", "cpu": 38.1, "mem": 59.6, "conn": 987, "ips": 240},
+    {"t": "2026-09-24T05:25", "cpu": 44.6, "mem": 59.8, "conn": 1039, "ips": 253},
+    {"t": "2026-09-24T05:30", "cpu": 44.1, "mem": 59.9, "conn": 1031, "ips": 251},
+    {"t": "2026-09-24T05:35", "cpu": 43.7, "mem": 60.1, "conn": 1082, "ips": 263},
+    {"t": "2026-09-24T05:40", "cpu": 43.2, "mem": 60.2, "conn": 1074, "ips": 261},
+    {"t": "2026-09-24T05:45", "cpu": 42.7, "mem": 60.4, "conn": 1065, "ips": 259},
+    {"t": "2026-09-24T05:50", "cpu": 42.2, "mem": 60.5, "conn": 1117, "ips": 272},
+    {"t": "2026-09-24T05:55", "cpu": 41.7, "mem": 60.7, "conn": 1108, "ips": 270},
+    {"t": "2026-09-24T06:00", "cpu": 48.2, "mem": 60.8, "conn": 1099, "ips": 268},
+    {"t": "2026-09-24T06:05", "cpu": 47.7, "mem": 61.0, "conn": 1150, "ips": 280},
+    {"t": "2026-09-24T06:10", "cpu": 47.2, "mem": 61.1, "conn": 1141, "ips": 278},
+    {"t": "2026-09-24T06:15", "cpu": 46.7, "mem": 61.3, "conn": 1192, "ips": 290},
+    {"t": "2026-09-24T06:20", "cpu": 46.2, "mem": 61.4, "conn": 1183, "ips": 288},
+    {"t": "2026-09-24T06:25", "cpu": 45.7, "mem": 61.5, "conn": 1174, "ips": 286},
+    {"t": "2026-09-24T06:30", "cpu": 45.2, "mem": 61.7, "conn": 1225, "ips": 298},
+    {"t": "2026-09-24T06:35", "cpu": 51.7, "mem": 61.8, "conn": 1215, "ips": 296},
+    {"t": "2026-09-24T06:40", "cpu": 51.1, "mem": 62.0, "conn": 1266, "ips": 308},
+    {"t": "2026-09-24T06:45", "cpu": 50.6, "mem": 62.1, "conn": 1256, "ips": 306},
+    {"t": "2026-09-24T06:50", "cpu": 50.1, "mem": 62.2, "conn": 1246, "ips": 303},
+    {"t": "2026-09-24T06:55", "cpu": 49.5, "mem": 62.4, "conn": 1296, "ips": 316},
+    {"t": "2026-09-24T07:00", "cpu": 49.0, "mem": 62.5, "conn": 1286, "ips": 313},
+    {"t": "2026-09-24T07:05", "cpu": 48.5, "mem": 62.6, "conn": 1276, "ips": 311},
+    {"t": "2026-09-24T07:10", "cpu": 54.9, "mem": 62.8, "conn": 1325, "ips": 323},
+    {"t": "2026-09-24T07:15", "cpu": 54.3, "mem": 62.9, "conn": 1315, "ips": 320},
+    {"t": "2026-09-24T07:20", "cpu": 53.8, "mem": 63.0, "conn": 1364, "ips": 332},
+    {"t": "2026-09-24T07:25", "cpu": 53.2, "mem": 63.1, "conn": 1353, "ips": 330},
+    {"t": "2026-09-24T07:30", "cpu": 52.6, "mem": 63.3, "conn": 1341, "ips": 327},
+    {"t": "2026-09-24T07:35", "cpu": 52.0, "mem": 63.4, "conn": 1390, "ips": 339},
+    {"t": "2026-09-24T07:40", "cpu": 51.4, "mem": 63.5, "conn": 1378, "ips": 336},
+    {"t": "2026-09-24T07:45", "cpu": 57.8, "mem": 63.6, "conn": 1427, "ips": 348},
+    {"t": "2026-09-24T07:50", "cpu": 57.2, "mem": 63.7, "conn": 1415, "ips": 345},
+    {"t": "2026-09-24T07:55", "cpu": 56.6, "mem": 63.8, "conn": 1402, "ips": 341},
+    {"t": "2026-09-24T08:00", "cpu": 56.0, "mem": 63.9, "conn": 1450, "ips": 353},
+    {"t": "2026-09-24T08:05", "cpu": 55.3, "mem": 64.1, "conn": 1437, "ips": 350},
+    {"t": "2026-09-24T08:10", "cpu": 54.7, "mem": 64.2, "conn": 1424, "ips": 347},
+    {"t": "2026-09-24T08:15", "cpu": 54.0, "mem": 64.3, "conn": 1471, "ips": 358},
+    {"t": "2026-09-24T08:20", "cpu": 60.4, "mem": 64.4, "conn": 1458, "ips": 355},
+    {"t": "2026-09-24T08:25", "cpu": 59.7, "mem": 64.5, "conn": 1504, "ips": 366},
+    {"t": "2026-09-24T08:30", "cpu": 59.0, "mem": 64.6, "conn": 1490, "ips": 363},
+    {"t": "2026-09-24T08:35", "cpu": 58.4, "mem": 64.6, "conn": 1476, "ips": 360},
+    {"t": "2026-09-24T08:40", "cpu": 57.7, "mem": 64.7, "conn": 1521, "ips": 370},
+    {"t": "2026-09-24T08:45", "cpu": 57.0, "mem": 64.8, "conn": 1507, "ips": 367},
+    {"t": "2026-09-24T08:50", "cpu": 56.2, "mem": 64.9, "conn": 1552, "ips": 378},
+    {"t": "2026-09-24T08:55", "cpu": 62.5, "mem": 65.0, "conn": 1537, "ips": 374},
+    {"t": "2026-09-24T09:00", "cpu": 61.8, "mem": 65.1, "conn": 1521, "ips": 370},
+    {"t": "2026-09-24T09:05", "cpu": 61.0, "mem": 65.1, "conn": 1565, "ips": 381},
+    {"t": "2026-09-24T09:10", "cpu": 60.3, "mem": 65.2, "conn": 1549, "ips": 377},
+    {"t": "2026-09-24T09:15", "cpu": 59.5, "mem": 65.3, "conn": 1533, "ips": 373},
+    {"t": "2026-09-24T09:20", "cpu": 58.8, "mem": 65.3, "conn": 1576, "ips": 384},
+    {"t": "2026-09-24T09:25", "cpu": 58.0, "mem": 65.4, "conn": 1559, "ips": 380},
+    {"t": "2026-09-24T09:30", "cpu": 64.2, "mem": 65.5, "conn": 1602, "ips": 390},
+    {"t": "2026-09-24T09:35", "cpu": 63.4, "mem": 65.5, "conn": 1585, "ips": 386},
+    {"t": "2026-09-24T09:40", "cpu": 62.6, "mem": 65.6, "conn": 1567, "ips": 382},
+    {"t": "2026-09-24T09:45", "cpu": 61.7, "mem": 65.6, "conn": 1609, "ips": 392},
+    {"t": "2026-09-24T09:50", "cpu": 60.9, "mem": 65.7, "conn": 1590, "ips": 387},
+    {"t": "2026-09-24T09:55", "cpu": 60.0, "mem": 65.7, "conn": 1632, "ips": 398},
+    {"t": "2026-09-24T10:00", "cpu": 59.2, "mem": 65.8, "conn": 1612, "ips": 393},
+    {"t": "2026-09-24T10:05", "cpu": 65.3, "mem": 65.8, "conn": 1593, "ips": 388},
+    {"t": "2026-09-24T10:10", "cpu": 64.4, "mem": 65.8, "conn": 1633, "ips": 398},
+    {"t": "2026-09-24T10:15", "cpu": 63.5, "mem": 65.9, "conn": 1614, "ips": 393},
+    {"t": "2026-09-24T10:20", "cpu": 62.6, "mem": 65.9, "conn": 1593, "ips": 388},
+    {"t": "2026-09-24T10:25", "cpu": 61.7, "mem": 65.9, "conn": 1633, "ips": 398},
+    {"t": "2026-09-24T10:30", "cpu": 60.8, "mem": 65.9, "conn": 1612, "ips": 393},
+    {"t": "2026-09-24T10:35", "cpu": 59.9, "mem": 66.0, "conn": 1650, "ips": 402},
+    {"t": "2026-09-24T10:40", "cpu": 65.9, "mem": 66.0, "conn": 1629, "ips": 397},
+    {"t": "2026-09-24T10:45", "cpu": 64.9, "mem": 66.0, "conn": 1607, "ips": 391},
+    {"t": "2026-09-24T10:50", "cpu": 64.0, "mem": 66.0, "conn": 1645, "ips": 401},
+    {"t": "2026-09-24T10:55", "cpu": 63.0, "mem": 66.0, "conn": 1622, "ips": 395},
+    {"t": "2026-09-24T11:00", "cpu": 62.0, "mem": 66.0, "conn": 1600, "ips": 390},
+    {"t": "2026-09-24T11:05", "cpu": 61.0, "mem": 66.0, "conn": 1636, "ips": 399},
+    {"t": "2026-09-24T11:10", "cpu": 60.0, "mem": 66.0, "conn": 1613, "ips": 393},
+    {"t": "2026-09-24T11:15", "cpu": 65.9, "mem": 66.0, "conn": 1649, "ips": 402},
+    {"t": "2026-09-24T11:20", "cpu": 64.9, "mem": 66.0, "conn": 1625, "ips": 396},
+    {"t": "2026-09-24T11:25", "cpu": 63.9, "mem": 66.0, "conn": 1600, "ips": 390},
+    {"t": "2026-09-24T11:30", "cpu": 62.8, "mem": 65.9, "conn": 1636, "ips": 399},
+    {"t": "2026-09-24T11:35", "cpu": 61.7, "mem": 65.9, "conn": 1611, "ips": 392},
+    {"t": "2026-09-24T11:40", "cpu": 60.6, "mem": 65.9, "conn": 1645, "ips": 401},
+    {"t": "2026-09-24T11:45", "cpu": 59.5, "mem": 65.9, "conn": 1620, "ips": 395},
+    {"t": "2026-09-24T11:50", "cpu": 65.4, "mem": 65.8, "conn": 1593, "ips": 388},
+    {"t": "2026-09-24T11:55", "cpu": 64.3, "mem": 65.8, "conn": 1627, "ips": 396},
+    {"t": "2026-09-24T12:00", "cpu": 63.2, "mem": 65.8, "conn": 1600, "ips": 390},
+    {"t": "2026-09-24T12:05", "cpu": 62.0, "mem": 65.7, "conn": 1574, "ips": 383},
+    {"t": "2026-09-24T12:10", "cpu": 60.9, "mem": 65.7, "conn": 1606, "ips": 391},
+    {"t": "2026-09-24T12:15", "cpu": 59.7, "mem": 65.6, "conn": 1579, "ips": 385},
+    {"t": "2026-09-24T12:20", "cpu": 58.6, "mem": 65.6, "conn": 1611, "ips": 392},
+    {"t": "2026-09-24T12:25", "cpu": 64.4, "mem": 65.5, "conn": 1583, "ips": 386},
+    {"t": "2026-09-24T12:30", "cpu": 63.2, "mem": 65.5, "conn": 1554, "ips": 379},
+    {"t": "2026-09-24T12:35", "cpu": 62.0, "mem": 65.4, "conn": 1585, "ips": 386},
+    {"t": "2026-09-24T12:40", "cpu": 60.8, "mem": 65.3, "conn": 1556, "ips": 379},
+    {"t": "2026-09-24T12:45", "cpu": 59.5, "mem": 65.3, "conn": 1587, "ips": 387},
+    {"t": "2026-09-24T12:50", "cpu": 58.3, "mem": 65.2, "conn": 1557, "ips": 379},
+    {"t": "2026-09-24T12:55", "cpu": 57.0, "mem": 65.1, "conn": 1527, "ips": 372},
+    {"t": "2026-09-24T13:00", "cpu": 62.8, "mem": 65.1, "conn": 1557, "ips": 379},
+    {"t": "2026-09-24T13:05", "cpu": 61.5, "mem": 65.0, "conn": 1527, "ips": 372},
+    {"t": "2026-09-24T13:10", "cpu": 60.2, "mem": 64.9, "conn": 1496, "ips": 364},
+    {"t": "2026-09-24T13:15", "cpu": 59.0, "mem": 64.8, "conn": 1525, "ips": 371},
+    {"t": "2026-09-24T13:20", "cpu": 57.7, "mem": 64.7, "conn": 1493, "ips": 364},
+    {"t": "2026-09-24T13:25", "cpu": 56.4, "mem": 64.6, "conn": 1522, "ips": 371},
+    {"t": "2026-09-24T13:30", "cpu": 55.0, "mem": 64.6, "conn": 1490, "ips": 363},
+    {"t": "2026-09-24T13:35", "cpu": 60.7, "mem": 64.5, "conn": 1458, "ips": 355},
+    {"t": "2026-09-24T13:40", "cpu": 59.4, "mem": 64.4, "conn": 1486, "ips": 362},
+    {"t": "2026-09-24T13:45", "cpu": 58.0, "mem": 64.3, "conn": 1453, "ips": 354},
+    {"t": "2026-09-24T13:50", "cpu": 56.7, "mem": 64.2, "conn": 1480, "ips": 360},
+    {"t": "2026-09-24T13:55", "cpu": 55.3, "mem": 64.1, "conn": 1447, "ips": 352},
+    {"t": "2026-09-24T14:00", "cpu": 54.0, "mem": 63.9, "conn": 1414, "ips": 344},
+    {"t": "2026-09-24T14:05", "cpu": 52.6, "mem": 63.8, "conn": 1440, "ips": 351},
+    {"t": "2026-09-24T14:10", "cpu": 58.2, "mem": 63.7, "conn": 1407, "ips": 343},
+    {"t": "2026-09-24T14:15", "cpu": 56.8, "mem": 63.6, "conn": 1373, "ips": 334},
+    {"t": "2026-09-24T14:20", "cpu": 55.4, "mem": 63.5, "conn": 1398, "ips": 340},
+    {"t": "2026-09-24T14:25", "cpu": 54.0, "mem": 63.4, "conn": 1364, "ips": 332},
+    {"t": "2026-09-24T14:30", "cpu": 52.6, "mem": 63.3, "conn": 1389, "ips": 338},
+    {"t": "2026-09-24T14:35", "cpu": 51.2, "mem": 63.1, "conn": 1355, "ips": 330},
+    {"t": "2026-09-24T14:40", "cpu": 49.8, "mem": 63.0, "conn": 1320, "ips": 321},
+    {"t": "2026-09-24T14:45", "cpu": 55.3, "mem": 62.9, "conn": 1345, "ips": 328},
+    {"t": "2026-09-24T14:50", "cpu": 53.9, "mem": 62.8, "conn": 1309, "ips": 319},
+    {"t": "2026-09-24T14:55", "cpu": 52.5, "mem": 62.6, "conn": 1334, "ips": 325},
+    {"t": "2026-09-24T15:00", "cpu": 51.0, "mem": 62.5, "conn": 1298, "ips": 316},
+    {"t": "2026-09-24T15:05", "cpu": 49.5, "mem": 62.4, "conn": 1262, "ips": 307},
+    {"t": "2026-09-24T15:10", "cpu": 48.1, "mem": 62.2, "conn": 1286, "ips": 313},
+    {"t": "2026-09-24T15:15", "cpu": 46.6, "mem": 62.1, "conn": 1250, "ips": 304},
+    {"t": "2026-09-24T15:20", "cpu": 52.1, "mem": 62.0, "conn": 1214, "ips": 296},
+    {"t": "2026-09-24T15:25", "cpu": 50.7, "mem": 61.8, "conn": 1237, "ips": 301},
+    {"t": "2026-09-24T15:30", "cpu": 49.2, "mem": 61.7, "conn": 1201, "ips": 292},
+    {"t": "2026-09-24T15:35", "cpu": 47.7, "mem": 61.5, "conn": 1224, "ips": 298},
+    {"t": "2026-09-24T15:40", "cpu": 46.2, "mem": 61.4, "conn": 1187, "ips": 289},
+    {"t": "2026-09-24T15:45", "cpu": 44.7, "mem": 61.3, "conn": 1150, "ips": 280},
+    {"t": "2026-09-24T15:50", "cpu": 43.2, "mem": 61.1, "conn": 1173, "ips": 286},
+    {"t": "2026-09-24T15:55", "cpu": 48.7, "mem": 61.0, "conn": 1136, "ips": 277},
+    {"t": "2026-09-24T16:00", "cpu": 47.2, "mem": 60.8, "conn": 1099, "ips": 268},
+    {"t": "2026-09-24T16:05", "cpu": 45.7, "mem": 60.7, "conn": 1122, "ips": 273},
+    {"t": "2026-09-24T16:10", "cpu": 44.2, "mem": 60.5, "conn": 1085, "ips": 264},
+    {"t": "2026-09-24T16:15", "cpu": 42.7, "mem": 60.4, "conn": 1107, "ips": 270},
+    {"t": "2026-09-24T16:20", "cpu": 41.2, "mem": 60.2, "conn": 1070, "ips": 260},
+    {"t": "2026-09-24T16:25", "cpu": 39.7, "mem": 60.1, "conn": 1032, "ips": 251},
+    {"t": "2026-09-24T16:30", "cpu": 45.1, "mem": 59.9, "conn": 1055, "ips": 257},
+    {"t": "2026-09-24T16:35", "cpu": 43.6, "mem": 59.8, "conn": 1017, "ips": 248},
+    {"t": "2026-09-24T16:40", "cpu": 42.1, "mem": 59.6, "conn": 1039, "ips": 253},
+    {"t": "2026-09-24T16:45", "cpu": 40.6, "mem": 59.5, "conn": 1002, "ips": 244},
+    {"t": "2026-09-24T16:50", "cpu": 39.0, "mem": 59.3, "conn": 964, "ips": 235},
+    {"t": "2026-09-24T16:55", "cpu": 37.5, "mem": 59.2, "conn": 986, "ips": 240},
+    {"t": "2026-09-24T17:00", "cpu": 36.0, "mem": 59.0, "conn": 949, "ips": 231},
+    {"t": "2026-09-24T17:05", "cpu": 41.5, "mem": 58.8, "conn": 911, "ips": 222},
+    {"t": "2026-09-24T17:10", "cpu": 40.0, "mem": 58.7, "conn": 933, "ips": 227},
+    {"t": "2026-09-24T17:15", "cpu": 38.4, "mem": 58.5, "conn": 895, "ips": 218},
+    {"t": "2026-09-24T17:20", "cpu": 36.9, "mem": 58.4, "conn": 918, "ips": 223},
+    {"t": "2026-09-24T17:25", "cpu": 35.4, "mem": 58.2, "conn": 880, "ips": 214},
+    {"t": "2026-09-24T17:30", "cpu": 33.9, "mem": 58.1, "conn": 842, "ips": 205},
+    {"t": "2026-09-24T17:35", "cpu": 32.3, "mem": 57.9, "conn": 865, "ips": 210},
+    {"t": "2026-09-24T17:40", "cpu": 37.8, "mem": 57.8, "conn": 827, "ips": 201},
+    {"t": "2026-09-24T17:45", "cpu": 36.3, "mem": 57.6, "conn": 850, "ips": 207},
+    {"t": "2026-09-24T17:50", "cpu": 34.8, "mem": 57.5, "conn": 812, "ips": 198},
+    {"t": "2026-09-24T17:55", "cpu": 33.3, "mem": 57.3, "conn": 775, "ips": 189},
+    {"t": "2026-09-24T18:00", "cpu": 31.8, "mem": 57.2, "conn": 798, "ips": 194},
+    {"t": "2026-09-24T18:05", "cpu": 30.3, "mem": 57.0, "conn": 761, "ips": 185},
+    {"t": "2026-09-24T18:10", "cpu": 28.8, "mem": 56.9, "conn": 724, "ips": 176},
+    {"t": "2026-09-24T18:15", "cpu": 34.3, "mem": 56.7, "conn": 747, "ips": 182},
+    {"t": "2026-09-24T18:20", "cpu": 32.8, "mem": 56.6, "conn": 710, "ips": 173},
+    {"t": "2026-09-24T18:25", "cpu": 31.3, "mem": 56.5, "conn": 733, "ips": 178},
+    {"t": "2026-09-24T18:30", "cpu": 29.8, "mem": 56.3, "conn": 696, "ips": 169},
+    {"t": "2026-09-24T18:35", "cpu": 28.3, "mem": 56.2, "conn": 660, "ips": 160},
+    {"t": "2026-09-24T18:40", "cpu": 26.9, "mem": 56.0, "conn": 683, "ips": 166},
+    {"t": "2026-09-24T18:45", "cpu": 25.4, "mem": 55.9, "conn": 647, "ips": 157},
+    {"t": "2026-09-24T18:50", "cpu": 30.9, "mem": 55.8, "conn": 671, "ips": 163},
+    {"t": "2026-09-24T18:55", "cpu": 29.5, "mem": 55.6, "conn": 635, "ips": 154},
+    {"t": "2026-09-24T19:00", "cpu": 28.0, "mem": 55.5, "conn": 599, "ips": 146},
+    {"t": "2026-09-24T19:05", "cpu": 26.5, "mem": 55.4, "conn": 623, "ips": 151},
+    {"t": "2026-09-24T19:10", "cpu": 25.1, "mem": 55.2, "conn": 588, "ips": 143},
+    {"t": "2026-09-24T19:15", "cpu": 23.7, "mem": 55.1, "conn": 552, "ips": 134},
+    {"t": "2026-09-24T19:20", "cpu": 22.2, "mem": 55.0, "conn": 577, "ips": 140},
+    {"t": "2026-09-24T19:25", "cpu": 27.8, "mem": 54.9, "conn": 542, "ips": 132},
+    {"t": "2026-09-24T19:30", "cpu": 26.4, "mem": 54.7, "conn": 568, "ips": 138},
+    {"t": "2026-09-24T19:35", "cpu": 25.0, "mem": 54.6, "conn": 533, "ips": 130},
+    {"t": "2026-09-24T19:40", "cpu": 23.6, "mem": 54.5, "conn": 499, "ips": 121},
+    {"t": "2026-09-24T19:45", "cpu": 22.2, "mem": 54.4, "conn": 524, "ips": 127},
+    {"t": "2026-09-24T19:50", "cpu": 20.8, "mem": 54.3, "conn": 490, "ips": 119},
+    {"t": "2026-09-24T19:55", "cpu": 19.4, "mem": 54.2, "conn": 517, "ips": 126}
+    ],
+    "hourly": [
+    {"hour": 0, "conn": 329.4, "cpu": 16.9},
+    {"hour": 1, "conn": 414.5, "cpu": 19.6},
+    {"hour": 2, "conn": 536.3, "cpu": 24.2},
+    {"hour": 3, "conn": 691.8, "cpu": 29.9},
+    {"hour": 4, "conn": 859.8, "cpu": 35.5},
+    {"hour": 5, "conn": 1034.7, "cpu": 41.4},
+    {"hour": 6, "conn": 1203.6, "cpu": 48.3},
+    {"hour": 7, "conn": 1356.0, "cpu": 53.4},
+    {"hour": 8, "conn": 1485.6, "cpu": 57.6},
+    {"hour": 9, "conn": 1574.0, "cpu": 61.0},
+    {"hour": 10, "conn": 1620.2, "cpu": 62.9},
+    {"hour": 11, "conn": 1621.2, "cpu": 62.7},
+    {"hour": 12, "conn": 1576.6, "cpu": 60.8},
+    {"hour": 13, "conn": 1494.5, "cpu": 58.6},
+    {"hour": 14, "conn": 1370.7, "cpu": 53.9},
+    {"hour": 15, "conn": 1218.2, "cpu": 48.1},
+    {"hour": 16, "conn": 1048.2, "cpu": 42.4},
+    {"hour": 17, "conn": 871.4, "cpu": 36.4},
+    {"hour": 18, "conn": 705.4, "cpu": 30.0},
+    {"hour": 19, "conn": 551.0, "cpu": 24.2},
+    {"hour": 20, "conn": 423.4, "cpu": 20.4},
+    {"hour": 21, "conn": 333.0, "cpu": 16.9},
+    {"hour": 22, "conn": 289.8, "cpu": 14.9},
+    {"hour": 23, "conn": 286.8, "cpu": 15.7}
+    ],
+    "count": 288,
+    "quietestHour": 23,
+    "busiestHour": 11,
+    "maxSamples": 576
+  };
+  /* پرمصرف‌ترین مشتری‌ها — شکلِ /api/admin/top-clients */
+  var TOPCLIENTS = {
+    "ready": true,
+    "clients": [
+      {
+        "email": "ali_rezaei",
+        "group": "de-1",
+        "usedBytes": 94489280512,
+        "usedGB": 88,
+        "quotaGB": 100.0,
+        "pctOfQuota": 88.0,
+        "enable": true,
+        "expiryTime": 1790000000000,
+        "pctOfAll": 25.9
+      },
+      {
+        "email": "sara.m",
+        "group": "de-1",
+        "usedBytes": 65498251264,
+        "usedGB": 61,
+        "quotaGB": 100.0,
+        "pctOfQuota": 61.0,
+        "enable": true,
+        "expiryTime": 1790000000000,
+        "pctOfAll": 18.0
+      },
+      {
+        "email": "office_2",
+        "group": "nl-1",
+        "usedBytes": 57982058496,
+        "usedGB": 54,
+        "quotaGB": 0.0,
+        "pctOfQuota": null,
+        "enable": true,
+        "expiryTime": 0,
+        "pctOfAll": 15.9
+      },
+      {
+        "email": "mehdi_k",
+        "group": "de-1",
+        "usedBytes": 44023414784,
+        "usedGB": 41,
+        "quotaGB": 50.0,
+        "pctOfQuota": 82.0,
+        "enable": true,
+        "expiryTime": 1790000000000,
+        "pctOfAll": 12.1
+      },
+      {
+        "email": "reza99",
+        "group": "fi-1",
+        "usedBytes": 35433480192,
+        "usedGB": 33,
+        "quotaGB": 50.0,
+        "pctOfQuota": 66.0,
+        "enable": true,
+        "expiryTime": 1790000000000,
+        "pctOfAll": 9.7
+      },
+      {
+        "email": "nazanin",
+        "group": "nl-1",
+        "usedBytes": 23622320128,
+        "usedGB": 22,
+        "quotaGB": 30.0,
+        "pctOfQuota": 73.3,
+        "enable": true,
+        "expiryTime": 1790000000000,
+        "pctOfAll": 6.5
+      },
+      {
+        "email": "amir_t",
+        "group": "de-1",
+        "usedBytes": 19327352832,
+        "usedGB": 18,
+        "quotaGB": 50.0,
+        "pctOfQuota": 36.0,
+        "enable": true,
+        "expiryTime": 1790000000000,
+        "pctOfAll": 5.3
+      },
+      {
+        "email": "hosein.b",
+        "group": "fi-1",
+        "usedBytes": 12884901888,
+        "usedGB": 12,
+        "quotaGB": 20.0,
+        "pctOfQuota": 60.0,
+        "enable": true,
+        "expiryTime": 1790000000000,
+        "pctOfAll": 3.5
+      },
+      {
+        "email": "parisa",
+        "group": "de-1",
+        "usedBytes": 10200547328,
+        "usedGB": 9.5,
+        "quotaGB": 30.0,
+        "pctOfQuota": 31.7,
+        "enable": true,
+        "expiryTime": 1790000000000,
+        "pctOfAll": 2.8
+      },
+      {
+        "email": "test_trial",
+        "group": "de-1",
+        "usedBytes": 858993459,
+        "usedGB": 0.8,
+        "quotaGB": 1.0,
+        "pctOfQuota": 80.0,
+        "enable": true,
+        "expiryTime": 1790000000000,
+        "pctOfAll": 0.2
+      }
+    ],
+    "totalClients": 146,
+    "totalUsedGB": 551.7
+  };
+  /* سنجشِ تانلِ ۱ — خروجیِ خودِ tunnels.get_metrics، با یک جهشِ تأخیر و پرت */
+  var TMETRICS = {
+   "samples": [
+    {
+     "id": 1,
+     "tunnel_id": 1,
+     "tcp_avg": 59.5,
+     "tcp_min": 51.0,
+     "tcp_max": 79.0,
+     "jitter": 2.2,
+     "loss": 0.0,
+     "icmp_avg": 54.0,
+     "http_avg": 100.0,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 58.0, \"min\": 51.0, \"max\": 76.0, \"jitter\": 2.0, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 61.0, \"min\": 53.0, \"max\": 79.0, \"jitter\": 2.4, \"loss\": 0}}, \"icmp\": {\"avg\": 54.0}, \"http\": {\"avg\": 100.0}}",
+     "created_at": "2026-09-24 14:00:00"
+    },
+    {
+     "id": 2,
+     "tunnel_id": 1,
+     "tcp_avg": 69.3,
+     "tcp_min": 60.8,
+     "tcp_max": 88.8,
+     "jitter": 2.9,
+     "loss": 0.0,
+     "icmp_avg": 63.8,
+     "http_avg": 109.8,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 67.8, \"min\": 60.8, \"max\": 85.8, \"jitter\": 2.7, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 70.8, \"min\": 62.8, \"max\": 88.8, \"jitter\": 3.0, \"loss\": 0}}, \"icmp\": {\"avg\": 63.8}, \"http\": {\"avg\": 109.8}}",
+     "created_at": "2026-09-24 14:10:00"
+    },
+    {
+     "id": 3,
+     "tunnel_id": 1,
+     "tcp_avg": 70.0,
+     "tcp_min": 61.5,
+     "tcp_max": 89.5,
+     "jitter": 3.5,
+     "loss": 0.0,
+     "icmp_avg": 64.5,
+     "http_avg": 110.5,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 68.5, \"min\": 61.5, \"max\": 86.5, \"jitter\": 3.4, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 71.5, \"min\": 63.5, \"max\": 89.5, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 64.5}, \"http\": {\"avg\": 110.5}}",
+     "created_at": "2026-09-24 14:20:00"
+    },
+    {
+     "id": 4,
+     "tunnel_id": 1,
+     "tcp_avg": 70.4,
+     "tcp_min": 61.9,
+     "tcp_max": 89.9,
+     "jitter": 3.2,
+     "loss": 0.0,
+     "icmp_avg": 64.9,
+     "http_avg": 110.9,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 68.9, \"min\": 61.9, \"max\": 86.9, \"jitter\": 4.1, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 71.9, \"min\": 63.9, \"max\": 89.9, \"jitter\": 2.4, \"loss\": 0}}, \"icmp\": {\"avg\": 64.9}, \"http\": {\"avg\": 110.9}}",
+     "created_at": "2026-09-24 14:30:00"
+    },
+    {
+     "id": 5,
+     "tunnel_id": 1,
+     "tcp_avg": 70.5,
+     "tcp_min": 62.0,
+     "tcp_max": 90.0,
+     "jitter": 2.5,
+     "loss": 0.0,
+     "icmp_avg": 65.0,
+     "http_avg": 111.0,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 69.0, \"min\": 62.0, \"max\": 87.0, \"jitter\": 2.0, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 72.0, \"min\": 64.0, \"max\": 90.0, \"jitter\": 3.0, \"loss\": 0}}, \"icmp\": {\"avg\": 65.0}, \"http\": {\"avg\": 111.0}}",
+     "created_at": "2026-09-24 14:40:00"
+    },
+    {
+     "id": 6,
+     "tunnel_id": 1,
+     "tcp_avg": 79.3,
+     "tcp_min": 70.8,
+     "tcp_max": 98.8,
+     "jitter": 3.2,
+     "loss": 0.0,
+     "icmp_avg": 73.8,
+     "http_avg": 119.8,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 77.8, \"min\": 70.8, \"max\": 95.8, \"jitter\": 2.7, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 80.8, \"min\": 72.8, \"max\": 98.8, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 73.8}, \"http\": {\"avg\": 119.8}}",
+     "created_at": "2026-09-24 14:50:00"
+    },
+    {
+     "id": 7,
+     "tunnel_id": 1,
+     "tcp_avg": 78.5,
+     "tcp_min": 70.0,
+     "tcp_max": 98.0,
+     "jitter": 2.9,
+     "loss": 0.0,
+     "icmp_avg": 73.0,
+     "http_avg": 119.0,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 77.0, \"min\": 70.0, \"max\": 95.0, \"jitter\": 3.4, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 80.0, \"min\": 72.0, \"max\": 98.0, \"jitter\": 2.4, \"loss\": 0}}, \"icmp\": {\"avg\": 73.0}, \"http\": {\"avg\": 119.0}}",
+     "created_at": "2026-09-24 15:00:00"
+    },
+    {
+     "id": 8,
+     "tunnel_id": 1,
+     "tcp_avg": 77.3,
+     "tcp_min": 68.8,
+     "tcp_max": 96.8,
+     "jitter": 3.5,
+     "loss": 0.0,
+     "icmp_avg": 71.8,
+     "http_avg": 117.8,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 75.8, \"min\": 68.8, \"max\": 93.8, \"jitter\": 4.1, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 78.8, \"min\": 70.8, \"max\": 96.8, \"jitter\": 3.0, \"loss\": 0}}, \"icmp\": {\"avg\": 71.8}, \"http\": {\"avg\": 117.8}}",
+     "created_at": "2026-09-24 15:10:00"
+    },
+    {
+     "id": 9,
+     "tunnel_id": 1,
+     "tcp_avg": 75.5,
+     "tcp_min": 67.0,
+     "tcp_max": 95.0,
+     "jitter": 2.8,
+     "loss": 0.0,
+     "icmp_avg": 70.0,
+     "http_avg": 116.0,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 74.0, \"min\": 67.0, \"max\": 92.0, \"jitter\": 2.0, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 77.0, \"min\": 69.0, \"max\": 95.0, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 70.0}, \"http\": {\"avg\": 116.0}}",
+     "created_at": "2026-09-24 15:20:00"
+    },
+    {
+     "id": 10,
+     "tunnel_id": 1,
+     "tcp_avg": 73.1,
+     "tcp_min": 64.6,
+     "tcp_max": 92.6,
+     "jitter": 2.5,
+     "loss": 0.0,
+     "icmp_avg": 67.6,
+     "http_avg": 113.6,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 71.6, \"min\": 64.6, \"max\": 89.6, \"jitter\": 2.7, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 74.6, \"min\": 66.6, \"max\": 92.6, \"jitter\": 2.4, \"loss\": 0}}, \"icmp\": {\"avg\": 67.6}, \"http\": {\"avg\": 113.6}}",
+     "created_at": "2026-09-24 15:30:00"
+    },
+    {
+     "id": 11,
+     "tunnel_id": 1,
+     "tcp_avg": 79.2,
+     "tcp_min": 70.7,
+     "tcp_max": 98.7,
+     "jitter": 3.2,
+     "loss": 0.0,
+     "icmp_avg": 73.7,
+     "http_avg": 119.7,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 77.7, \"min\": 70.7, \"max\": 95.7, \"jitter\": 3.4, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 80.7, \"min\": 72.7, \"max\": 98.7, \"jitter\": 3.0, \"loss\": 0}}, \"icmp\": {\"avg\": 73.7}, \"http\": {\"avg\": 119.7}}",
+     "created_at": "2026-09-24 15:40:00"
+    },
+    {
+     "id": 12,
+     "tunnel_id": 1,
+     "tcp_avg": 75.8,
+     "tcp_min": 67.3,
+     "tcp_max": 95.3,
+     "jitter": 3.8,
+     "loss": 0.0,
+     "icmp_avg": 70.3,
+     "http_avg": 116.3,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 74.3, \"min\": 67.3, \"max\": 92.3, \"jitter\": 4.1, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 77.3, \"min\": 69.3, \"max\": 95.3, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 70.3}, \"http\": {\"avg\": 116.3}}",
+     "created_at": "2026-09-24 15:50:00"
+    },
+    {
+     "id": 13,
+     "tunnel_id": 1,
+     "tcp_avg": 72.0,
+     "tcp_min": 63.5,
+     "tcp_max": 91.5,
+     "jitter": 2.2,
+     "loss": 0.0,
+     "icmp_avg": 66.5,
+     "http_avg": 112.5,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 70.5, \"min\": 63.5, \"max\": 88.5, \"jitter\": 2.0, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 73.5, \"min\": 65.5, \"max\": 91.5, \"jitter\": 2.4, \"loss\": 0}}, \"icmp\": {\"avg\": 66.5}, \"http\": {\"avg\": 112.5}}",
+     "created_at": "2026-09-24 16:00:00"
+    },
+    {
+     "id": 14,
+     "tunnel_id": 1,
+     "tcp_avg": 67.7,
+     "tcp_min": 59.2,
+     "tcp_max": 87.2,
+     "jitter": 2.9,
+     "loss": 0.0,
+     "icmp_avg": 62.2,
+     "http_avg": 108.2,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 66.2, \"min\": 59.2, \"max\": 84.2, \"jitter\": 2.7, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 69.2, \"min\": 61.2, \"max\": 87.2, \"jitter\": 3.0, \"loss\": 0}}, \"icmp\": {\"avg\": 62.2}, \"http\": {\"avg\": 108.2}}",
+     "created_at": "2026-09-24 16:10:00"
+    },
+    {
+     "id": 15,
+     "tunnel_id": 1,
+     "tcp_avg": 72.2,
+     "tcp_min": 63.7,
+     "tcp_max": 91.7,
+     "jitter": 3.5,
+     "loss": 0.0,
+     "icmp_avg": 66.7,
+     "http_avg": 112.7,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 70.7, \"min\": 63.7, \"max\": 88.7, \"jitter\": 3.4, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 73.7, \"min\": 65.7, \"max\": 91.7, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 66.7}, \"http\": {\"avg\": 112.7}}",
+     "created_at": "2026-09-24 16:20:00"
+    },
+    {
+     "id": 16,
+     "tunnel_id": 1,
+     "tcp_avg": 67.5,
+     "tcp_min": 59.0,
+     "tcp_max": 87.0,
+     "jitter": 3.2,
+     "loss": 0.0,
+     "icmp_avg": 62.0,
+     "http_avg": 108.0,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 66.0, \"min\": 59.0, \"max\": 84.0, \"jitter\": 4.1, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 69.0, \"min\": 61.0, \"max\": 87.0, \"jitter\": 2.4, \"loss\": 0}}, \"icmp\": {\"avg\": 62.0}, \"http\": {\"avg\": 108.0}}",
+     "created_at": "2026-09-24 16:30:00"
+    },
+    {
+     "id": 17,
+     "tunnel_id": 1,
+     "tcp_avg": 62.7,
+     "tcp_min": 54.2,
+     "tcp_max": 82.2,
+     "jitter": 2.5,
+     "loss": 0.0,
+     "icmp_avg": 57.2,
+     "http_avg": 103.2,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 61.2, \"min\": 54.2, \"max\": 79.2, \"jitter\": 2.0, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 64.2, \"min\": 56.2, \"max\": 82.2, \"jitter\": 3.0, \"loss\": 0}}, \"icmp\": {\"avg\": 57.2}, \"http\": {\"avg\": 103.2}}",
+     "created_at": "2026-09-24 16:40:00"
+    },
+    {
+     "id": 18,
+     "tunnel_id": 1,
+     "tcp_avg": 57.9,
+     "tcp_min": 49.4,
+     "tcp_max": 77.4,
+     "jitter": 3.2,
+     "loss": 0.0,
+     "icmp_avg": 52.4,
+     "http_avg": 98.4,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 56.4, \"min\": 49.4, \"max\": 74.4, \"jitter\": 2.7, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 59.4, \"min\": 51.4, \"max\": 77.4, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 52.4}, \"http\": {\"avg\": 98.4}}",
+     "created_at": "2026-09-24 16:50:00"
+    },
+    {
+     "id": 19,
+     "tunnel_id": 1,
+     "tcp_avg": 53.3,
+     "tcp_min": 44.8,
+     "tcp_max": 72.8,
+     "jitter": 2.9,
+     "loss": 0.0,
+     "icmp_avg": 47.8,
+     "http_avg": 93.8,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 51.8, \"min\": 44.8, \"max\": 69.8, \"jitter\": 3.4, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 54.8, \"min\": 46.8, \"max\": 72.8, \"jitter\": 2.4, \"loss\": 0}}, \"icmp\": {\"avg\": 47.8}, \"http\": {\"avg\": 93.8}}",
+     "created_at": "2026-09-24 17:00:00"
+    },
+    {
+     "id": 20,
+     "tunnel_id": 1,
+     "tcp_avg": 57.9,
+     "tcp_min": 49.4,
+     "tcp_max": 77.4,
+     "jitter": 3.5,
+     "loss": 0.0,
+     "icmp_avg": 52.4,
+     "http_avg": 98.4,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 56.4, \"min\": 49.4, \"max\": 74.4, \"jitter\": 4.1, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 59.4, \"min\": 51.4, \"max\": 77.4, \"jitter\": 3.0, \"loss\": 0}}, \"icmp\": {\"avg\": 52.4}, \"http\": {\"avg\": 98.4}}",
+     "created_at": "2026-09-24 17:10:00"
+    },
+    {
+     "id": 21,
+     "tunnel_id": 1,
+     "tcp_avg": 53.9,
+     "tcp_min": 45.4,
+     "tcp_max": 73.4,
+     "jitter": 2.8,
+     "loss": 0.0,
+     "icmp_avg": 48.4,
+     "http_avg": 94.4,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 52.4, \"min\": 45.4, \"max\": 70.4, \"jitter\": 2.0, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 55.4, \"min\": 47.4, \"max\": 73.4, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 48.4}, \"http\": {\"avg\": 94.4}}",
+     "created_at": "2026-09-24 17:20:00"
+    },
+    {
+     "id": 22,
+     "tunnel_id": 1,
+     "tcp_avg": 240.3,
+     "tcp_min": 41.8,
+     "tcp_max": 259.8,
+     "jitter": 2.5,
+     "loss": 0.0,
+     "icmp_avg": 44.8,
+     "http_avg": 90.8,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 238.8, \"min\": 41.8, \"max\": 256.8, \"jitter\": 2.7, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 241.8, \"min\": 43.8, \"max\": 259.8, \"jitter\": 2.4, \"loss\": 0}}, \"icmp\": {\"avg\": 44.8}, \"http\": {\"avg\": 90.8}}",
+     "created_at": "2026-09-24 17:30:00"
+    },
+    {
+     "id": 23,
+     "tunnel_id": 1,
+     "tcp_avg": 237.2,
+     "tcp_min": 38.7,
+     "tcp_max": 256.7,
+     "jitter": 3.2,
+     "loss": 6.0,
+     "icmp_avg": 41.7,
+     "http_avg": 87.7,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 235.7, \"min\": 38.7, \"max\": 253.7, \"jitter\": 3.4, \"loss\": 12}, \"8443\": {\"ok\": true, \"avg\": 238.7, \"min\": 40.7, \"max\": 256.7, \"jitter\": 3.0, \"loss\": 0}}, \"icmp\": {\"avg\": 41.7}, \"http\": {\"avg\": 87.7}}",
+     "created_at": "2026-09-24 17:40:00"
+    },
+    {
+     "id": 24,
+     "tunnel_id": 1,
+     "tcp_avg": 53.6,
+     "tcp_min": 45.1,
+     "tcp_max": 73.1,
+     "jitter": 3.8,
+     "loss": 0.0,
+     "icmp_avg": 48.1,
+     "http_avg": 94.1,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 52.1, \"min\": 45.1, \"max\": 70.1, \"jitter\": 4.1, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 55.1, \"min\": 47.1, \"max\": 73.1, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 48.1}, \"http\": {\"avg\": 94.1}}",
+     "created_at": "2026-09-24 17:50:00"
+    },
+    {
+     "id": 25,
+     "tunnel_id": 1,
+     "tcp_avg": 51.6,
+     "tcp_min": 43.1,
+     "tcp_max": 71.1,
+     "jitter": 2.2,
+     "loss": 0.0,
+     "icmp_avg": 46.1,
+     "http_avg": 92.1,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 50.1, \"min\": 43.1, \"max\": 68.1, \"jitter\": 2.0, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 53.1, \"min\": 45.1, \"max\": 71.1, \"jitter\": 2.4, \"loss\": 0}}, \"icmp\": {\"avg\": 46.1}, \"http\": {\"avg\": 92.1}}",
+     "created_at": "2026-09-24 18:00:00"
+    },
+    {
+     "id": 26,
+     "tunnel_id": 1,
+     "tcp_avg": 50.1,
+     "tcp_min": 41.6,
+     "tcp_max": 69.6,
+     "jitter": 2.9,
+     "loss": 0.0,
+     "icmp_avg": 44.6,
+     "http_avg": 90.6,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 48.6, \"min\": 41.6, \"max\": 66.6, \"jitter\": 2.7, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 51.6, \"min\": 43.6, \"max\": 69.6, \"jitter\": 3.0, \"loss\": 0}}, \"icmp\": {\"avg\": 44.6}, \"http\": {\"avg\": 90.6}}",
+     "created_at": "2026-09-24 18:10:00"
+    },
+    {
+     "id": 27,
+     "tunnel_id": 1,
+     "tcp_avg": 49.1,
+     "tcp_min": 40.6,
+     "tcp_max": 68.6,
+     "jitter": 3.5,
+     "loss": 0.0,
+     "icmp_avg": 43.6,
+     "http_avg": 89.6,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 47.6, \"min\": 40.6, \"max\": 65.6, \"jitter\": 3.4, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 50.6, \"min\": 42.6, \"max\": 68.6, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 43.6}, \"http\": {\"avg\": 89.6}}",
+     "created_at": "2026-09-24 18:20:00"
+    },
+    {
+     "id": 28,
+     "tunnel_id": 1,
+     "tcp_avg": 48.7,
+     "tcp_min": 40.2,
+     "tcp_max": 68.2,
+     "jitter": 3.2,
+     "loss": 0.0,
+     "icmp_avg": 43.2,
+     "http_avg": 89.2,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 47.2, \"min\": 40.2, \"max\": 65.2, \"jitter\": 4.1, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 50.2, \"min\": 42.2, \"max\": 68.2, \"jitter\": 2.4, \"loss\": 0}}, \"icmp\": {\"avg\": 43.2}, \"http\": {\"avg\": 89.2}}",
+     "created_at": "2026-09-24 18:30:00"
+    },
+    {
+     "id": 29,
+     "tunnel_id": 1,
+     "tcp_avg": 57.7,
+     "tcp_min": 49.2,
+     "tcp_max": 77.2,
+     "jitter": 2.5,
+     "loss": 0.0,
+     "icmp_avg": 52.2,
+     "http_avg": 98.2,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 56.2, \"min\": 49.2, \"max\": 74.2, \"jitter\": 2.0, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 59.2, \"min\": 51.2, \"max\": 77.2, \"jitter\": 3.0, \"loss\": 0}}, \"icmp\": {\"avg\": 52.2}, \"http\": {\"avg\": 98.2}}",
+     "created_at": "2026-09-24 18:40:00"
+    },
+    {
+     "id": 30,
+     "tunnel_id": 1,
+     "tcp_avg": 58.0,
+     "tcp_min": 49.5,
+     "tcp_max": 77.5,
+     "jitter": 3.2,
+     "loss": 0.0,
+     "icmp_avg": 52.5,
+     "http_avg": 98.5,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 56.5, \"min\": 49.5, \"max\": 74.5, \"jitter\": 2.7, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 59.5, \"min\": 51.5, \"max\": 77.5, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 52.5}, \"http\": {\"avg\": 98.5}}",
+     "created_at": "2026-09-24 18:50:00"
+    },
+    {
+     "id": 31,
+     "tunnel_id": 1,
+     "tcp_avg": 58.6,
+     "tcp_min": 50.1,
+     "tcp_max": 78.1,
+     "jitter": 2.9,
+     "loss": 0.0,
+     "icmp_avg": 53.1,
+     "http_avg": 99.1,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 57.1, \"min\": 50.1, \"max\": 75.1, \"jitter\": 3.4, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 60.1, \"min\": 52.1, \"max\": 78.1, \"jitter\": 2.4, \"loss\": 0}}, \"icmp\": {\"avg\": 53.1}, \"http\": {\"avg\": 99.1}}",
+     "created_at": "2026-09-24 19:00:00"
+    },
+    {
+     "id": 32,
+     "tunnel_id": 1,
+     "tcp_avg": 59.3,
+     "tcp_min": 50.8,
+     "tcp_max": 78.8,
+     "jitter": 3.5,
+     "loss": 0.0,
+     "icmp_avg": 53.8,
+     "http_avg": 99.8,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 57.8, \"min\": 50.8, \"max\": 75.8, \"jitter\": 4.1, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 60.8, \"min\": 52.8, \"max\": 78.8, \"jitter\": 3.0, \"loss\": 0}}, \"icmp\": {\"avg\": 53.8}, \"http\": {\"avg\": 99.8}}",
+     "created_at": "2026-09-24 19:10:00"
+    },
+    {
+     "id": 33,
+     "tunnel_id": 1,
+     "tcp_avg": 69.1,
+     "tcp_min": 60.6,
+     "tcp_max": 88.6,
+     "jitter": 2.8,
+     "loss": 0.0,
+     "icmp_avg": 63.6,
+     "http_avg": 109.6,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 67.6, \"min\": 60.6, \"max\": 85.6, \"jitter\": 2.0, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 70.6, \"min\": 62.6, \"max\": 88.6, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 63.6}, \"http\": {\"avg\": 109.6}}",
+     "created_at": "2026-09-24 19:20:00"
+    },
+    {
+     "id": 34,
+     "tunnel_id": 1,
+     "tcp_avg": 69.9,
+     "tcp_min": 61.4,
+     "tcp_max": 89.4,
+     "jitter": 2.5,
+     "loss": 0.0,
+     "icmp_avg": 64.4,
+     "http_avg": 110.4,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 68.4, \"min\": 61.4, \"max\": 86.4, \"jitter\": 2.7, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 71.4, \"min\": 63.4, \"max\": 89.4, \"jitter\": 2.4, \"loss\": 0}}, \"icmp\": {\"avg\": 64.4}, \"http\": {\"avg\": 110.4}}",
+     "created_at": "2026-09-24 19:30:00"
+    },
+    {
+     "id": 35,
+     "tunnel_id": 1,
+     "tcp_avg": 70.4,
+     "tcp_min": 61.9,
+     "tcp_max": 89.9,
+     "jitter": 3.2,
+     "loss": 0.0,
+     "icmp_avg": 64.9,
+     "http_avg": 110.9,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 68.9, \"min\": 61.9, \"max\": 86.9, \"jitter\": 3.4, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 71.9, \"min\": 63.9, \"max\": 89.9, \"jitter\": 3.0, \"loss\": 0}}, \"icmp\": {\"avg\": 64.9}, \"http\": {\"avg\": 110.9}}",
+     "created_at": "2026-09-24 19:40:00"
+    },
+    {
+     "id": 36,
+     "tunnel_id": 1,
+     "tcp_avg": 70.7,
+     "tcp_min": 62.2,
+     "tcp_max": 90.2,
+     "jitter": 3.8,
+     "loss": 0.0,
+     "icmp_avg": 65.2,
+     "http_avg": 111.2,
+     "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 69.2, \"min\": 62.2, \"max\": 87.2, \"jitter\": 4.1, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 72.2, \"min\": 64.2, \"max\": 90.2, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 65.2}, \"http\": {\"avg\": 111.2}}",
+     "created_at": "2026-09-24 19:50:00",
+     "detail": {
+      "tcp": {
+       "443": {
+        "ok": true,
+        "avg": 69.2,
+        "min": 62.2,
+        "max": 87.2,
+        "jitter": 4.1,
+        "loss": 0
+       },
+       "8443": {
+        "ok": true,
+        "avg": 72.2,
+        "min": 64.2,
+        "max": 90.2,
+        "jitter": 3.6,
+        "loss": 0
+       }
+      },
+      "icmp": {
+       "avg": 65.2
+      },
+      "http": {
+       "avg": 111.2
+      }
+     }
+    }
+   ],
+   "summary": {
+    "count": 36,
+    "latest": 70.7,
+    "best": 48.7,
+    "worst": 240.3,
+    "average": 74.7,
+    "lossAvg": 0.2,
+    "since": "2026-09-24 14:00:00",
+    "quality": "خوب"
+   },
+   "latest": {
+    "id": 36,
+    "tunnel_id": 1,
+    "tcp_avg": 70.7,
+    "tcp_min": 62.2,
+    "tcp_max": 90.2,
+    "jitter": 3.8,
+    "loss": 0.0,
+    "icmp_avg": 65.2,
+    "http_avg": 111.2,
+    "raw": "{\"tcp\": {\"443\": {\"ok\": true, \"avg\": 69.2, \"min\": 62.2, \"max\": 87.2, \"jitter\": 4.1, \"loss\": 0}, \"8443\": {\"ok\": true, \"avg\": 72.2, \"min\": 64.2, \"max\": 90.2, \"jitter\": 3.6, \"loss\": 0}}, \"icmp\": {\"avg\": 65.2}, \"http\": {\"avg\": 111.2}}",
+    "created_at": "2026-09-24 19:50:00",
+    "detail": {
+     "tcp": {
+      "443": {
+       "ok": true,
+       "avg": 69.2,
+       "min": 62.2,
+       "max": 87.2,
+       "jitter": 4.1,
+       "loss": 0
+      },
+      "8443": {
+       "ok": true,
+       "avg": 72.2,
+       "min": 64.2,
+       "max": 90.2,
+       "jitter": 3.6,
+       "loss": 0
+      }
+     },
+     "icmp": {
+      "avg": 65.2
+     },
+     "http": {
+      "avg": 111.2
+     }
+    }
+   }
+  };
+  /* سلامتِ همه‌ی سرورها — یکی هشدار، یکی بحرانی، یکی بی‌گزارش */
+  var HEALTH_ALL = {
+   "ready": true,
+   "level": "crit",
+   "servers": [
+    {
+     "level": "warn",
+     "summary": "۲ هشدار",
+     "checks": [
+      {
+       "key": "disk",
+       "title": "فضای دیسک",
+       "level": "ok",
+       "detail": "47٪ پر · 42.0 GB آزاد",
+       "hint": ""
+      },
+      {
+       "key": "memory",
+       "title": "حافظه",
+       "level": "ok",
+       "detail": "61٪ مصرف · 3.1 GB آزاد",
+       "hint": ""
+      },
+      {
+       "key": "load",
+       "title": "بار پردازنده",
+       "level": "ok",
+       "detail": "1.52 روی 4 هسته",
+       "hint": ""
+      },
+      {
+       "key": "uptime",
+       "title": "مدت روشن بودن",
+       "level": "ok",
+       "detail": "12 روز",
+       "hint": ""
+      },
+      {
+       "key": "dns",
+       "title": "DNS",
+       "level": "ok",
+       "detail": "10 ms",
+       "hint": ""
+      },
+      {
+       "key": "ipv6",
+       "title": "IPv6",
+       "level": "warn",
+       "detail": "آدرس IPv6 ندارد",
+       "hint": "اگر لازم نیست، نادیده بگیرید"
+      },
+      {
+       "key": "cert",
+       "title": "گواهی SSL",
+       "level": "warn",
+       "detail": "۱۱ روز تا انقضا",
+       "hint": "certbot renew --dry-run را امتحان کنید"
+      },
+      {
+       "key": "ports",
+       "title": "پورت‌های سرویس",
+       "level": "ok",
+       "detail": "443، 2053، 8443 باز",
+       "hint": ""
+      }
+     ],
+     "counts": {
+      "ok": 6,
+      "warn": 2,
+      "crit": 0
+     },
+     "at": "2026-09-24 20:31:40",
+     "server": "سرور پنل",
+     "nodeId": null
+    },
+    {
+     "level": "crit",
+     "summary": "۱ مشکل جدی",
+     "checks": [
+      {
+       "key": "disk",
+       "title": "فضای دیسک",
+       "level": "crit",
+       "detail": "94٪ پر · 1.9 GB آزاد",
+       "hint": "لاگ‌ها را پاک کنید: journalctl --vacuum-size=200M و بزرگ‌ترین پوشه‌ها را با du -sh /* ببینید"
+      },
+      {
+       "key": "memory",
+       "title": "حافظه",
+       "level": "ok",
+       "detail": "44٪ مصرف",
+       "hint": ""
+      },
+      {
+       "key": "load",
+       "title": "بار پردازنده",
+       "level": "ok",
+       "detail": "0.61 روی 2 هسته",
+       "hint": ""
+      },
+      {
+       "key": "dns",
+       "title": "DNS",
+       "level": "ok",
+       "detail": "22 ms",
+       "hint": ""
+      }
+     ],
+     "counts": {
+      "ok": 3,
+      "warn": 0,
+      "crit": 1
+     },
+     "at": "2026-09-24 20:29:02",
+     "server": "ایران-۱",
+     "nodeId": 1
+    },
+    {
+     "server": "آلمان-۱",
+     "nodeId": 2,
+     "level": "unknown",
+     "summary": "هنوز گزارشی نرسیده",
+     "checks": []
+    }
+   ],
+   "at": "2026-09-24 20:31:40"
   };
 
+  /* تانل — عیناً شکلِ /api/admin/tunnel/overview (test-contract می‌سنجد).
+     نسخه‌ی قبلی نام‌های ساده‌شده داشت (cpu، host، label) که در بکند
+     نیستند؛ صفحه‌ها در هارنس شاخه‌هایی را نشان می‌دادند که روی سرور نیست.
+     موتورها از خودِ بکند. یک سرورِ آفلاین و یک تانلِ خطادار هم هست تا
+     آن حالت‌ها دیده شوند. */
+  /* کارهای تانل — دو کارِ قدیمی تا فهرستِ «کارهای اخیر» خالی نباشد */
+  var TJOBS = [
+    { id: 90, tunnel: 1, action: "apply", status: "done", created_at: "2026-09-24 08:11:40", done_at: "2026-09-24 08:12:03", result: "service started" },
+    { id: 91, tunnel: 2, action: "apply", status: "failed", created_at: "2026-09-24 08:11:40", done_at: "2026-09-24 08:12:10", result: "Job for nexora-tunnel-2.service failed because the control process exited with error code." },
+  ];
+
   var TUNNEL = {
-    ready: true,
-    nodes: mk(3, function (i) {
-      return { id: i + 1, name: ["ایران-۱", "آلمان-۱", "فنلاند-۱"][i],
-               host: "10.0.0." + (i + 1), online: true, role: i ? "خارج" : "ایران" };
-    }),
-    tunnels: mk(2, function (i) {
-      return { id: i + 1, name: "تانل " + (i + 1), engine: "gost",
-               status: "running", src: 1, dst: i + 2, port: 2000 + i };
-    }),
-    // همان ستون‌های `recent_events` — شکلِ کهنه‌ی {at, kind, text} صفحه‌ی
-    // رویدادها را چهار ردیفِ خالی با یک نقطه نشان می‌داد
-    events: mk(4, function (i) {
-      return { id: i, created_at: "2026-09-16 0" + i + ":00:00",
-               level: ["info", "warn", "info", "error"][i],
-               message: ["تانل ۱ دوباره وصل شد", "تأخیر تانل ۲ بالای ۳۰۰ میلی‌ثانیه",
-                         "سرور آلمان-۱ آنلاین شد", "تانل ۲ قطع شد — تلاش دوباره"][i],
-               node_name: ["ایران-۱", "آلمان-۱", "آلمان-۱", "فنلاند-۱"][i] };
-    }),
-    engines: [{ key: "gost", label: "GOST" }, { key: "frp", label: "FRP" }],
-    stats: { nodes: 3, online: 3, tunnels: 2, running: 2 },
+    "ready": true,
+    "stats": {
+      "nodes": 3,
+      "online": 2,
+      "tunnels": 2,
+      "running": 1
+    },
+    "nodes": [
+      {
+        "id": 1,
+        "name": "ایران-۱",
+        "token": "nxa_Ab3dE1…",
+        "role": "iran",
+        "public_ip": "203.0.113.4",
+        "note": "",
+        "last_seen": "2026-09-24T20:30:40",
+        "agent_version": "1.4.0",
+        "os_info": "Ubuntu 22.04",
+        "cpu_percent": 23.5,
+        "mem_percent": 41.2,
+        "disk_percent": 37.0,
+        "uptime_sec": 1036800,
+        "health_at": null,
+        "sysmon_at": null,
+        "enabled": 1,
+        "created_at": "2026-08-02 10:00:00",
+        "tunnel_count": 2,
+        "running_count": 1,
+        "online": true
+      },
+      {
+        "id": 2,
+        "name": "آلمان-۱",
+        "token": "nxa_Ab3dE2…",
+        "role": "foreign",
+        "public_ip": "198.51.100.20",
+        "note": "",
+        "last_seen": "2026-09-24T20:30:40",
+        "agent_version": "1.4.0",
+        "os_info": "Debian 12",
+        "cpu_percent": 11.0,
+        "mem_percent": 28.4,
+        "disk_percent": 22.0,
+        "uptime_sec": 2592000,
+        "health_at": null,
+        "sysmon_at": null,
+        "enabled": 1,
+        "created_at": "2026-08-02 10:00:00",
+        "tunnel_count": 0,
+        "running_count": 0,
+        "online": true
+      },
+      {
+        "id": 3,
+        "name": "فنلاند-۱",
+        "token": "nxa_Ab3dE3…",
+        "role": "foreign",
+        "public_ip": "198.51.100.9",
+        "note": "",
+        "last_seen": "2026-09-23T04:11:02",
+        "agent_version": "1.4.0",
+        "os_info": "Ubuntu 22.04",
+        "cpu_percent": null,
+        "mem_percent": null,
+        "disk_percent": null,
+        "uptime_sec": null,
+        "health_at": null,
+        "sysmon_at": null,
+        "enabled": 1,
+        "created_at": "2026-08-02 10:00:00",
+        "tunnel_count": 0,
+        "running_count": 0,
+        "online": false
+      }
+    ],
+    "tunnels": [
+      {
+        "id": 1,
+        "name": "تانل آلمان",
+        "engine": "backhaul",
+        "transport": "tcpmux",
+        "node_id": 1,
+        "foreign_node": 2,
+        "remote_host": "198.51.100.20",
+        "bridge_port": 3081,
+        "ports": [
+          {
+            "local": 443,
+            "remote": 443
+          },
+          {
+            "local": 8443,
+            "remote": 8443
+          }
+        ],
+        "secret": "••••••",
+        "options": {},
+        "enabled": 1,
+        "status": "running",
+        "last_error": null,
+        "last_check": "2026-09-24T20:30:40",
+        "created_at": "2026-08-02 10:00:00",
+        "updated_at": "2026-09-20 18:00:00",
+        "node_name": "ایران-۱",
+        "node_seen": "2026-09-24T20:30:40",
+        "node_ip": "203.0.113.4",
+        "engineName": "Backhaul",
+        "nodeOnline": true
+      },
+      {
+        "id": 2,
+        "name": "تانل فنلاند",
+        "engine": "rathole",
+        "transport": "tcp",
+        "node_id": 1,
+        "foreign_node": 3,
+        "remote_host": "198.51.100.9",
+        "bridge_port": 3082,
+        "ports": [
+          {
+            "local": 2053,
+            "remote": 2053
+          }
+        ],
+        "secret": "••••••",
+        "options": {},
+        "enabled": 1,
+        "status": "failed",
+        "last_error": "اتصال به سرورِ خارج برقرار نشد — سرورِ فنلاند آفلاین است",
+        "last_check": "2026-09-24T20:30:40",
+        "created_at": "2026-08-02 10:00:00",
+        "updated_at": "2026-09-20 18:00:00",
+        "node_name": "ایران-۱",
+        "node_seen": "2026-09-24T20:30:40",
+        "node_ip": "203.0.113.4",
+        "engineName": "Rathole",
+        "nodeOnline": true
+      }
+    ],
+    "events": [
+      {
+        "id": 4,
+        "node_id": 1,
+        "tunnel_id": 2,
+        "level": "error",
+        "message": "تانل فنلاند قطع شد — تلاشِ دوباره",
+        "created_at": "2026-09-24 03:00:00",
+        "node_name": "ایران-۱",
+        "tunnel_name": "تانل فنلاند"
+      },
+      {
+        "id": 3,
+        "node_id": 1,
+        "tunnel_id": 1,
+        "level": "warn",
+        "message": "تأخیرِ تانل آلمان بالای ۳۰۰ میلی‌ثانیه",
+        "created_at": "2026-09-24 01:00:00",
+        "node_name": "ایران-۱",
+        "tunnel_name": "تانل آلمان"
+      },
+      {
+        "id": 2,
+        "node_id": 2,
+        "tunnel_id": null,
+        "level": "info",
+        "message": "سرورِ آلمان-۱ آنلاین شد",
+        "created_at": "2026-09-23 22:10:00",
+        "node_name": "آلمان-۱",
+        "tunnel_name": null
+      },
+      {
+        "id": 1,
+        "node_id": 1,
+        "tunnel_id": 1,
+        "level": "info",
+        "message": "تانل آلمان دوباره وصل شد",
+        "created_at": "2026-09-23 20:00:00",
+        "node_name": "ایران-۱",
+        "tunnel_name": "تانل آلمان"
+      }
+    ],
+    "engines": [
+      {
+        "key": "backhaul",
+        "name": "Backhaul",
+        "desc": "سریع و پایدار برای شرایط ایران — پیشنهاد اول",
+        "repo": "Musixal/Backhaul",
+        "binaries": [
+          "backhaul"
+        ],
+        "config": "toml",
+        "transports": [
+          "tcp",
+          "tcpmux",
+          "ws",
+          "wss",
+          "wsmux",
+          "wssmux",
+          "utcpmux",
+          "uwsmux"
+        ],
+        "default_transport": "tcpmux",
+        "recommended": true
+      },
+      {
+        "key": "rathole",
+        "name": "Rathole",
+        "desc": "سبک و کم‌مصرف، نوشته‌شده با Rust",
+        "repo": "rapiz1/rathole",
+        "binaries": [
+          "rathole"
+        ],
+        "config": "toml",
+        "transports": [
+          "tcp",
+          "tls",
+          "noise",
+          "websocket"
+        ],
+        "default_transport": "tcp",
+        "recommended": false
+      },
+      {
+        "key": "gost",
+        "name": "GOST",
+        "desc": "انعطاف‌پذیر با پروتکل‌های متنوع",
+        "repo": "go-gost/gost",
+        "binaries": [
+          "gost"
+        ],
+        "config": "yaml",
+        "transports": [
+          "tcp",
+          "ws",
+          "wss",
+          "mws",
+          "mwss",
+          "grpc",
+          "quic"
+        ],
+        "default_transport": "mws",
+        "recommended": false
+      },
+      {
+        "key": "frp",
+        "name": "FRP",
+        "desc": "پرکاربرد و باثبات، با پنل وضعیت داخلی",
+        "repo": "fatedier/frp",
+        "binaries": [
+          "frps",
+          "frpc"
+        ],
+        "config": "toml",
+        "transports": [
+          "tcp",
+          "kcp",
+          "quic",
+          "websocket"
+        ],
+        "default_transport": "tcp",
+        "recommended": false
+      },
+      {
+        "key": "chisel",
+        "name": "Chisel",
+        "desc": "روی HTTP سوار می‌شود — وقتی بقیه بسته می‌شوند جواب می‌دهد",
+        "repo": "jpillora/chisel",
+        "binaries": [
+          "chisel"
+        ],
+        "config": "args",
+        "transports": [
+          "http",
+          "https"
+        ],
+        "default_transport": "http",
+        "recommended": true
+      }
+    ]
   };
 
 
@@ -1442,9 +4095,113 @@ var D_CODES = { ready: true,
     if (u.indexOf("/billing/invoice") >= 0) return INVOICE;
     if (u.indexOf("/firewall/intrusion") >= 0) return INTRUSION;
     if (u.indexOf("/firewall") >= 0) return FIREWALL;
+    /* زیرمسیرهای تانل — پیش‌تر یک `indexOf("/tunnel")` همه را می‌گرفت و
+       کلِ overview را برمی‌گرداند؛ پس نمودارِ سنجش، کانفیگ، تشخیص و
+       مانیتورینگِ نود در هارنس هیچ‌وقت داده‌ی خودشان را نداشتند. شکل‌ها
+       عیناً از بکند (test-contract با شناسه‌ی واقعیِ فیکسچر می‌سنجد). */
+    if (u.indexOf("/tunnel/node/") >= 0) {
+      var nm = u.match(/\/tunnel\/node\/(\d+)/), nid = nm ? +nm[1] : 0;
+      var nd = TUNNEL.nodes.filter(function (n) { return n.id === nid; })[0] || TUNNEL.nodes[0];
+      if (u.indexOf("/sysmon") >= 0) {
+        if (method === "POST") return { ok: true, jobId: 91, note: "درخواست ثبت شد — نتیجه تا چند ثانیه‌ی دیگر می‌رسد" };
+        // نودِ ۲ هنوز گزارشی نفرستاده، نودِ ۳ ایجنتِ قدیمی دارد — هر سه حالت دیده شوند
+        if (nid === 1) return { ready: true, at: SYSMON1.at, kind: "sysmon", data: SYSMON1, staleAgent: null, lastError: null };
+        if (nid === 3) return { ready: false, note: "ایجنت این سرور نسخه‌ی 1.4.0 است و دستور مانیتورینگ را نمی‌شناسد — باید به‌روز شود",
+                                staleAgent: "1.4.0", lastError: null };
+        return { ready: false, note: "هنوز گزارشی از این سرور نرسیده است", staleAgent: null, lastError: null };
+      }
+      if (u.indexOf("/check") >= 0) {
+        return { ok: nd.online, node: nd.name, online: nd.online, neverSeen: false,
+                 steps: [
+                   { title: "نود در پنل ثبت است", ok: true, detail: nd.name, hint: "" },
+                   { title: "آخرین تماس", ok: true, detail: nd.last_seen, hint: "" },
+                   { title: "زنده است", ok: nd.online, detail: nd.online ? "کمتر از ۹۰ ثانیه پیش" : "بیش از یک روز پیش",
+                     hint: nd.online ? "" : "روی سرور: systemctl status nexora-agent" },
+                   { title: "دستور نصب", ok: true, detail: "از دکمه‌ی «توکن جدید» دوباره بگیرید اگر لازم شد", hint: "" } ],
+                 commands: [
+                   { label: "وضعیت agent", cmd: "systemctl status nexora-agent" },
+                   { label: "لاگ زنده", cmd: "journalctl -u nexora-agent -n 40 --no-pager" },
+                   { label: "تست دسترسی به پنل", cmd: "curl -sI https://YOUR-PANEL/api/health" },
+                   { label: "ری‌استارت", cmd: "systemctl restart nexora-agent" } ] };
+      }
+      if (u.indexOf("/diagnose") >= 0) {
+        var fresh = nid === 1;
+        return { node: { id: nd.id, name: nd.name, host: nd.public_ip, version: nd.agent_version,
+                         lastSeen: nd.last_seen, ageSeconds: nd.online ? 12 : 58000 },
+                 steps: [
+                   { step: "چک‌این ایجنت", ok: nd.online, note: nd.online ? "12 ثانیه پیش" : "بیش از ۱۶ ساعت پیش" },
+                   { step: "نسخه‌ی ایجنت", ok: fresh, note: fresh ? "نسخه‌ی " + nd.agent_version : "نسخه‌ی 1.4.0 دستور مانیتورینگ را نمی‌شناسد",
+                     fix: fresh ? undefined : "دکمه‌ی «به‌روزرسانی ایجنت» را بزنید" },
+                   { step: "درخواست مانیتورینگ", ok: fresh, note: fresh ? "آخرین درخواست ۲ دقیقه پیش انجام شد" : "هیچ درخواستی برای این نود ثبت نشده" },
+                   { step: "گزارش ذخیره‌شده", ok: fresh, note: fresh ? "گزارش ۲ دقیقه پیش" : "هیچ گزارشی ذخیره نشده" } ],
+                 healthy: fresh,
+                 jobs: [{ id: 97, action: "sysmon", status: fresh ? "done" : "queued", created_at: "2026-09-24 20:29:40",
+                          taken_at: fresh ? "2026-09-24 20:29:52" : null, done_at: fresh ? "2026-09-24 20:29:55" : null,
+                          result: fresh ? "ok" : null }] };
+      }
+      if (u.indexOf("/update-agent") >= 0) return { ok: true, queued: true };
+      if (u.indexOf("/rotate") >= 0) return { ok: true, token: "nxa_Zr8…" };
+      return { ok: true };
+    }
+    var tm = u.match(/\/tunnel\/(\d+)\/(metrics|config|monitor|deploy|action|jobs)/);
+    if (tm) {
+      /* کارهای تانل — دستورِ «لاگ»/«وضعیت» یک کار می‌سازد که با پرسشِ
+         دوم «انجام شد» می‌شود، تا در هارنس هم انتظار و هم نتیجه دیده شوند */
+      if (tm[2] === "jobs") {
+        TJOBS.forEach(function (j) { if (j.status === "queued") { j.status = "taken"; } else if (j.status === "taken") { j.status = "done"; j.done_at = "2026-09-24 20:33:10"; } });
+        return { jobs: TJOBS.filter(function (j) { return j.tunnel === +tm[1]; }).slice().reverse()
+          .map(function (j) { return { id: j.id, node_id: 1, action: j.action, status: j.status,
+                                       result: j.status === "done" ? j.result : null,
+                                       created_at: j.created_at, done_at: j.done_at || null }; }) };
+      }
+      if (tm[2] === "action" && method === "POST") {
+        var what = u.split("/action/")[1];
+        TJOBS.push({ id: TJOBS.length + 100, tunnel: +tm[1], action: what, status: "queued",
+                     created_at: "2026-09-24 20:32:40",
+                     result: what === "status"
+                       ? JSON.stringify({ running: +tm[1] === 1, state: +tm[1] === 1 ? "active" : "failed",
+                                          sub: +tm[1] === 1 ? "running" : "failed", restarts: +tm[1] === 1 ? "0" : "7",
+                                          since: "Wed 2026-09-24 08:12:03 UTC" })
+                       : "2026-09-24T20:31:02+0000 ir-thr-1 backhaul[4121]: [INFO] client connected to 198.51.100.20:3081\n"
+                         + "2026-09-24T20:31:02+0000 ir-thr-1 backhaul[4121]: [INFO] tcpmux session established (8 streams)\n"
+                         + "2026-09-24T20:32:11+0000 ir-thr-1 backhaul[4121]: [WARN] keepalive timeout, reconnecting\n"
+                         + "2026-09-24T20:32:12+0000 ir-thr-1 backhaul[4121]: [INFO] client connected to 198.51.100.20:3081" });
+        return { ok: true, queued: what };
+      }
+      if (tm[2] === "metrics") return +tm[1] === 1 ? TMETRICS : { samples: [], summary: null };
+      if (tm[2] === "config") {
+        return { config: "[client]\nremote_addr = \"198.51.100.20:3081\"\ntoken = \"••••••••\"\ntransport = \"tcpmux\"\n"
+                         + "keepalive_period = 75\nnodelay = true\nlog_level = \"info\"\nmux_version = 1\n",
+                 engine: "backhaul", side: "foreign", filename: "tunnel-" + tm[1] + ".toml" };
+      }
+      if (tm[2] === "monitor") return { ok: true, queued: true, ports: [443, 8443] };
+      return { ok: true, queued: true };
+    }
     if (u.indexOf("/tunnel/overview") >= 0 || u.indexOf("/tunnel") >= 0) return TUNNEL;
+    if (u.indexOf("/admin/health/all") >= 0) return HEALTH_ALL;
+    if (u.indexOf("/admin/health/check") >= 0) return { ok: true, queued: true };
+    if (u.indexOf("/admin/usage-history") >= 0) return USAGE;
+    if (u.indexOf("/admin/top-clients") >= 0) return TOPCLIENTS;
     if (u.indexOf("/affiliates") >= 0) return AFFILIATES;
-    if (u.indexOf("/monitor") >= 0 || u.indexOf("/nodes") >= 0) return MONITOR;
+    if (u.indexOf("/admin/monitor") >= 0) {
+      /* مثلِ بکند: `sections=` فقط همان بخش‌ها را برمی‌گرداند. بی‌این، بخشِ
+         «بسته‌ها و امنیت» (که فقط با درخواست پر می‌شود) در هارنس همیشه خالی
+         و سنجه‌هایش هم‌زمان در شبکه‌ی بالا پُر بودند — حالتی که روی سرور نیست */
+      var sm = /[?&]sections=([^&]*)/.exec(u);
+      if (!sm || !sm[1]) return MONITOR;
+      var want = decodeURIComponent(sm[1]).split(",");
+      var secs = {}, keys = {};
+      want.forEach(function (k) {
+        if (MONITOR.sections[k] === undefined) return;
+        secs[k] = MONITOR.sections[k];
+        (Array.isArray(secs[k]) ? secs[k] : []).forEach(function (m) { if (m && m.key) keys[m.key] = 1; });
+      });
+      var mets = MONITOR.metrics.filter(function (m) {
+        return keys[m.key] || (m.key.indexOf("conn:") === 0 && want.indexOf("connections") >= 0)
+          || (m.key.indexOf("svc:") === 0 && want.indexOf("services") >= 0);
+      });
+      return Object.assign({}, MONITOR, { sections: secs, metrics: mets });
+    }
     if (u.indexOf("/admin/themes") >= 0) {
       if (method === "POST") {
         THEMES.currentTemplate = (body || {}).template || THEMES.currentTemplate;
@@ -1485,7 +4242,7 @@ var D_CODES = { ready: true,
     }
     if (u.indexOf("/admin/maintenance") >= 0) {
       return { enabled: true, action: "xray", hour: 5, minute: 0, days: [5], skipIfBusy: true, busyThreshold: 20,
-               confirmedReboot: false, lastRun: "2026-09-19T05:00:04", lastResult: "ok",
+               confirmedReboot: false, lastRun: "2026-09-19T05:00:04", lastResult: "انجام شد — Xray ری‌استارت شد",
                nextRun: "2026-09-26T05:00:00", activeConnections: 37 };
     }
     if (u.indexOf("/admin/config") >= 0) return CONFIG;

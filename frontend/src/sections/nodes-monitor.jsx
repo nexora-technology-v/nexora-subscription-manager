@@ -12,13 +12,15 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  Activity, AlertTriangle, CheckCircle2, Loader2, RefreshCw, Search, Server, ShieldCheck, Stethoscope,
+  Activity, AlertTriangle, CheckCircle2, Clock, Loader2, RefreshCw, Search, Server, ShieldCheck, Stethoscope,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatTile } from "../ui/index";
-import { MetricCard, PortsCard, ConnectionsCard } from "./monitoring";
+import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, UsageBar } from "../ui/index";
+import { MetricCard, PortsCard, ConnectionsCard, byLevel } from "./monitoring";
 import { isoToJalaliStamp } from "../ui/jalali";
+
+const ROLE_FA = { iran: "ایران", foreign: "خارج" };
 
 /**
  * چرا از این سرور گزارشی نمی‌آید.
@@ -311,7 +313,6 @@ export function NodesMonitor({ password }) {
   const node = nodes.find((n) => n.id === sel);
   // از همان فهرستی که در دست است
   const offline = nodes.filter((n) => n.online === false).length;
-  const withAgent = nodes.filter((n) => n.agent || n.hasAgent || n.online).length;
 
   return (
     <div className="fx-anim">
@@ -319,14 +320,6 @@ export function NodesMonitor({ password }) {
         desc="همان اعداد و همان آستانه‌های سرور پنل — چون agent همان ماژول را اجرا می‌کند."
         action={(
           <div className="flex items-center gap-2 flex-wrap">
-            <select className="fx-input" value={sel || ""} style={{ width: 180 }}
-              onChange={(e) => setSel(Number(e.target.value))}>
-              {nodes.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {n.name}{n.role ? ` — ${n.role}` : ""}
-                </option>
-              ))}
-            </select>
             <button onClick={() => request("sysmon")} disabled={busy || waiting}
               className="fx-btn px-3 py-2 text-[13px] flex items-center gap-1.5">
               <RefreshCw size={14}
@@ -334,7 +327,7 @@ export function NodesMonitor({ password }) {
               گزارش تازه
             </button>
             <button onClick={() => request("firewall")} disabled={busy || waiting}
-              className="fx-btn-ghost px-3 py-2 text-[13px] flex items-center gap-1.5">
+              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
               <ShieldCheck size={14} /> فایروال
             </button>
           </div>
@@ -345,19 +338,43 @@ export function NodesMonitor({ password }) {
       {/* وضعیت ناوگان، پیش از جزئیاتِ یک سرور.
           انتخابگرِ بالا فقط یکی را نشان می‌دهد؛ این می‌گوید کدام‌ها
           اصلاً جواب نمی‌دهند — همان چیزی که باید اول دیده شود. */}
+      {/* خودِ سرورها انتخابگرند. پیش‌تر یک منوی کشویی، سه کارتِ شاخص
+          و یک نوارِ جدا همه یک چیز را می‌گفتند («کدام سرور، آنلاین است
+          یا نه»)؛ کارتِ «سرورِ انتخاب‌شده» نامِ سرور را با فونتِ ۲۸
+          پیکسلی تکرار می‌کرد و نوارِ زیرش آدرس را همیشه «—» نشان
+          می‌داد، چون `node.host` در پاسخِ overview وجود ندارد —
+          نامش `public_ip` است. */}
       {nodes.length > 0 && (
-        <div className="fx-g3 grid grid-cols-3 gap-3">
-          <StatTile label="سرورها" icon={Server} tone="var(--accent-2)"
-            value={faNum(nodes.length)}
-            hint={`${faNum(withAgent)} تا agent دارند`} />
-          <StatTile label="آنلاین" icon={Activity}
-            tone={offline ? "var(--warn)" : "var(--ok)"}
-            value={faNum(nodes.length - offline)}
-            color={offline ? "var(--warn)" : "var(--ok)"}
-            hint={offline ? `${faNum(offline)} سرور جواب نمی‌دهد` : "همه در دسترس‌اند"} />
-          <StatTile label="سرور انتخاب‌شده" icon={ShieldCheck} tone="var(--purple)"
-            value={node ? node.name : "—"}
-            hint={node?.role || "برای دیدن جزئیات از بالا انتخاب کنید"} />
+        <div className="fx-node-pick" role="tablist" aria-label="انتخابِ سرور">
+          {nodes.map((n) => (
+            <button key={n.id} role="tab" aria-selected={n.id === sel} onClick={() => setSel(n.id)}
+              className={`fx-node-card ${n.id === sel ? "on" : ""}`}>
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`fx-live-dot ${n.online ? "on" : ""}`} />
+                <span className="text-[13.5px] font-semibold text-white truncate">{n.name}</span>
+                {n.role && <span className="fx-pill mr-auto shrink-0">{ROLE_FA[n.role] || n.role}</span>}
+              </div>
+              <div className="text-[11.5px] mt-1 truncate" dir="ltr"
+                style={{ color: "var(--muted)", fontFamily: "var(--mono)", textAlign: "right" }}>
+                {n.public_ip || "—"}
+              </div>
+              {n.online && n.cpu_percent != null ? (
+                <div className="mt-2.5 flex flex-col gap-1">
+                  <UsageBar label="CPU" pct={n.cpu_percent} />
+                  <UsageBar label="RAM" pct={n.mem_percent} />
+                </div>
+              ) : (
+                <div className="text-[11.5px] mt-2.5" style={{ color: n.online ? "var(--muted)" : "var(--warn)" }}>
+                  {n.online ? "هنوز عددی نفرستاده" : n.last_seen ? `آفلاین از ${isoToJalaliStamp(n.last_seen)}` : "هنوز وصل نشده"}
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+      {offline > 0 && nodes.length > 1 && (
+        <div className="text-[12px] -mt-1 mb-3" style={{ color: "var(--warn)" }}>
+          {faNum(offline)} سرور جواب نمی‌دهد — گزارشِ تازه فقط از سرورهای آنلاین می‌رسد.
         </div>
       )}
 
@@ -368,27 +385,16 @@ export function NodesMonitor({ password }) {
         </InfoBox>
       )}
 
-      {node && (
-        <div className="fx-card p-4 mb-4 flex items-center gap-4 flex-wrap">
-          <Server size={18} style={{ color: "var(--accent-2)" }} />
-          <div>
-            <div className="text-[14px] font-semibold text-white">{node.name}</div>
-            <div className="text-[12px]" style={{ color: "var(--muted)" }}>
-              {node.host || "—"}{node.role ? ` · ${node.role}` : ""}
-            </div>
-          </div>
-          {snap && snap.at && (
-            <div className="text-[12px]" style={{ color: "var(--muted)" }}>
-              آخرین گزارش: {isoToJalaliStamp(snap.at)}
-            </div>
-          )}
+      {node && snap && snap.at && (
+        <div className="text-[12px] mb-3 flex items-center gap-1.5" style={{ color: "var(--muted)" }}>
+          <Clock size={12} /> آخرین گزارشِ «{node.name}»: {isoToJalaliStamp(snap.at)}
         </div>
       )}
 
       {snap && snap.staleAgent && (
         <InfoBox tone="warn">
           <b>ایجنت این سرور قدیمی است</b> (نسخه‌ی {snap.staleAgent}). دستور
-          مانیتورینگ از نسخه‌ی ۱.۴.۰ اضافه شده، پس تا به‌روز نشود گزارشی
+          مانیتورینگ از نسخه‌ی ۱.۵.۰ اضافه شده، پس تا به‌روز نشود گزارشی
           نمی‌آید — حتی اگر سرور بدون مشکل وصل باشد.
           <div className="mt-2">
             <button onClick={updateAgent} disabled={busy}
@@ -421,7 +427,7 @@ export function NodesMonitor({ password }) {
         <>
           {(d.metrics || []).length > 0 && (
             <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">
-              {(d.metrics || []).map((m) => (
+              {byLevel(d.metrics).map((m) => (
                 <MetricCard key={m.key} m={m} />
               ))}
             </div>

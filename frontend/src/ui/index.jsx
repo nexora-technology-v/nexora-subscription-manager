@@ -691,6 +691,28 @@ export function NavAlert({ count }) {
 }
 
 
+/* نوارِ کوچکِ مصرف (تانل و مانیتورینگِ نودها) — رنگ از همان آستانه‌های monitor.py (۷۵/۹۲) */
+/* یک آستانه برای همه‌ی صفحه‌ها — همان ۷۵/۹۲ که monitor.py سطح را با آن
+   می‌سازد. صفحه‌ی «سرورها» ۶۵/۸۵ داشت، پس یک پردازنده‌ی ۸۰٪ آن‌جا قرمز
+   و در مانیتورینگ زرد بود. */
+export function usageColor(pct) {
+  const v = Number(pct) || 0;
+  return v >= 92 ? "var(--danger)" : v >= 75 ? "var(--warn)" : "var(--ok)";
+}
+
+export function UsageBar({ label, pct }) {
+  const v = Math.max(0, Math.min(100, Number(pct) || 0));
+  const c = usageColor(v);
+  return (
+    <div className="flex items-center gap-1.5" title={`${label} ${faNum(v)}٪`}>
+      <span className="text-[10px] w-[26px]" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>{label}</span>
+      <span className="flex-1 h-[5px] rounded-full overflow-hidden" style={{ background: "var(--hair-2)" }}>
+        <span className="block h-full rounded-full" style={{ width: `${v}%`, background: c }} />
+      </span>
+    </div>
+  );
+}
+
 export function StatTile({
   label, value, unit, hint, color = "var(--text)",
   icon: Icon, spark, sparkColor, trend, tone, className = "",
@@ -1187,7 +1209,7 @@ export function Pager({ page, pages, total, perPage, onPage }) {
         {faNum(Math.min(page * perPage, total))}
         {" از "}{faNum(total)}
       </span>
-      <div className="flex items-center gap-1">
+      <div className="fx-pager flex items-center gap-1">
         <button onClick={() => onPage(page - 1)} disabled={page <= 1}
           className="fx-ico-btn" style={{ width: 28, height: 28 }}
           aria-label="صفحه‌ی قبل">

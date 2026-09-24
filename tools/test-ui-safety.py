@@ -480,6 +480,11 @@ for _f, _src in ALL.items():
     for _m in re.finditer(r"\{\s*[\w]+\??\.(at|created_at|updated_at|createdAt|updatedAt|paid_at"
                           r"|expires_at|expiresAt|sent_at|last_seen)\s*\}", _src):
         _isoraw.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
+    # و ستونی که فقط `T`ش عوض شود: `{m.nextRun.replace("T", " ساعت ")}` —
+    # بی‌بریدن و با نامی که در فهرستِ بالا نبود، از هر دو شکل رد شد و
+    # «اجرای بعدی: 26-09-2026» را در مانیتورینگ نشان می‌داد.
+    for _m in re.finditer(r"\{\s*[\w.?]+\.replace\(\s*[\"'/]T[\"'/]", _src):
+        _isoraw.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
 check("هیچ تاریخِ میلادیِ خامی رندر نمی‌شود", not _isoraw, ", ".join(_isoraw[:5]))
 
 # نویسه‌ی کنترلیِ نامرئی در کدِ تست — `\b` که در heredocِ گیت‌بش به

@@ -274,6 +274,12 @@ def list_nodes():
             d = dict(r)
             d["token"] = d["token"][:12] + "…"   # هرگز کامل نمایش داده نمی‌شود
             d["online"] = _is_online(d.get("last_seen"))
+            # گزارش‌های کامل (مانیتورینگ تا ۶۰ و سلامت تا ۸ کیلوبایت برای هر
+            # نود) مسیرهای خودشان را دارند. `n.*` آن‌ها را هم در overview
+            # می‌فرستاد — صفحه‌ای که هر چند ثانیه تازه می‌شود و هیچ‌جایش
+            # این دو را نمی‌خواند. فقط زمانشان می‌ماند.
+            d.pop("sysmon", None)
+            d.pop("health", None)
             out.append(d)
         return out
     finally:
@@ -323,13 +329,36 @@ def touch_node(node_id, metrics=None):
         c.close()
 
 
-def delete_node(node_id):
+def get_node(node_id):
+    """یک نود (بی‌توکن و بی‌گزارش‌های حجیم)، یا None."""
     c = conn()
     try:
+        r = c.execute("SELECT id, name, role, public_ip, last_seen FROM nodes WHERE id = ?",
+                      (node_id,)).fetchone()
+        return dict(r) if r else None
+    finally:
+        c.close()
+
+
+def delete_node(node_id):
+    """
+    حذفِ نود. برمی‌گرداند: {tunnels: تانل‌های حذف‌شده، detached: تانل‌هایی
+    که این نود سمتِ خارجشان بود}.
+
+    تانل‌هایی که این نود سمتِ *خارجِ* آن‌ها بود هم حذف نمی‌شوند و هم
+    پیش‌تر به شناسه‌ای اشاره می‌کردند که دیگر نبود — اعمالِ بعدی کارِ
+    سمتِ خارج را برای نودی در صف می‌گذاشت که هرگز چک‌این نمی‌کند.
+    """
+    c = conn()
+    try:
+        n_own = c.execute("SELECT COUNT(*) FROM tunnels WHERE node_id = ?", (node_id,)).fetchone()[0]
+        cur = c.execute("UPDATE tunnels SET foreign_node = NULL WHERE foreign_node = ?", (node_id,))
+        detached = cur.rowcount
         c.execute("DELETE FROM tunnels WHERE node_id = ?", (node_id,))
         c.execute("DELETE FROM jobs WHERE node_id = ?", (node_id,))
         c.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
         c.commit()
+        return {"tunnels": n_own, "detached": detached}
     finally:
         c.close()
 
@@ -1079,6 +1108,91 @@ def finish_job(job_id, ok, result="", node_id=None):
         c.close()
 
 
+def job_tunnel(job_id):
+    """شناسه‌ی تانلِ یک کار — از payloadِ ذخیره‌شده، نه از پاسخِ ایجنت."""
+    c = conn()
+    try:
+        row = c.execute("SELECT payload FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    finally:
+        c.close()
+    if not row or not row["payload"]:
+        return None
+    try:
+        tid = json.loads(row["payload"]).get("tunnel_id")
+        return int(tid) if tid is not None else None
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def tunnel_jobs(tunnel_id, limit=10):
+    """
+    کارهای اخیرِ یک تانل، با نتیجه‌شان.
+
+    دکمه‌ی «لاگ» یک کار در صف می‌گذاشت و پاسخش در جدولِ jobs می‌ماند
+    — ولی هیچ مسیری آن را نمی‌خواند. دکمه فشرده می‌شد، «دستور فرستاده
+    شد» می‌آمد، و لاگ هرگز دیده نمی‌شد.
+    """
+    tid = int(tunnel_id)
+    c = conn()
+    try:
+        rows = [dict(r) for r in c.execute(
+            """SELECT id, node_id, action, payload, status, result,
+                      created_at, done_at FROM jobs
+               WHERE payload LIKE ? ORDER BY id DESC LIMIT 200""",
+            (f'%"tunnel_id": {tid}%',))]
+    finally:
+        c.close()
+    out = []
+    for r in rows:
+        # LIKE فقط صافی است: «1» با «12» هم جور می‌شود — این‌جا دقیق
+        try:
+            if int(json.loads(r.pop("payload") or "{}").get("tunnel_id", -1)) != tid:
+                continue
+        except (TypeError, ValueError, AttributeError):
+            continue
+        # کانفیگِ اعمال‌شده راز دارد؛ فقط نتیجه برمی‌گردد
+        r["result"] = (r.get("result") or "")[:4000]
+        out.append(r)
+        if len(out) >= limit:
+            break
+    return out
+
+
+#: دستورهایی که نتیجه‌شان چیزی درباره‌ی وضعیتِ تانل می‌گوید
+STATUS_ACTIONS = ("apply", "start", "stop", "restart", "status")
+
+
+def status_from_result(action, ok, result):
+    """
+    وضعیتِ تانل از روی نتیجه‌ی یک کار: (status, error)، یا None اگر
+    پاسخ خوانا نبود.
+
+    تا پیش از این، هیچ مسیری وضعیت را از «deploying» جلوتر نمی‌برد:
+    set_status فقط یک‌جا صدا زده می‌شد، موقعِ اعمال. پس داشبورد هرگز
+    تانلِ «در حال کار» نشان نمی‌داد، و تانلی که روی سرور نصب نشده بود
+    هم همان «در حال اعمال» را می‌گرفت — درست یا خراب، یکی بود.
+    """
+    if action not in STATUS_ACTIONS:
+        return None
+    if not ok:
+        return "failed", (str(result or "").strip() or "بدون پیام")[:300]
+    if action == "stop":
+        return "stopped", None
+    if action == "status":
+        try:
+            d = json.loads(result)
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(d, dict):
+            return None
+        if d.get("running"):
+            return "running", None
+        if str(d.get("state") or "") == "failed":
+            return "failed", f"سرویس روی سرور از کار افتاده (systemd: {d.get('sub') or 'failed'})"
+        return "stopped", None
+    return "running", None
+
+
 def tunnel_on_node(tunnel_id, node_id):
     """
     آیا این تانل واقعاً روی این نود است؟
@@ -1183,6 +1297,13 @@ def save_metrics(tunnel_id, data):
         c.close()
 
 
+#: مرزهای تأخیر (میلی‌ثانیه): عالی تا اولی، خوب تا دومی، متوسط تا سومی.
+#: رنگِ نمودارِ «کیفیت» در tunnel.jsx همین را دارد (LATENCY_STEPS) و
+#: test-nodes برابری‌شان را می‌سنجد — پیش‌تر نمودار ۶۰/۱۵۰ داشت و این‌جا
+#: ۶۰/۱۵۰/۳۰۰، پس تانلِ «خوب» با میله‌های زرد کشیده می‌شد.
+LATENCY_STEPS = (60, 150, 300)
+
+
 def get_metrics(tunnel_id, limit=40):
     """آخرین سنجش‌ها به‌همراه خلاصه‌ی روند."""
     c = conn()
@@ -1224,11 +1345,11 @@ def get_metrics(tunnel_id, limit=40):
         summary["quality"] = "قطع"
     elif a is None:
         summary["quality"] = "نامشخص"
-    elif (l or 0) > 5 or a > 300:
+    elif (l or 0) > 5 or a > LATENCY_STEPS[2]:
         summary["quality"] = "ضعیف"
-    elif (l or 0) > 1 or a > 150:
+    elif (l or 0) > 1 or a > LATENCY_STEPS[1]:
         summary["quality"] = "متوسط"
-    elif a > 60:
+    elif a > LATENCY_STEPS[0]:
         summary["quality"] = "خوب"
     else:
         summary["quality"] = "عالی"

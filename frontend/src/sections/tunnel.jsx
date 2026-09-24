@@ -4,15 +4,15 @@
  * از App.jsx جدا شد؛ آن فایل ۱۱۴۰۰ خط بود و پیداکردن یک کامپوننت
  * در آن عملاً ناممکن.
  */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Activity, AlertTriangle, Check, CheckCircle2, Circle, Clock, Copy, FileText, Loader2, Network, Plus as PlusIcon, RefreshCw, Server, ShieldCheck, Trash2, UploadCloud, X, XCircle,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { usePolling } from "../lib/hooks";
-import { EmptyState, Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile } from "../ui/index";
-import { isoToJalaliStamp } from "../ui/jalali";
+import { ConfirmModal, EmptyState, Field, InfoBox, Modal, Msg, PageSkeleton, Pager, SectionHead, Segmented, StatTile, UsageBar, usageColor } from "../ui/index";
+import { isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
 
 export const ENGINE_COLOR = {
   backhaul: "#34D399",
@@ -27,6 +27,9 @@ export const TUN_STATUS = {
   stopped:   { label: "متوقف", color: "var(--muted)" },
   failed:    { label: "خطا", color: "var(--danger)" },
   pending:   { label: "اعمال نشده", color: "var(--muted)" },
+  // «error» را بکند نمی‌نویسد (status_from_result فقط failed می‌گوید)،
+  // ولی داده‌ی کهنه نباید «اعمال نشده» دیده شود
+  error:     { label: "خطا", color: "var(--danger)" },
 };
 
 export function useTunnel(password) {
@@ -72,6 +75,11 @@ export function TunnelOverview({ password }) {
   // که این بخش را ندارد). آن‌وقت صفحه باید حالت خالی نشان بدهد، نه
   // اینکه کل بخش بیفتد.
   const s = data.stats || {};
+  const nodes = data.nodes || [];
+  const tuns = data.tunnels || [];
+  const offline = nodes.filter((n) => !n.online);
+  const broken = tuns.filter((t) => t.status === "failed" || t.status === "error");
+  const issues = offline.length + broken.length;
 
   return (
     <div className="fx-anim">
@@ -80,94 +88,128 @@ export function TunnelOverview({ password }) {
         action={<button onClick={reload} className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
           <RefreshCw size={13} /> تازه‌سازی</button>} />
 
-      {/* همان چهار عدد، ولی با زمینه: «۲ از ۳ آنلاین» چیزی می‌گوید
-          که «۲» تنها نمی‌گوید. */}
-      <div className="fx-g4 grid grid-cols-4 gap-3">
-        <StatTile label="سرورها" icon={Server} tone="var(--accent-2)"
-          value={faNum(s.nodes)}
-          hint={s.nodes ? `${faNum(s.online || 0)} تا آنلاین` : "هنوز سروری اضافه نشده"} />
-        <StatTile label="آنلاین" icon={Activity}
-          tone={s.online === s.nodes && s.nodes ? "var(--ok)" : "var(--warn)"}
-          value={faNum(s.online)}
-          color={s.online === s.nodes && s.nodes ? "var(--ok)" : "var(--warn)"}
-          hint={s.nodes - (s.online || 0) > 0
-                ? `${faNum(s.nodes - s.online)} سرور جواب نمی‌دهد` : "همه در دسترس‌اند"} />
-        <StatTile label="تانل‌ها" icon={Network} tone="var(--purple)"
-          value={faNum(s.tunnels)}
-          hint={s.tunnels ? `${faNum(s.running || 0)} تا در حال کار` : "هنوز تانلی ساخته نشده"} />
-        <StatTile label="در حال کار" icon={CheckCircle2}
-          tone={s.running === s.tunnels && s.tunnels ? "var(--ok)" : "var(--danger)"}
-          value={faNum(s.running)}
-          color={s.running === s.tunnels && s.tunnels ? "var(--ok)" : "var(--danger)"}
-          hint={s.tunnels - (s.running || 0) > 0
-                ? `${faNum(s.tunnels - s.running)} تانل خوابیده` : "هیچ تانلی نخوابیده"} />
+      {/* سه عدد، نه چهار: «سرورها ۳» و «آنلاین ۲» یک خبر بودند در دو
+          کارت. نسبت همان را در یکی می‌گوید، و جای چهارم به چیزی رسید
+          که واقعاً کاری می‌خواهد — تعدادِ مشکل‌ها. */}
+      <div className="fx-g3 fx-kpi3 grid grid-cols-3 gap-3">
+        <StatTile label="سرورِ آنلاین" icon={Server}
+          tone={offline.length ? "var(--warn)" : "var(--ok)"}
+          value={`${faNum(s.online || 0)}/${faNum(s.nodes || 0)}`}
+          hint={!s.nodes ? "هنوز سروری اضافه نشده"
+                : offline.length ? `${faNum(offline.length)} سرور جواب نمی‌دهد` : "همه در دسترس‌اند"} />
+        <StatTile label="تانلِ در حال کار" icon={Network}
+          tone={s.tunnels && s.running === s.tunnels ? "var(--ok)" : "var(--purple)"}
+          value={`${faNum(s.running || 0)}/${faNum(s.tunnels || 0)}`}
+          hint={!s.tunnels ? "هنوز تانلی ساخته نشده"
+                : broken.length ? `${faNum(broken.length)} تانل خطا دارد`
+                : s.tunnels - (s.running || 0) > 0 ? `${faNum(s.tunnels - (s.running || 0))} تانل روشن نیست`
+                : "همه روشن‌اند"} />
+        <StatTile label="نیاز به توجه" icon={issues ? AlertTriangle : CheckCircle2}
+          tone={issues ? "var(--danger)" : "var(--ok)"}
+          color={issues ? "var(--danger)" : "var(--ok)"}
+          value={faNum(issues)}
+          hint={issues ? "پایین‌تر فهرست شده‌اند" : "همه چیز سالم است"} />
       </div>
 
-      {(data.nodes || []).length === 0 ? (
-        <EmptyState icon={Server} text="هنوز سروری اضافه نشده"
-          hint="از بخش «سرورها» یک سرور ایران اضافه کنید. یک دستور نصب می‌گیرید که روی آن سرور اجرا می‌کنید — بدون نیاز به باز کردن پورت یا دادن رمز." />
-      ) : (
-        <>
-          <div className="fx-card p-5 mb-4">
-            <div className="text-[14px] font-semibold text-white mb-4">سرورها</div>
-            {(data.nodes || []).map((n, i, arr) => (
-              <div key={n.id} className="flex items-center justify-between gap-3 py-3 flex-wrap"
-                style={{ borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
-                <div className="flex items-center gap-3 min-w-0">
-                  <div style={{
-                    width: 8, height: 8, borderRadius: "50%",
-                    background: n.online ? "var(--ok)" : "var(--muted)",
-                    boxShadow: n.online ? "0 0 8px var(--ok)" : "none",
-                    flexShrink: 0,
-                  }} />
-                  <div className="min-w-0">
-                    <div className="text-[14px] font-semibold text-white">{n.name}</div>
-                    <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>
-                      {n.os_info || "—"}{n.public_ip ? ` · ${n.public_ip}` : ""}
-                    </div>
+      {issues > 0 && (
+        <div className="fx-card p-5 mb-4 fx-attn">
+          <div className="text-[14px] font-semibold text-white mb-1">نیاز به توجه</div>
+          <div className="fx-rowlist">
+            {broken.map((t) => (
+              <div key={"t" + t.id} className="flex items-start gap-3">
+                <XCircle size={15} className="shrink-0 mt-0.5" style={{ color: "var(--danger)" }} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-semibold text-white">تانل «{t.name}» خطا دارد</div>
+                  <div className="text-[12px] mt-0.5 break-words" style={{ color: "var(--dim)" }}>
+                    {t.last_error || "پیامی از سرور نرسید — «لاگ» را در صفحه‌ی تانل‌ها ببینید."}
                   </div>
                 </div>
-                <div className="flex items-center gap-4 shrink-0 text-[13px]"
-                  style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>
-                  {n.cpu_percent != null && <span>CPU {faNum(n.cpu_percent)}٪</span>}
-                  {n.mem_percent != null && <span>RAM {faNum(n.mem_percent)}٪</span>}
-                  <span style={{ color: n.online ? "var(--ok)" : "var(--muted)" }}>
-                    {n.running_count}/{n.tunnel_count}
-                    <span className="fx-fa-sub"> تانل</span>
-                  </span>
+              </div>
+            ))}
+            {offline.map((n) => (
+              <div key={"n" + n.id} className="flex items-start gap-3">
+                <AlertTriangle size={15} className="shrink-0 mt-0.5" style={{ color: "var(--warn)" }} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-semibold text-white">سرورِ «{n.name}» جواب نمی‌دهد</div>
+                  <div className="text-[12px] mt-0.5" style={{ color: "var(--dim)" }}>
+                    {n.last_seen ? `آخرین تماس: ${isoToJalaliStamp(n.last_seen)}` : "هنوز هیچ تماسی نگرفته — دستور نصب اجرا شده؟"}
+                  </div>
                 </div>
               </div>
             ))}
           </div>
+        </div>
+      )}
 
-          {(data.tunnels || []).length > 0 && (
-            <div className="fx-card p-5">
-              <div className="text-[14px] font-semibold text-white mb-4">تانل‌های اخیر</div>
-              {(data.tunnels || []).slice(0, 6).map((t, i, arr) => {
-                const st = TUN_STATUS[t.status] || TUN_STATUS.pending;
-                const ec = ENGINE_COLOR[t.engine] || "var(--accent-2)";
-                return (
-                  <div key={t.id} className="flex items-center justify-between gap-3 py-3 flex-wrap"
-                    style={{ borderBottom: i < arr.length - 1 ? "1px solid var(--border)" : "none" }}>
-                    <div className="min-w-0">
-                      <div className="text-[14px] font-semibold text-white">{t.name}</div>
-                      <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>
-                        {t.node_name} · {(t.ports || []).length} پورت
-                      </div>
+      {nodes.length === 0 ? (
+        <EmptyState icon={Server} text="هنوز سروری اضافه نشده"
+          hint="از بخش «سرورها» یک سرور ایران اضافه کنید. یک دستور نصب می‌گیرید که روی آن سرور اجرا می‌کنید — بدون نیاز به باز کردن پورت یا دادن رمز." />
+      ) : (
+        /* کنارِ هم روی صفحه‌ی پهن: دو فهرستِ کوتاه زیرِ هم، نیمی از
+           صفحه را خالی می‌گذاشتند */
+        <div className="fx-split">
+          <div className="fx-card p-5">
+            <div className="text-[14px] font-semibold text-white mb-2">سرورها</div>
+            <div className="fx-rowlist">
+              {nodes.map((n) => (
+                <div key={n.id} className="flex items-center gap-3">
+                  <span className={`fx-live-dot ${n.online ? "on" : ""}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13.5px] font-semibold text-white truncate">{n.name}</div>
+                    <div className="text-[12px] mt-0.5 truncate" style={{ color: "var(--muted)" }}>
+                      {n.os_info || "—"}{n.public_ip ? ` · ${n.public_ip}` : ""}
                     </div>
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      <span className="text-[12px] px-2 py-1 rounded-lg"
+                  </div>
+                  {n.online && n.cpu_percent != null && (
+                    <div className="fx-hide-m flex flex-col gap-1 w-[92px] shrink-0">
+                      <UsageBar label="CPU" pct={n.cpu_percent} />
+                      <UsageBar label="RAM" pct={n.mem_percent} />
+                    </div>
+                  )}
+                  <span className="text-[12.5px] shrink-0 w-[58px] text-left"
+                    style={{ color: n.online ? "var(--ok)" : "var(--muted)", fontFamily: "var(--mono)" }}>
+                    {faNum(n.running_count)}/{faNum(n.tunnel_count)}
+                    <span className="fx-fa-sub"> تانل</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="fx-card p-5">
+            <div className="text-[14px] font-semibold text-white mb-2">تانل‌ها</div>
+            {tuns.length === 0 ? (
+              <div className="text-[13px] py-6 text-center" style={{ color: "var(--muted)" }}>
+                هنوز تانلی ساخته نشده — از «تانل‌ها» بسازید.
+              </div>
+            ) : (
+              <div className="fx-rowlist">
+                {tuns.slice(0, 6).map((t) => {
+                  const st = TUN_STATUS[t.status] || TUN_STATUS.pending;
+                  const ec = ENGINE_COLOR[t.engine] || "var(--accent-2)";
+                  return (
+                    <div key={t.id} className="flex items-center gap-2.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[13.5px] font-semibold text-white truncate">{t.name}</div>
+                        <div className="text-[12px] mt-0.5 truncate" style={{ color: "var(--muted)" }}>
+                          {t.node_name} · {faNum((t.ports || []).length)} پورت
+                        </div>
+                      </div>
+                      <span className="fx-pill shrink-0"
                         style={{ background: `color-mix(in srgb, ${ec} 14%, transparent)`, color: ec }}>
                         {t.engineName}
                       </span>
-                      <span className="text-[13px]" style={{ color: st.color }}>{st.label}</span>
+                      <span className="fx-pill shrink-0"
+                        style={{ background: `color-mix(in srgb, ${st.color} 14%, transparent)`, color: st.color }}>
+                        {st.label}
+                      </span>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -206,17 +248,29 @@ export function TunnelNodes({ password }) {
     finally { setBusy(false); }
   };
 
-  const remove = async (id) => {
-    await fetch(`${API_URL}/api/admin/tunnel/node/${id}`, {
+  /* هر دو با یک کلیک و بی‌پاسخ بودند. «توکن جدید» توکنِ قبلی را همان
+     لحظه باطل می‌کند — یعنی سرور تا اجرای دوباره‌ی دستورِ نصب قطع است؛
+     و حذف، تانل‌های آن سرور را هم پاک می‌کند. هیچ‌کدام نباید با یک
+     کلیکِ اشتباه بیفتد، و شکستشان نباید بی‌صدا بماند. */
+  const [ask, setAsk] = useState(null);     // {kind: "del"|"rot", n}
+  const remove = async (n) => {
+    setAsk(null);
+    const res = await fetch(`${API_URL}/api/admin/tunnel/node/${n.id}`, {
       method: "DELETE", headers: { "X-Admin-Password": password } });
+    const d = await res.json().catch(() => ({}));
+    setMsg(res.ok
+      ? { t: "ok", m: `«${n.name}» حذف شد` + (d.tunnels ? ` — با ${faNum(d.tunnels)} تانل` : "") }
+      : { t: "err", m: errText(d.detail, "حذف ناموفق بود") });
     reload();
   };
 
-  const rotate = async (id) => {
-    const res = await fetch(`${API_URL}/api/admin/tunnel/node/${id}/rotate`, {
+  const rotate = async (n) => {
+    setAsk(null);
+    const res = await fetch(`${API_URL}/api/admin/tunnel/node/${n.id}/rotate`, {
       method: "POST", headers: { "X-Admin-Password": password } });
-    const d = await res.json();
-    if (res.ok) setCreated({ id, token: d.token, rotated: true });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok) setCreated({ id: n.id, token: d.token, rotated: true });
+    else setMsg({ t: "err", m: errText(d.detail, "ساختِ توکنِ تازه ناموفق بود") });
   };
 
   if (loading) return <PageSkeleton />;
@@ -271,10 +325,12 @@ export function TunnelNodes({ password }) {
                   <ShieldCheck size={12} /> چرا آفلاین؟
                 </button>
               )}
-              <button onClick={() => rotate(n.id)} className="fx-ico-btn" title="توکن جدید">
+              <button onClick={() => setAsk({ kind: "rot", n })} className="fx-ico-btn"
+                title="توکن جدید" aria-label="توکن جدید">
                 <RefreshCw size={13} />
               </button>
-              <button onClick={() => remove(n.id)} className="fx-ico-btn" title="حذف">
+              <button onClick={() => setAsk({ kind: "del", n })} className="fx-ico-btn fx-ico-danger"
+                title="حذف سرور" aria-label="حذف سرور">
                 <Trash2 size={13} />
               </button>
             </div>
@@ -288,19 +344,26 @@ export function TunnelNodes({ password }) {
                   <div className="flex justify-between items-baseline mb-2">
                     <span className="text-[12px]" style={{ color: "var(--muted)" }}>{l}</span>
                     <span className="text-[13px] font-bold" style={{
-                      color: v == null ? "var(--muted)"
-                           : v > 85 ? "var(--danger)" : v > 65 ? "var(--warn)" : "var(--dim)",
+                      color: v == null ? "var(--muted)" : usageColor(v),
                       fontFamily: "var(--mono)",
-                    }}>{v == null ? "—" : `${faNum(v)}٪`}</span>
+                    }}>{v == null ? "—" : `${faNum(Math.round(v))}٪`}</span>
                   </div>
                   <div style={{ height: 4, borderRadius: 99, background: "var(--hair-2)", overflow: "hidden" }}>
                     <div style={{
                       width: `${Math.min(100, v || 0)}%`, height: "100%",
-                      background: (v || 0) > 85 ? "var(--danger)" : (v || 0) > 65 ? "var(--warn)" : "var(--accent)",
+                      background: usageColor(v),
                     }} />
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {!n.online && (
+            <div className="text-[12.5px] mt-4 px-3 py-2.5 rounded-xl flex items-center gap-2"
+              style={{ background: "var(--warn-wash)", color: "var(--warn)" }}>
+              <Clock size={13} className="shrink-0" />
+              {n.last_seen ? `آخرین تماس: ${isoToJalaliStamp(n.last_seen)}` : "هنوز هیچ تماسی نگرفته — دستور نصب اجرا شده؟"}
             </div>
           )}
 
@@ -344,6 +407,18 @@ export function TunnelNodes({ password }) {
       {created && <AgentInstallModal data={created} onClose={() => setCreated(null)} />}
       {diag && <NodeDiagnoseModal nodeId={diag} password={password}
         onClose={() => setDiag(null)} />}
+      {ask && ask.kind === "del" && (
+        <ConfirmModal title={`حذفِ «${ask.n.name}»`} confirmLabel="حذف سرور"
+          desc={(ask.n.tunnel_count
+            ? `${faNum(ask.n.tunnel_count)} تانلِ این سرور هم از پنل پاک می‌شود؛ سرویس‌هایشان روی خودِ سرور می‌مانند تا دستی برشان دارید. `
+            : "") + "agent دیگر به پنل وصل نمی‌شود."}
+          onCancel={() => setAsk(null)} onConfirm={() => remove(ask.n)} />
+      )}
+      {ask && ask.kind === "rot" && (
+        <ConfirmModal title={`توکنِ تازه برای «${ask.n.name}»`} confirmLabel="توکن تازه بساز"
+          desc="توکنِ فعلی همین حالا باطل می‌شود و این سرور تا اجرای دوباره‌ی دستورِ نصب قطع می‌ماند. فقط اگر توکن لو رفته ادامه دهید."
+          onCancel={() => setAsk(null)} onConfirm={() => rotate(ask.n)} />
+      )}
     </div>
   );
 }
@@ -464,6 +539,8 @@ export function TunnelList({ password }) {
   const [adding, setAdding] = useState(false);
   const [cfgFor, setCfgFor] = useState(null);
   const [monFor, setMonFor] = useState(null);
+  const [jobFor, setJobFor] = useState(null);
+  const [delFor, setDelFor] = useState(null);
   const [msg, setMsg] = useState(null);
 
   useEffect(() => { if (msg) { const t = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(t); } }, [msg]);
@@ -474,15 +551,21 @@ export function TunnelList({ password }) {
       : `${API_URL}/api/admin/tunnel/${id}/action/${what}`;
     const res = await fetch(url, { method: "POST", headers: { "X-Admin-Password": password } });
     const d = await res.json().catch(() => ({}));
-    setMsg(res.ok
-      ? { t: "ok", m: what === "deploy" ? "در صف اعمال قرار گرفت" : "دستور فرستاده شد" }
-      : { t: "err", m: errText(d.detail, "ناموفق") });
+    setMsg(!res.ok ? { t: "err", m: errText(d.detail, "ناموفق") }
+      : d.foreignError ? { t: "err", m: `سمت ایران در صف است؛ سمت خارج نه — ${d.foreignError}` }
+      : { t: "ok", m: what === "deploy" ? "در صف اعمال قرار گرفت" : "دستور فرستاده شد" });
     reload();
   };
 
-  const remove = async (id) => {
-    await fetch(`${API_URL}/api/admin/tunnel/${id}`, {
+  /* حذف با یک کلیک و بی‌پاسخ بود: دکمه‌ی سطل کنارِ «کانفیگ» می‌نشست،
+     تانل را بی‌پرسش پاک می‌کرد، و اگر بکند خطا می‌داد صفحه فقط تازه
+     می‌شد و تانل سرِ جایش می‌ماند — بی‌هیچ توضیحی. */
+  const remove = async (t) => {
+    setDelFor(null);
+    const res = await fetch(`${API_URL}/api/admin/tunnel/${t.id}`, {
       method: "DELETE", headers: { "X-Admin-Password": password } });
+    const d = await res.json().catch(() => ({}));
+    setMsg(res.ok ? { t: "ok", m: `«${t.name}» حذف شد` } : { t: "err", m: errText(d.detail, "حذف ناموفق بود") });
     reload();
   };
 
@@ -510,74 +593,90 @@ export function TunnelList({ password }) {
         const st = TUN_STATUS[t.status] || TUN_STATUS.pending;
         const ec = ENGINE_COLOR[t.engine] || "var(--accent-2)";
         return (
-          <div key={t.id} className="fx-card p-5 mb-3">
-            <div className="flex items-start justify-between gap-3 flex-wrap mb-4">
-              <div className="min-w-0">
+          <div key={t.id} className="fx-card fx-tun p-4 mb-3" style={{ "--tun-tone": st.color }}>
+            {/* سر و پورت‌ها و وضعیت در یک ردیف: پیش‌تر سه ردیفِ جدا با
+                فاصله‌ی ۱۶ پیکسلی بودند و هر کارت ۱۹۰ پیکسل می‌شد، که
+                نیمش خالی بود */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="fx-live-dot" style={{ background: st.color,
+                boxShadow: `0 0 0 3px color-mix(in srgb, ${st.color} 18%, transparent)` }} />
+              <div className="min-w-0 flex-1">
                 <div className="text-[14px] font-bold text-white flex items-center gap-2 flex-wrap">
                   {t.name}
-                  <span className="text-[12px] px-2 py-0.5 rounded-lg"
-                    style={{ background: `color-mix(in srgb, ${ec} 14%, transparent)`, color: ec }}>
+                  <span className="fx-pill" style={{ background: `color-mix(in srgb, ${ec} 14%, transparent)`, color: ec }}>
                     {t.engineName} · {t.transport}
                   </span>
+                  <span className="fx-pill" style={{ background: `color-mix(in srgb, ${st.color} 14%, transparent)`, color: st.color }}>
+                    {st.label}
+                  </span>
                 </div>
-                <div className="text-[12px] mt-1.5" dir="ltr"
-                  style={{ color: "var(--muted)", fontFamily: "var(--mono)", textAlign: "right" }}>
-                  {t.node_name} ← {t.remote_host}:{t.bridge_port}
+                <div className="text-[12px] mt-1 flex items-center gap-2 flex-wrap" style={{ color: "var(--muted)" }}>
+                  <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{t.node_name} → {t.remote_host}:{t.bridge_port}</span>
+                  <span className="flex gap-1 flex-wrap">
+                    {(t.ports || []).map((p, i) => (
+                      <span key={i} className="fx-port" dir="ltr">
+                        {p.local === p.remote ? p.local : `${p.local}→${p.remote}`}
+                      </span>
+                    ))}
+                  </span>
+                  {t.last_check && (
+                    <span className="flex items-center gap-1" title="آخرین تغییرِ وضعیت">
+                      <Clock size={11} />{isoToJalaliStamp(t.last_check)}
+                    </span>
+                  )}
                 </div>
               </div>
-              <span className="text-[13px] px-2.5 py-1 rounded-lg shrink-0"
-                style={{ background: `color-mix(in srgb, ${st.color} 12%, transparent)`, color: st.color }}>
-                {st.label}
-              </span>
-            </div>
-
-            <div className="flex gap-1.5 flex-wrap mb-4">
-              {(t.ports || []).map((p, i) => (
-                <span key={i} className="text-[12px] px-2 py-1 rounded-lg" dir="ltr"
-                  style={{ background: "var(--surface-3)", color: "var(--dim)",
-                           fontFamily: "var(--mono)" }}>
-                  {p.local === p.remote ? p.local : `${p.local}→${p.remote}`}
-                </span>
-              ))}
             </div>
 
             {t.last_error && (
-              <div className="text-[12px] p-2.5 rounded-lg mb-3"
+              <div className="text-[12px] px-3 py-2 rounded-lg mt-3 break-words"
                 style={{ background: "var(--danger-wash)", color: "var(--danger)" }}>
-                {t.last_error.slice(0, 160)}
+                {t.last_error.slice(0, 240)}
               </div>
             )}
-
-            <div className="flex gap-2 flex-wrap pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-              <button onClick={() => act(t.id, "deploy")} disabled={!t.nodeOnline}
-                className="fx-btn px-3 py-2 text-[13px] flex items-center gap-1.5"
-                style={!t.nodeOnline ? { opacity: .4, cursor: "not-allowed" } : {}}>
-                <UploadCloud size={12} /> اعمال
-              </button>
-              {["restart", "stop", "logs"].map((w) => (
-                <button key={w} onClick={() => act(t.id, w)} disabled={!t.nodeOnline}
-                  className="fx-btn-g px-3 py-2 text-[13px]"
-                  style={!t.nodeOnline ? { opacity: .4, cursor: "not-allowed" } : {}}>
-                  {{ restart: "ری‌استارت", stop: "توقف", logs: "لاگ" }[w]}
-                </button>
-              ))}
-              <button onClick={() => setMonFor(t)}
-                className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
-                <Activity size={12} /> کیفیت
-              </button>
-              <button onClick={() => setCfgFor(t)} className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
-                <FileText size={12} /> کانفیگ سرور خارج
-              </button>
-              <button title="حذف این تانل" onClick={() => remove(t.id)} className="fx-ico-btn mr-auto" style={{ width: 30, height: 30 }}>
-                <Trash2 size={12} />
-              </button>
-            </div>
-
             {!t.nodeOnline && (
               <div className="text-[12px] mt-3" style={{ color: "var(--warn)" }}>
                 سرور آفلاین است — دستورها وقتی وصل شود اجرا می‌شوند
               </div>
             )}
+
+            <div className="flex gap-1.5 flex-wrap items-center mt-3 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
+              <button onClick={() => act(t.id, "deploy")} disabled={!t.nodeOnline}
+                className="fx-btn px-3 py-1.5 text-[12.5px] flex items-center gap-1.5"
+                style={!t.nodeOnline ? { opacity: .4, cursor: "not-allowed" } : {}}>
+                <UploadCloud size={12} /> اعمال
+              </button>
+              {["restart", "stop"].map((w) => (
+                <button key={w} onClick={() => act(t.id, w)} disabled={!t.nodeOnline}
+                  className="fx-btn-g px-3 py-1.5 text-[12.5px]"
+                  style={!t.nodeOnline ? { opacity: .4, cursor: "not-allowed" } : {}}>
+                  {{ restart: "ری‌استارت", stop: "توقف" }[w]}
+                </button>
+              ))}
+              {/* لاگ و وضعیت جواب می‌خواهند، نه فقط «فرستاده شد» — پنجره
+                  تا رسیدنِ پاسخِ ایجنت صبر می‌کند و نشانش می‌دهد */}
+              <button onClick={() => setJobFor({ t, kind: "status" })} disabled={!t.nodeOnline}
+                className="fx-btn-g px-3 py-1.5 text-[12.5px] flex items-center gap-1.5"
+                style={!t.nodeOnline ? { opacity: .4, cursor: "not-allowed" } : {}}>
+                <CheckCircle2 size={12} /> وضعیت
+              </button>
+              <button onClick={() => setJobFor({ t, kind: "logs" })} disabled={!t.nodeOnline}
+                className="fx-btn-g px-3 py-1.5 text-[12.5px] flex items-center gap-1.5"
+                style={!t.nodeOnline ? { opacity: .4, cursor: "not-allowed" } : {}}>
+                <FileText size={12} /> لاگ
+              </button>
+              <button onClick={() => setMonFor(t)}
+                className="fx-btn-g px-3 py-1.5 text-[12.5px] flex items-center gap-1.5">
+                <Activity size={12} /> کیفیت
+              </button>
+              <button onClick={() => setCfgFor(t)} className="fx-btn-g px-3 py-1.5 text-[12.5px] flex items-center gap-1.5">
+                <Copy size={12} /> کانفیگ خارج
+              </button>
+              <button title="حذف این تانل" aria-label="حذف این تانل" onClick={() => setDelFor(t)}
+                className="fx-ico-btn fx-ico-danger mr-auto" style={{ width: 32, height: 32 }}>
+                <Trash2 size={13} />
+              </button>
+            </div>
           </div>
         );
       })}
@@ -592,7 +691,140 @@ export function TunnelList({ password }) {
         onClose={() => setCfgFor(null)} />}
       {monFor && <TunnelMonitorModal tunnel={monFor} password={password}
         onClose={() => setMonFor(null)} />}
+      {jobFor && <TunnelJobModal tunnel={jobFor.t} kind={jobFor.kind} password={password}
+        onDone={reload} onClose={() => setJobFor(null)} />}
+      {delFor && <ConfirmModal title={`حذفِ «${delFor.name}»`}
+        desc="سرویسِ تانل روی سرور هم برداشته می‌شود و اتصال‌های فعالِ روی این پورت‌ها قطع می‌شوند."
+        confirmLabel="حذف تانل" onCancel={() => setDelFor(null)} onConfirm={() => remove(delFor)} />}
     </div>
+  );
+}
+
+/* systemd تاریخ را «Wed 2026-09-24 08:12:03 UTC» می‌دهد — میلادی و خام */
+function sinceStamp(v) {
+  const m = /(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/.exec(String(v || ""));
+  return m ? `${isoToJalaliStamp(`${m[1]}T${m[2]}`)}${/UTC/.test(v) ? " (UTC)" : ""}` : String(v || "—");
+}
+
+const JOB_LABEL = { apply: "اعمال", install: "نصب موتور", start: "روشن", stop: "توقف", restart: "ری‌استارت",
+                    status: "وضعیت", logs: "لاگ", monitor: "سنجش", remove: "حذف" };
+const JOB_STATE = {
+  queued: { l: "در صف", c: "var(--muted)" }, taken: { l: "در حال اجرا", c: "var(--warn)" },
+  done: { l: "انجام شد", c: "var(--ok)" }, failed: { l: "ناموفق", c: "var(--danger)" },
+};
+
+/* ── پاسخِ ایجنت برای لاگ و وضعیت ──
+   ایجنت هر ۳۰ ثانیه سر می‌زند؛ پس پاسخ فوری نیست. پنجره کار را در صف
+   می‌گذارد، هر ۲.۵ ثانیه می‌پرسد، و تا ۹۰ ثانیه صبر می‌کند — بعد صریح
+   می‌گوید چرا چیزی نیامده، نه اینکه خالی بماند. */
+function TunnelJobModal({ tunnel, kind, password, onClose, onDone }) {
+  const [jobs, setJobs] = useState(null);
+  const [err, setErr] = useState(null);
+  const [phase, setPhase] = useState("send");      // send | wait | done | timeout
+  const since = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+    let timer;
+    const t0 = Date.now();
+    const H = { "X-Admin-Password": password };
+    const load = async () => {
+      const r = await fetch(`${API_URL}/api/admin/tunnel/${tunnel.id}/jobs?limit=8`, { headers: H });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(d.detail, "خواندنِ کارها ناموفق بود"));
+      return d.jobs || [];
+    };
+    (async () => {
+      try {
+        const before = await load();
+        since.current = before.length ? before[0].id : 0;
+        if (alive) setJobs(before);
+        const r = await fetch(`${API_URL}/api/admin/tunnel/${tunnel.id}/action/${kind}`,
+          { method: "POST", headers: H });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(errText(d.detail, "فرستادنِ دستور ناموفق بود"));
+        if (alive) setPhase("wait");
+        const tick = async () => {
+          if (!alive) return;
+          try {
+            const js = await load();
+            if (!alive) return;
+            setJobs(js);
+            const mine = js.find((j) => j.id > since.current && j.action === kind);
+            if (mine && (mine.status === "done" || mine.status === "failed")) {
+              setPhase("done");
+              if (onDone) onDone();
+              return;
+            }
+            if (Date.now() - t0 > 90000) { setPhase("timeout"); return; }
+          } catch (e) { setErr(e.message); return; }
+          timer = setTimeout(tick, 2500);
+        };
+        tick();
+      } catch (e) { if (alive) setErr(e.message); }
+    })();
+    return () => { alive = false; clearTimeout(timer); };
+  }, []);
+
+  const mine = since.current == null ? null
+    : (jobs || []).find((j) => j.id > since.current && j.action === kind);
+  let parsed = null;
+  if (mine && kind === "status" && mine.status === "done") {
+    try { parsed = JSON.parse(mine.result || "{}"); } catch (e) { parsed = null; }
+  }
+  const others = (jobs || []).filter((j) => !mine || j.id !== mine.id);
+
+  return (
+    <Modal title={`${kind === "logs" ? "لاگِ" : "وضعیتِ"} «${tunnel.name}»`} onClose={onClose} width="620px">
+      {err ? <Msg msg={{ t: "err", m: err }} />
+        : phase === "timeout" ? (
+          <InfoBox tone="warn">
+            ایجنتِ «{tunnel.node_name}» در ۹۰ ثانیه جواب نداد. کار در صف مانده و با چک‌اینِ بعدی
+            اجرا می‌شود — اگر سرور در «سرورها» آفلاین است، اول آن را درست کنید.
+          </InfoBox>
+        ) : !mine || mine.status === "queued" || mine.status === "taken" ? (
+          <div className="flex items-center gap-2.5 text-[13px] py-3" style={{ color: "var(--muted)" }}>
+            <Loader2 size={15} className="animate-spin" />
+            {phase === "send" ? "در حالِ فرستادن…"
+              : mine && mine.status === "taken" ? "ایجنت برداشت؛ منتظرِ نتیجه…"
+              : "در صف — ایجنت هر ۳۰ ثانیه سر می‌زند"}
+          </div>
+        ) : mine.status === "failed" ? (
+          <pre className="fx-pre fx-pre-err">{mine.result || "بدون پیام"}</pre>
+        ) : parsed ? (
+          <div className="fx-rowlist text-[13px]">
+            <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>سرویس</span>
+              <span style={{ color: parsed.running ? "var(--ok)" : "var(--danger)" }}>
+                {parsed.running ? "در حال اجرا" : "خاموش"}</span></div>
+            <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>systemd</span>
+              <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{parsed.state} / {parsed.sub || "—"}</span></div>
+            <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>ری‌استارت‌ها</span>
+              <span style={{ color: Number(parsed.restarts) > 3 ? "var(--warn)" : "var(--text)" }}>{faNum(parsed.restarts || 0)}</span></div>
+            {parsed.since && <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>آخرین شروع</span>
+              <span>{sinceStamp(parsed.since)}</span></div>}
+          </div>
+        ) : (
+          <pre className="fx-pre">{mine.result || "خروجی خالی بود"}</pre>
+        )}
+
+      {others.length > 0 && (
+        <div className="mt-4">
+          <div className="text-[12px] font-semibold mb-1.5" style={{ color: "var(--muted)" }}>کارهای اخیرِ این تانل</div>
+          <div className="fx-rowlist">
+            {others.slice(0, 6).map((j) => {
+              const st = JOB_STATE[j.status] || JOB_STATE.queued;
+              return (
+                <div key={j.id} className="flex items-center gap-2 text-[12.5px]">
+                  <span className="text-white">{JOB_LABEL[j.action] || j.action}</span>
+                  <span className="fx-pill" style={{ background: `color-mix(in srgb, ${st.c} 14%, transparent)`, color: st.c }}>{st.l}</span>
+                  <span className="mr-auto" style={{ color: "var(--muted)" }}>{isoToJalaliStamp(j.done_at || j.created_at)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -841,6 +1073,16 @@ export function TunnelForm({ password, nodes, engines, onClose, onDone }) {
 
 /* ── کیفیت تانل ── */
 
+/* همان مرزهای backend/tunnels.py (LATENCY_STEPS) — test-nodes برابری را
+   می‌سنجد. رنگِ هر میله از همان برچسبی می‌آید که خلاصه می‌گوید. */
+export const LATENCY_STEPS = [60, 150, 300];
+export function latencyColor(ms) {
+  const v = Number(ms) || 0;
+  const q = v > LATENCY_STEPS[2] ? "ضعیف" : v > LATENCY_STEPS[1] ? "متوسط"
+          : v > LATENCY_STEPS[0] ? "خوب" : "عالی";
+  return QUALITY_COLOR[q];
+}
+
 export const QUALITY_COLOR = {
   "عالی": "var(--ok)",
   "خوب": "#5AA9E6",
@@ -943,8 +1185,7 @@ export function TunnelMonitorModal({ tunnel, password, onClose }) {
                     {samples.slice(-30).map((x, i) => {
                       const v = x.tcp_avg || 0;
                       const mx = Math.max(...samples.map((y) => y.tcp_avg || 0), 1);
-                      const col = v > 150 ? "var(--danger)"
-                                : v > 60 ? "var(--warn)" : "var(--accent)";
+                      const col = latencyColor(v);
                       return (
                         <div key={i} title={`${v} ms`} style={{
                           flex: 1, height: `${Math.max(8, (v / mx) * 100)}%`,
@@ -958,8 +1199,7 @@ export function TunnelMonitorModal({ tunnel, password, onClose }) {
 
               <Bar label="تاخیر TCP — همان چیزی که ترافیک واقعی حس می‌کند"
                 value={s.latest} max={200}
-                color={s.latest > 150 ? "var(--danger)"
-                     : s.latest > 60 ? "var(--warn)" : "var(--ok)"} />
+                color={latencyColor(s.latest)} />
 
               {detail.icmp?.ok && (
                 <Bar label="پینگ ICMP" value={detail.icmp.avg} max={200} color="#A78BFA" />
@@ -1086,32 +1326,50 @@ export function SystemHealth({ password }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const later = useRef(null);
 
+  /* خطا پیش‌تر بی‌صدا «نامشخص» می‌شد: پاسخِ ۴۰۱/۵۰۰ همان‌طور به‌جای
+     داده نشسته و صفحه فقط برچسبِ خاکستری نشان می‌داد. */
   const load = async () => {
     try {
-      const d = await fetch(`${API_URL}/api/admin/health/all`, {
+      const r = await fetch(`${API_URL}/api/admin/health/all`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setMsg({ t: "err", m: errText(d.detail, "خواندنِ سلامتِ سرورها ناموفق بود") });
+        return;
+      }
       setData(d);
     } catch {
-      setData({ ready: false, servers: [] });
+      setMsg({ t: "err", m: "اتصال به پنل برقرار نشد" });
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, [password]);
+  useEffect(() => { load(); return () => clearTimeout(later.current); }, [password]);
   usePolling(load, 60000, [password]);
 
+  /* سرورِ پنل همان لحظه بررسی می‌شود، ولی نودها از راهِ ایجنت — که هر
+     ۳۰ ثانیه سر می‌زند. پیش‌تر بعد از ۳ ثانیه یک‌بار بار می‌کرد و
+     گزارشِ قدیمی را مثلِ نتیجه‌ی تازه نشان می‌داد. */
   const recheck = async () => {
     setBusy(true);
+    let sent = 0;
+    let failed = 0;
     try {
-      for (const s of data?.servers || []) {
-        if (s.nodeId) {
-          await fetch(`${API_URL}/api/admin/health/check/${s.nodeId}`, {
-            method: "POST", headers: { "X-Admin-Password": password } });
-        }
+      for (const sv of data?.servers || []) {
+        if (!sv.nodeId) continue;
+        const r = await fetch(`${API_URL}/api/admin/health/check/${sv.nodeId}`, {
+          method: "POST", headers: { "X-Admin-Password": password } }).catch(() => null);
+        if (r && r.ok) sent += 1; else failed += 1;
       }
-      await new Promise((r) => setTimeout(r, 3000));
       await load();
+      setMsg(failed ? { t: "err", m: `درخواست برای ${faNum(failed)} سرور فرستاده نشد` }
+        : sent ? { t: "ok", m: `سرورِ پنل بررسی شد؛ گزارشِ ${faNum(sent)} سرورِ دیگر تا نیم دقیقه‌ی دیگر می‌رسد` }
+        : { t: "ok", m: "سرورِ پنل دوباره بررسی شد" });
+      clearTimeout(later.current);
+      if (sent) later.current = setTimeout(load, 35000);
     } finally { setBusy(false); }
   };
 
@@ -1119,74 +1377,86 @@ export function SystemHealth({ password }) {
 
   const servers = data?.servers || [];
   const worst = HEALTH_COLOR[data?.level] || "var(--muted)";
+  const tally = { crit: 0, warn: 0, ok: 0, unknown: 0 };
+  servers.forEach((sv) => { tally[sv.level in tally ? sv.level : "unknown"] += 1; });
 
   return (
     <div className="fx-anim">
       <SectionHead title="سلامت سرورها"
         desc="هر ۵ دقیقه خودکار بررسی می‌شود و اگر مشکلی پیدا شود، در تلگرام خبر می‌دهد."
         action={
-          <button onClick={recheck} disabled={busy}
+          <button onClick={recheck} disabled={busy || !data}
             className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
             {busy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
             بررسی دوباره
           </button>
         } />
 
-      <div className="fx-card p-5 mb-4" style={{
-        borderColor: data?.level === "crit" ? "var(--danger-edge)"
-                   : data?.level === "warn" ? "var(--warn-line)" : undefined }}>
-        <div className="flex items-center gap-3">
-          <div style={{ width: 10, height: 10, borderRadius: "50%", background: worst,
-                        boxShadow: `0 0 10px ${worst}`, flexShrink: 0 }} />
-          <div className="min-w-0">
-            <div className="text-[16px] font-bold" style={{ color: worst }}>
-              {HEALTH_LABEL[data?.level] || "نامشخص"}
-            </div>
-            <div className="text-[13px] mt-0.5" style={{ color: "var(--muted)" }}>
-              {faNum(servers.length)} سرور · آخرین بررسی {data?.at?.slice(11, 16) || "—"}
-            </div>
-          </div>
-        </div>
-      </div>
+      {msg && <Msg msg={msg} />}
 
-      {servers.map((s, i) => {
-        const col = HEALTH_COLOR[s.level] || "var(--muted)";
-        const problems = (s.checks || []).filter((c) => c.level !== "ok");
-        const fine = (s.checks || []).filter((c) => c.level === "ok");
+      {data && (
+        /* یک نوار، نه کارتِ ۸۰ پیکسلی برای یک کلمه: وضعیتِ کل، شمارِ
+           هر سطح، و زمانِ بررسی — همه در یک خط */
+        <div className="fx-health-bar mb-4" style={{ "--hb": worst }}>
+          <span className="fx-live-dot on" style={{ background: worst, boxShadow: `0 0 0 3px color-mix(in srgb, ${worst} 22%, transparent)` }} />
+          <span className="text-[15px] font-bold" style={{ color: worst }}>
+            {HEALTH_LABEL[data.level] || "نامشخص"}
+          </span>
+          <span className="flex gap-1.5 flex-wrap">
+            {["crit", "warn", "ok", "unknown"].filter((k) => tally[k]).map((k) => (
+              <span key={k} className="fx-pill" style={{
+                background: `color-mix(in srgb, ${HEALTH_COLOR[k]} 14%, transparent)`, color: HEALTH_COLOR[k] }}>
+                {faNum(tally[k])} {k === "unknown" ? "بی‌گزارش" : HEALTH_LABEL[k]}
+              </span>
+            ))}
+          </span>
+          <span className="text-[12px] mr-auto flex items-center gap-1" style={{ color: "var(--muted)" }}>
+            <Clock size={12} /> {data.at ? isoToJalaliStamp(data.at.replace(" ", "T")) : "—"}
+          </span>
+        </div>
+      )}
+
+      {servers.map((sv, i) => {
+        const col = HEALTH_COLOR[sv.level] || "var(--muted)";
+        const problems = (sv.checks || []).filter((c) => c.level !== "ok");
+        const fine = (sv.checks || []).filter((c) => c.level === "ok");
+        const none = (sv.checks || []).length === 0;
         return (
-          <div key={i} className="fx-card p-5 mb-3">
-            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <Circle size={8} fill={col} strokeWidth={0} />
-                <span className="text-[14px] font-bold text-white">{s.server}</span>
-              </div>
-              <span className="text-[13px]" style={{ color: col }}>{s.summary}</span>
+          <div key={i} className={`fx-card mb-3 ${none ? "px-5 py-3.5" : "p-5"}`}>
+            <div className={`flex items-center gap-2.5 flex-wrap ${none ? "" : "mb-3"}`}>
+              <Circle size={8} fill={col} strokeWidth={0} />
+              <span className="text-[14px] font-bold text-white">{sv.server}</span>
+              {sv.nodeId == null && <span className="fx-pill">همین سرور</span>}
+              <span className="text-[12.5px]" style={{ color: col }}>{sv.summary}</span>
+              {sv.at && (
+                <span className="text-[12px] mr-auto" style={{ color: "var(--muted)" }}>
+                  {isoToJalaliStamp(String(sv.at).replace(" ", "T"))}
+                </span>
+              )}
             </div>
 
             {problems.map((c, j) => (
-              <div key={j} className="p-3.5 rounded-xl mb-2"
+              <div key={j} className="px-3.5 py-3 rounded-xl mb-2"
                 style={{
-                  background: c.level === "crit"
-                    ? "var(--danger-wash)" : "var(--warn-wash)",
-                  border: `1px solid ${c.level === "crit"
-                    ? "var(--danger-fill)" : "var(--warn-fill)"}`,
+                  background: c.level === "crit" ? "var(--danger-wash)" : "var(--warn-wash)",
+                  border: `1px solid ${c.level === "crit" ? "var(--danger-fill)" : "var(--warn-fill)"}`,
                 }}>
                 <div className="flex justify-between items-baseline gap-3 flex-wrap">
-                  <span className="text-[14px] font-semibold"
+                  <span className="text-[13.5px] font-semibold"
                     style={{ color: HEALTH_COLOR[c.level] }}>{c.title}</span>
-                  <span className="text-[13px]" style={{ color: "var(--dim)" }}>
+                  <span className="text-[12.5px]" style={{ color: "var(--dim)" }}>
                     {errText(c.detail)}
                   </span>
                 </div>
                 {c.hint && (
-                  <div className="text-[13px] mt-2 leading-relaxed"
+                  <div className="text-[12.5px] mt-1.5 leading-relaxed" dir="auto"
                     style={{ color: "var(--muted)" }}>{c.hint}</div>
                 )}
               </div>
             ))}
 
             {fine.length > 0 && (
-              <div className="flex gap-1.5 flex-wrap mt-3">
+              <div className="flex gap-1.5 flex-wrap mt-2">
                 {fine.map((c, j) => (
                   <span key={j} className="text-[12px] px-2 py-1 rounded-lg"
                     style={{ background: "var(--surface-3)", color: "var(--muted)" }}
@@ -1194,12 +1464,6 @@ export function SystemHealth({ password }) {
                     ✓ {c.title}
                   </span>
                 ))}
-              </div>
-            )}
-
-            {(s.checks || []).length === 0 && (
-              <div className="text-[13px]" style={{ color: "var(--muted)" }}>
-                {s.summary || "گزارشی نرسیده"}
               </div>
             )}
           </div>
@@ -1212,37 +1476,72 @@ export function SystemHealth({ password }) {
 /* ── سلامت سرورها پایان ── */
 
 /* ── رویدادها ── */
+const EV_COLOR = { error: "var(--danger)", warn: "var(--warn)", info: "var(--muted)" };
+const EV_PER = 15;
+
 export function TunnelEvents({ password }) {
   const { data, loading } = useTunnel(password);
+  const [lvl, setLvl] = useState("all");
+  const [page, setPage] = useState(1);
 
   if (loading) return <PageSkeleton />;
 
-  const events = data?.events || [];
-  const color = { error: "var(--danger)", warn: "var(--warn)", info: "var(--muted)" };
+  const all = data?.events || [];
+  const count = (k) => all.filter((e) => e.level === k).length;
+  const events = lvl === "all" ? all : all.filter((e) => e.level === lvl);
+  const pages = Math.max(1, Math.ceil(events.length / EV_PER));
+  const pg = Math.min(page, pages);
+  const shown = events.slice((pg - 1) * EV_PER, pg * EV_PER);
+
+  /* گروه‌بندی با روز: هر ردیف تاریخِ کامل را تکرار می‌کرد و چشم باید
+     ده بار «۲ مهر ۱۴۰۵» را می‌خواند تا بفهمد کدام ماجرا مالِ امروز است. */
+  const groups = [];
+  shown.forEach((e) => {
+    const day = isoToJalaliLabel(String(e.created_at || "").slice(0, 10));
+    const g = groups[groups.length - 1];
+    if (g && g.day === day) g.items.push(e); else groups.push({ day, items: [e] });
+  });
 
   return (
     <div className="fx-anim">
-      <SectionHead title="رویدادها" desc="آنچه روی سرورها اتفاق افتاده." />
+      <SectionHead title="رویدادها" desc="آنچه روی سرورها و تانل‌ها اتفاق افتاده — ۴۰ رویدادِ آخر."
+        action={all.length > 0 && (
+          <Segmented value={lvl} onChange={(v) => { setLvl(v); setPage(1); }}
+            items={[["all", `همه ${faNum(all.length)}`], ["error", `خطا ${faNum(count("error"))}`],
+                    ["warn", `هشدار ${faNum(count("warn"))}`], ["info", `اطلاع ${faNum(count("info"))}`]]} />
+        )} />
 
-      {events.length === 0 ? (
+      {all.length === 0 ? (
         <EmptyState icon={Clock} text="هنوز رویدادی ثبت نشده" />
+      ) : events.length === 0 ? (
+        <EmptyState icon={CheckCircle2} tone="var(--ok)" text="در این سطح رویدادی نیست" />
       ) : (
-        <div className="fx-card overflow-hidden" style={{ padding: 0 }}>
-          {events.map((e, i) => (
-            <div key={e.id} className="flex items-start gap-3 p-4"
-              style={{ borderBottom: i < events.length - 1 ? "1px solid var(--border)" : "none" }}>
-              <Circle size={7} fill={color[e.level] || "var(--muted)"} strokeWidth={0}
-                style={{ marginTop: 5, flexShrink: 0 }} />
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px]" style={{ color: "var(--dim)" }}>{e.message}</div>
-                <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
-                  {e.node_name && `${e.node_name} · `}
-                  {isoToJalaliStamp(e.created_at)}
+        <>
+          {groups.map((g) => (
+            <div key={g.day} className="mb-3">
+              <div className="fx-ev-day">{g.day}</div>
+              <div className="fx-card" style={{ padding: "0 16px" }}>
+                <div className="fx-rowlist fx-rowlist-pad">
+                  {g.items.map((e) => (
+                    <div key={e.id} className="flex items-center gap-3 flex-wrap">
+                      <span className="fx-live-dot" style={{ background: EV_COLOR[e.level] || "var(--muted)" }} />
+                      <span className="text-[13px] min-w-0 flex-1" style={{
+                        color: e.level === "info" ? "var(--dim)" : "var(--text)" }}>{e.message}</span>
+                      <span className="flex items-center gap-1.5 shrink-0 text-[11.5px]" style={{ color: "var(--muted)" }}>
+                        {e.tunnel_name && <span className="fx-pill">{e.tunnel_name}</span>}
+                        {e.node_name && <span className="fx-pill">{e.node_name}</span>}
+                        <span style={{ fontFamily: "var(--mono)" }}>
+                          {isoToJalaliStamp(e.created_at).split("، ")[1] || ""}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
           ))}
-        </div>
+          <Pager page={pg} pages={pages} total={events.length} perPage={EV_PER} onPage={setPage} />
+        </>
       )}
     </div>
   );

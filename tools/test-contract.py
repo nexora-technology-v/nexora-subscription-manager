@@ -94,6 +94,45 @@ T.exec("INSERT INTO subscriptions (tenant_id,user_id,plan_id,client_email,is_act
 T.create_user(1002, None, "رضا", referred_by=u1["id"])
 
 import app as APP                                               # noqa: E402
+
+# ── تانل ساختگی — بی‌این، آرایه‌های nodes/tunnels/events خالی‌اند و چیزی
+#    برای مقایسه نمی‌ماند (فضای کاریِ ۲)
+if getattr(APP, "TUN", None):
+    _T = APP.TUN
+    _n1 = _T.create_node("ایران-۱", role="iran")["id"]
+    _n2 = _T.create_node("آلمان-۱", role="foreign")["id"]
+    _T.touch_node(_n1, {"version": "1.4.0", "os": "Ubuntu 22.04", "cpu": 23.5, "mem": 41.2,
+                        "disk": 37.0, "uptime": 86400 * 12, "ip": "10.0.0.1"})
+    _T.touch_node(_n2, {"version": "1.4.0", "os": "Debian 12", "cpu": 11.0, "mem": 28.4,
+                        "disk": 22.0, "uptime": 86400 * 30, "ip": "10.0.0.2"})
+    _tid = _T.create_tunnel({"name": "تانل ۱", "engine": "backhaul", "node_id": _n1,
+                             "foreign_node": _n2, "remote_host": "10.0.0.2",
+                             "bridge_port": 3080, "ports": [443, 8443]})
+    _T.set_status(_tid, "running")
+    _T.log(node_id=_n1, tunnel_id=_tid, level="warn", message="تأخیرِ تانل بالای ۳۰۰ میلی‌ثانیه")
+    # سنجش و مانیتورینگِ نود — بی‌این هر دو مسیر شاخه‌ی «هنوز چیزی
+    # نرسیده» را می‌دهند و شکلِ اصلیِ داده هرگز مقایسه نمی‌شود.
+    # نسخه‌ی ایجنت ۱.۵ به بالا، وگرنه sysmon «ایجنتِ قدیمی» می‌گوید.
+    _T.touch_node(_n1, {"version": "1.5.2", "os": "Ubuntu 22.04", "cpu": 23.5, "mem": 41.2,
+                        "disk": 37.0, "uptime": 86400 * 12, "ip": "10.0.0.1"})
+    for _ms in (48.0, 52.5, 61.0):
+        _T.save_metrics(_tid, {"tcp": {"443": {"ok": True, "avg": _ms, "min": _ms - 6, "max": _ms + 9,
+                                               "jitter": 3.1, "loss": 0},
+                                       "8443": {"ok": True, "avg": _ms + 2, "min": _ms - 4, "max": _ms + 11,
+                                                "jitter": 2.4, "loss": 0}},
+                               "icmp": {"avg": _ms - 3}, "http": {"avg": _ms + 40}})
+    if getattr(APP, "MONITOR", None):
+        _T.save_sysmon(_n1, {"kind": "sysmon", "data": APP.MONITOR.snapshot()})
+    _T.queue_job(_n1, "logs", {"tunnel_id": _tid})
+    _T.save_health(_n1, {"level": "ok", "summary": "سالم", "counts": {"ok": 1, "warn": 0, "crit": 0},
+                         "checks": [{"key": "dns", "title": "DNS", "level": "ok", "detail": "10 ms", "hint": ""}],
+                         "at": "2026-09-24 20:00:00"})
+# تاریخچه‌ی مصرف — مسیرِ پیش‌فرض بیرون از مخزن است و خالی؛ بی‌این
+# samples/hourly هیچ‌وقت عضوی برای مقایسه نداشتند
+APP.HISTORY_PATH = TMP / "history.json"
+APP.HISTORY_PATH.write_text(json.dumps(
+    [{"t": f"2026-09-24T{h:02d}:00", "cpu": 20.0 + h, "mem": 50.0, "conn": 300 + 20 * h, "ips": 80 + h}
+     for h in range(24)]), encoding="utf-8")
 APP.BOT_DB = TMP / "bot.db"
 APP.BILLING_DB = TMP / "billing.db"
 APP.ADMIN_PASSWORD = "testpw"
@@ -172,7 +211,22 @@ MUST_MATCH = {
     "/api/admin/bot/funnel", "/api/admin/bot/alerts", "/api/admin/bot/discounts",
     "/api/admin/bot/inbox", "/api/admin/channel", "/api/admin/channel/ai",
     "/api/admin/channel/suggestions",
+    # فضای ۲ — تانل و مانیتورینگ
+    "/api/admin/tunnel/overview", "/api/admin/monitor", "/api/admin/health/all",
+    "/api/admin/top-clients", "/api/admin/usage-history",
+    "/api/admin/tunnel/1/metrics", "/api/admin/tunnel/1/config",
+    "/api/admin/tunnel/node/1/sysmon", "/api/admin/tunnel/node/1/check",
+    "/api/admin/tunnel/node/1/diagnose", "/api/admin/tunnel/1/jobs",
 }
+
+#: مسیرهای پارامتری با یک شناسه‌ی واقعی از فیکسچر — فهرستِ خودکار
+#: هر مسیرِ «{…}» دار را کنار می‌گذارد، پس بی‌این زیرمسیرهای تانل هیچ‌وقت
+#: سنجیده نمی‌شدند و هارنس کلِ overview را برای همه‌شان برمی‌گرداند.
+CONCRETE = [
+    "/api/admin/tunnel/1/metrics", "/api/admin/tunnel/1/config",
+    "/api/admin/tunnel/node/1/sysmon", "/api/admin/tunnel/node/1/check",
+    "/api/admin/tunnel/node/1/diagnose", "/api/admin/tunnel/1/jobs",
+]
 
 
 def main():
@@ -187,7 +241,7 @@ def main():
     routes = sorted({r.path for r in APP.app.routes
                      if getattr(r, "methods", None) and "GET" in r.methods
                      and r.path.startswith("/api/admin") and "{" not in r.path})
-    routes = [p for p in routes if p not in SKIP]
+    routes = [p for p in routes if p not in SKIP] + CONCRETE
 
     hs = subprocess.run(["node", str(ROOT / "tools" / "harness-shapes.cjs"), *routes],
                         capture_output=True, text=True, encoding="utf-8", cwd=str(ROOT))

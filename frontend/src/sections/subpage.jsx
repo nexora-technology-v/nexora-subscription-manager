@@ -83,7 +83,10 @@ function BillingMini({ data, onGo }) {
         <EmptyState icon={Layers} text="بدهی بازی نیست"
           hint="هر نماینده‌ای که این دوره کانفیگ ساخته باشد، این‌جا با مبلغش می‌آید." />
       ) : (
-        <div className="flex flex-col gap-2.5 flex-1 justify-between">
+        /* ردیف‌ها کنارِ هم، نه پخش در قدِ کارت: `justify-between` هر چه
+           کارت بلندتر بود فاصله را بیشتر می‌کرد و بینِ دو ردیف ۶۰ پیکسل
+           خالی می‌ماند */
+        <div className="fx-rowlist">
           {groups.map((g) => (
             <div key={g.name} className="flex items-center gap-3">
               <span className="text-[13px] shrink-0" style={{ color: "var(--dim)", minWidth: 62 }}>
@@ -338,12 +341,12 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
           {/* `justify-between` تا وقتی این کارت هم‌قدِ کارتِ کناری
               کش می‌آید، ردیف‌ها در فضای موجود پخش شوند نه اینکه
               زیرشان حفره بماند */}
-          <div className="flex flex-col gap-2.5 flex-1 justify-between">
+          <div className="fx-rowlist">
             {features.map((x, i) => (
               <button key={i} onClick={() => navigate(x.k)} className="flex items-center justify-between w-full">
                 <span className="text-[13px]" style={{ color: "var(--dim)" }}>{x.l}</span>
                 <span className="fx-pill" style={{
-                  background: x.on ? "var(--ok-soft)" : "rgba(255,255,255,.04)",
+                  background: x.on ? "var(--ok-soft)" : "var(--hair-1)",
                   color: x.on ? "var(--ok)" : "var(--muted)" }}>
                   {x.on ? "فعال" : "خاموش"}
                 </span>
@@ -358,7 +361,7 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
 
         <div className="fx-card p-5 flex flex-col">
           <h3 className="text-[14px] font-bold text-white mb-3.5">دسترسی سریع</h3>
-          <div className="flex flex-col gap-2 flex-1 justify-between">
+          <div className="flex flex-col gap-2">
             {[{ l: "مشاهده پیش‌نمایش زنده", i: Eye, k: "preview" },
               { l: "سفارش‌های ربات", i: Package, k: "bot-orders" },
               { l: "صورتحساب نماینده‌ها", i: Layers, k: "bill-dash" },

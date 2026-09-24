@@ -10930,6 +10930,47 @@ async def agent_checkin(request: Request, payload: dict = None,
             "interval": 30, "panelVersion": pv}
 
 
+def _result_lost(node, what, err, tunnel_id=None):
+    """
+    نتیجه‌ای که رسید ولی ذخیره نشد — در رویدادهای نود ثبت می‌شود.
+
+    این سه مسیر (سنجش، سلامت، مانیتورینگ) خطای تجزیه را بی‌صدا
+    می‌خوردند: کار «موفق» ثبت می‌شد، صفحه همچنان «هنوز گزارشی
+    نرسیده» می‌گفت، و مدیر هیچ راهی نداشت بفهمد گزارش آمده و گم شده.
+    """
+    log.warning("result not stored (%s, node %s): %s", what, node.get("id"), err)
+    try:
+        TUN.log(node_id=node["id"], tunnel_id=tunnel_id, level="warn",
+                message=f"{what} رسید ولی ذخیره نشد — {type(err).__name__}: {str(err)[:100]}")
+    except Exception:
+        log.warning("could not record lost result", exc_info=True)
+
+
+def _tunnel_status_from_job(node, jid, action, ok, result):
+    """
+    وضعیتِ تانل از نتیجه‌ی کار — تنها جایی که «در حال کار» و «خطا» نوشته
+    می‌شوند.
+
+    سمتِ ایران صاحبِ وضعیت است. سمتِ خارج فقط می‌تواند «خطا» بگوید:
+    اگر اعمالِ خارج موفق شود ولی ایران نه، تانل کار نمی‌کند، و نباید
+    رسیدنِ دیرترِ پاسخِ خارج آن را «در حال کار» کند.
+    """
+    tid = TUN.job_tunnel(jid)
+    t = TUN.get_tunnel(tid) if tid is not None else None
+    if not t:
+        return
+    got = TUN.status_from_result(action, ok, result)
+    if got is None:
+        _result_lost(node, "وضعیتِ تانل", ValueError("پاسخِ نامفهوم"), tunnel_id=tid)
+        return
+    status, err = got
+    if int(t["node_id"]) != int(node["id"]):
+        if int(t.get("foreign_node") or 0) != int(node["id"]) or status != "failed":
+            return
+        err = "سمت خارج: " + (err or "")
+    TUN.set_status(tid, status, err)
+
+
 @app.post("/api/agent/job-result")
 def agent_job_result(payload: dict, x_agent_token: str = Header(None)):
     """نتیجه‌ی یک کار."""
@@ -10961,6 +11002,9 @@ def agent_job_result(payload: dict, x_agent_token: str = Header(None)):
                             detail="این کار برای این نود نیست")
     result = full
 
+    if action in TUN.STATUS_ACTIONS:
+        _tunnel_status_from_job(node, jid, action, ok, result)
+
     # نتیجه‌ی سنجش را جدا نگه می‌داریم تا روند قابل دیدن باشد
     if ok and action == "monitor" and p.get("tunnel_id"):
         try:
@@ -10972,8 +11016,8 @@ def agent_job_result(payload: dict, x_agent_token: str = Header(None)):
         if _tid is not None and TUN.tunnel_on_node(_tid, node["id"]):
             try:
                 TUN.save_metrics(_tid, json.loads(result))
-            except Exception:
-                pass
+            except Exception as e:
+                _result_lost(node, "سنجشِ تانل", e, tunnel_id=_tid)
         elif _tid is not None:
             TUN.log(node_id=node["id"], level="warn",
                     message=f"سنجشِ تانل {_tid} رد شد — روی این نود نیست")
@@ -10983,8 +11027,8 @@ def agent_job_result(payload: dict, x_agent_token: str = Header(None)):
             data = json.loads(result)
             TUN.save_health(node["id"], data)
             _health_alert(node["name"], data, key=f"node:{node['id']}")
-        except Exception:
-            pass
+        except Exception as e:
+            _result_lost(node, "گزارشِ سلامت", e)
 
     if ok and action in ("sysmon", "firewall"):
         try:
@@ -10992,8 +11036,8 @@ def agent_job_result(payload: dict, x_agent_token: str = Header(None)):
                 "kind": action,
                 "data": json.loads(result),
             })
-        except Exception:
-            log.debug("ذخیره‌ی مانیتورینگ نود ناموفق", exc_info=True)
+        except Exception as e:
+            _result_lost(node, "مانیتورینگ" if action == "sysmon" else "وضعیتِ فایروال", e)
 
     if not ok:
         TUN.log(node_id=node["id"], level="error",
@@ -11281,6 +11325,16 @@ def tunnel_monitor(tid: int, x_admin_password: str = Header(...)):
     return {"ok": True, "queued": True, "ports": ports}
 
 
+@app.get("/api/admin/tunnel/{tid}/jobs")
+def tunnel_jobs(tid: int, limit: int = 10, x_admin_password: str = Header(...)):
+    """کارهای اخیرِ تانل و نتیجه‌شان — لاگ، وضعیت، اعمال."""
+    check_auth(x_admin_password)
+    _need_tunnels()
+    if not TUN.get_tunnel(tid):
+        raise HTTPException(status_code=404, detail="تانل پیدا نشد")
+    return {"jobs": TUN.tunnel_jobs(tid, max(1, min(int(limit), 30)))}
+
+
 @app.get("/api/admin/tunnel/{tid}/metrics")
 def tunnel_metrics(tid: int, x_admin_password: str = Header(...)):
     """تاریخچه و خلاصه‌ی سنجش."""
@@ -11501,14 +11555,18 @@ def tunnel_node_add(payload: dict, x_admin_password: str = Header(...)):
 def tunnel_node_del(node_id: int, x_admin_password: str = Header(...)):
     check_auth(x_admin_password)
     _need_tunnels()
-    TUN.delete_node(node_id)
-    return {"ok": True}
+    if not TUN.get_node(node_id):
+        raise HTTPException(status_code=404, detail="سرور پیدا نشد")
+    return {"ok": True, **TUN.delete_node(node_id)}
 
 
 @app.post("/api/admin/tunnel/node/{node_id}/rotate")
 def tunnel_node_rotate(node_id: int, x_admin_password: str = Header(...)):
     check_auth(x_admin_password)
     _need_tunnels()
+    # بی‌این، شناسه‌ی اشتباه توکنی برمی‌گرداند که به هیچ سروری وصل نبود
+    if not TUN.get_node(node_id):
+        raise HTTPException(status_code=404, detail="سرور پیدا نشد")
     return {"ok": True, "token": TUN.rotate_token(node_id)}
 
 
@@ -11574,6 +11632,7 @@ def tunnel_deploy(tid: int, x_admin_password: str = Header(...)):
     # بدون این، هر تانل یک نصب دستی روی خارج می‌خواهد — که کل
     # هدف این بخش را از بین می‌برد.
     sides = ["ایران"]
+    foreign_err = None
     if t.get("foreign_node"):
         try:
             cfg_f = TUN.build_config(t, "foreign")
@@ -11582,14 +11641,18 @@ def tunnel_deploy(tid: int, x_admin_password: str = Header(...)):
                           {"tunnel_id": tid, "engine": t["engine"],
                            "config": cfg_f, "side": "foreign"})
             sides.append("خارج")
-        except Exception:
-            pass
+        except Exception as e:
+            # پیش‌تر بی‌صدا: پاسخ فقط «manual» می‌گفت و مدیر نمی‌فهمید
+            # سرورِ خارج agent داشت و ساختِ کانفیگش شکست خورد
+            foreign_err = f"{type(e).__name__}: {str(e)[:120]}"
+            TUN.log(node_id=t["foreign_node"], tunnel_id=tid, level="warn",
+                    message=f"اعمالِ سمت خارج انجام نشد — {foreign_err}")
 
     TUN.set_status(tid, "deploying")
     TUN.log(node_id=t["node_id"], tunnel_id=tid,
             message=f"اعمال تانل «{t['name']}» — سمت " + " و ".join(sides))
     return {"ok": True, "sides": sides,
-            "manual": "خارج" not in sides}
+            "manual": "خارج" not in sides, "foreignError": foreign_err}
 
 
 @app.post("/api/admin/tunnel/{tid}/action/{what}")
@@ -16436,12 +16499,22 @@ def node_diagnose(node_id: int, x_admin_password: str = Header(...)):
         steps.append({"step": "گزارش ذخیره‌شده", "ok": False,
                       "note": "هیچ گزارشی ذخیره نشده"})
     else:
+        # تاریخِ خامِ ISO این‌جا در رابطِ فارسی میلادی و وارونه دیده می‌شد؛
+        # «چند دقیقه پیش» همان چیزی است که تشخیص لازم دارد
+        try:
+            _mins = int((datetime.now() - datetime.fromisoformat(
+                str(saved.get("at"))[:19])).total_seconds() // 60)
+            _when = "کمتر از یک دقیقه پیش" if _mins < 1 else (
+                f"{_mins} دقیقه پیش" if _mins < 120 else f"{_mins // 60} ساعت پیش")
+        except (TypeError, ValueError):
+            _when = "زمانش خوانا نبود"
         steps.append({"step": "گزارش ذخیره‌شده", "ok": True,
-                      "note": f"آخرین گزارش: {saved.get('at')}"})
+                      "note": f"آخرین گزارش: {_when}"})
 
     return {
         "node": {"id": node["id"], "name": node.get("name"),
-                 "host": node.get("host"), "version": ver or None,
+                 # ستونِ host وجود ندارد — همیشه None بود
+                 "host": node.get("public_ip"), "version": ver or None,
                  "lastSeen": last_seen, "ageSeconds": age},
         "steps": steps,
         "healthy": all(s["ok"] for s in steps),
