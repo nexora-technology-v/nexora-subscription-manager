@@ -121,7 +121,14 @@ async function boot(label, pathname, expect) {
     initData: "", ready() {}, expand() {}, onEvent() {}, offEvent() {},
     themeParams: {}, colorScheme: "dark",
   } };
-  w.fetch = () => new Promise(() => {});          // هیچ‌وقت جواب نمی‌دهد
+  // هیچ‌وقت جواب نمی‌دهد — جز مسیرهای مینی‌اپ، که پاسخِ خالی می‌گیرند.
+  // مینی‌اپ تا رسیدنِ /api/mini/me پشتِ اسپلشِ فروشگاه می‌ماند (تا ظاهرِ
+  // پیش‌فرض دیده نشود)؛ بی‌پاسخ، این تست فقط اسپلش را می‌دید و «اپ بالا
+  // آمد» را نمی‌سنجید.
+  w.fetch = (u) => (/\/api\/mini\//.test(String(u))
+    ? Promise.resolve({ ok: true, status: 200, headers: { get: () => null },
+                        json: () => Promise.resolve({}) })
+    : new Promise(() => {}));
   // صفحه‌ی ورودِ نکسورا یک کفِ زمانیِ ۱٫۹ ثانیه‌ای دارد که با
   // `prefers-reduced-motion` برداشته می‌شود. این‌جا آن را روشن
   // می‌کنیم تا خودِ اپ رندر شود.

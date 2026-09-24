@@ -153,11 +153,25 @@ async function api(path, opt = {}) {
   const init = tg()?.initData || "";
   const headers = { "X-Telegram-Init-Data": init };
   if (opt.body) headers["Content-Type"] = "application/json";
-  const res = await fetch(`${API_URL}${path}`, {
-    method: opt.method || "GET",
-    headers,
-    body: opt.body ? JSON.stringify(opt.body) : undefined,
-  });
+  // سقفِ زمانی: اپ حالا تا رسیدنِ فروشگاه پشتِ اسپلش می‌ماند، پس
+  // درخواستی که هیچ‌وقت جواب نگیرد یعنی اسپلشِ بی‌پایان. با سقف، خطای
+  // روشن و دکمه‌ی تلاشِ دوباره می‌آید. ارسالِ رسید (عکس) بیشتر وقت دارد.
+  const ctl = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = ctl && setTimeout(() => ctl.abort(), opt.method && opt.method !== "GET" ? 60000 : 20000);
+  let res;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method: opt.method || "GET",
+      headers,
+      body: opt.body ? JSON.stringify(opt.body) : undefined,
+      signal: ctl ? ctl.signal : undefined,
+    });
+  } catch (e) {
+    if (e && e.name === "AbortError") throw new Error("سرور جواب نداد — دوباره تلاش کنید");
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(errText(j.detail, "درخواست ناموفق بود"));
   return j;
