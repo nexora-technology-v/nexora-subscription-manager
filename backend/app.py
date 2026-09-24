@@ -4899,8 +4899,27 @@ def firewall_intrusion(hours: int = 24, x_admin_password: str = Header(...)):
         except Exception:
             log.debug("دسته‌بندی آی‌پی‌ها ناموفق", exc_info=True)
 
-    # customers را دوباره می‌سازیم چون known بالا ممکن است عوض شده باشد
+    # «از قبل بسته» — سیاه‌چاله یا قاعده‌ی DENY روی مبدأ. صفحه تا امروز
+    # این را از فیلدی به نامِ blocked می‌خواند که بکند هرگز نمی‌فرستاد:
+    # کاشیِ «از قبل بسته» همیشه صفر بود و دکمه‌ی «بستن» کنارِ آدرسی هم
+    # که بسته شده بود می‌ماند.
     att = (res.get("ssh") or {}).get("attempts") or []
+    for a in att:
+        a["blocked"] = False
+    if FIREWALL and att:
+        try:
+            closed = set(FIREWALL.blackhole_list())
+            for r in (FIREWALL.status().get("rules") or []):
+                src = str(r.get("source") or "").replace(" (v6)", "").strip()
+                if r.get("action") in ("DENY", "REJECT") and src and src != "Anywhere":
+                    closed.add(src)
+            for a in att:
+                a["blocked"] = a.get("ip") in closed
+        except Exception as e:
+            log.warning("intrusion: blocked check failed: %s", e)
+            res["blockedError"] = f"وضعیتِ «بسته» خوانده نشد: {type(e).__name__}"
+
+    # customers را دوباره می‌سازیم چون known بالا ممکن است عوض شده باشد
     res.setdefault("ssh", {})["customers"] = [a for a in att if a.get("known")]
     return res
 

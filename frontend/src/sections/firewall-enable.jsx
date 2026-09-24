@@ -154,10 +154,38 @@ export function FirewallEnable({ password, onChanged }) {
         </div>
       )}
 
+      {/* وقتی روشن است، این صفحه فقط یک خط داشت و بقیه‌اش خالی بود — در
+          حالی که همان داده جوابِ مهم‌ترین سؤالِ این وضعیت را دارد: «چه
+          چیزی گوش می‌دهد ولی قاعده ندارد، یعنی همین حالا از بیرون بسته
+          است؟» پورتِ تازه‌ی x-ui که قاعده نگرفته، دقیقاً همین‌جاست. */}
       {pre.active && !armedUntil && (
-        <InfoBox tone="ok">
-          فایروال روشن است و قاعده‌هایتان اعمال می‌شوند.
-        </InfoBox>
+        <div className="fx-fw-hero mb-4" data-tone={blockers.length ? "danger" : risky.length ? "warn" : "ok"}>
+          <span className="fx-fw-hero-ico">
+            {blockers.length ? <AlertTriangle size={20} /> : <ShieldCheck size={20} />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[15px] font-bold text-white">
+              {blockers.length ? "فایروال روشن است — ولی سرویسِ حیاتی بسته مانده"
+                : "فایروال روشن است و قاعده‌هایتان اعمال می‌شوند"}
+            </div>
+            <div className="flex gap-1.5 flex-wrap mt-2">
+              <span className="fx-pill" style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
+                {faNum((pre.covered || []).length)} سرویس باز
+              </span>
+              {risky.length > 0 && (
+                <span className="fx-pill" style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>
+                  {faNum(risky.length)} بی‌قاعده، از بیرون بسته
+                </span>
+              )}
+              {blockers.length > 0 && (
+                <span className="fx-pill" style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>
+                  {faNum(blockers.length)} حیاتی
+                </span>
+              )}
+            </div>
+          </div>
+          <a href="#/fw-rules" className="fx-btn-g px-3 py-2 text-[13px] shrink-0">قواعد فایروال</a>
+        </div>
       )}
 
       {/* چه چیزی قطع می‌شود */}
@@ -167,7 +195,8 @@ export function FirewallEnable({ password, onChanged }) {
             style={{ color: "var(--danger)" }}>
             <AlertTriangle size={16} />
             <span className="text-[14px] font-semibold">
-              این‌ها قطع می‌شوند و نباید بشوند
+              {pre.active ? "این‌ها همین حالا از بیرون بسته‌اند و نباید باشند"
+                : "این‌ها قطع می‌شوند و نباید بشوند"}
             </span>
           </div>
           {blockers.map((b) => (
@@ -192,9 +221,13 @@ export function FirewallEnable({ password, onChanged }) {
           ))}
           <p className="text-[13px] mt-3 leading-relaxed"
             style={{ color: "var(--dim)" }}>
-            اول از صفحه‌ی «قواعد فایروال» برای این پورت‌ها قاعده‌ی
-            <b> اجازه </b> بسازید، بعد برگردید. تا آن موقع روشن‌کردن
-            مجاز نیست.
+            {pre.active ? (
+              <>از صفحه‌ی «قواعد فایروال» برای این پورت‌ها قاعده‌ی <b>اجازه</b> بسازید —
+                تا آن موقع هر کسی که از این‌ها رد می‌شود قطع است.</>
+            ) : (
+              <>اول از صفحه‌ی «قواعد فایروال» برای این پورت‌ها قاعده‌ی <b>اجازه</b> بسازید،
+                بعد برگردید. تا آن موقع روشن‌کردن مجاز نیست.</>
+            )}
           </p>
         </div>
       )}
@@ -202,7 +235,7 @@ export function FirewallEnable({ password, onChanged }) {
       {risky.length > blockers.length && (
         <div className="fx-card p-5">
           <div className="text-[14px] font-semibold text-white mb-1">
-            بدون قاعده — با روشن‌شدن بسته می‌شوند
+            {pre.active ? "بدون قاعده — الان از بیرون بسته‌اند" : "بدون قاعده — با روشن‌شدن بسته می‌شوند"}
           </div>
           <p className="text-[12px] mb-3" style={{ color: "var(--muted)" }}>
             اگر لازمشان ندارید، همین درست است.

@@ -307,6 +307,28 @@ check("قالب ISO هم کار می‌کند",
 
 IN.datetime = _real_dt
 
+head("زمانِ تلاش‌ها ISO است، نه ۱۵ نویسه‌ی اولِ خط")
+# پیش‌تر stamp = line[:15]: روی syslog «Sep 12 03:10:22» بی‌سال به رابط
+# می‌رفت و میلادی و خام دیده می‌شد، و روی RFC 3339 (اوبونتو ۲۴)
+# «2026-09-24T12:0» بریده می‌شد
+_sp3 = importlib.util.spec_from_file_location(
+    "intrusion_iso", os.path.join(ROOT, "backend", "intrusion.py"))
+IN3 = importlib.util.module_from_spec(_sp3)
+_sp3.loader.exec_module(IN3)
+_now = _dt.now().replace(microsecond=0)
+_a = _now - _td(hours=3)
+_b = _now - _td(hours=1)
+_SYS = (f"{_a:%b} {_a.day:2d} {_a:%H:%M:%S} srv sshd[1]: Failed password for root from 203.0.113.7 port 1 ssh2\n"
+        f"{_b.isoformat()}.123456+03:30 srv sshd[2]: Failed password for root from 203.0.113.7 port 2 ssh2\n"
+        f"{_b.isoformat()}.200000+03:30 srv sshd[3]: Accepted publickey for root from 198.51.100.4 port 3 ssh2\n")
+IN3._auth_lines = lambda hours=24: _SYS
+_r3 = IN3.ssh_attempts(hours=24)
+_att = _r3["attempts"][0]
+check("first از خطِ syslog با سالِ درست", _att["first"] == _a.isoformat(), _att["first"])
+check("last از خطِ RFC 3339، کامل", _att["last"] == _b.isoformat(), _att["last"])
+check("ورودِ موفق هم ISO", (_r3["accepted"] or [{}])[0].get("at") == _b.isoformat(),
+      str(_r3["accepted"][:1]))
+
 
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R

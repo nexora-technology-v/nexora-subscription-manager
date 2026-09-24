@@ -143,7 +143,8 @@ export function Field({ label, hint, children }) {
     <div className="mb-3">
       <label className="text-[13px] mb-1.5 block" style={{ color: "var(--muted)" }}>{label}</label>
       {children}
-      {hint && <p className="text-[12px] mt-1.5 leading-relaxed" style={{ color: "#475569" }}>{hint}</p>}
+      {/* #475569 روی زمینه‌ی تیره کنتراستِ ۲٫۳ داشت — زیرِ حدِ خوانایی */}
+      {hint && <p className="text-[12px] mt-1.5 leading-relaxed" style={{ color: "var(--muted)" }}>{hint}</p>}
     </div>
   );
 }

@@ -219,7 +219,11 @@ def _parse_status(text):
         num, target, act, direction, src = m.groups()
         port = None
         proto = ""
-        pm = re.match(r"^(\d+)(?::(\d+))?(?:/(tcp|udp))?$", target.strip())
+        # ufw هر قاعده را برای v6 هم می‌سازد و به مقصدش « (v6)» می‌چسباند.
+        # پیش‌تر این پسوند جلوی خواندنِ پورت را می‌گرفت: نسخه‌ی v6ِ قاعده‌ی
+        # SSH «حیاتی» شناخته نمی‌شد و بی‌تأیید حذف می‌شد.
+        target = re.sub(r"\s*\(v6\)\s*$", "", target.strip())
+        pm = re.match(r"^(\d+)(?::(\d+))?(?:/(tcp|udp))?$", target)
         if pm:
             port = int(pm.group(1))
             proto = pm.group(3) or "any"
@@ -231,7 +235,7 @@ def _parse_status(text):
             "action": act,
             "direction": direction or "IN",
             "source": (src or "Anywhere").strip(),
-            "v6": "(v6)" in (src or ""),
+            "v6": "(v6)" in (src or "") or "(v6)" in line.split(act)[0],
             "critical": port in crit if port else False,
             "note": crit.get(port, "") if port else "",
         })
@@ -262,12 +266,15 @@ def status():
         rules = _parse_added(_run(["ufw", "show", "added"])[1]) or rules
 
     # قاعده‌های v6 تکراری‌اند و فقط فهرست را شلوغ می‌کنند
-    seen, uniq = set(), []
+    seen, uniq = {}, []
     for r in rules:
         key = (r["target"], r["action"], r["source"].replace(" (v6)", ""))
         if key in seen:
+            # رابط می‌گوید قاعده هر دو نسخه را می‌گیرد — و حذف هر دو را برمی‌دارد
+            seen[key]["both"] = True
             continue
-        seen.add(key)
+        r["both"] = False
+        seen[key] = r
         uniq.append(r)
 
     ssh = ssh_ports()
@@ -279,9 +286,42 @@ def status():
         "rules": uniq, "ruleCount": len(uniq),
         "sshProtected": ssh_open,
         "sshPorts": sorted(ssh),
-        "defaultIncoming": ("deny" if "deny (incoming)" in out
-                            else ("allow" if "allow (incoming)" in out else "?")),
+        "defaultIncoming": _default_incoming(out),
     }
+
+
+def _default_incoming(out=""):
+    """
+    سیاستِ پیش‌فرضِ ورودی: deny | allow | ?
+
+    پیش‌تر فقط در خروجیِ `ufw status numbered` دنبالِ «deny (incoming)»
+    می‌گشت — ولی آن خط فقط در `status verbose` چاپ می‌شود. پس همیشه «?»
+    برمی‌گشت و یادداشتِ «سیاستِ پیش‌فرض» در رابط هیچ‌وقت دیده نشد.
+    فایلِ پیکربندیِ ufw هم وقتی خاموش است هم وقتی روشن جواب می‌دهد.
+    """
+    text = out or ""
+    if "deny (incoming)" in text or "reject (incoming)" in text:
+        return "deny"
+    if "allow (incoming)" in text:
+        return "allow"
+    try:
+        with open(UFW_DEFAULTS, encoding="utf-8") as f:
+            m = re.search(r'^\s*DEFAULT_INPUT_POLICY\s*=\s*"?(\w+)"?', f.read(), re.M)
+        if m:
+            v = m.group(1).upper()
+            return "deny" if v in ("DROP", "REJECT") else ("allow" if v == "ACCEPT" else "?")
+    except OSError:
+        pass
+    ok, verbose = _run(["ufw", "status", "verbose"])
+    if ok and ("deny (incoming)" in verbose or "reject (incoming)" in verbose):
+        return "deny"
+    if ok and "allow (incoming)" in verbose:
+        return "allow"
+    return "?"
+
+
+#: جدا تا تست بتواند مسیرش را عوض کند
+UFW_DEFAULTS = "/etc/default/ufw"
 
 
 def _ssh_would_break(rules, active):
@@ -393,8 +433,21 @@ def delete_rule(num, confirm_critical=False):
         return False, (f"این قاعده {target.get('note') or 'حیاتی'} است. "
                        "حذفش می‌تواند دسترسی شما را قطع کند.")
 
-    ok, out = _run(["ufw", "--force", "delete", str(num)], timeout=20)
-    return ok, (out.strip()[:200] or ("حذف شد" if ok else "ناموفق"))
+    # فهرستِ رابط جفتِ v6 را پنهان می‌کند (تکراری است)، پس حذف باید
+    # هر دو را بردارد — وگرنه «حذف شد» می‌آمد و پورت روی IPv6 باز می‌ماند.
+    # بزرگ‌تر اول: بعد از هر حذف، شماره‌های بعدی یکی کم می‌شوند.
+    raw = _parse_status(_run(["ufw", "status", "numbered"])[1] or "")
+    twins = [r["num"] for r in raw
+             if r["num"] != num and r["target"] == target["target"]
+             and r["action"] == target["action"]
+             and r["source"].replace(" (v6)", "") == target["source"].replace(" (v6)", "")]
+    notes = []
+    for n in sorted([num] + twins, reverse=True):
+        ok, out = _run(["ufw", "--force", "delete", str(n)], timeout=20)
+        if not ok:
+            return False, (out.strip()[:200] or f"حذفِ قاعده‌ی {n} ناموفق بود")
+        notes.append(out.strip())
+    return True, ("حذف شد" + (" (همراهِ نسخه‌ی IPv6)" if twins else ""))
 
 
 def _tunnel_procs():
@@ -503,6 +556,22 @@ def tunnel_ports_in_use():
     return ports
 
 
+def _is_ephemeral(port, proc, xports, tun, crit):
+    """
+    سوکتِ موقتِ xray — نه سرویس است، نه قاعده می‌خواهد. فقط وقتی مطمئنیم
+    کنارش می‌گذاریم: یعنی وقتی فهرستِ اینباندها را از خودِ x-ui خوانده‌ایم
+    و این پورت در آن نیست.
+
+    یک تابع برای suggest و preflight: پیش‌تر فقط suggest این را داشت و
+    preflight همان چهل سوکت را «بی‌قاعده — با روشن‌شدن بسته می‌شود»
+    فهرست می‌کرد.
+    """
+    proc = (proc or "").lower()
+    return (xports is not None and port not in xports
+            and ("xray" in proc or "sing-box" in proc)
+            and port not in tun and port not in crit)
+
+
 def suggest(listening_ports=None):
     """
     پیشنهاد قواعد، بر اساس چیزی که واقعاً روی سرور گوش می‌دهد.
@@ -551,12 +620,7 @@ def suggest(listening_ports=None):
         known = p.get("known") or ""
         public = bool(p.get("public"))
 
-        # سوکت موقتِ xray — نه سرویس است، نه قاعده می‌خواهد. فقط وقتی
-        # مطمئنیم کنارش می‌گذاریم: یعنی وقتی فهرست اینباندها را از
-        # خود x-ui خوانده‌ایم و این پورت در آن نیست.
-        if (xports is not None and port not in xports
-                and ("xray" in proc or "sing-box" in proc)
-                and port not in tun and port not in crit):
+        if _is_ephemeral(port, proc, xports, tun, crit):
             ephemeral.append({"port": port, "proto": p.get("proto") or "udp",
                               "process": p.get("process") or ""})
             continue
@@ -795,6 +859,7 @@ def preflight():
     listening = _read_listening() or []
     tun = tunnel_ports_in_use()
     crit = critical_ports(listening)
+    xports = xray_service_ports()
 
     at_risk, covered = [], []
     for p in listening:
@@ -803,6 +868,8 @@ def preflight():
         except (TypeError, ValueError):
             continue
         if not p.get("public"):
+            continue
+        if _is_ephemeral(port, p.get("process"), xports, tun, crit):
             continue
 
         why = ""

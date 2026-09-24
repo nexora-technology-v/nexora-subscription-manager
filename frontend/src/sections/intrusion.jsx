@@ -9,13 +9,35 @@
  */
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  AlertTriangle, Download, Lock, RefreshCw, ShieldAlert, ShieldCheck,
+  AlertTriangle, Download, Lock, RefreshCw, ShieldAlert, ShieldCheck, Users,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum } from "../lib/format";
 import { ConfirmModal, EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatTile, usePager } from "../ui/index";
-import { MetricCard } from "./monitoring";
 import { isoToJalaliStamp } from "../ui/jalali";
+
+/* «چه کار کنم» گاهی دستور است و گاهی جمله‌ی فارسی. همه در جعبه‌ی کدِ
+   چپ‌به‌راست می‌نشستند و جمله‌ی فارسی وارونه خوانده می‌شد («... نبندید
+   /etc/ssh/sshd_config در»). جمله متن می‌ماند و فقط دستور کد می‌شود. */
+const FA = /[\u0600-\u06FF]/;
+function FixText({ text }) {
+  const t = String(text || "");
+  const i = t.lastIndexOf(": ");
+  const cmd = !FA.test(t) ? t : (i > 0 && !FA.test(t.slice(i + 2)) ? t.slice(i + 2) : "");
+  const prose = cmd === t ? "" : (cmd ? t.slice(0, i + 1) : t);
+  return (
+    <div className="mt-2">
+      {prose && <div className="text-[12.5px] leading-relaxed" style={{ color: "var(--dim)" }}>{prose}</div>}
+      {cmd && (
+        <div className="rounded-lg p-2.5 mt-1.5" style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
+          <code dir="ltr" className="text-[12px] block text-left" style={{
+            fontFamily: "var(--mono)", color: "var(--accent-2)", whiteSpace: "pre-wrap", wordBreak: "break-all",
+          }}>{cmd}</code>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function FirewallIntrusion({ password }) {
   const [d, setD] = useState(null);
@@ -28,10 +50,14 @@ export function FirewallIntrusion({ password }) {
   const load = useCallback(async () => {
     setBusy(true);
     try {
-      const j = await fetch(
+      const r = await fetch(
         `${API_URL}/api/admin/firewall/intrusion?hours=${hours}`,
         { headers: { "X-Admin-Password": password } },
-      ).then((r) => r.json());
+      );
+      const j = await r.json().catch(() => ({}));
+      // پاسخِ خطا پیش‌تر به‌جای داده می‌نشست و صفحه «لاگ خوانده نشد»
+      // می‌گفت — دلیلِ واقعی (رمز، ماژول) دیده نمی‌شد
+      if (!r.ok) { setMsg({ t: "err", m: errText(j.detail, "خواندنِ تلاش‌ها ناموفق بود") }); setD((x) => x || {}); return; }
       setD(j);
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setBusy(false); }
@@ -145,10 +171,11 @@ export function FirewallIntrusion({ password }) {
     ["noise", "نویز", noise.length, "var(--muted)"],
   ];
 
-  // از همان داده‌ای که در دست است
-  const atk = (ssh.attempts || []);
-  const serious = atk.filter((a) => (Number(a.tries) || 0) > 10);
-  const alreadyBlocked = atk.filter((a) => a.blocked);
+  // «از قبل بسته» فقط میانِ مهاجم‌ها معنا دارد — مشتری و نویز را
+  // نمی‌بندیم. پیش‌تر از a.tries و a.blocked خوانده می‌شد که بکند هرگز
+  // نمی‌فرستاد (از داده‌ی ساختگیِ هارنس آمده بودند)، پس «جدی» و «از قبل
+  // بسته» روی سرورِ واقعی همیشه صفر بودند.
+  const blockedAtk = attackers.filter((a) => a.blocked);
 
   return (
     <div className="fx-anim">
@@ -164,7 +191,7 @@ export function FirewallIntrusion({ password }) {
               <option value={168}>۷ روز اخیر</option>
             </select>
             <button onClick={load} disabled={busy}
-              className="fx-btn-ghost px-3 py-2 text-[13px] flex items-center gap-1.5">
+              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
               <RefreshCw size={14} className={busy ? "animate-spin" : ""} />
               تازه‌سازی
             </button>
@@ -173,23 +200,29 @@ export function FirewallIntrusion({ password }) {
 
       <Msg msg={msg} />
 
-      {/* در یک نگاه: چند آدرس در زده، چندتایشان جدی‌اند، و چندتا
-          از قبل بسته شده‌اند. پیش از این باید فهرست خوانده می‌شد. */}
-      {(ssh.attempts || []).length > 0 && (
-        <div className="fx-g3 grid grid-cols-3 gap-3">
-          <StatTile label="آدرس‌های مهاجم" icon={AlertTriangle} tone="var(--warn)"
-            value={faNum(atk.length)}
-            hint={`در ${faNum(hours)} ساعت گذشته`} />
-          <StatTile label="جدی" icon={ShieldAlert}
-            tone={serious.length ? "var(--danger)" : "var(--ok)"}
-            value={faNum(serious.length)}
-            color={serious.length ? "var(--danger)" : "var(--ok)"}
-            hint={serious.length ? "بیش از ۱۰ بار تلاش کرده‌اند" : "هیچ‌کدام پیگیر نبوده‌اند"} />
-          <StatTile label="از قبل بسته" icon={Lock} tone="var(--accent-2)"
-            value={faNum(alreadyBlocked.length)}
-            hint={atk.length - alreadyBlocked.length > 0
-                  ? `${faNum(atk.length - alreadyBlocked.length)} آدرس هنوز باز است`
-                  : "همه بسته شده‌اند"} />
+      {/* یک ردیفِ شاخص، نه دو: ردیفِ بالا «۶ مهاجم، ۰ جدی» می‌گفت و ردیفِ
+          پایین «۲ مهاجم، جدی» — هر دو درباره‌ی یک داده. حالا یک تعریف:
+          مهاجم = پیگیر و ناآشنا، همان که جدولِ زیر نشان می‌دهد. */}
+      {ssh.available && (
+        <div className="fx-g4 grid grid-cols-4 gap-3">
+          <StatTile label="تلاشِ ناموفق" icon={AlertTriangle}
+            tone={(ssh.total || 0) > 500 ? "var(--danger)" : (ssh.total || 0) > 50 ? "var(--warn)" : "var(--ok)"}
+            value={faNum(ssh.total || 0)}
+            hint={`از ${faNum(list.length)} آدرس در ${faNum(ssh.hours || hours)} ساعت`} />
+          <StatTile label="مهاجم" icon={ShieldAlert}
+            tone={attackers.length ? "var(--danger)" : "var(--ok)"}
+            color={attackers.length ? "var(--danger)" : "var(--ok)"}
+            value={faNum(attackers.length)}
+            hint={heavy.length ? `${faNum(heavy.length)} حمله‌ی سنگین` : attackers.length ? "پیگیر و ناآشنا" : "هیچ‌کدام پیگیر نبوده‌اند"} />
+          <StatTile label="احتمالاً مشتری" icon={Users}
+            tone={customers.length ? "var(--warn)" : "var(--accent-2)"}
+            value={faNum(customers.length)}
+            hint={customers.length ? "بستنشان سرویس را قطع می‌کند" : "هیچ مشتری‌ای میانشان نیست"} />
+          <StatTile label="مهاجمِ بسته‌شده" icon={Lock} tone="var(--accent-2)"
+            value={`${faNum(blockedAtk.length)}/${faNum(attackers.length)}`}
+            hint={d.blockedError ? d.blockedError
+              : attackers.length - blockedAtk.length > 0
+                ? `${faNum(attackers.length - blockedAtk.length)} مهاجم هنوز باز است` : "همه بسته شده‌اند"} />
         </div>
       )}
 
@@ -236,46 +269,13 @@ export function FirewallIntrusion({ password }) {
         </div>
       ) : (
         <>
-          <div className="fx-g3 grid grid-cols-3 gap-3 mb-4">
-            <MetricCard m={{
-              key: "total", title: "کل تلاش ناموفق",
-              value: faNum(ssh.total || 0),
-              unit: `در ${faNum(ssh.hours || 24)} ساعت`,
-              level: (ssh.total || 0) > 500 ? "crit"
-                : (ssh.total || 0) > 50 ? "warn" : "ok",
-              why: "تلاش ناموفق روی هر سرور عمومی عادی است. آنچه مهم است تمرکز آن روی چند آی‌پی مشخص است.",
-            }} />
-            <MetricCard m={{
-              key: "attackers", title: "آی‌پی مهاجم",
-              value: faNum(attackers.length), unit: "جدی",
-              level: attackers.length ? "warn" : "ok",
-              why: "آی‌پی‌هایی که بیش از ۱۰ بار رمز اشتباه زده‌اند و به سرویس شما وصل نیستند.",
-            }} />
-            <MetricCard m={{
-              key: "customers", title: "احتمالاً مشتری",
-              value: faNum(customers.length), unit: "به سرویس وصل‌اند",
-              level: customers.length ? "warn" : "ok",
-              why: "این آی‌پی‌ها هم تلاش ناموفق داشته‌اند و هم همین حالا به سرویس وصل‌اند — پس به‌احتمال زیاد مشتری خودتان‌اند.",
-            }} />
-          </div>
-
           {(d.advice || []).map((a, idx) => (
             <InfoBox key={idx} tone={a.level === "crit" ? "danger" : "warn"}>
               {a.title && <b>{a.title}: </b>}{a.text}
-              {a.fix && (
-                <div className="mt-2 rounded-lg p-2.5" style={{
-                  background: "var(--surface-3)",
-                  border: "1px solid var(--border)",
-                }}>
-                  <code dir="ltr" className="text-[12px]" style={{
-                    fontFamily: "var(--mono)", color: "var(--accent-2)",
-                    whiteSpace: "pre-wrap", wordBreak: "break-all",
-                  }}>{a.fix}</code>
-                </div>
-              )}
+              {a.fix && <FixText text={a.fix} />}
               {a.danger && (
-                <div className="mt-2 text-[12px]" style={{ color: "var(--danger)" }}>
-                  ⚠️ {a.danger}
+                <div className="mt-2 text-[12px] flex items-start gap-1.5" style={{ color: "var(--danger)" }}>
+                  <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {a.danger}
                 </div>
               )}
             </InfoBox>
@@ -386,14 +386,20 @@ export function FirewallIntrusion({ password }) {
                           {esc0(a.top_user)}
                         </td>
                         <td style={{ color: "var(--muted)", fontSize: 12 }}>
-                          {a.last}
+                          {isoToJalaliStamp(a.last)}
                         </td>
                         <td>
-                          <button onClick={() => setConfirmBlock(a)}
-                            className="fx-btn-ghost px-2 py-1 text-[12px]"
-                            style={{ color: "var(--danger)" }}>
-                            بستن
-                          </button>
+                          {a.blocked ? (
+                            <span className="fx-pill" style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
+                              <Lock size={11} /> بسته
+                            </span>
+                          ) : (
+                            <button onClick={() => setConfirmBlock(a)}
+                              className="fx-btn-g px-2.5 py-1 text-[12px]"
+                              style={{ color: "var(--danger)" }}>
+                              بستن
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

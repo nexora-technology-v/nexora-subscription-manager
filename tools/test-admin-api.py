@@ -4702,6 +4702,31 @@ for _nm, _tt in _cases:
     _b = (_PBD.panel_source(_tt) or {}).get("id"), (_PBD.panel_source(_tt) or {}).get("panel_url")
     check(f"پنل · {_nm}: بکند و ربات یکی می‌گویند", _a == _b, f"{_a} / {_b}")
 
+head("تلاش برای نفوذ — «از قبل بسته» از خودِ فایروال")
+# صفحه از a.blocked می‌خواند و بکند هرگز نمی‌فرستادش: کاشیِ «از قبل بسته»
+# روی سرورِ واقعی همیشه صفر بود
+if getattr(app, "INTRUSION", None) and getattr(app, "FIREWALL", None):
+    _IN, _FWm = app.INTRUSION, app.FIREWALL
+    _saved = (_IN.summary, _FWm.blackhole_list, _FWm.status, app.NETID)
+    _IN.summary = lambda known_ips=None, hours=24: {"ssh": {"available": True, "attempts": [
+        {"ip": "203.0.113.7", "count": 120, "severity": "heavy", "known": False},
+        {"ip": "203.0.113.8", "count": 40, "severity": "brute", "known": False},
+        {"ip": "203.0.113.9", "count": 30, "severity": "brute", "known": False}]}}
+    _FWm.blackhole_list = lambda: ["203.0.113.7"]
+    _FWm.status = lambda: {"rules": [{"action": "DENY", "source": "203.0.113.8 (v6)", "port": None},
+                                     {"action": "ALLOW", "source": "203.0.113.9", "port": 22}]}
+    app.NETID = None
+    _ir = app.firewall_intrusion(hours=24, x_admin_password=PW)
+    _bl = {a["ip"]: a["blocked"] for a in _ir["ssh"]["attempts"]}
+    check("سیاه‌چاله ← بسته", _bl.get("203.0.113.7") is True, str(_bl))
+    check("قاعده‌ی DENY روی مبدأ (حتی v6) ← بسته", _bl.get("203.0.113.8") is True)
+    check("قاعده‌ی ALLOW ← باز", _bl.get("203.0.113.9") is False)
+    _FWm.status = lambda: (_ for _ in ()).throw(RuntimeError("ufw gone"))
+    _ir2 = app.firewall_intrusion(hours=24, x_admin_password=PW)
+    check("شکستِ خواندن بی‌صدا نیست", "blockedError" in _ir2 and
+          all(a["blocked"] is False for a in _ir2["ssh"]["attempts"]), str(_ir2.get("blockedError")))
+    _IN.summary, _FWm.blackhole_list, _FWm.status, app.NETID = _saved
+
 
 # شمارنده نباید جای دیگری بازنویسی شده باشد.
 #

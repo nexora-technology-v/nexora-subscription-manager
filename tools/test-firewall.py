@@ -211,6 +211,92 @@ check("بدون پیکربندی، به ۲۲ برمی‌گردد", F.ssh_ports()
 F.SSHD_CONFIG, F.SSHD_CONFIG_DIR = _real_cfg, _real_dir
 F._SSH_CFG_CACHE["at"] = 0.0
 
+head("قاعده‌های v6")
+# ufw هر قاعده را دو بار می‌سازد. پیش‌تر « (v6)» در مقصد جلوی خواندنِ پورت
+# را می‌گرفت: SSHِ v6 «حیاتی» نبود و بی‌تأیید حذف می‌شد، و فهرست و
+# شمارِ «درهای باز» دوبرابر می‌شد.
+_v6 = rules[4]
+check("پورتِ قاعده‌ی v6 خوانده می‌شود", _v6["port"] == 22 and _v6["proto"] == "tcp", str(_v6))
+check("SSHِ v6 هم حیاتی است", _v6["critical"] is True)
+check("پرچمِ v6 می‌خورد", _v6["v6"] is True and rules[0]["v6"] is False)
+
+_calls = []
+_state = {"out": SAMPLE}
+
+
+def _fake_run(cmd, timeout=15):
+    _calls.append(" ".join(cmd))
+    if cmd[:2] == ["ufw", "status"]:
+        return True, _state["out"]
+    return True, "Rule deleted"
+
+
+_real_run, _real_shutil = F._run, F.shutil
+import types as _types  # noqa: E402
+F._run = _fake_run
+F.shutil = _types.SimpleNamespace(which=lambda n: "/usr/sbin/" + n)
+F.UFW_DEFAULTS = os.path.join(CFG, "no-ufw-defaults")
+_st = F.status()
+check("فهرست جفتِ v6 را تکرار نمی‌کند", _st["ruleCount"] == 4,
+      ", ".join(r["target"] for r in _st["rules"]))
+
+_calls.clear()
+_dok, _note = F.delete_rule(1, confirm_critical=True)
+_dels = [c for c in _calls if "delete" in c]
+check("حذفِ قاعده جفتِ v6 را هم برمی‌دارد، بزرگ‌تر اول",
+      _dels == ["ufw --force delete 5", "ufw --force delete 1"], " | ".join(_dels))
+check("پیام می‌گوید v6 هم رفت", _dok and "IPv6" in _note, _note)
+_calls.clear()
+F.delete_rule(2)
+check("قاعده‌ی بی‌جفت فقط خودش حذف می‌شود",
+      [c for c in _calls if "delete" in c] == ["ufw --force delete 2"])
+# SSHِ v6ِ تنها — جفتِ v4اش با نسخه‌ی قبلی حذف شده بود و این یکی جا مانده
+_state["out"] = SAMPLE.replace("[ 1] 22/tcp                     ALLOW IN    Anywhere\n", "")
+_ok2, _n2 = F.delete_rule(5)
+check("SSHِ v6ِ تنها بی‌تأیید حذف نمی‌شود", _ok2 is False and "SSH" in _n2, _n2)
+_state["out"] = SAMPLE
+
+head("سیاستِ پیش‌فرضِ ورودی")
+# پیش‌تر فقط در خروجیِ `status numbered` می‌گشت که خطِ Default ندارد — پس
+# همیشه «?» بود و یادداشتِ رابط هرگز دیده نشد
+with open(os.path.join(CFG, "ufw-defaults"), "w", encoding="utf-8") as _f:
+    _f.write('IPV6=yes\nDEFAULT_INPUT_POLICY="DROP"\nDEFAULT_OUTPUT_POLICY="ACCEPT"\n')
+F.UFW_DEFAULTS = os.path.join(CFG, "ufw-defaults")
+check("از /etc/default/ufw: DROP ← deny", F.status()["defaultIncoming"] == "deny")
+with open(F.UFW_DEFAULTS, "w", encoding="utf-8") as _f:
+    _f.write('DEFAULT_INPUT_POLICY="ACCEPT"\n')
+check("ACCEPT ← allow", F.status()["defaultIncoming"] == "allow")
+F.UFW_DEFAULTS = os.path.join(CFG, "missing")
+_state["out"] = SAMPLE
+F._run = lambda cmd, timeout=15: (True, SAMPLE + ("Default: deny (incoming), allow (outgoing)\n"
+                                                   if "verbose" in cmd else ""))
+check("بی‌فایل، از status verbose", F.status()["defaultIncoming"] == "deny")
+
+head("سوکتِ موقتِ xray — یک قاعده برای پیشنهاد و پیش‌بررسی")
+_L = [{"port": 443, "proto": "tcp", "process": "xray", "public": True, "known": "Xray"},
+      {"port": 41877, "proto": "udp", "process": "xray", "public": True, "known": ""},
+      {"port": 6379, "proto": "tcp", "process": "redis-server", "public": True, "known": ""}]
+_real_x, _real_rl, _real_tp = F.xray_service_ports, F._read_listening, F.tunnel_ports_in_use
+F.xray_service_ports = lambda: {443}
+F._read_listening = lambda: _L
+F.tunnel_ports_in_use = lambda: {}
+_pf = F.preflight()
+_sg = F.suggest(_L)
+_pf_ports = {r["port"] for r in _pf["atRisk"] + _pf["covered"]}
+check("پیش‌بررسی سوکتِ موقت را «بی‌قاعده» نمی‌شمارد", 41877 not in _pf_ports, str(sorted(_pf_ports)))
+check("پیشنهاد هم کنارش می‌گذارد", any(e["port"] == 41877 for e in _sg["ephemeral"]))
+check("پورتِ واقعیِ بی‌قاعده هنوز فهرست می‌شود", 6379 in _pf_ports)
+F.xray_service_ports, F._read_listening, F.tunnel_ports_in_use = _real_x, _real_rl, _real_tp
+F._run, F.shutil = _real_run, _real_shutil
+
+
+# شمارنده نباید بازنویسی شده باشد — همان اشتباهی که test-admin-api یک‌بار
+# داشت، این‌جا هم رخ داد: `_ok, _note = F.delete_rule(...)` شمارنده را صفر
+# کرد و سوییتِ ۵۶تایی «۸ پاس» گزارش داد
+_calls = io.open(__file__, encoding="utf-8").read().count("\ncheck(")
+if _ok + _fail < _calls * 0.95:
+    print(f"  {R}✗ شمارنده بازنویسی شده — {_ok + _fail} شمرده شد، ولی {_calls} فراخوانی در فایل هست{X}")
+    _fail += 1
 
 print(f"\n{D}{'─' * 46}{X}")
 color = G if not _fail else R

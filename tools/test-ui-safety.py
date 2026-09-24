@@ -487,6 +487,21 @@ for _f, _src in ALL.items():
         _isoraw.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
 check("هیچ تاریخِ میلادیِ خامی رندر نمی‌شود", not _isoraw, ", ".join(_isoraw[:5]))
 
+# کلاسِ `fx-*` که در CSS تعریف نشده بی‌صدا هیچ اثری ندارد. `fx-btn-ghost`
+# در سه صفحه (شش دکمه) بود و هرگز تعریف نشد: «فایروال» در مانیتورینگِ
+# نودها، «تازه‌سازی» و «بستن» در تلاش برای نفوذ — همه متنِ بی‌ظاهر.
+_CSS_ALL = "".join(io.open(os.path.join(dp, f), encoding="utf-8").read()
+                   for dp, _d, fs in os.walk(SRC) for f in fs if f.endswith(".css"))
+_fx_def = set(re.findall(r"\.(fx-[A-Za-z0-9_-]+)", _CSS_ALL))
+_fx_miss = []
+for _f, _src in ALL.items():
+    for _m in re.finditer(r"""className=(?:"([^"]*)"|\{`([^`]*)`\})""", _src):
+        _txt = re.sub(r"\$\{[^}]*\}", " ", _m.group(1) or _m.group(2) or "")
+        for _c in re.findall(r"(?<![\w-])(fx-[A-Za-z0-9_-]+)", _txt):
+            if _c not in _fx_def:
+                _fx_miss.append(f"{_c} ({_f}:{_src[:_m.start()].count(chr(10)) + 1})")
+check("هر کلاسِ fx-* که در JSX هست در CSS تعریف شده", not _fx_miss, ", ".join(_fx_miss[:5]))
+
 # نویسه‌ی کنترلیِ نامرئی در کدِ تست — `\b` که در heredocِ گیت‌بش به
 # backspace تبدیل شد، همین دروازه‌ی بالا را بی‌صدا کور کرده بود: سبز
 # می‌ماند در حالی که چهار تاریخِ میلادی از زیرش رد می‌شد.

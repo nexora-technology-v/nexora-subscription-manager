@@ -91,22 +91,32 @@ def _within(line, cutoff):
     بی‌صدا داده از دست دادن، و این‌جا همان چیزی است که می‌خواهیم
     از آن دور بمانیم.
     """
+    when = _line_time(line, cutoff)
+    return True if when is None else when >= cutoff
+
+
+def _line_time(line, cutoff=None):
+    """
+    زمانِ یک خطِ لاگ، یا None — همان قاعده‌ای که _within با آن فیلتر
+    می‌کند، تا زمانِ نمایش‌داده‌شده و زمانِ فیلتر یکی باشند.
+    """
+    cutoff = cutoff or (datetime.now() - timedelta(days=1))
     head = line[:32]
     m = re.match(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})", head)
     if m:
         try:
-            return datetime(*(int(g) for g in m.groups())) >= cutoff
+            return datetime(*(int(g) for g in m.groups()))
         except ValueError:
-            return True
+            return None
 
     m = re.match(r"([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{2}):(\d{2}):(\d{2})",
                   head)
     if not m:
-        return True
+        return None
     try:
         mon = _MONTHS.index(m.group(1)) + 1
     except ValueError:
-        return True
+        return None
     # یک روز ارفاق برای اختلاف ساعتِ سرور و منطقه‌ی زمانی لاگ
     limit = datetime.now() + timedelta(days=1)
     when = None
@@ -121,9 +131,7 @@ def _within(line, cutoff):
         # تازه‌ترین سالی که این تاریخ را در آینده نمی‌اندازد
         if when is None or cand > when:
             when = cand
-    if when is None:
-        return True
-    return when >= cutoff
+    return when
 
 
 _MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -192,7 +200,11 @@ def ssh_attempts(hours=24, known_ips=None):
     accepted = []
 
     for line in text.splitlines():
-        stamp = line[:15]
+        # ISO، نه ۱۵ نویسه‌ی اولِ خط: روی لاگِ RFC 3339 (اوبونتو ۲۴)
+        # «۲۰۲۶-۰۹-۲۴T۱۲:۰» بریده می‌شد، و قالبِ syslog سال نداشت و در
+        # رابط میلادی و خام دیده می‌شد
+        _t = _line_time(line)
+        stamp = _t.isoformat(timespec="seconds") if _t else line[:15]
 
         for pat in _FAIL_PATTERNS:
             m = pat.search(line)

@@ -511,24 +511,502 @@
   }) };
 
 
+  /* فایروال و تشخیصِ نفوذ — خروجیِ خودِ بکند (firewall.py/intrusion.py)
+     روی فیکسچرِ test-contract با خروجیِ دستورهای ساختگی. نسخه‌ی قبلی
+     کلیدهایی داشت که در بکند نیستند (tries، from، backend) و همه‌ی
+     زیرمسیرها همان FIREWALL را می‌گرفتند. */
   var FIREWALL = {
-    installed: true, active: true, backend: "ufw",
-    rules: mk(9, function (i) {
-      return { num: i + 1, port: [22, 80, 443, 8100, 2053, 8443, 9090, 3000, 5432][i],
-               proto: i % 3 === 2 ? "udp" : "tcp",
-               action: i > 5 ? "DENY" : "ALLOW",
-               from: "Anywhere", comment: ["SSH", "HTTP", "HTTPS", "API", "x-ui",
-                                           "sub", "metrics", "dev", "db"][i] };
-    }),
+   "ready": true,
+   "installed": true,
+   "active": true,
+   "rules": [
+    {
+     "num": 1,
+     "target": "22/tcp",
+     "port": 22,
+     "proto": "tcp",
+     "action": "LIMIT",
+     "direction": "IN",
+     "source": "Anywhere",
+     "v6": false,
+     "critical": true,
+     "note": "SSH — راه ورود شما به سرور",
+     "both": true
+    },
+    {
+     "num": 2,
+     "target": "443",
+     "port": 443,
+     "proto": "any",
+     "action": "ALLOW",
+     "direction": "IN",
+     "source": "Anywhere",
+     "v6": false,
+     "critical": false,
+     "note": "",
+     "both": true
+    },
+    {
+     "num": 3,
+     "target": "2053/tcp",
+     "port": 2053,
+     "proto": "tcp",
+     "action": "ALLOW",
+     "direction": "IN",
+     "source": "Anywhere",
+     "v6": false,
+     "critical": false,
+     "note": "",
+     "both": false
+    },
+    {
+     "num": 4,
+     "target": "3080/tcp",
+     "port": 3080,
+     "proto": "tcp",
+     "action": "ALLOW",
+     "direction": "IN",
+     "source": "Anywhere",
+     "v6": false,
+     "critical": false,
+     "note": "",
+     "both": false
+    },
+    {
+     "num": 5,
+     "target": "8443",
+     "port": 8443,
+     "proto": "any",
+     "action": "ALLOW",
+     "direction": "IN",
+     "source": "Anywhere",
+     "v6": false,
+     "critical": false,
+     "note": "",
+     "both": false
+    },
+    {
+     "num": 6,
+     "target": "Anywhere",
+     "port": null,
+     "proto": "",
+     "action": "DENY",
+     "direction": "IN",
+     "source": "203.0.113.50",
+     "v6": false,
+     "critical": false,
+     "note": "",
+     "both": false
+    },
+    {
+     "num": 7,
+     "target": "Anywhere",
+     "port": null,
+     "proto": "",
+     "action": "DENY",
+     "direction": "IN",
+     "source": "203.0.113.51",
+     "v6": false,
+     "critical": false,
+     "note": "",
+     "both": false
+    }
+   ],
+   "ruleCount": 7,
+   "sshProtected": true,
+   "sshPorts": [
+    22
+   ],
+   "defaultIncoming": "deny"
   };
-
-  var _ATT = mk(8, function (i) {
-    return { ip: "203.0.113." + (10 + i), tries: 40 - i * 4,
-             last: "2026-09-16 0" + (i % 9) + ":10", user: "root",
-             known: i === 2, blocked: i < 2 };
-  });
-  var INTRUSION = { ready: true, hours: 24, ssh: { attempts: _ATT, total: 184 },
-                    attempts: _ATT, blocked: 2, total: 184 };
+  var FW_BLOCKED = {
+   "blocked": [
+    {
+     "ip": "203.0.113.41",
+     "via": "blackhole",
+     "active": true,
+     "how": "مسیر سیاه‌چاله‌ی کرنل — بدون فایروال کار می‌کند"
+    },
+    {
+     "ip": "203.0.113.60",
+     "via": "blackhole",
+     "active": true,
+     "how": "مسیر سیاه‌چاله‌ی کرنل — بدون فایروال کار می‌کند"
+    },
+    {
+     "ip": "203.0.113.61",
+     "via": "blackhole",
+     "active": true,
+     "how": "مسیر سیاه‌چاله‌ی کرنل — بدون فایروال کار می‌کند"
+    },
+    {
+     "ip": "203.0.113.50",
+     "via": "ufw",
+     "active": true,
+     "pending": false,
+     "num": 6,
+     "how": "قاعده‌ی فایروال"
+    },
+    {
+     "ip": "203.0.113.51",
+     "via": "ufw",
+     "active": true,
+     "pending": false,
+     "num": 7,
+     "how": "قاعده‌ی فایروال"
+    }
+   ],
+   "firewallActive": true,
+   "blackholeAvailable": true
+  };
+  var FW_SUGGEST = {
+   "ready": true,
+   "installed": true,
+   "active": true,
+   "keep": [],
+   "close": [
+    {
+     "port": 6379,
+     "proto": "tcp",
+     "process": "redis-server",
+     "action": "deny",
+     "why": "رو به اینترنت باز است و به سرویس شما ربطی ندارد — پردازه: redis-server"
+    },
+    {
+     "port": 9100,
+     "proto": "tcp",
+     "process": "node_exporter",
+     "action": "deny",
+     "why": "رو به اینترنت باز است و به سرویس شما ربطی ندارد — پردازه: node_exporter"
+    }
+   ],
+   "unknown": [
+    {
+     "port": 5353,
+     "proto": "udp",
+     "process": "",
+     "action": "deny",
+     "why": "نام پردازه در دسترس نیست، پس نمی‌دانیم این پورت مال چیست. اگر تانل یا سرویسی دارید که روی این پورت کار می‌کند، نبندیدش. برای دیدن نامش روی سرور: ss -tulpn | grep 5353"
+    }
+   ],
+   "already": [
+    {
+     "port": 22,
+     "proto": "tcp",
+     "process": "sshd",
+     "action": "LIMIT",
+     "why": "SSH"
+    },
+    {
+     "port": 443,
+     "proto": "tcp",
+     "process": "xray",
+     "action": "ALLOW",
+     "why": "Xray"
+    },
+    {
+     "port": 2053,
+     "proto": "tcp",
+     "process": "x-ui",
+     "action": "ALLOW",
+     "why": "پنل 3x-ui"
+    },
+    {
+     "port": 3080,
+     "proto": "tcp",
+     "process": "backhaul",
+     "action": "ALLOW",
+     "why": "قاعده دارد"
+    }
+   ],
+   "ephemeral": [
+    {
+     "port": 41877,
+     "proto": "udp",
+     "process": "xray"
+    },
+    {
+     "port": 52011,
+     "proto": "udp",
+     "process": "xray"
+    }
+   ],
+   "tunnelPorts": [
+    3080
+   ],
+   "sshCovered": true
+  };
+  var FW_PREFLIGHT = {
+   "ready": true,
+   "active": true,
+   "atRisk": [
+    {
+     "port": 6379,
+     "proto": "tcp",
+     "process": "redis-server",
+     "why": "پردازه‌ی redis-server",
+     "critical": false
+    },
+    {
+     "port": 9100,
+     "proto": "tcp",
+     "process": "node_exporter",
+     "why": "پردازه‌ی node_exporter",
+     "critical": false
+    },
+    {
+     "port": 5353,
+     "proto": "udp",
+     "process": "",
+     "why": "",
+     "critical": false
+    }
+   ],
+   "covered": [
+    {
+     "port": 22,
+     "proto": "tcp",
+     "process": "sshd",
+     "why": "SSH — راه ورود شما به سرور",
+     "critical": true
+    },
+    {
+     "port": 443,
+     "proto": "tcp",
+     "process": "xray",
+     "why": "Xray",
+     "critical": false
+    },
+    {
+     "port": 2053,
+     "proto": "tcp",
+     "process": "x-ui",
+     "why": "پنل 3x-ui",
+     "critical": false
+    },
+    {
+     "port": 3080,
+     "proto": "tcp",
+     "process": "backhaul",
+     "why": "تانل backhaul — تمام مشتری‌های ایران از این رد می‌شوند",
+     "critical": true
+    }
+   ],
+   "blockers": [],
+   "safe": true,
+   "note": "3 سرویس قاعده ندارد و با روشن‌شدن قطع می‌شود"
+  };
+  var FW_ROLLBACK = {
+   "armed": false,
+   "confirmed": false
+  };
+  var INTRUSION = {
+   "ssh": {
+    "available": true,
+    "hours": 24,
+    "attempts": [
+     {
+      "ip": "203.0.113.40",
+      "count": 38,
+      "users": [
+       "root"
+      ],
+      "top_user": "root",
+      "first": "2026-09-24T03:07:01",
+      "last": "2026-09-24T07:26:38",
+      "known": false,
+      "severity": "brute",
+      "kind": "unknown",
+      "why": "",
+      "blocked": false
+     },
+     {
+      "ip": "203.0.113.41",
+      "count": 22,
+      "users": [
+       "admin"
+      ],
+      "top_user": "admin",
+      "first": "2026-09-24T07:33:39",
+      "last": "2026-09-24T10:00:00",
+      "known": false,
+      "severity": "brute",
+      "kind": "unknown",
+      "why": "",
+      "blocked": true
+     },
+     {
+      "ip": "203.0.113.42",
+      "count": 9,
+      "users": [
+       "ubuntu"
+      ],
+      "top_user": "ubuntu",
+      "first": "2026-09-24T10:07:01",
+      "last": "2026-09-24T11:03:09",
+      "known": false,
+      "severity": "noise",
+      "kind": "unknown",
+      "why": "",
+      "blocked": false
+     },
+     {
+      "ip": "203.0.113.43",
+      "count": 4,
+      "users": [
+       "root"
+      ],
+      "top_user": "root",
+      "first": "2026-09-24T11:10:10",
+      "last": "2026-09-24T11:31:13",
+      "known": false,
+      "severity": "noise",
+      "kind": "unknown",
+      "why": "",
+      "blocked": false
+     },
+     {
+      "ip": "198.51.100.30",
+      "count": 3,
+      "users": [
+       "root"
+      ],
+      "top_user": "root",
+      "first": "2026-09-24T11:38:14",
+      "last": "2026-09-24T11:52:16",
+      "known": true,
+      "severity": "noise",
+      "kind": "tunnel",
+      "why": "سرِ دیگرِ تانلِ «ایران-۱»",
+      "blocked": false
+     },
+     {
+      "ip": "198.51.100.7",
+      "count": 2,
+      "users": [
+       "root"
+      ],
+      "top_user": "root",
+      "first": "2026-09-24T11:59:17",
+      "last": "2026-09-24T12:06:18",
+      "known": true,
+      "severity": "noise",
+      "kind": "customer",
+      "why": "همین آدرس الان به ۲ کانفیگ وصل است: ali_1، sara_1",
+      "blocked": false
+     }
+    ],
+    "total": 78,
+    "attackers": 2,
+    "customers": [
+     {
+      "ip": "198.51.100.30",
+      "count": 3,
+      "users": [
+       "root"
+      ],
+      "top_user": "root",
+      "first": "2026-09-24T11:38:14",
+      "last": "2026-09-24T11:52:16",
+      "known": true,
+      "severity": "noise",
+      "kind": "tunnel",
+      "why": "سرِ دیگرِ تانلِ «ایران-۱»",
+      "blocked": false
+     },
+     {
+      "ip": "198.51.100.7",
+      "count": 2,
+      "users": [
+       "root"
+      ],
+      "top_user": "root",
+      "first": "2026-09-24T11:59:17",
+      "last": "2026-09-24T12:06:18",
+      "known": true,
+      "severity": "noise",
+      "kind": "customer",
+      "why": "همین آدرس الان به ۲ کانفیگ وصل است: ali_1، sara_1",
+      "blocked": false
+     }
+    ],
+    "accepted": [
+     {
+      "user": "root",
+      "ip": "198.51.100.7",
+      "at": "2026-09-24T12:00:01"
+     }
+    ]
+   },
+   "hardening": {
+    "checks": [
+     {
+      "key": "root_login",
+      "title": "ورود مستقیم با کاربر root",
+      "ok": false,
+      "value": "yes",
+      "why": "بیشترِ بروت‌فورس‌ها فقط root را امتحان می‌کنند. بستن آن به‌تنهایی اغلب حجم تلاش‌ها را چند برابر کم می‌کند.",
+      "fix": "sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config && systemctl reload ssh"
+     },
+     {
+      "key": "password_auth",
+      "title": "ورود با رمز عبور",
+      "ok": false,
+      "value": "yes",
+      "why": "تا وقتی رمز قبول می‌شود، بروت‌فورس معنی دارد. با کلید SSH، حدس‌زدن رمز بی‌فایده می‌شود.",
+      "fix": "اول کلید SSH خودتان را اضافه کنید، بعد: sed -i 's/^#\\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config && systemctl reload ssh",
+      "danger": "اگر کلید SSH نگذاشته باشید، بعد از این دیگر نمی‌توانید وارد سرور شوید."
+     },
+     {
+      "key": "port",
+      "title": "پورت SSH",
+      "ok": false,
+      "value": "22",
+      "why": "عوض‌کردن پورت جلوی حمله‌ی هدفمند را نمی‌گیرد، ولی اسکنرهای خودکار که فقط ۲۲ را می‌زنند کنار می‌روند و لاگ تمیز می‌شود.",
+      "fix": "در /etc/ssh/sshd_config پورت را عوض کنید، در فایروال باز کنید، و تا وقتی با پورت جدید وارد نشده‌اید نشست فعلی را نبندید."
+     },
+     {
+      "key": "fail2ban",
+      "title": "fail2ban",
+      "ok": true,
+      "value": "نصب است — 0 IP مسدود",
+      "why": "IPهایی که پشت سر هم رمز اشتباه می‌زنند را خودکار و موقت می‌بندد. بهترین نسبت اثر به زحمت در این فهرست همین است.",
+      "fix": "apt-get install -y fail2ban && systemctl enable --now fail2ban"
+     }
+    ],
+    "score": 1,
+    "total": 4
+   },
+   "advice": [
+    {
+     "level": "warn",
+     "text": "بیشترِ بروت‌فورس‌ها فقط root را امتحان می‌کنند. بستن آن به‌تنهایی اغلب حجم تلاش‌ها را چند برابر کم می‌کند.",
+     "fix": "sed -i 's/^#\\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config && systemctl reload ssh",
+     "title": "ورود مستقیم با کاربر root",
+     "danger": null,
+     "action": null
+    },
+    {
+     "level": "warn",
+     "text": "تا وقتی رمز قبول می‌شود، بروت‌فورس معنی دارد. با کلید SSH، حدس‌زدن رمز بی‌فایده می‌شود.",
+     "fix": "اول کلید SSH خودتان را اضافه کنید، بعد: sed -i 's/^#\\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config && systemctl reload ssh",
+     "title": "ورود با رمز عبور",
+     "danger": "اگر کلید SSH نگذاشته باشید، بعد از این دیگر نمی‌توانید وارد سرور شوید.",
+     "action": null
+    },
+    {
+     "level": "warn",
+     "text": "عوض‌کردن پورت جلوی حمله‌ی هدفمند را نمی‌گیرد، ولی اسکنرهای خودکار که فقط ۲۲ را می‌زنند کنار می‌روند و لاگ تمیز می‌شود.",
+     "fix": "در /etc/ssh/sshd_config پورت را عوض کنید، در فایروال باز کنید، و تا وقتی با پورت جدید وارد نشده‌اید نشست فعلی را نبندید.",
+     "title": "پورت SSH",
+     "danger": null,
+     "action": null
+    }
+   ],
+   "checked_at": 1790278249,
+   "lookupPending": 6,
+   "vpnNote": "اگر کسی از VPN استفاده کند، آدرس واقعی‌اش از بیرون قابل کشف نیست — نه با این پنل و نه با هیچ ابزار دیگری. ولی سؤال واقعی شما این نیست؛ سؤال این است که «اگر این را ببندم، مشتری‌ام را بسته‌ام؟» و آن جواب دارد: همین آدرس را در فهرست آدرس‌هایی که کلاینت‌های خودتان با آن وصل می‌شوند می‌گردیم. اگر پیدا شود، پشت آن VPN یک مشتری نشسته."
+  };
 
   var AFFILIATES = {
     ready: true, totalOwed: 3400000, totalPaid: 12600000, resellerOwed: 900000,
@@ -4093,7 +4571,45 @@ var D_CODES = { ready: true,
     if (u.indexOf("/tenant/portal-list") >= 0) return PORTAL_LIST;
     if (u.indexOf("/billing/clients") >= 0) return CLIENTS;
     if (u.indexOf("/billing/invoice") >= 0) return INVOICE;
+    /* فایروال — هر زیرمسیر شکلِ خودش را دارد؛ پیش‌تر `indexOf("/firewall")`
+       همه را می‌گرفت و «پیشنهاد»، «بسته‌شده‌ها» و «بازگشتِ خودکار» همان
+       فهرستِ قواعد را می‌دیدند */
     if (u.indexOf("/firewall/intrusion") >= 0) return INTRUSION;
+    if (u.indexOf("/firewall/blocked") >= 0) return FW_BLOCKED;
+    if (u.indexOf("/firewall/suggest") >= 0) return FW_SUGGEST;
+    if (u.indexOf("/firewall/preflight") >= 0) return FW_PREFLIGHT;
+    if (u.indexOf("/firewall/rollback-state") >= 0) return FW_ROLLBACK;
+    if (u.indexOf("/firewall/blackhole/verify") >= 0) {
+      var vip = decodeURIComponent((/[?&]ip=([^&]*)/.exec(u) || [])[1] || "");
+      var isb = FW_BLOCKED.blocked.some(function (b) { return b.ip === vip; });
+      return { ip: vip, blocked: isb, why: isb ? "کرنل تأیید می‌کند: مسیر این آدرس سیاه‌چاله است"
+                                              : "کرنل مسیر عادی برایش دارد — بسته نیست" };
+    }
+    if (u.indexOf("/firewall/blackhole/bulk") >= 0) {
+      var ips = String((body || {}).ips || "").split(/[\n,]/).map(function (x) { return x.trim(); })
+        .filter(function (x) { return x && x.charAt(0) !== "#"; });
+      var un = !!(body || {}).unblock;
+      ips.forEach(function (ip) {
+        FW_BLOCKED.blocked = FW_BLOCKED.blocked.filter(function (b) { return b.ip !== ip; });
+        if (!un) FW_BLOCKED.blocked.unshift({ ip: ip, via: "blackhole", active: true, how: "مسیر سیاه‌چاله‌ی کرنل — بدون فایروال کار می‌کند" });
+      });
+      return { ok: true, total: ips.length, done: ips.length, failed: 0,
+               results: ips.map(function (ip) { return { ip: ip, ok: true, note: un ? "باز شد" : "بسته شد" }; }),
+               note: ips.length + " از " + ips.length + " آدرس " + (un ? "باز شد" : "بسته شد") };
+    }
+    if (u.indexOf("/firewall/blackhole") >= 0 && method === "POST") {
+      var bip = String((body || {}).ip || "").trim();
+      FW_BLOCKED.blocked = FW_BLOCKED.blocked.filter(function (b) { return b.ip !== bip; });
+      if (!(body || {}).unblock) FW_BLOCKED.blocked.unshift({ ip: bip, via: "blackhole", active: true, how: "مسیر سیاه‌چاله‌ی کرنل — بدون فایروال کار می‌کند" });
+      return { ok: true, note: (body || {}).unblock ? bip + " باز شد" : bip + " بسته شد" };
+    }
+    if (u.indexOf("/firewall/block-attackers") >= 0) {
+      var bl = ((body || {}).ips || []).map(function (ip) { return { ip: ip, note: "بسته شد" }; });
+      return { ok: true, note: bl.length + " آی‌پی بسته شد", blocked: bl, skipped: [], failed: [] };
+    }
+    if (u.indexOf("/firewall") >= 0 && method !== "GET") {
+      return Object.assign({ ok: true, note: "انجام شد", results: [] }, FIREWALL);
+    }
     if (u.indexOf("/firewall") >= 0) return FIREWALL;
     /* زیرمسیرهای تانل — پیش‌تر یک `indexOf("/tunnel")` همه را می‌گرفت و
        کلِ overview را برمی‌گرداند؛ پس نمودارِ سنجش، کانفیگ، تشخیص و

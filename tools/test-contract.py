@@ -127,6 +127,51 @@ if getattr(APP, "TUN", None):
     _T.save_health(_n1, {"level": "ok", "summary": "سالم", "counts": {"ok": 1, "warn": 0, "crit": 0},
                          "checks": [{"key": "dns", "title": "DNS", "level": "ok", "detail": "10 ms", "hint": ""}],
                          "at": "2026-09-24 20:00:00"})
+# ── فایروال و تشخیصِ نفوذ ساختگی (فضای کاریِ ۳) ──
+# روی ویندوز ufw و journalctl نیست، پس هر مسیرِ فایروال «ready: false»
+# می‌داد و هیچ‌وقت مقایسه نمی‌شد. خروجیِ دستورها ساختگی است، ولی تجزیه
+# همان کدِ واقعیِ firewall.py/intrusion.py است — شکل از خودِ بکند می‌آید.
+import types as _types                                            # noqa: E402
+_WHICH = _types.SimpleNamespace(which=lambda n: f"/usr/sbin/{n}")
+_UFW = ("Status: active\n\n     To                         Action      From\n"
+        "     --                         ------      ----\n"
+        "[ 1] 22/tcp                     ALLOW IN    Anywhere\n"
+        "[ 2] 443                        ALLOW IN    Anywhere\n"
+        "[ 3] Anywhere                   DENY IN     203.0.113.50\n")
+_SS = ('tcp   LISTEN 0 4096 0.0.0.0:443 0.0.0.0:* users:(("xray",pid=812,fd=3))\n'
+       'tcp   LISTEN 0 128  0.0.0.0:22  0.0.0.0:* users:(("sshd",pid=640,fd=3))\n')
+
+
+def _fw_run(cmd, timeout=15):
+    c = " ".join(cmd) if isinstance(cmd, (list, tuple)) else str(cmd)
+    if c.startswith("ufw status"):
+        return True, _UFW + ("Default: deny (incoming), allow (outgoing), disabled (routed)\n"
+                             if "verbose" in c else "")
+    if c.startswith("ufw show added"):
+        return True, "ufw allow 22/tcp\nufw allow 443\n"
+    if c.startswith("ip route show type blackhole"):
+        return True, "blackhole 203.0.113.60 \nblackhole 203.0.113.61 \n"
+    if c.startswith("systemctl is-active"):
+        return False, "inactive"
+    if c.startswith("ss "):
+        return True, "Netid State Recv-Q Send-Q Local Peer Process\n" + _SS
+    return True, ""
+
+
+if getattr(APP, "FIREWALL", None):
+    APP.FIREWALL.shutil = _WHICH
+    APP.FIREWALL._run = _fw_run
+    APP.FIREWALL.UFW_DEFAULTS = str(TMP / "ufw-defaults")
+if getattr(APP, "INTRUSION", None):
+    _AUTH = "\n".join(
+        f"Sep 24 {10 + i // 6:02d}:{i % 6 * 9:02d}:11 srv sshd[{900 + i}]: Failed password for "
+        f"{'root' if i % 3 else 'invalid user admin'} from 203.0.113.{40 + i % 4} port {50000 + i} ssh2"
+        for i in range(24)) + "\nSep 24 12:00:01 srv sshd[1]: Accepted publickey for root from 198.51.100.7 port 51000 ssh2\n"
+    APP.INTRUSION.shutil = _WHICH
+    APP.INTRUSION._ran_ok = lambda cmd, timeout=20: (True, _AUTH if "journalctl" in cmd else "")
+    APP.INTRUSION._run = lambda cmd, timeout=20: (
+        "Port 22\nPasswordAuthentication yes\nPermitRootLogin yes\n" if "sshd_config" in cmd else "")
+
 # تاریخچه‌ی مصرف — مسیرِ پیش‌فرض بیرون از مخزن است و خالی؛ بی‌این
 # samples/hourly هیچ‌وقت عضوی برای مقایسه نداشتند
 APP.HISTORY_PATH = TMP / "history.json"
@@ -217,6 +262,9 @@ MUST_MATCH = {
     "/api/admin/tunnel/1/metrics", "/api/admin/tunnel/1/config",
     "/api/admin/tunnel/node/1/sysmon", "/api/admin/tunnel/node/1/check",
     "/api/admin/tunnel/node/1/diagnose", "/api/admin/tunnel/1/jobs",
+    # فضای ۳ — فایروال
+    "/api/admin/firewall", "/api/admin/firewall/blocked", "/api/admin/firewall/intrusion",
+    "/api/admin/firewall/suggest", "/api/admin/firewall/preflight", "/api/admin/firewall/rollback-state",
 }
 
 #: مسیرهای پارامتری با یک شناسه‌ی واقعی از فیکسچر — فهرستِ خودکار

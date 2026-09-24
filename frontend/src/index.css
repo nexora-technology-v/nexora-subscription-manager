@@ -4663,3 +4663,30 @@ body::before {
   .fx-kpi3 .fx-kpi-label { font-size: 11.5px; line-height: 1.3; }
   .fx-kpi3 .fx-kpi > div:first-child > span:first-child { display: none; }
 }
+
+/* فرمِ قاعده‌ی تازه — یک ردیف با دکمه */
+.fx-fw-add { display: grid; gap: 12px; align-items: end;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr) auto; }
+.fx-fw-add > .fx-fw-add-btn { height: 42px; align-self: end; }
+.fx-fw-add > * { margin-bottom: 0 !important; }
+@media (max-width: 900px) { .fx-fw-add { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fx-fw-add > .fx-fw-add-btn { grid-column: 1 / -1; } }
+
+/* سرِ صفحه‌ی «روشن‌کردنِ فایروال» وقتی روشن است */
+.fx-fw-hero { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 16px 18px;
+  border-radius: 16px; border: 1px solid var(--ok-line);
+  background: linear-gradient(90deg, var(--ok-wash), transparent 70%), var(--surface); }
+.fx-fw-hero[data-tone="warn"] { border-color: var(--warn-line); background: linear-gradient(90deg, var(--warn-wash), transparent 70%), var(--surface); }
+.fx-fw-hero[data-tone="danger"] { border-color: var(--danger-line); background: linear-gradient(90deg, var(--danger-wash), transparent 70%), var(--surface); }
+.fx-fw-hero-ico { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; flex-shrink: 0;
+  background: var(--ok-soft); color: var(--ok); }
+.fx-fw-hero[data-tone="warn"] .fx-fw-hero-ico { background: var(--warn-soft); color: var(--warn); }
+.fx-fw-hero[data-tone="danger"] .fx-fw-hero-ico { background: var(--danger-soft); color: var(--danger); }
+
+/* هدفِ لمسیِ ۳۲ پیکسل برای همه‌ی دکمه‌ها روی گوشی — نه صفحه‌به‌صفحه.
+   «بستن» و «بررسی» در جدول‌ها و برگه‌های قرصی ۲۸ پیکسل بودند. */
+@media (max-width: 767px) {
+  .fx-btn, .fx-btn-g, button.fx-pill { min-height: 32px; }
+  .fx-fw-hero > a { flex-basis: 100%; text-align: center; }
+  .fx-fw-hero .fx-pill { white-space: normal; }
+}

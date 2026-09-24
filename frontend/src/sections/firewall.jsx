@@ -362,7 +362,7 @@ export function FirewallRules({ password }) {
       prev.nums.push(r.num);
       continue;
     }
-    const copy = { ...r, nums: [r.num], both: false,
+    const copy = { ...r, nums: [r.num], both: !!r.both,
                    source: (r.source || "").replace(" (v6)", "") };
     seen.set(key, copy);
     merged.push(copy);
@@ -381,7 +381,9 @@ export function FirewallRules({ password }) {
   const hidden = merged.length - rules.length;
   const dupes = (d.rules || []).length - merged.length;
   // شمارشِ باز و بسته — از همان قاعده‌هایی که در دست است
-  const openCount = merged.filter((r) => /allow/i.test(r.action || "")).length;
+  // LIMIT هم در باز است — فقط سرعتِ تلاش را می‌گیرد. پیش‌تر SSH که معمولاً
+  // LIMIT است در «درهای باز» شمرده نمی‌شد
+  const openCount = merged.filter((r) => /allow|limit/i.test(r.action || "")).length;
   const denyCount = merged.filter((r) => /deny|reject|drop/i.test(r.action || "")).length;
 
   const add = () => {
@@ -428,10 +430,10 @@ export function FirewallRules({ password }) {
           hint={d.active ? "فقط درهای باز اجازه دارند" : "همه‌ی پورت‌ها بازند"} />
         <StatTile label="درهای باز" icon={Unlock} tone="var(--accent-2)"
           value={faNum(openCount)}
-          hint={hidden > 0 ? `${faNum(hidden)} قاعده پنهان شده` : "قاعده‌ی allow"} />
+          hint={hidden > 0 ? `${faNum(hidden)} قاعده پنهان شده` : "اجازه یا محدود"} />
         <StatTile label="درهای بسته" icon={Lock} tone="var(--warn)"
           value={faNum(denyCount)}
-          hint={dupes > 0 ? `${faNum(dupes)} قاعده‌ی تکراری` : "قاعده‌ی deny"} />
+          hint={dupes > 0 ? `${faNum(dupes)} قاعده‌ی تکراری` : "مسدود یا رد"} />
       </div>
 
       <FirewallSuggest password={password} onApplied={load} />
@@ -466,7 +468,9 @@ export function FirewallRules({ password }) {
         <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
           <Plus size={15} style={{ color: "var(--accent-2)" }} /> قاعده‌ی جدید
         </div>
-        <div className="fx-g4 grid grid-cols-4 gap-3">
+        {/* دکمه کنارِ فیلدها، نه یک ردیفِ جدا زیرشان — فرمِ چهارفیلدی
+            ۲۴۰ پیکسل ارتفاع داشت که ثلثش فقط برای دکمه بود */}
+        <div className="fx-fw-add">
           <Field label="پورت">
             <NumberInput className="fx-input" min="1" max="65535"
               value={form.port} placeholder="۴۴۳"
@@ -487,15 +491,16 @@ export function FirewallRules({ password }) {
               {FW_ACTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </Field>
-          <Field label="توضیح" hint="اختیاری">
+          <Field label="توضیح (اختیاری)">
             <input className="fx-input" value={form.comment} placeholder="پنل"
-              onChange={(e) => setForm({ ...form, comment: e.target.value })} />
+              onChange={(e) => setForm({ ...form, comment: e.target.value })}
+              onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
           </Field>
+          <button onClick={add} disabled={busy || !form.port}
+            className="fx-btn px-4 text-[13px] flex items-center justify-center gap-1.5 fx-fw-add-btn">
+            <Plus size={14} /> افزودن
+          </button>
         </div>
-        <button onClick={add} disabled={busy || !form.port}
-          className="fx-btn px-4 py-2.5 text-[13px] flex items-center gap-1.5 mt-3">
-          <Plus size={14} /> افزودن قاعده
-        </button>
       </div>
 
       <div className="fx-card p-5">
@@ -565,7 +570,7 @@ export function FirewallRules({ password }) {
                     <tr key={r.num}>
                       <td style={{ fontFamily: "var(--mono)", color: "var(--muted)" }}>{faNum(r.num)}</td>
                       <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
-                        {r.target}
+                        {r.target === "Anywhere" ? <span style={{ fontFamily: "inherit" }}>همه‌ی پورت‌ها</span> : r.target}
                         {r.critical && (
                           <span className="fx-pill fx-fa-sub mr-2" style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>
                             حیاتی
@@ -576,7 +581,7 @@ export function FirewallRules({ password }) {
                         {meta ? meta[1] : r.action}
                       </td>
                       <td dir="ltr" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                        {r.source}
+                        {r.source === "Anywhere" ? "همه‌جا" : r.source}
                         {r.both && (
                           <span className="fx-pill mr-2" style={{
                             background: "var(--surface-3)", color: "var(--muted)",
@@ -816,7 +821,7 @@ function VerifyBlock({ ip, password }) {
 
   return (
     <button onClick={run} disabled={busy}
-      className="fx-btn-ghost px-2 py-1 text-[12px] shrink-0"
+      className="fx-btn-g px-2 py-1 text-[12px] shrink-0"
       style={{ color: "var(--muted)" }}>
       {busy ? "…" : "بررسی"}
     </button>

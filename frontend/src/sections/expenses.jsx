@@ -271,7 +271,7 @@ export function BillingExpenses({ password }) {
               <option value={120}>همه</option>
             </select>
             <button onClick={load} disabled={busy}
-              className="fx-btn-ghost px-3 py-2 text-[13px] flex items-center gap-1.5">
+              className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
               <RefreshCw size={14} className={busy ? "animate-spin" : ""} />
               تازه‌سازی
             </button>
@@ -377,7 +377,7 @@ export function BillingExpenses({ password }) {
                       </td>
                       <td>
                         <button title="حذف این هزینه" onClick={() => setDel(e)}
-                          className="fx-btn-ghost px-2 py-1"
+                          className="fx-btn-g px-2 py-1"
                           style={{ color: "var(--danger)" }}>
                           <Trash2 size={13} />
                         </button>
@@ -434,7 +434,7 @@ export function BillingLedger({ password }) {
         desc={d.since ? `همه‌ی اعداد از ${d.since} تا امروز` : "جمع‌بندی از روز اول"}
         action={(
           <button onClick={load} disabled={busy}
-            className="fx-btn-ghost px-3 py-2 text-[13px] flex items-center gap-1.5">
+            className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
             <RefreshCw size={14} className={busy ? "animate-spin" : ""} />
             تازه‌سازی
           </button>
