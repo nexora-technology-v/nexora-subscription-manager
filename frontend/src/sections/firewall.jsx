@@ -570,7 +570,7 @@ export function FirewallRules({ password }) {
                     <tr key={r.num}>
                       <td style={{ fontFamily: "var(--mono)", color: "var(--muted)" }}>{faNum(r.num)}</td>
                       <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
-                        {r.target === "Anywhere" ? <span style={{ fontFamily: "inherit" }}>همه‌ی پورت‌ها</span> : r.target}
+                        {r.target === "Anywhere" ? <span className="fx-fa-sub">همه‌ی پورت‌ها</span> : r.target}
                         {r.critical && (
                           <span className="fx-pill fx-fa-sub mr-2" style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>
                             حیاتی
@@ -581,7 +581,7 @@ export function FirewallRules({ password }) {
                         {meta ? meta[1] : r.action}
                       </td>
                       <td dir="ltr" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                        {r.source === "Anywhere" ? "همه‌جا" : r.source}
+                        {r.source === "Anywhere" ? <span className="fx-fa-sub">همه‌جا</span> : r.source}
                         {r.both && (
                           <span className="fx-pill mr-2" style={{
                             background: "var(--surface-3)", color: "var(--muted)",
