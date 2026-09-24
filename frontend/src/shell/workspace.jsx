@@ -158,6 +158,7 @@ export function WorkspaceSwitch({ mode, workspace, onSwitch, active, setActive,
                     const sel = active === it.key;
                     return (
                       <button key={it.key} data-navkey={it.key} onClick={() => setActive(it.key)}
+                        aria-current={sel ? "page" : undefined}
                         className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg mb-0.5 text-right transition-colors relative"
                         style={{
                           background: "transparent",

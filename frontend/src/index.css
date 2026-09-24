@@ -4398,3 +4398,184 @@ button.pd-kpi:active { transform: scale(.985); }
 .fx-set-group > span { font-size: 12px; color: var(--muted); }
 .fx-set-cols { columns: 2 380px; column-gap: 16px; }
 .fx-set-cols > * { break-inside: avoid; display: block; width: 100%; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   لایه‌ی طراحیِ ۲ — ظاهرِ تازه‌ی کلِ پنل، یک‌جا
+   ───────────────────────────────────────────────────────────────────
+   مالک: «هیچ تغییری نمی‌بینم؛ تمامیِ بخش‌ها؛ این‌همه فضای خالی».
+   تغییرهای قبلی صفحه‌به‌صفحه بودند و در بیشترِ پنل دیده نمی‌شدند. این
+   لایه آخرِ فایل است و روی پایه‌های مشترک می‌نشیند — زمینه، کارت،
+   سربرگِ کارت، منو، نوارِ بالا، دکمه، ورودی، عنوانِ صفحه، فاصله‌ها —
+   پس هر ۵۱ صفحه هم‌زمان عوض می‌شوند. همه از توکن‌ها؛ هیچ رنگی در JSX.
+   ═══════════════════════════════════════════════════════════════════ */
+:root {
+  /* زمینه‌ی خنثی‌تر و عمیق‌تر؛ سطح‌ها با فاصله‌ی روشناییِ دیدنی از هم */
+  --bg: #080A10;
+  --surface: #10131A;
+  --surface-2: #151923;
+  --surface-3: #0C0F15;
+  --border: rgba(255, 255, 255, 0.075);
+  --border-2: rgba(255, 255, 255, 0.13);
+  --card-pad: 18px;
+  --r-l: 16px;
+}
+
+body::before {
+  background:
+    radial-gradient(1100px 520px at 85% -12%, rgba(var(--accent-rgb), .16), transparent 60%),
+    radial-gradient(760px 480px at 0% 40%, rgba(var(--cy-rgb), .05), transparent 62%),
+    linear-gradient(180deg, rgba(255, 255, 255, .012), transparent 30%);
+}
+
+/* ── کارت: تخت، لبه‌ی مو، گوشه‌ی نرم؛ عمق از سایه ── */
+.fx-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-l);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 12px 32px -22px rgba(0, 0, 0, .8);
+}
+.fx-card.p-5 { padding: var(--card-pad); }
+.fx-card.p-4 { padding: 15px; }
+
+/* سربرگِ کارت — تیترِ اولِ هر کارت یک نوارِ جدا می‌شود، با خطِ زیرین.
+   ۵۵ کارت در پنل همین الگو را دارند (text-[14px] font-semibold اولِ
+   کارت)، پس همه یک‌جا ساختار می‌گیرند: چشم اول نوار را می‌خواند، بعد
+   بدنه را — به‌جای یک تیترِ شناور وسطِ فضای خالی. */
+.fx-card.p-5 > .text-\[14px\].font-semibold:first-child {
+  margin: calc(-1 * var(--card-pad)) calc(-1 * var(--card-pad)) 14px;
+  padding: 13px var(--card-pad);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(255, 255, 255, .008));
+  border-radius: var(--r-l) var(--r-l) 0 0;
+  font-size: 13.5px;
+}
+.fx-card.p-5 > .text-\[14px\].font-semibold:first-child svg {
+  width: 26px; height: 26px; padding: 6px; border-radius: 8px;
+  background: var(--accent-soft); flex: none;
+}
+/* توضیحِ زیرِ تیتر به نوار می‌چسبد */
+.fx-card.p-5 > .text-\[14px\].font-semibold:first-child + p { margin-top: -4px; }
+
+/* ── عنوانِ صفحه ── */
+.fx-sec-head { padding-inline-start: 0; }
+.fx-sec-head::before { display: none; }
+.fx-sec-head h2 { font-size: 19px !important; font-weight: 800; letter-spacing: -.01em; }
+.fx-sec-head p { margin-top: 4px !important; }
+.fx-anim > .flex.items-start.justify-between.mb-5:first-child { margin-bottom: 14px; }
+
+/* ── منو ── */
+.fx-side {
+  background: linear-gradient(180deg, var(--surface-2) 0%, var(--surface-3) 42%);
+  border-left: 1px solid var(--border);
+  padding: 18px 12px;
+}
+[data-navhead] { border-radius: 12px !important; }
+[data-navhead]:hover { background: var(--hair-1) !important; }
+[data-navkey] { border-radius: 9px !important; padding-block: 7px !important; }
+[data-navkey]:hover { background: var(--hair-1) !important; color: var(--text) !important; }
+
+/* ── نوارِ بالا: شیشه، کم‌ارتفاع ── */
+.fx-topbar {
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  border-bottom: 1px solid var(--border);
+  padding-block: 12px;
+}
+
+/* ── دکمه‌ها ── */
+.fx-btn {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .18) inset, 0 8px 22px -12px rgba(var(--accent-rgb), .9);
+  border-radius: 11px;
+}
+.fx-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.fx-btn:active:not(:disabled) { transform: translateY(1px); }
+.fx-btn-g {
+  background: var(--hair-1);
+  border-color: var(--border);
+  color: var(--dim);
+}
+.fx-btn-g:hover:not(:disabled) { background: var(--hair-2); border-color: var(--border-2); color: var(--text); }
+
+/* ── ورودی‌ها ── */
+.fx-input {
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  transition: border-color var(--m-fast) linear, box-shadow var(--m-fast) linear, background var(--m-fast) linear;
+}
+.fx-input:hover { border-color: var(--border-2); }
+.fx-input:focus { border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--bg); }
+
+/* ── کارتِ شاخص: عددِ درشت‌تر، رنگِ لحن در لبه ── */
+.fx-kpi { background: linear-gradient(160deg, color-mix(in srgb, var(--kpi-tone) 7%, var(--surface)) 0%, var(--surface) 55%); }
+.fx-kpi-val { font-size: 27px; }
+
+/* ── زبانه‌ها ── */
+.fx-tabs button { border-radius: 10px; }
+
+/* ── فاصله‌ها: فشرده‌تر، بی‌فضای مرده ── */
+.fx-anim > * + * { margin-top: 14px; }
+.fx-card.mb-4 { margin-bottom: 14px; }
+.fx-main { padding-top: 22px !important; }
+@media (min-width: 1280px) { .fx-main { padding-inline: 26px !important; } }
+
+/* ═══════════════════════════════════════════════════════════════════
+   بارگذاریِ نرم — مالک: «هر صفحه‌ای که لود می‌شود خیلی سفت است»
+   ───────────────────────────────────────────────────────────────────
+   هر تعویضِ صفحه چهار حرکتِ روی هم داشت:
+     ۱. ظرفِ صفحه (fx-stg) ۱۰ پیکسل بالا می‌آمد؛
+     ۲. خودِ بخش (fx-anim) دوباره ۱۰ پیکسل؛
+     ۳. اسکلت نشان داده می‌شد و وقتی داده می‌رسید محتوای واقعی جایش
+        می‌نشست و **دوباره** بالا می‌آمد — با چیدمانِ دیگر؛
+     ۴. هر کارتِ داخلِ شبکه جدا جدا، پلکانی، بالا می‌آمد.
+   چشم یک پرش می‌دید، بعد پرشی دیگر. حالا:
+     · صفحه یک حرکتِ نرم دارد (محو + ۴ پیکسل)؛
+     · بخش و شبکه‌ها فقط محو می‌شوند، بی‌جابه‌جایی؛
+     · اسکلت فقط اگر بارگذاری بیش از ۱۸۰ میلی‌ثانیه طول بکشد پیدا
+       می‌شود — صفحه‌ی سریع اسکلت را اصلاً نشان نمی‌دهد؛
+     · محتوای واقعی با یک محوِ کوتاه جای اسکلت می‌نشیند.
+   ═══════════════════════════════════════════════════════════════════ */
+@keyframes fx-soft { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.fx-stg { animation: fx-soft .3s cubic-bezier(.2, .8, .2, 1) both; }
+.fx-stg .fx-anim { animation: fx-in .24s ease-out both; }
+.fx-stg .fx-anim[aria-busy="true"] { animation: fx-in .22s ease-out .18s both; }
+.fx-stg .fx-g2 > *, .fx-stg .fx-g3 > *, .fx-stg .fx-g4 > * {
+  animation-name: fx-in; animation-duration: .26s; animation-timing-function: ease-out;
+}
+/* بلوکِ اسکلت نفس می‌کشد به‌جای برقِ تند */
+@keyframes fx-breathe { 50% { opacity: .55; } }
+.fx-stg [aria-busy="true"] .fx-card { animation: fx-breathe 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .fx-stg, .fx-stg .fx-anim, .fx-stg [aria-busy="true"] .fx-card { animation: none !important; }
+}
+
+/* ── لایه‌ی طراحیِ ۲ (ادامه): لبه‌ی درخشانِ کارت، منوی فعالِ پُر ── */
+/* لبه‌ی کارت یک شیب است، نه خطِ یکدست: از بالا روشن، پایین رنگِ برند.
+   با padding-box/border-box — بی‌blur، پس هزینه‌ی GPU ندارد. کارتی که
+   رنگِ لبه‌اش را درون‌خطی می‌دهد (هشدار، خطا) همان رنگِ یکدست را می‌گیرد. */
+.fx-card {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    linear-gradient(165deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .035) 40%,
+                    rgba(var(--accent-rgb), .22) 100%) border-box;
+}
+.fx-kpi {
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--kpi-tone) 8%, var(--surface)) 0%, var(--surface) 55%) padding-box,
+    linear-gradient(165deg, color-mix(in srgb, var(--kpi-tone) 45%, transparent), rgba(255, 255, 255, .04) 45%,
+                    rgba(255, 255, 255, .06) 100%) border-box;
+}
+/* نشانگرِ منو: پُر، با رنگِ برند — صفحه‌ی فعال از دور دیده شود */
+.fx-ind {
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent-2) 75%, var(--accent)));
+  border: 0;
+  box-shadow: 0 10px 22px -12px rgba(var(--accent-rgb), .95), 0 1px 0 rgba(255, 255, 255, .22) inset;
+}
+.fx-ind::after { display: none; }
+[data-navkey][aria-current="page"] { color: var(--on-accent-hi) !important; }
+[data-navkey][aria-current="page"]:hover { background: transparent !important; }
+.fx-nav-item.on { background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent-2) 75%, var(--accent)));
+  color: var(--on-accent-hi); box-shadow: 0 10px 22px -12px rgba(var(--accent-rgb), .95); }
