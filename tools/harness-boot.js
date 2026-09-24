@@ -28,6 +28,8 @@
      آن یک خط نشانی را عوض می‌کند و `location.search` را خالی
      می‌گذارد، پس هر چیزی که دیرتر بخواندش هیچ‌وقت نمی‌بیندش. */
   var Q0 = new URLSearchParams(location.search);
+  // پیش‌نمایشِ زنده‌ی صفحه‌ی اشتراک از هارنسِ خودِ آن صفحه (make-subpage-harness)
+  window.NX_PREVIEW_URL = "/sub.html";
   var NEW_RESELLER = Q0.get("plans") === "0";
   // ?accent=off بدونِ رنگ، ?accent=RRGGBB هر رنگی — تا بشود دید پالت
   // با رنگ‌های سخت (زردِ روشن، بنفشِ تیره) هم خوانا می‌ماند
@@ -84,51 +86,352 @@
     }
   } catch (e) { /* بی‌صدا */ }
 
-  // قالب‌ها و پالت‌ها — همان شکلی که `/api/admin/themes` می‌دهد
+  // قالب‌ها و پالت‌ها — عیناً TEMPLATES و PALETTESِ بکند (app.py).
+  // نسخه‌ی قبلی دست‌ساز بود: نامِ فارسی و توضیح نداشت و پالت‌هایش
+  // («نعنایی») اصلاً در بکند نبودند.
   var THEMES = {
     currentTemplate: "classic",
     currentPalette: "ocean",
     templates: [
-      { id: "classic", name: "کلاسیک" },
-      { id: "analytics", name: "آماری" },
-      { id: "wallet", name: "کیف پول" },
-      { id: "console", name: "کنسول" },
+      {
+        "id": "classic",
+        "name": "Classic",
+        "fa": "کلاسیک",
+        "desc": "ظاهر پیش‌فرض — ساده و آشنا"
+      },
+      {
+        "id": "analytics",
+        "name": "Analytics",
+        "fa": "تحلیلی",
+        "desc": "کارت‌های آماری برجسته با حاشیه‌های رنگی"
+      },
+      {
+        "id": "wallet",
+        "name": "Wallet",
+        "fa": "کیف پول",
+        "desc": "کارت اصلی گرادینتی + دکمه‌های گرد"
+      },
+      {
+        "id": "console",
+        "name": "Console",
+        "fa": "کنسول",
+        "desc": "حس ترمینال — مونواسپیس و گوشه‌های تیز"
+      }
     ],
     palettes: [
-      { id: "ocean", name: "اقیانوس", vars: { accent: "#2B7FD6" } },
-      { id: "violet", name: "بنفش", vars: { accent: "#7C5CFF" } },
-      { id: "mint", name: "نعنایی", vars: { accent: "#00B894" } },
-      { id: "gold", name: "طلایی", vars: { accent: "#F0A500" } },
+      {
+        "id": "ocean",
+        "name": "Ocean",
+        "fa": "اقیانوس",
+        "builtin": true,
+        "vars": {
+          "accent": "#2B7FD6",
+          "accent2": "#5AA9E6",
+          "bg": "#06090F",
+          "surface": "#0D1420",
+          "surfaceAlt": "#0A0E17",
+          "border": "rgba(255,255,255,0.06)",
+          "text": "#E8EEF7",
+          "textMuted": "#5A6880"
+        }
+      },
+      {
+        "id": "violet",
+        "name": "Violet",
+        "fa": "بنفش",
+        "builtin": true,
+        "vars": {
+          "accent": "#8B5CF6",
+          "accent2": "#C084FC",
+          "bg": "#0A0713",
+          "surface": "#150F26",
+          "surfaceAlt": "#0F0A1C",
+          "border": "rgba(255,255,255,0.07)",
+          "text": "#EDE9F7",
+          "textMuted": "#6B6188"
+        }
+      },
+      {
+        "id": "ember",
+        "name": "Ember",
+        "fa": "آتشین",
+        "builtin": true,
+        "vars": {
+          "accent": "#F97316",
+          "accent2": "#FB923C",
+          "bg": "#0C0906",
+          "surface": "#181109",
+          "surfaceAlt": "#120C07",
+          "border": "rgba(255,255,255,0.07)",
+          "text": "#FBEDE6",
+          "textMuted": "#8F7365"
+        }
+      },
+      {
+        "id": "forest",
+        "name": "Forest",
+        "fa": "جنگل",
+        "builtin": true,
+        "vars": {
+          "accent": "#10B981",
+          "accent2": "#34D399",
+          "bg": "#04100C",
+          "surface": "#0A1D16",
+          "surfaceAlt": "#071711",
+          "border": "rgba(255,255,255,0.06)",
+          "text": "#E4F7EF",
+          "textMuted": "#5A806F"
+        }
+      },
+      {
+        "id": "rose",
+        "name": "Rose",
+        "fa": "رز",
+        "builtin": true,
+        "vars": {
+          "accent": "#EC4899",
+          "accent2": "#F472B6",
+          "bg": "#0E060B",
+          "surface": "#1B0D16",
+          "surfaceAlt": "#150A11",
+          "border": "rgba(255,255,255,0.07)",
+          "text": "#FDF2FA",
+          "textMuted": "#8B6F80"
+        }
+      },
+      {
+        "id": "gold",
+        "name": "Gold",
+        "fa": "طلایی",
+        "builtin": true,
+        "vars": {
+          "accent": "#D4AF37",
+          "accent2": "#E8C766",
+          "bg": "#0C0A07",
+          "surface": "#171310",
+          "surfaceAlt": "#110E0B",
+          "border": "rgba(212,175,55,0.16)",
+          "text": "#F5EFE2",
+          "textMuted": "#8F8371"
+        }
+      },
+      {
+        "id": "cyan",
+        "name": "Cyan",
+        "fa": "فیروزه‌ای",
+        "builtin": true,
+        "vars": {
+          "accent": "#06B6D4",
+          "accent2": "#22D3EE",
+          "bg": "#04121A",
+          "surface": "#0A2029",
+          "surfaceAlt": "#071821",
+          "border": "rgba(255,255,255,0.07)",
+          "text": "#E0F5FA",
+          "textMuted": "#6E96A3"
+        }
+      },
+      {
+        "id": "slate",
+        "name": "Slate",
+        "fa": "خاکستری",
+        "builtin": true,
+        "vars": {
+          "accent": "#94A3B8",
+          "accent2": "#CBD5E1",
+          "bg": "#0B0C0F",
+          "surface": "#14161B",
+          "surfaceAlt": "#101216",
+          "border": "rgba(255,255,255,0.09)",
+          "text": "#F1F5F9",
+          "textMuted": "#6B7480"
+        }
+      }
     ],
     customPalettes: [],
   };
 
-  var CONFIG = {
-    brandName: "NEXORA",
-    links: { channelUsername: "nexora_vpn", supportUsername: "nexora_sup" },
-    downloadApps: {
-      android: [{ name: "Happ", scheme: "happ", recommended: true },
-                { name: "v2rayNG", scheme: "v2rayng" },
-                { name: "NekoBox", scheme: "none" }],
-      ios: [{ name: "Streisand", scheme: "none", recommended: true },
-            { name: "V2Box", scheme: "v2box" }],
-      desktop: [{ name: "Nekoray", scheme: "none" }, { name: "v2rayN", scheme: "none" }],
+  /* پیکربندیِ صفحه‌ی اشتراک = پیش‌فرضِ خودِ بکند (app.DEFAULT_CONFIG)
+     + داده‌ی نمونه‌ی واقع‌نما روی آن.
+
+     نسخه‌ی قبلی شیءِ دست‌سازی بود که `advanced`، `popup`، `banners`،
+     `template` و `palette` را اصلاً نداشت و واسطه‌هایش `{name, slug}`
+     بودند، نه `{domains, emailPrefix, overrides}` — پس صفحه‌های تنظیمات و
+     واسطه‌ها در هارنس شاخه‌ای را نشان می‌دادند که روی سرور نیست.
+     test-contract.py این شکل را با بکند می‌سنجد. */
+  var CONFIG_DEFAULT = {
+    "downloadApps": {
+      "android": [
+        {
+          "id": "happ",
+          "name": "Happ",
+          "url": "https://github.com/Happ-proxy/happ-android/releases/download/3.26.3/Happ.apk",
+          "recommended": true,
+          "icon": "bolt",
+          "scheme": "happ"
+        },
+        {
+          "id": "v2rayng",
+          "name": "v2rayNG",
+          "url": "https://github.com/2dust/v2rayNG/releases/download/2.2.6/v2rayNG_2.2.6_arm64-v8a.apk",
+          "recommended": false,
+          "icon": "paper-plane",
+          "scheme": "v2rayng"
+        }
+      ],
+      "ios": [
+        {
+          "id": "happ",
+          "name": "Happ",
+          "url": "https://apps.apple.com/us/app/happ-proxy-utility/id6504287215",
+          "recommended": true,
+          "icon": "bolt",
+          "scheme": "happ"
+        },
+        {
+          "id": "v2box",
+          "name": "V2Box",
+          "url": "https://apps.apple.com/us/app/v2box-v2ray-client/id6446814690",
+          "recommended": false,
+          "icon": "shield-halved",
+          "scheme": "v2box"
+        }
+      ],
+      "desktop": [
+        {
+          "id": "happ",
+          "name": "Happ (Windows)",
+          "url": "https://github.com/Happ-proxy/happ-desktop/releases/download/3.3.6/setup-Happ.x64.exe",
+          "recommended": true,
+          "icon": "bolt",
+          "scheme": "happ"
+        },
+        {
+          "id": "v2rayn",
+          "name": "v2rayN (Windows)",
+          "url": "https://github.com/2dust/v2rayN/releases/download/7.24.1/v2rayN-windows-arm64.zip",
+          "recommended": false,
+          "icon": "box-open",
+          "scheme": "none"
+        }
+      ]
     },
-    faq: {
-      fa: [{ q: "چطور وصل شوم؟", a: "اپ را نصب کنید و لینک را وارد کنید." },
-           { q: "حجمم تمام شد", a: "از ربات تمدید کنید." },
-           { q: "روی چند دستگاه؟", a: "بسته به پلن شما." }],
-      en: [{ q: "How do I connect?", a: "Install the app." }], tr: [], ar: [],
+    "faq": {
+      "fa": [
+        {
+          "q": "چرا نمی‌توانم وصل شوم؟",
+          "a": "اول مطمئن شوید آخرین نسخه‌ی اپ پیشنهادی (Happ) را نصب کرده‌اید و کانفیگ را درست وارد کرده‌اید."
+        },
+        {
+          "q": "چطور اشتراکم را تمدید کنم؟",
+          "a": "روی دکمه‌ی «تمدید ساب» در داشبورد بزنید یا مستقیم به پشتیبانی پیام دهید."
+        }
+      ],
+      "en": [
+        {
+          "q": "Why can't I connect?",
+          "a": "Make sure you've installed the latest version of our recommended app (Happ)."
+        }
+      ],
+      "tr": [],
+      "ar": []
     },
-    videos: [{ title: "نصب روی اندروید", url: "https://example.com/1" },
-             { title: "نصب روی آیفون", url: "https://example.com/2" }],
-    resellers: [{ name: "حسین", slug: "hossein", enabled: true },
-                { name: "مهدی", slug: "mehdi", enabled: true },
-                { name: "سارا", slug: "sara", enabled: false }],
-    banners: { enabled: true }, referral: { enabled: false },
-    advanced: { showFaqSection: true, showNotificationPopup: true, showBrandStrip: true },
-    popup: {}, themes: {},
+    "banners": {
+      "enabled": true,
+      "lowQuotaDaysThreshold": 3,
+      "lowQuotaPercentThreshold": 15,
+      "disabledTitle": "",
+      "disabledDesc": "",
+      "disabledButtonText": "",
+      "lowQuotaTitle": "",
+      "lowQuotaDescDays": "",
+      "lowQuotaDescVolume": "",
+      "lowQuotaButtonText": "",
+      "lowQuotaButtonUrl": ""
+    },
+    "referral": {
+      "enabled": true
+    },
+    "links": {
+      "supportUsername": "crm_nexoravpn",
+      "channelUsername": "yanexoravpn"
+    },
+    "videoTutorialUrl": null,
+    "videos": [],
+    "advanced": {
+      "brandName": "NEXORA",
+      "pageTitle": "Nexora | مدیریت اشتراک",
+      "accentColor": "#2B7FD6",
+      "accentColor2": "#5AA9E6",
+      "defaultLanguage": "fa",
+      "defaultTheme": "dark",
+      "showNotificationPopup": true,
+      "notificationDelaySeconds": 10,
+      "showBrandStrip": true,
+      "showReferralCard": true,
+      "showFaqSection": true,
+      "customCss": "",
+      "customFooterText": "",
+      "allowThemeToggle": true,
+      "allowLanguageToggle": true,
+      "hideConfigsList": false
+    },
+    "popup": {
+      "enabled": true,
+      "delaySeconds": 10,
+      "icon": "🔔",
+      "title": "آیا مشکلی در اتصال کانفیگ دارید؟",
+      "description": "پیشنهاد می‌کنیم از برنامه‌ی Happ استفاده کنید؛ در غیر این صورت به پشتیبانی پیام بدهید",
+      "primaryButtonText": "پشتیبانی",
+      "primaryButtonUrl": "",
+      "dismissButtonText": "خیر",
+      "autoCloseSeconds": 15
+    },
+    "bot": {
+      "enabled": false,
+      "token": "",
+      "adminChatId": "",
+      "welcomeMessage": "سلام! به ربات Nexora خوش آمدید 👋",
+      "notifyOnPurchase": true,
+      "notifyOnExpiry": true,
+      "expiryReminderDays": 3
+    },
+    "resellers": [],
+    "template": "classic",
+    "palette": "ocean",
+    "customPalettes": []
   };
+  var deepMerge = function (base, over) {
+    var out = JSON.parse(JSON.stringify(base)), k;
+    for (k in over) {
+      if (over[k] && typeof over[k] === "object" && !Array.isArray(over[k])
+          && out[k] && typeof out[k] === "object" && !Array.isArray(out[k])) {
+        out[k] = deepMerge(out[k], over[k]);
+      } else { out[k] = over[k]; }
+    }
+    return out;
+  };
+  var CONFIG = deepMerge(CONFIG_DEFAULT, {
+    links: { channelUsername: "nexora_vpn", supportUsername: "nexora_sup" },
+    faq: {
+      fa: [{ q: "چرا نمی‌توانم وصل شوم؟", a: "اول مطمئن شوید آخرین نسخه‌ی Happ را نصب کرده‌اید." },
+           { q: "حجمم تمام شد، چه کنم؟", a: "از داخل ربات یا دکمه‌ی «تمدید ساب» تمدید کنید." },
+           { q: "روی چند دستگاه می‌شود وصل شد؟", a: "به تعدادِ کاربرِ پلنتان." }],
+      en: [{ q: "How do I connect?", a: "Install Happ and add the link." }], tr: [], ar: [],
+    },
+    videos: [{ id: "v1", title: "نصب روی اندروید", url: "https://t.me/nexora_vpn/41", platform: "android" },
+             { id: "v2", title: "نصب روی آیفون", url: "https://t.me/nexora_vpn/42", platform: "ios" }],
+    resellers: [
+      { id: "r1", name: "حسین", enabled: true, domains: ["sub.hossein-vpn.ir"], emailPrefix: "hossein_",
+        overrides: { advanced: { brandName: "حسین VPN", accentColor: "#E84393", accentColor2: "#F48FB1" },
+                     links: { supportUsername: "hsupport", channelUsername: "hossein_vpn" } } },
+      { id: "r2", name: "مهدی", enabled: true, domains: [], emailPrefix: "mahdi_",
+        overrides: { advanced: { brandName: "MAHDI NET" } } },
+      { id: "r3", name: "سارا", enabled: false, domains: ["sara-net.ir"], emailPrefix: "",
+        overrides: {} },
+    ],
+    referral: { enabled: false },
+  });
 
   var REPORT = {
     ready: true, days: 30,
@@ -136,11 +439,11 @@
     orders: { approved: 61, rejected: 3, pending: 5, revenue: 18400000, avg: 301639 },
     subs: { total: 412, active: 355, expiringSoon: 18 },
     buyers: [
-      { tg_id: 11, first_name: "مریم کاظمی", orders: 4, spent: 1240000 },
-      { tg_id: 12, first_name: "حسین نوری", orders: 3, spent: 940000 },
-      { tg_id: 13, first_name: "سارا احمدی", orders: 2, spent: 610000 },
-      { tg_id: 14, first_name: "امیر صادقی", orders: 2, spent: 480000 },
-      { tg_id: 15, first_name: "رضا جعفری", orders: 1, spent: 320000 },
+      { tg_id: 11, first_name: "مریم کاظمی", username: "maryam_k", phone: "989121110011", orders: 4, spent: 1240000, lastBuy: "2026-09-22 14:10:00" },
+      { tg_id: 12, first_name: "حسین نوری", username: "", phone: "989351220012", orders: 3, spent: 940000, lastBuy: "2026-09-20 09:31:00" },
+      { tg_id: 13, first_name: "سارا احمدی", username: "sara_a", phone: "", orders: 2, spent: 610000, lastBuy: "2026-09-18 21:05:00" },
+      { tg_id: 14, first_name: "امیر صادقی", username: "amir_s", phone: "989191440014", orders: 2, spent: 480000, lastBuy: "2026-09-11 11:44:00" },
+      { tg_id: 15, first_name: "رضا جعفری", username: "", phone: "", orders: 1, spent: 320000, lastBuy: "2026-09-02 17:20:00" },
     ],
     buyerCount: 24, conversion: 25,
     daily: (function () {
@@ -1150,6 +1453,40 @@ var D_CODES = { ready: true,
                  palette: THEMES.currentPalette };
       }
       return THEMES;
+    }
+    /* صفحه‌ی «به‌روزرسانی» — تا این‌جا هیچ‌کدام ساختگی نبودند و همه
+       {ready:true} می‌گرفتند، پس آن صفحه در هارنس همیشه خالی بود. شکل‌ها
+       عیناً از بکند (test-contract می‌سنجد)؛ حالتِ «تنظیم‌شده، نسخه‌ی
+       تازه هست» تا شاخه‌ی اصلیِ صفحه دیده شود. */
+    if (u.indexOf("/admin/system") >= 0) {
+      return { build: { built: true, stale: false, builtAt: "2026-09-24T18:42:10", note: null },
+               version: "1.93.0",
+               template: { path: "/opt/nexora-panel/sub-page-index.html", exists: true, size: 381204,
+                           apiUrl: "https://panel.example.com" },
+               counts: { apps: 6, faq: 3, videos: 2, resellers: 3 },
+               configPath: "/opt/nexora-panel/data/config.json", configExists: true };
+    }
+    if (u.indexOf("/admin/check-update") >= 0) {
+      return { currentVersion: "1.93.0", latestVersion: "1.94.0", updateAvailable: true, configured: true,
+               releaseNotes: "### Fixed\n- ظاهرِ فروشگاه از اولین فریم\n- سقفِ زمانیِ درخواست‌های مینی‌اپ",
+               publishedAt: "2026-09-24T12:00:00Z", repo: "nexora-technology-v/nexora-subscription-manager" };
+    }
+    if (u.indexOf("/admin/snapshots") >= 0) {
+      return { snapshots: [
+        { id: "snap-1.92.0", version: "1.92.0", createdAt: "2026-09-24T13:57:20", sizeMb: 18.4, hasSettings: true, hasBot: true },
+        { id: "snap-1.91.0", version: "1.91.0", createdAt: "2026-09-23T18:16:42", sizeMb: 17.9, hasSettings: true, hasBot: true },
+      ] };
+    }
+    if (u.indexOf("/admin/update-log") >= 0) {
+      return { exists: true, lines: ["[18:42:01] دریافتِ نسخه‌ی 1.93.0", "[18:42:09] ساختِ پنل", "[18:42:31] راه‌اندازیِ دوباره — تمام"] };
+    }
+    if (u.indexOf("/admin/github") >= 0) {
+      return { repo: "nexora-technology-v/nexora-subscription-manager", configured: true };
+    }
+    if (u.indexOf("/admin/maintenance") >= 0) {
+      return { enabled: true, action: "xray", hour: 5, minute: 0, days: [5], skipIfBusy: true, busyThreshold: 20,
+               confirmedReboot: false, lastRun: "2026-09-19T05:00:04", lastResult: "ok",
+               nextRun: "2026-09-26T05:00:00", activeConnections: 37 };
     }
     if (u.indexOf("/admin/config") >= 0) return CONFIG;
     if (u.indexOf("/admin/stats") >= 0) {

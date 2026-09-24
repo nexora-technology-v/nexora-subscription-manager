@@ -209,6 +209,32 @@ check("توکن‌های موشن تعریف شده‌اند",
       "همان سه سرعتِ خودِ پنل")
 
 
+# ═══════════════════════════════════════════════════════════
+head("کدام واسطه — find_reseller")
+
+# این تابع تصمیم می‌گیرد مشتری برندِ چه کسی را ببیند، و تا امروز هیچ
+# تستی نداشت. خطایش بی‌صداست: مشتریِ واسطه برندِ مالک را می‌بیند و
+# هیچ‌جا چیزی نوشته نمی‌شود.
+_RS = {"resellers": [
+    {"id": "a", "name": "ماکان", "enabled": True, "emailPrefix": "macan", "domains": []},
+    {"id": "b", "name": "حسین", "enabled": True, "emailPrefix": "hossein_", "domains": ["sub.hossein-vpn.ir"]},
+    {"id": "c", "name": "خاموش", "enabled": False, "emailPrefix": "off", "domains": ["off.ir"]},
+    {"id": "d", "name": "بی‌پیشوند", "enabled": True, "emailPrefix": "", "domains": []},
+]}
+_fr = lambda **kw: (APP.find_reseller(_RS, **kw) or {}).get("id")
+check("پیشوندِ ایمیل با _ و - و .", _fr(email="macan_ali") == "a" and _fr(email="macan-ali") == "a"
+      and _fr(email="macan.ali") == "a")
+check("پیشوندِ ناقص نمی‌خورد (macanx نه macan)", _fr(email="macanx_ali") is None)
+check("پیشوندی که خودش با «_» تایپ شده هم می‌خورد",
+      _fr(email="hossein_reza") == "b",
+      "«hossein_» یعنی «hossein__» می‌خواست و مشتری بی‌صدا برندِ مالک را می‌دید")
+check("دامنه بر پیشوند مقدم است", _fr(email="macan_ali", host="sub.hossein-vpn.ir") == "b")
+check("زیردامنه و www هم", _fr(host="www.sub.hossein-vpn.ir") == "b" and _fr(host="x.sub.hossein-vpn.ir:8443") == "b")
+check("دامنه‌ی شبیه نمی‌خورد (evilsub.hossein-vpn.ir.com)", _fr(host="sub.hossein-vpn.ir.evil.com") is None)
+check("واسطه‌ی خاموش نه با دامنه نه با پیشوند", _fr(host="off.ir") is None and _fr(email="off_x") is None)
+check("پیشوندِ خالی با همه نمی‌خورد", _fr(email="_anything") is None)
+
+
 print(f"\n{D}{'─' * 50}{X}")
 color = G if not _fail else R
 print(f"  {color}{_ok} پاس{X}" + (f" · {R}{_fail} ناموفق{X}" if _fail else ""))

@@ -285,15 +285,104 @@ export function StatusChip({ dirty }) {
   );
 }
 
-export function InfoBox({ children, tone = "info" }) {
-  const t = tone === "warn"
+/**
+ * کارتِ جمع‌شونده — برای چیزی که لازم است ولی هر بار نه.
+ *
+ * مسیرهای نصب، فهرستِ دستورها، جزئیاتِ فنی: مرجع‌اند، نه کار. قبلاً
+ * همیشه باز بودند و صفحه‌ی «به‌روزرسانی» را دو برابرِ لازم بلند می‌کردند.
+ */
+export function Collapse({ title, icon: Icon, hint, children, open: open0 = false }) {
+  const [open, setOpen] = useState(open0);
+  return (
+    <div className={`fx-card fx-collapse mb-4 ${open ? "open" : ""}`}>
+      <button type="button" className="fx-collapse-head" aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}>
+        {Icon && <Icon size={15} style={{ color: "var(--accent-2)" }} />}
+        <span className="flex-1 min-w-0 text-right">
+          <b className="text-[14px] font-semibold text-white">{title}</b>
+          {hint && <span className="block text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>{hint}</span>}
+        </span>
+        <ChevronDown size={15} style={{ color: "var(--muted)", transform: open ? "rotate(180deg)" : "none",
+          transition: "transform var(--m-fast) var(--sp-snappy)" }} />
+      </button>
+      {open && <div className="fx-collapse-body">{children}</div>}
+    </div>
+  );
+}
+
+/**
+ * مارک‌داونِ کوچک — تیتر، فهرست، پررنگ، کد. بی HTMLِ خام.
+ *
+ * یادداشتِ انتشارِ گیت‌هاب مارک‌داون است؛ با whitespace-pre-line خامش
+ * نشان داده می‌شد: «### Fixed» و «- …» عینِ متن، و در راست‌به‌چپ «###»
+ * به تهِ خط می‌پرید. فقط همین چند قاعده — عنصرِ React، نه innerHTML.
+ */
+export function MiniMarkdown({ text }) {
+  const inline = (s, key) => {
+    const out = []; let i = 0;
+    const re = /(\*\*[^*]+\*\*|`[^`]+`)/g; let m;
+    while ((m = re.exec(s))) {
+      if (m.index > i) out.push(s.slice(i, m.index));
+      const t = m[0];
+      out.push(t.startsWith("**")
+        ? <b key={`${key}-${m.index}`} style={{ color: "var(--text)" }}>{t.slice(2, -2)}</b>
+        : <code key={`${key}-${m.index}`} dir="ltr" className="fx-md-code">{t.slice(1, -1)}</code>);
+      i = m.index + t.length;
+    }
+    if (i < s.length) out.push(s.slice(i));
+    return out;
+  };
+  const lines = String(text || "").split(/\r?\n/);
+  const blocks = []; let list = null;
+  lines.forEach((ln, k) => {
+    const h = /^\s*#{1,6}\s+(.*)$/.exec(ln);
+    const li = /^\s*[-*]\s+(.*)$/.exec(ln);
+    if (li) { (list = list || []).push(<li key={k}>{inline(li[1], k)}</li>); return; }
+    if (list) { blocks.push(<ul key={`u${k}`} className="fx-md-ul">{list}</ul>); list = null; }
+    if (h) blocks.push(<div key={k} className="fx-md-h">{inline(h[1], k)}</div>);
+    else if (ln.trim()) blocks.push(<p key={k} className="fx-md-p">{inline(ln, k)}</p>);
+  });
+  if (list) blocks.push(<ul key="uend" className="fx-md-ul">{list}</ul>);
+  return <div className="fx-md">{blocks}</div>;
+}
+
+/**
+ * جعبه‌ی راهنما.
+ *
+ * راهنما (tone=info) **یک خط** نشان داده می‌شود و با «بیشتر» باز می‌شود.
+ * مالک: «هر چیزی که فضا را شلوغ کرده». ۶۶ جعبه‌ی راهنما در پنل بود،
+ * بیشترشان دوسه‌خطی، همیشه باز، بالای هر صفحه — لازمِ بارِ اول، سربارِ
+ * هر بارِ بعد. هشدار (tone=warn) باز می‌ماند: هشدارِ پنهان، هشدار نیست.
+ * متنی که در یک خط جا شود دکمه‌ی «بیشتر» نمی‌گیرد.
+ */
+export function InfoBox({ children, tone = "info", open: open0 = false }) {
+  const warn = tone === "warn";
+  const t = warn
     ? { bg: "var(--warn-wash)", bd: "var(--warn-fill)", c: "var(--warn)", Icon: AlertTriangle }
     : { bg: "var(--accent-wash)", bd: "var(--accent-fill)", c: "var(--accent-2)", Icon: Info };
+  const [open, setOpen] = useState(warn || open0);
+  const [long, setLong] = useState(!warn);
+  const body = useRef(null);
+  useEffect(() => {
+    if (warn) return;
+    const el = body.current;
+    // بسته اندازه گرفته می‌شود: اگر در همان یک خط جا شد، چیزی برای باز کردن نیست
+    if (el && !open) setLong(el.scrollHeight > el.clientHeight + 2);
+  }, [children, warn, open]);
+  const toggle = () => { if (!warn && long) setOpen((v) => !v); };
   return (
-    <div className="rounded-2xl p-4 flex items-start gap-3 my-4 last:mb-0"
-      style={{ background: t.bg, border: `1px solid ${t.bd}` }}>
+    <div className={`fx-info rounded-2xl flex items-start gap-3 my-4 last:mb-0 ${open ? "open" : ""} ${warn ? "warn" : ""}`}
+      style={{ background: t.bg, border: `1px solid ${t.bd}` }}
+      onClick={!open ? toggle : undefined}>
       <t.Icon size={16} className="shrink-0 mt-0.5" style={{ color: t.c }} />
-      <div className="text-[13px] leading-relaxed" style={{ color: "var(--dim)" }}>{children}</div>
+      <div ref={body} className="fx-info-body text-[13px] leading-relaxed" style={{ color: "var(--dim)" }}>{children}</div>
+      {!warn && long && (
+        <button type="button" className="fx-info-more" aria-expanded={open}
+          onClick={(e) => { e.stopPropagation(); toggle(); }}>
+          {open ? "بستن" : "بیشتر"}
+          <ChevronDown size={13} style={{ transform: open ? "rotate(180deg)" : "none" }} />
+        </button>
+      )}
     </div>
   );
 }

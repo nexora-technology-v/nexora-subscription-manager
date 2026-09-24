@@ -8,9 +8,9 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   AlertTriangle, Check, CheckCircle2, Download, ExternalLink, Github, HardDrive, History, Loader2, Minus, Monitor, Plus, RefreshCw, Save, Server, Smartphone, Terminal, Users,
 } from "lucide-react";
-import { errText } from "../lib/format";
+import { errText, faNum } from "../lib/format";
 import { API_URL } from "../lib/constants";
-import { ConfirmModal, Field, InfoBox, Msg, PageSkeleton, SectionHead } from "../ui/index";
+import { Collapse, ConfirmModal, Field, InfoBox, MiniMarkdown, Msg, PageSkeleton, SectionHead } from "../ui/index";
 import { isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
 
 export function RollbackCard({ password }) {
@@ -440,9 +440,9 @@ export function UpdateCard({ password }) {
                 </span>
               </div>
               {info.releaseNotes && (
-                <div className="text-[13px] leading-relaxed max-h-32 overflow-y-auto mt-2 whitespace-pre-line"
+                <div className="text-[13px] leading-relaxed max-h-40 overflow-y-auto mt-2"
                   style={{ color: "var(--dim)" }}>
-                  {info.releaseNotes}
+                  <MiniMarkdown text={info.releaseNotes} />
                 </div>
               )}
             </div>
@@ -593,7 +593,7 @@ export function SystemSection({ password }) {
             <Smartphone size={16} style={{ color: "var(--purple)" }} />
           </div>
           <div className="text-[18px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>
-            {sys?.counts?.apps ?? 0}
+            {faNum(sys?.counts?.apps ?? 0)}
           </div>
           <div className="text-[13px] mt-1" style={{ color: "var(--dim)" }}>اپلیکیشن</div>
         </div>
@@ -603,7 +603,7 @@ export function SystemSection({ password }) {
             <Users size={16} style={{ color: "var(--warn)" }} />
           </div>
           <div className="text-[18px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>
-            {sys?.counts?.resellers ?? 0}
+            {faNum(sys?.counts?.resellers ?? 0)}
           </div>
           <div className="text-[13px] mt-1" style={{ color: "var(--dim)" }}>واسطه</div>
         </div>
@@ -619,27 +619,6 @@ export function SystemSection({ password }) {
           </InfoBox>
         </div>
       )}
-
-      {/* مسیرها */}
-      <div className="fx-card p-5 mb-4">
-        <div className="text-[14px] font-semibold text-white mb-4 flex items-center gap-2">
-          <HardDrive size={15} style={{ color: "var(--accent-2)" }} /> مسیرهای نصب
-        </div>
-        <div className="flex flex-col gap-2.5">
-          {[
-            { l: "قالب صفحه اشتراک", v: sys?.template?.path },
-            { l: "فایل تنظیمات", v: sys?.configPath },
-            { l: "آدرس API در قالب", v: sys?.template?.apiUrl },
-          ].map((row, i) => (
-            <div key={i} className="flex items-center justify-between gap-3 py-2" style={{ borderBottom: i < 2 ? "1px solid var(--border)" : "none" }}>
-              <span className="text-[13px] shrink-0" style={{ color: "var(--dim)" }}>{row.l}</span>
-              <span dir="ltr" className="text-[13px] truncate" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                {row.v || "—"}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
 
       {/* به‌روزرسانی */}
       {sys?.build?.stale && (
@@ -664,14 +643,35 @@ export function SystemSection({ password }) {
         </div>
       )}
 
-      <GithubCard password={password} />
+      {/* کار اول، مرجع آخر: به‌روزرسانی و بازگشت کارهایی‌اند که برایشان به
+          این صفحه می‌آیند؛ اتصالِ مخزن یک‌بار انجام می‌شود. */}
       <UpdateCard password={password} />
       <RollbackCard password={password} />
+      <GithubCard password={password} />
 
-      {/* دستورات */}
-      <div className="fx-card p-5 mb-4">
-        <div className="text-[14px] font-semibold text-white mb-4 flex items-center gap-2">
-          <Terminal size={15} style={{ color: "var(--accent-2)" }} /> دستورات مدیریتی
+      {/* جزئیاتِ فنی — مرجع، نه کار. قبلاً دو کارتِ همیشه‌باز بودند، یکی
+          بالای صفحه، و صفحه را دو برابرِ لازم بلند می‌کردند. */}
+      <Collapse title="جزئیاتِ فنی" icon={Terminal}
+        hint="مسیرهای نصب و دستورهای مدیریتیِ سرور">
+        <div className="text-[12.5px] font-semibold mb-2 flex items-center gap-2" style={{ color: "var(--dim)" }}>
+          <HardDrive size={13} /> مسیرهای نصب
+        </div>
+        <div className="flex flex-col gap-2.5">
+          {[
+            { l: "قالب صفحه اشتراک", v: sys?.template?.path },
+            { l: "فایل تنظیمات", v: sys?.configPath },
+            { l: "آدرس API در قالب", v: sys?.template?.apiUrl },
+          ].map((row, i) => (
+            <div key={i} className="flex items-center justify-between gap-3 py-2" style={{ borderBottom: i < 2 ? "1px solid var(--border)" : "none" }}>
+              <span className="text-[13px] shrink-0" style={{ color: "var(--dim)" }}>{row.l}</span>
+              <span dir="ltr" className="text-[13px] truncate" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                {row.v || "—"}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="text-[12.5px] font-semibold mt-5 mb-2 flex items-center gap-2" style={{ color: "var(--dim)" }}>
+          <Terminal size={13} /> دستورهای مدیریتی
         </div>
         {[
           { c: "nexora status", d: "وضعیت کامل سرویس‌ها" },
@@ -688,7 +688,7 @@ export function SystemSection({ password }) {
             <span className="text-[13px]" style={{ color: "var(--muted)" }}>{x.d}</span>
           </div>
         ))}
-      </div>
+      </Collapse>
 
       <InfoBox>
         قبل از هر به‌روزرسانی، یک بک‌آپ دستی هم بگیرید: <b>تنظیمات → پشتیبان‌گیری → دریافت پشتیبان</b>
@@ -927,7 +927,9 @@ export function LivePreview({ dirty, onSave, saving, password }) {
               )}
               <iframe
                 key={key}
-                src={`${API_URL}/api/preview?t=${key}`
+                // NX_PREVIEW_URL فقط در هارنس — آن‌جا بکندی نیست که /api/preview
+                // را بدهد و این صفحه همیشه یک قابِ خاکستری بود
+                src={`${window.NX_PREVIEW_URL || `${API_URL}/api/preview`}?t=${key}`
                      + `&template=${encodeURIComponent(curTpl || "")}`
                      + `&palette=${encodeURIComponent(curPal || "")}`}
                 onLoad={() => setLoading(false)}

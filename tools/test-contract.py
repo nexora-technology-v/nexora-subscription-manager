@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+"""
+قرارداد بین هارنس و بکند — شکلِ پاسخِ ساختگی با پاسخِ واقعی.
+
+چرا لازم شد: هارنس (tools/harness-boot.js) تنها جایی است که پنل را
+می‌بینیم، و داده‌اش را هیچ‌چیز با بکند هم‌شکل نگه نمی‌داشت. در یک روز
+چهار مسیر پیدا شد با شکلِ کهنه:
+  · قیف ({seen, bought} به‌جای {steps, segments}) — صفحه «NaN٪» نشان می‌داد
+  · سفارش‌ها — فیلترِ status نادیده گرفته می‌شد و شبیهِ باگِ پنل بود
+  · رویدادهای تانل ({at, kind, text} به‌جای {created_at, level, message})
+  · فروشِ نماینده ({revenue} به‌جای {sold, received, …}) — کاشی هرگز دیده نمی‌شد
+هر کدام یا باگی را پنهان می‌کرد یا باگی جعلی می‌ساخت.
+
+این‌جا هر مسیرِ GETِ /api/admin بدونِ پارامترِ مسیر، روی یک بکندِ واقعی با
+دیتابیس‌های ساختگی صدا زده می‌شود (بدونِ httpx — یک صداکننده‌ی ASGIِ
+کوچک) و کلیدهایش با پاسخِ هارنس مقایسه می‌شوند:
+
+  «هارنس اختراع کرده» — کلیدی که هارنس دارد و بکند نه. فرانت ممکن است
+     روی چیزی نوشته شده باشد که روی سرور هرگز نمی‌آید: باگِ واقعی.
+  «هارنس ندارد»      — کلیدی که بکند دارد و هارنس نه. صفحه در هارنس
+     شاخه‌ای را نشان نمی‌دهد که روی سرور هست.
+
+اجرا:  PYTHONIOENCODING=utf-8 python tools/test-contract.py [--all]
+"""
+import asyncio
+import io
+import json
+import os
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+TMP = Path(tempfile.mkdtemp(prefix="nx-contract-"))
+G, R, D, Y, X = "\033[38;5;42m", "\033[38;5;203m", "\033[38;5;245m", "\033[38;5;214m", "\033[0m"
+SHOW_ALL = "--all" in sys.argv
+
+# ── محیط: همه چیز در پوشه‌ی موقت ──
+os.environ["CONFIG_PATH"] = str(TMP / "config.json")
+os.environ["BOT_DB_PATH"] = str(TMP / "bot.db")
+os.environ["BILLING_DB_PATH"] = str(TMP / "billing.db")
+os.environ["TUNNEL_DB_PATH"] = str(TMP / "tunnels.db")
+os.environ["NEXORA_ADMIN_PASSWORD"] = "testpw"
+XUI = TMP / "x-ui.db"
+os.environ["XUI_DB_PATH"] = str(XUI)
+
+# ── x-ui ساختگی ──
+GB = 1024 ** 3
+NOW_MS = int(time.time() * 1000)
+con = sqlite3.connect(XUI)
+con.executescript("""
+CREATE TABLE inbounds (id INTEGER PRIMARY KEY, user_id INTEGER, up INTEGER, down INTEGER,
+  total INTEGER, remark TEXT, enable INTEGER, expiry_time INTEGER, listen TEXT, port INTEGER,
+  protocol TEXT, settings TEXT, stream_settings TEXT, tag TEXT, sniffing TEXT);
+CREATE TABLE client_traffics (id INTEGER PRIMARY KEY, inbound_id INTEGER, enable INTEGER,
+  email TEXT, up INTEGER, down INTEGER, expiry_time INTEGER, total INTEGER, reset INTEGER,
+  last_online INTEGER DEFAULT 0);
+""")
+clients = []
+for i, (em, grp) in enumerate([("ali_1", "ali"), ("ali_2", "ali"), ("sara_1", "sara"), ("solo_1", "")], 1):
+    clients.append({"id": f"uuid-{i}", "email": em, "enable": True, "totalGB": 50 * GB,
+                    "expiryTime": NOW_MS + 20 * 86400000, "limitIp": 1, "subId": f"s{i}",
+                    "group": grp, "comment": grp})
+    con.execute("INSERT INTO client_traffics (inbound_id,enable,email,up,down,expiry_time,total)"
+                " VALUES (1,1,?,?,?,?,?)", (em, GB, 9 * GB, NOW_MS + 20 * 86400000, 50 * GB))
+con.execute("INSERT INTO inbounds (id,remark,enable,port,protocol,settings,stream_settings,tag,up,down,total,expiry_time)"
+            " VALUES (1,'de-1',1,443,'vless',?,'{}','inbound-443',0,0,0,0)",
+            (json.dumps({"clients": clients}),))
+con.commit()
+con.close()
+
+# ── ربات ساختگی ──
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "bot"))
+sys.path.insert(0, str(ROOT / "backend"))
+import db as botdb                                              # noqa: E402
+botdb.DB_PATH = TMP / "bot.db"
+botdb.init_db()
+tid = botdb.create_tenant("Owner", bot_token="123:TEST", owner_tg_id=1)
+T = botdb.TenantDB(tid)
+u1 = T.create_user(1001, "ali", "علی")
+T.exec("UPDATE users SET phone='989120000001', balance=50000, coins=12 WHERE id=?", (u1["id"],))
+T.exec("INSERT INTO plans (tenant_id,name,price,gb,days) VALUES (?,?,?,?,?)", (tid, "یک‌ماهه", 100000, 30, 30))
+pid = T.plans()[0]["id"]
+o1 = T.create_order(u1["id"], pid, 100000, 100000)
+T.exec("UPDATE orders SET status='approved' WHERE id=?", (o1["id"],))
+o2 = T.create_order(u1["id"], pid, 100000, 100000)
+T.exec("UPDATE orders SET status='awaiting' WHERE id=?", (o2["id"],))
+T.exec("INSERT INTO subscriptions (tenant_id,user_id,plan_id,client_email,is_active,expires_at)"
+       " VALUES (?,?,?,?,1,datetime('now','+10 day'))", (tid, u1["id"], pid, "ali_1"))
+T.create_user(1002, None, "رضا", referred_by=u1["id"])
+
+import app as APP                                               # noqa: E402
+APP.BOT_DB = TMP / "bot.db"
+APP.BILLING_DB = TMP / "billing.db"
+APP.ADMIN_PASSWORD = "testpw"
+APP.AUTH_PATH = TMP / "auth.json"
+APP.load_password = lambda: "testpw"
+
+
+# ── صداکننده‌ی ASGI، بی‌وابستگی ──
+async def _asgi_get(path, headers):
+    q = ""
+    if "?" in path:
+        path, q = path.split("?", 1)
+    scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET",
+             "scheme": "http", "path": path, "raw_path": path.encode(), "query_string": q.encode(),
+             "root_path": "", "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
+             "client": ("127.0.0.1", 1234), "server": ("testserver", 80)}
+    got = {"status": 0, "body": b""}
+    sent = False
+
+    async def receive():
+        nonlocal sent
+        if not sent:
+            sent = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await asyncio.sleep(3600)
+
+    async def send(msg):
+        if msg["type"] == "http.response.start":
+            got["status"] = msg["status"]
+        elif msg["type"] == "http.response.body":
+            got["body"] += msg.get("body", b"")
+
+    await asyncio.wait_for(APP.app(scope, receive, send), timeout=20)
+    return got["status"], got["body"]
+
+
+def call(path):
+    try:
+        st, body = asyncio.run(_asgi_get(path, {"X-Admin-Password": "testpw"}))
+        try:
+            return st, json.loads(body.decode("utf-8") or "null")
+        except Exception:
+            return st, {"__nonjson": body[:80].decode("utf-8", "replace")}
+    except Exception as e:                                      # noqa: BLE001
+        return 0, {"__exc": f"{type(e).__name__}: {e}"[:120]}
+
+
+def keys(v, prefix="", only=None):
+    """کلیدهای سطحِ اول، و کلیدهای اولین عضوِ هر آرایه‌ی شیء (یک سطح).
+
+    `only`: فقط آرایه‌ها/شیءهایی که این‌جا هم پُرند باز می‌شوند — آرایه‌ی
+    خالیِ بکند (فیکسچرِ کوچک) کلیدِ عضو ندارد و نباید «اختراع» شمرده شود."""
+    out = set()
+    if isinstance(v, dict):
+        for k, x in v.items():
+            out.add(prefix + k)
+            if only is not None and not only.get(k):
+                continue
+            if isinstance(x, list) and x and isinstance(x[0], dict):
+                out |= {prefix + k + "[]." + kk for kk in x[0].keys()}
+            elif isinstance(x, dict) and not prefix:
+                out |= {prefix + k + "." + kk for kk in x.keys()}
+    return out
+
+
+#: مسیرهایی که باید هم‌شکل بمانند. با هر فضای کاری که بازسازی می‌شود
+#: (docs/specs/2026-09-24-panel-overhaul.md) این فهرست بزرگ‌تر می‌شود؛
+#: مسیری که یک‌بار درست شد، دوباره کهنه نمی‌شود.
+MUST_MATCH = {
+    # فضای ۱ — صفحه‌ی اشتراک
+    "/api/admin/config", "/api/admin/config/history", "/api/admin/themes",
+    "/api/admin/stats", "/api/admin/system", "/api/admin/github",
+    "/api/admin/maintenance", "/api/admin/snapshots", "/api/admin/update-log",
+    "/api/admin/bot/users/report",
+    # پیش‌تر درست‌شده‌ها
+    "/api/admin/bot/funnel", "/api/admin/bot/alerts", "/api/admin/bot/discounts",
+    "/api/admin/bot/inbox", "/api/admin/channel", "/api/admin/channel/ai",
+    "/api/admin/channel/suggestions",
+}
+
+
+def main():
+    # مسیرهایی که عمداً بیرون‌اند — با دلیل
+    SKIP = {
+        "/api/admin/export": "فایل برمی‌گرداند، نه JSON",
+        "/api/admin/bot/users/export": "CSV برمی‌گرداند",
+        "/api/admin/bot/users/report/pdf": "PDF برمی‌گرداند",
+        "/api/admin/firewall/blackhole/export": "فایل برمی‌گرداند",
+    }
+
+    routes = sorted({r.path for r in APP.app.routes
+                     if getattr(r, "methods", None) and "GET" in r.methods
+                     and r.path.startswith("/api/admin") and "{" not in r.path})
+    routes = [p for p in routes if p not in SKIP]
+
+    hs = subprocess.run(["node", str(ROOT / "tools" / "harness-shapes.cjs"), *routes],
+                        capture_output=True, text=True, encoding="utf-8", cwd=str(ROOT))
+    try:
+        HARN = json.loads(hs.stdout or "{}")
+    except Exception:
+        print(f"{R}harness-shapes failed:{X} {hs.stdout[:200]} {hs.stderr[:300]}")
+        sys.exit(1)
+    if "__boot_error" in HARN:
+        print(f"{R}harness boot error:{X} {HARN['__boot_error'][:300]}")
+        sys.exit(1)
+
+    print(f"\n{D}── contract: harness vs backend, {len(routes)} admin GET routes ──{X}")
+    drift = compared = skipped = 0
+    broken = []
+    for p in routes:
+        st, real = call(p)
+        fake = HARN.get(p)
+        if st != 200 or not isinstance(real, dict) or (len(real) <= 2 and real.get("ready") is False):
+            skipped += 1
+            if SHOW_ALL:
+                why = real.get("error") or real.get("detail") or real.get("__exc") or "" if isinstance(real, dict) else ""
+                print(f"  {D}- {p:44} backend {st} {str(why)[:60]}{X}")
+            continue
+        if not isinstance(fake, dict) or fake == {"ready": True} or "__error" in fake:
+            skipped += 1
+            if SHOW_ALL:
+                print(f"  {D}- {p:44} harness has no specific mock{X}")
+            continue
+        compared += 1
+        kr, kf = keys(real), keys(fake, only=real)
+        invented = sorted(kf - kr)
+        missing = sorted(kr - kf)
+        if invented or missing:
+            drift += 1
+            if p in MUST_MATCH:
+                broken.append(p)
+            print(f"  {Y}≠{X} {p}")
+            if invented:
+                print(f"      {R}harness invents:{X} {', '.join(invented[:10])}")
+            if missing:
+                print(f"      {D}harness lacks:  {', '.join(missing[:10])}{X}")
+        elif SHOW_ALL:
+            print(f"  {G}={X} {p}")
+
+    print(f"\n  compared {compared}, drift {drift}, skipped {skipped} (backend not ready on empty fixtures or no mock)")
+    # مسیرِ «باید هم‌شکل» که مقایسه نشد هم خطاست — یعنی دروازه بی‌صدا کور شده
+    seen = set(routes)
+    lost = sorted(p for p in MUST_MATCH if p not in seen)
+    if broken or lost:
+        print(f"  {R}FAIL{X} must-match drifted: {', '.join(broken)}" + (f"  missing routes: {', '.join(lost)}" if lost else "") + "\n")
+        sys.exit(1)
+    print(f"  {G}OK{X} all {len(MUST_MATCH)} must-match routes agree with the backend\n")
+    sys.exit(0)
+
+
+if __name__ == "__main__" and os.environ.get("NX_CONTRACT_IMPORT_ONLY") != "1":
+    main()

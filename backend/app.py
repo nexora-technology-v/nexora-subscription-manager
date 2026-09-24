@@ -357,7 +357,11 @@ def find_reseller(cfg: dict, email: str = None, host: str = None):
     if email:
         e = email.lower().strip()
         for r in resellers:
-            prefix = (r.get("emailPrefix") or "").lower().strip()
+            # جداکننده‌ی تهِ پیشوند برداشته می‌شود: پنل «macan» می‌خواهد و
+            # خودش «_» را می‌گذارد، ولی مالکی که «macan_» تایپ کند (یعنی همان
+            # چیزی که در ایمیل‌ها می‌بیند) پیشوندِ «macan__» می‌ساخت که با
+            # هیچ ایمیلی نمی‌خورد — و مشتریِ واسطه بی‌صدا برندِ مالک را می‌دید.
+            prefix = (r.get("emailPrefix") or "").lower().strip().rstrip("_-.")
             if prefix and (e.startswith(prefix + "_") or e.startswith(prefix + "-") or e.startswith(prefix + ".")):
                 return r
 

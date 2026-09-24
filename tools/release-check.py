@@ -133,7 +133,7 @@ def test_checks(fast):
                            "tools/test-maintenance.py", "tools/test-serve.py",
                            "tools/test-intrusion.py",
                            "tools/test-expenses.py",
-                           "tools/test-nodes.py", "tools/test-jobs.py", "tools/test-backup.py", "tools/test-public-config.py", "tools/test-health.py", "tools/test-snapshot.py", "tools/test-agent.py",
+                           "tools/test-nodes.py", "tools/test-jobs.py", "tools/test-backup.py", "tools/test-public-config.py", "tools/test-contract.py", "tools/test-health.py", "tools/test-snapshot.py", "tools/test-agent.py",
                            "tools/test-slowdoctor.py",
                            "tools/test-netid.py",
                            "tools/test-repair-orders.py",

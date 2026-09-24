@@ -1002,6 +1002,119 @@ export function SettingsSection({ config, setConfig, password, onPasswordChanged
     <div className="fx-anim">
       <SectionHead title="تنظیمات پیشرفته" desc="کنترل کامل روی ظاهر، رفتار و جزئیات صفحه‌ی اشتراک." />
 
+      {/* دو گروه، هر کدام شبکه‌ی دوستونی.
+          قبلاً ده کارت در یک ستونِ ۳۳۶۰ پیکسلی بود و «ظاهرِ صفحه‌ی
+          مشتری» با «رمزِ پنل» و «بک‌آپ» قاطی بود — مالک: «هر چیزی که فضا را
+          شلوغ کرده». ستون‌های CSS (نه grid): کارت‌های ناهم‌قد بی‌حفره
+          کنارِ هم می‌نشینند. */}
+      <div className="fx-set-group">
+        <b>ظاهرِ صفحه‌ی اشتراک</b>
+        <span>روی صفحه‌ی همه‌ی مشتری‌ها اثر می‌گذارد — بعد از ذخیره، یک‌بار خودتان بازش کنید</span>
+      </div>
+      <div className="fx-set-cols">
+      <div className="fx-card p-5 mb-4">
+        <div className="text-[14px] font-semibold text-white mb-4 flex items-center gap-2"><Type size={15} style={{ color: "var(--accent-2)" }} /> هویت برند</div>
+
+        <div className="rounded-xl p-4 mb-4"
+          style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
+          <BrandLogo password={password} />
+        </div>
+
+        <div className="fx-g3 grid grid-cols-2 gap-4">
+          <Field label="نام برند"><input className="fx-input" value={a.brandName || ""} onChange={(e) => update({ brandName: e.target.value })} placeholder="NEXORA" /></Field>
+          <Field label="عنوان صفحه (تب مرورگر)"><input className="fx-input" value={a.pageTitle || ""} onChange={(e) => update({ pageTitle: e.target.value })} /></Field>
+        </div>
+      </div>
+
+      <div className="fx-card p-5 mb-4">
+        <div className="text-[14px] font-semibold text-white mb-4 flex items-center gap-2"><Palette size={15} style={{ color: "var(--accent-2)" }} /> رنگ‌بندی</div>
+        <div className="fx-g3 grid grid-cols-2 gap-4">
+          <Field label="رنگ اصلی برند">
+            <div className="flex items-center gap-2">
+              <input type="color" value={a.accentColor || "#2B7FD6"} onChange={(e) => update({ accentColor: e.target.value })}
+                className="w-11 h-11 rounded-xl cursor-pointer shrink-0" style={{ background: "transparent", border: "1px solid var(--border-2)" }} />
+              <input className="fx-input" dir="ltr" value={a.accentColor || ""} onChange={(e) => update({ accentColor: e.target.value })} />
+            </div>
+          </Field>
+          <Field label="رنگ ثانویه (گرادینت)">
+            <div className="flex items-center gap-2">
+              <input type="color" value={a.accentColor2 || "#5AA9E6"} onChange={(e) => update({ accentColor2: e.target.value })}
+                className="w-11 h-11 rounded-xl cursor-pointer shrink-0" style={{ background: "transparent", border: "1px solid var(--border-2)" }} />
+              <input className="fx-input" dir="ltr" value={a.accentColor2 || ""} onChange={(e) => update({ accentColor2: e.target.value })} />
+            </div>
+          </Field>
+        </div>
+        <div className="mt-2 rounded-xl p-3 text-center" style={{ background: `linear-gradient(135deg, ${a.accentColor || "#2B7FD6"}, ${a.accentColor2 || "#5AA9E6"})` }}>
+          <span className="text-[13px] font-bold" style={{ color: "#06090F" }}>پیش‌نمایش گرادینت برند</span>
+        </div>
+      </div>
+
+      <div className="fx-card p-5 mb-4">
+        <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2"><Eye size={15} style={{ color: "var(--accent-2)" }} /> نمایش بخش‌ها</div>
+        <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>هر بخشی را که نمی‌خواهید در صفحه‌ی مشتری دیده شود، خاموش کنید.</p>
+        <div className="flex flex-col">
+          {vis.map((v, i) => (
+            <div key={v.key} className="flex items-center justify-between gap-3 py-3" style={{ borderBottom: i < vis.length - 1 ? "1px solid var(--border)" : "none" }}>
+              <div className="min-w-0">
+                <div className="text-[14px] text-white">{v.label}</div>
+                <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>{v.desc}</div>
+              </div>
+              <Toggle checked={a[v.key] !== false} onChange={() => update({ [v.key]: !(a[v.key] !== false) })} label={v.label} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="fx-card p-5 mb-4">
+        <div className="text-[14px] font-semibold text-white mb-4 flex items-center gap-2"><Globe size={15} style={{ color: "var(--accent-2)" }} /> پیش‌فرض‌های صفحه</div>
+        <div className="fx-g3 grid grid-cols-2 gap-4">
+          <Field label="زبان پیش‌فرض">
+            <select className="fx-input" value={a.defaultLanguage || "fa"} onChange={(e) => update({ defaultLanguage: e.target.value })}>
+              {LANG_TABS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
+            </select>
+          </Field>
+          <Field label="تم پیش‌فرض">
+            <select className="fx-input" value={a.defaultTheme || "dark"} onChange={(e) => update({ defaultTheme: e.target.value })}>
+              <option value="dark">تیره</option><option value="light">روشن</option>
+            </select>
+          </Field>
+        </div>
+        <Field label="تاخیر نمایش پاپ‌آپ راهنما">
+          <NumberStepper value={a.notificationDelaySeconds ?? 10} onChange={(v) => update({ notificationDelaySeconds: v })} min={0} max={60} unit="ثانیه" />
+        </Field>
+      </div>
+
+      <div className="fx-card p-5 mb-4">
+        <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2"><ShieldCheck size={15} style={{ color: "var(--accent-2)" }} /> امنیت و حریم خصوصی</div>
+        <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>کنترل چیزی که مشتری می‌تواند ببیند یا کپی کند.</p>
+        <div className="flex items-center justify-between gap-3 py-3">
+          <div className="min-w-0">
+            <div className="text-[14px] text-white">مخفی‌کردن لیست کانفیگ‌ها</div>
+            <div className="text-[12px] mt-0.5 leading-relaxed" style={{ color: "var(--muted)" }}>
+              دکمه‌ی «کپی کانفیگ» حذف می‌شود تا مشتری نتواند کانفیگ خام را کپی و با دیگران به اشتراک بگذارد. لینک اشتراک همچنان کار می‌کند.
+            </div>
+          </div>
+          <Toggle checked={a.hideConfigsList === true} onChange={() => update({ hideConfigsList: !a.hideConfigsList })} label="مخفی‌کردن کانفیگ‌ها" />
+        </div>
+      </div>
+
+      <div className="fx-card p-5 mb-4">
+        <div className="text-[14px] font-semibold text-white mb-4 flex items-center gap-2"><Sliders size={15} style={{ color: "var(--accent-2)" }} /> سفارشی‌سازی پیشرفته</div>
+        <Field label="متن پاورقی سفارشی" hint="اگر خالی بگذارید، چیزی نمایش داده نمی‌شود.">
+          <input className="fx-input" value={a.customFooterText || ""} onChange={(e) => update({ customFooterText: e.target.value })} placeholder="پشتیبانی ۲۴ ساعته" />
+        </Field>
+        <Field label="CSS سفارشی" hint="برای کاربران حرفه‌ای — مستقیم به صفحه‌ی اشتراک تزریق می‌شود.">
+          <textarea className="fx-input" dir="ltr" rows={4} value={a.customCss || ""} onChange={(e) => update({ customCss: e.target.value })}
+            placeholder=".my-class { color: red; }" style={{ fontFamily: "var(--mono)", fontSize: 11.5 }} />
+        </Field>
+      </div>
+
+      </div>
+
+      <div className="fx-set-group">
+        <b>پنل</b>
+        <span>فقط برای شما — مشتری هیچ‌کدام را نمی‌بیند</span>
+      </div>
       {/* حالت سوییچ فضای کاری — سلیقه‌ای، فقط روی همین مرورگر */}
       <div className="fx-card p-5 mb-4">
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
@@ -1041,109 +1154,12 @@ export function SettingsSection({ config, setConfig, password, onPasswordChanged
         </div>
       </div>
 
-      <div className="fx-card p-5 mb-4">
-        <div className="text-[14px] font-semibold text-white mb-4 flex items-center gap-2"><Type size={15} style={{ color: "var(--accent-2)" }} /> هویت برند</div>
-
-        <div className="rounded-xl p-4 mb-4"
-          style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
-          <BrandLogo password={password} />
-        </div>
-
-        <div className="fx-g3 grid grid-cols-2 gap-4">
-          <Field label="نام برند"><input className="fx-input" value={a.brandName || ""} onChange={(e) => update({ brandName: e.target.value })} placeholder="NEXORA" /></Field>
-          <Field label="عنوان صفحه (تب مرورگر)"><input className="fx-input" value={a.pageTitle || ""} onChange={(e) => update({ pageTitle: e.target.value })} /></Field>
-        </div>
-      </div>
-
-      <div className="fx-card p-5 mb-4">
-        <div className="text-[14px] font-semibold text-white mb-4 flex items-center gap-2"><Palette size={15} style={{ color: "var(--accent-2)" }} /> رنگ‌بندی</div>
-        <div className="fx-g3 grid grid-cols-2 gap-4">
-          <Field label="رنگ اصلی برند">
-            <div className="flex items-center gap-2">
-              <input type="color" value={a.accentColor || "#2B7FD6"} onChange={(e) => update({ accentColor: e.target.value })}
-                className="w-11 h-11 rounded-xl cursor-pointer shrink-0" style={{ background: "transparent", border: "1px solid var(--border-2)" }} />
-              <input className="fx-input" dir="ltr" value={a.accentColor || ""} onChange={(e) => update({ accentColor: e.target.value })} />
-            </div>
-          </Field>
-          <Field label="رنگ ثانویه (گرادینت)">
-            <div className="flex items-center gap-2">
-              <input type="color" value={a.accentColor2 || "#5AA9E6"} onChange={(e) => update({ accentColor2: e.target.value })}
-                className="w-11 h-11 rounded-xl cursor-pointer shrink-0" style={{ background: "transparent", border: "1px solid var(--border-2)" }} />
-              <input className="fx-input" dir="ltr" value={a.accentColor2 || ""} onChange={(e) => update({ accentColor2: e.target.value })} />
-            </div>
-          </Field>
-        </div>
-        <div className="mt-2 rounded-xl p-3 text-center" style={{ background: `linear-gradient(135deg, ${a.accentColor || "#2B7FD6"}, ${a.accentColor2 || "#5AA9E6"})` }}>
-          <span className="text-[13px] font-bold" style={{ color: "#06090F" }}>پیش‌نمایش گرادینت برند</span>
-        </div>
-      </div>
-
-      <div className="fx-card p-5 mb-4">
-        <div className="text-[14px] font-semibold text-white mb-4 flex items-center gap-2"><Globe size={15} style={{ color: "var(--accent-2)" }} /> پیش‌فرض‌های صفحه</div>
-        <div className="fx-g3 grid grid-cols-2 gap-4">
-          <Field label="زبان پیش‌فرض">
-            <select className="fx-input" value={a.defaultLanguage || "fa"} onChange={(e) => update({ defaultLanguage: e.target.value })}>
-              {LANG_TABS.map((l) => <option key={l.key} value={l.key}>{l.label}</option>)}
-            </select>
-          </Field>
-          <Field label="تم پیش‌فرض">
-            <select className="fx-input" value={a.defaultTheme || "dark"} onChange={(e) => update({ defaultTheme: e.target.value })}>
-              <option value="dark">تیره</option><option value="light">روشن</option>
-            </select>
-          </Field>
-        </div>
-        <Field label="تاخیر نمایش پاپ‌آپ راهنما">
-          <NumberStepper value={a.notificationDelaySeconds ?? 10} onChange={(v) => update({ notificationDelaySeconds: v })} min={0} max={60} unit="ثانیه" />
-        </Field>
-      </div>
-
-      <div className="fx-card p-5 mb-4">
-        <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2"><Eye size={15} style={{ color: "var(--accent-2)" }} /> نمایش بخش‌ها</div>
-        <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>هر بخشی را که نمی‌خواهید در صفحه‌ی مشتری دیده شود، خاموش کنید.</p>
-        <div className="flex flex-col">
-          {vis.map((v, i) => (
-            <div key={v.key} className="flex items-center justify-between gap-3 py-3" style={{ borderBottom: i < vis.length - 1 ? "1px solid var(--border)" : "none" }}>
-              <div className="min-w-0">
-                <div className="text-[14px] text-white">{v.label}</div>
-                <div className="text-[12px] mt-0.5" style={{ color: "var(--muted)" }}>{v.desc}</div>
-              </div>
-              <Toggle checked={a[v.key] !== false} onChange={() => update({ [v.key]: !(a[v.key] !== false) })} label={v.label} />
-            </div>
-          ))}
-        </div>
-      </div>
-
+      <div className="fx-set-cols">
       <BackupCard password={password} onRestored={onRestored} />
 
       <ChangePasswordCard password={password} onPasswordChanged={onPasswordChanged} />
 
-      <div className="fx-card p-5 mb-4">
-        <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2"><ShieldCheck size={15} style={{ color: "var(--accent-2)" }} /> امنیت و حریم خصوصی</div>
-        <p className="text-[13px] mb-4" style={{ color: "var(--muted)" }}>کنترل چیزی که مشتری می‌تواند ببیند یا کپی کند.</p>
-        <div className="flex items-center justify-between gap-3 py-3">
-          <div className="min-w-0">
-            <div className="text-[14px] text-white">مخفی‌کردن لیست کانفیگ‌ها</div>
-            <div className="text-[12px] mt-0.5 leading-relaxed" style={{ color: "var(--muted)" }}>
-              دکمه‌ی «کپی کانفیگ» حذف می‌شود تا مشتری نتواند کانفیگ خام را کپی و با دیگران به اشتراک بگذارد. لینک اشتراک همچنان کار می‌کند.
-            </div>
-          </div>
-          <Toggle checked={a.hideConfigsList === true} onChange={() => update({ hideConfigsList: !a.hideConfigsList })} label="مخفی‌کردن کانفیگ‌ها" />
-        </div>
       </div>
-
-      <div className="fx-card p-5 mb-4">
-        <div className="text-[14px] font-semibold text-white mb-4 flex items-center gap-2"><Sliders size={15} style={{ color: "var(--accent-2)" }} /> سفارشی‌سازی پیشرفته</div>
-        <Field label="متن پاورقی سفارشی" hint="اگر خالی بگذارید، چیزی نمایش داده نمی‌شود.">
-          <input className="fx-input" value={a.customFooterText || ""} onChange={(e) => update({ customFooterText: e.target.value })} placeholder="پشتیبانی ۲۴ ساعته" />
-        </Field>
-        <Field label="CSS سفارشی" hint="برای کاربران حرفه‌ای — مستقیم به صفحه‌ی اشتراک تزریق می‌شود.">
-          <textarea className="fx-input" dir="ltr" rows={4} value={a.customCss || ""} onChange={(e) => update({ customCss: e.target.value })}
-            placeholder=".my-class { color: red; }" style={{ fontFamily: "var(--mono)", fontSize: 11.5 }} />
-        </Field>
-      </div>
-
-      <InfoBox tone="warn">تنظیمات این بخش مستقیم روی ظاهر صفحه‌ی همه‌ی مشتری‌ها اثر می‌گذارد. بعد از تغییر، حتماً یک‌بار خودتان صفحه‌ی اشتراک را باز کنید.</InfoBox>
-
       <ConfigHistory password={password} onRestored={onRestored} />
     </div>
   );
@@ -1718,7 +1734,7 @@ export function PopupSection({ config, setConfig }) {
             </div>
           </div>
           <p className="text-[12px] mt-3 text-center leading-relaxed" style={{ color: "var(--muted)" }}>
-            بعد از {p.delaySeconds ?? 10} ثانیه ظاهر و بعد از {p.autoCloseSeconds ?? 15} ثانیه بسته می‌شود
+            بعد از {faNum(p.delaySeconds ?? 10)} ثانیه ظاهر و بعد از {faNum(p.autoCloseSeconds ?? 15)} ثانیه بسته می‌شود
           </p>
         </div>
       </div>
