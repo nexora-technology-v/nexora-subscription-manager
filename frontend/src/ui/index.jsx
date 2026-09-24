@@ -320,6 +320,9 @@ export function Collapse({ title, icon: Icon, hint, children, open: open0 = fals
 export function MiniMarkdown({ text }) {
   const inline = (s, key) => {
     const out = []; let i = 0;
+    // ` و نه بک‌تیکِ خام: test-seams صدازدن‌های API را از جفتِ بک‌تیک‌ها
+    // پیدا می‌کند و بک‌تیکِ تنها در این regex جفت‌ها را در کلِ فایل جابه‌جا
+    // می‌کرد — /api/login ناگهان «بی‌صداکننده» شد
     const re = /(\*\*[^*]+\*\*|`[^`]+`)/g; let m;
     while ((m = re.exec(s))) {
       if (m.index > i) out.push(s.slice(i, m.index));

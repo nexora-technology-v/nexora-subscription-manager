@@ -927,9 +927,11 @@ export function LivePreview({ dirty, onSave, saving, password }) {
               )}
               <iframe
                 key={key}
-                // NX_PREVIEW_URL فقط در هارنس — آن‌جا بکندی نیست که /api/preview
-                // را بدهد و این صفحه همیشه یک قابِ خاکستری بود
-                src={`${window.NX_PREVIEW_URL || `${API_URL}/api/preview`}?t=${key}`
+                // NX_PREVIEW_URL فقط در هارنس — آن‌جا بکندی نیست که این مسیر را
+                // بدهد و این صفحه همیشه یک قابِ خاکستری بود. مسیرِ واقعی در
+                // قالبِ جدای خودش می‌ماند: test-seams صدازدن‌ها را از متنِ
+                // قالب پیدا می‌کند و قالبِ تو‌در‌تو را نمی‌بیند.
+                src={(window.NX_PREVIEW_URL || `${API_URL}/api/preview`) + `?t=${key}`
                      + `&template=${encodeURIComponent(curTpl || "")}`
                      + `&palette=${encodeURIComponent(curPal || "")}`}
                 onLoad={() => setLoading(false)}
