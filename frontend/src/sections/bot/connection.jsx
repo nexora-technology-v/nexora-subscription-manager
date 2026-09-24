@@ -211,7 +211,7 @@ export function ConnectionTest({ password, tenant }) {
             ربات واقعاً می‌تواند برای مشتری کانفیگ بسازد، نه فقط وصل شود.
           </p>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 flex-wrap">
           <button title="تست اتصال" onClick={run} disabled={busy || !tenant.panel_url}
             className="fx-btn px-4 py-2.5 text-[14px] flex items-center gap-1.5"
             style={!tenant.panel_url ? { opacity: 0.45, cursor: "not-allowed" } : {}}>

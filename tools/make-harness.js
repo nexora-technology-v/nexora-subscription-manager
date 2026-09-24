@@ -54,6 +54,11 @@ let html = fs.readFileSync(indexPath, "utf8");
 
 // اسکریپتِ داده باید *پیش از* باندل اجرا شود، وگرنه اپ با fetchِ
 // واقعی بالا می‌آید و روی چرخنده می‌ماند
+// پلِ تلگرام حالا فقط روی /app بار می‌شود و مسیرِ هارنس /harness.html
+// است (boot بعداً به /app عوضش می‌کند). مینی‌اپِ هارنس هنوز SDK را
+// می‌خواهد — `?scheme=` و `?insets=` رویش سوارند — پس پیش از loader خبر
+// می‌دهیم.
+html = html.replace("<head>", `<head>\n  <script>window.NX_FORCE_TG_SDK = /[?&]as=mini(&|$)/.test(location.search);</script>`);
 html = html.replace("</head>", `  <script>\n${boot}\n  </script>\n</head>`);
 html = html.replace("<title>", "<title>[HARNESS] ");
 

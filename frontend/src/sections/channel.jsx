@@ -359,7 +359,7 @@ export function ChannelSection({ password }) {
               رد می‌کند.
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="ch-addr-ctl">
             <input className="fx-input ch-addr-in" value={addr} dir="ltr"
               placeholder="@my_channel" onChange={(e) => setAddr(e.target.value)} />
             <button className="fx-btn-g px-3 py-2 text-[13px]"

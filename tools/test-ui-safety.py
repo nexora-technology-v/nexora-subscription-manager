@@ -475,6 +475,11 @@ for _f, _src in ALL.items():
         if "isoToJalali" in _line or "toISOString" in _line or "dayKey" in _line:
             continue
         _isoraw.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
+    # و خودِ ستونِ تاریخ، بی‌بریدن: `{v.at}`، `{snap.at}`، `{r.created_at}`.
+    # نسخه‌ی دومِ این دروازه فقط بریدن را می‌شناخت و چهار جا از زیرش رد شد.
+    for _m in re.finditer(r"\{\s*[\w]+\??\.(at|created_at|updated_at|createdAt|updatedAt|paid_at"
+                          r"|expires_at|expiresAt|sent_at|last_seen)\s*\}", _src):
+        _isoraw.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
 check("هیچ تاریخِ میلادیِ خامی رندر نمی‌شود", not _isoraw, ", ".join(_isoraw[:5]))
 
 # نویسه‌ی کنترلیِ نامرئی در کدِ تست — `\b` که در heredocِ گیت‌بش به
@@ -489,6 +494,45 @@ for _d in ("tools", os.path.join("frontend", "src")):
                 if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", _t):
                     _ctl.append(_n)
 check("هیچ نویسه‌ی کنترلیِ نامرئی در کد و تست نیست", not _ctl, ", ".join(_ctl[:5]))
+
+# ستونِ «1fr» یعنی minmax(auto, 1fr): از کوچک‌ترین پهنای محتوایش تنگ‌تر
+# نمی‌شود، پس یک فیلدِ بلند یا نامِ nowrap کلِ شبکه را از صفحه بیرون می‌داد
+# — ممیزیِ خودکار روی ۳۲۰ تا ۳۶۰ پیکسل: سکه، کد تخفیف، پاپ‌آپ، متن‌ها،
+# استودیو، و خانه‌ی مینی‌اپ (۵۷ پیکسل اسکرولِ افقی). هر مسیرِ fr در
+# عمقِ صفر یا مستقیم داخلِ repeat() باید minmax(0, …) باشد.
+def _bare_fr(val):
+    i, stack, hits = 0, [], []
+    while i < len(val):
+        m = re.match(r"([a-z-]+)\(", val[i:])
+        if m:
+            stack.append(m.group(1)); i += len(m.group(0)); continue
+        if val[i] == ")":
+            stack and stack.pop(); i += 1; continue
+        m = re.match(r"(\d*\.?\d+)fr\b", val[i:])
+        prev = val[i - 1] if i else " "
+        if m and not (prev.isalnum() or prev in ".-") and all(f == "repeat" for f in stack):
+            hits.append(m.group(0))
+        i += len(m.group(0)) if m else 1
+    return hits
+_frs = []
+_CSSFR = io.open(os.path.join(ROOT, "frontend", "src", "index.css"), encoding="utf-8").read()
+for _m in re.finditer(r"grid-template-columns:\s*([^;{}]+)", _CSSFR):
+    if _bare_fr(_m.group(1)):
+        _frs.append(f"index.css:{_CSSFR[:_m.start()].count(chr(10)) + 1} {_m.group(1).strip()[:40]}")
+check("هیچ ستونِ شبکه‌ای «1fr» خام نیست (minmax(0, 1fr))", not _frs, ", ".join(_frs[:4]))
+
+# پلِ تلگرام فقط برای مینی‌اپ — telegram.org بدونِ VPN فیلتر است و
+# <script src> هم‌زمان در <head> پنلِ مدیر و نماینده را تا timeout سفید
+# نگه می‌داشت.
+_IDX = io.open(os.path.join(ROOT, "frontend", "index.html"), encoding="utf-8").read()
+check("اسکریپتِ تلگرام هم‌زمان برای همه‌ی اپ‌ها بار نمی‌شود",
+      re.search(r'^\s*<script\s+src="https://telegram\.org', _IDX, re.M) is None
+      and "onApp" in _IDX and "preview=1" in _IDX)
+# و پیش‌نمایشِ استودیو، که حالا بی‌SDK بار می‌شود، نباید به دیوارِ «باید
+# از داخل تلگرام باز شود» بخورد — نسخه‌ی اولِ همین اصلاح قابِ پیش‌نمایش را
+# دقیقاً همین‌طور خالی کرد.
+check("پیش‌نمایشِ مینی‌اپ بی‌تلگرام هم بالا می‌آید",
+      re.search(r"if \(!tg\(\) && !PREVIEW\)", ALL.get("mini/index.jsx", "")) is not None)
 
 # آلفای هگز که به یک متغیر چسبانده شود (`${c}99`) فقط روی رنگِ هگزِ خام
 # درست است. رنگ‌های پنل از توکن‌اند، پس `var(--ok)99` می‌شود — نامعتبر،

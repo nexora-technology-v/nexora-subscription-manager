@@ -18,6 +18,7 @@ import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatTile } from "../ui/index";
 import { MetricCard, PortsCard, ConnectionsCard } from "./monitoring";
+import { isoToJalaliStamp } from "../ui/jalali";
 
 /**
  * چرا از این سرور گزارشی نمی‌آید.
@@ -378,7 +379,7 @@ export function NodesMonitor({ password }) {
           </div>
           {snap && snap.at && (
             <div className="text-[12px]" style={{ color: "var(--muted)" }}>
-              آخرین گزارش: {snap.at}
+              آخرین گزارش: {isoToJalaliStamp(snap.at)}
             </div>
           )}
         </div>

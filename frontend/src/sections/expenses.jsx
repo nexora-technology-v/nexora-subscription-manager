@@ -17,7 +17,7 @@ import {
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { ConfirmModal, EmptyState, Field, InfoBox, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile } from "../ui/index";
-import { JalaliDate } from "../ui/jalali";
+import { JalaliDate, isoToJalaliStamp } from "../ui/jalali";
 
 const KIND_META = {
   server_abroad: { label: "سرور خارج", icon: Server, color: "var(--accent-2)" },
@@ -197,7 +197,7 @@ function ExpenseForm({ password, onDone, setMsg }) {
             : fx.ok ? (
               <>
                 <span>نرخ {f.currency}: <Toman n={fx.toman} /></span>
-                {fx.at && <span>· {fx.at}</span>}
+                {fx.at && <span>· {isoToJalaliStamp(fx.at)}</span>}
                 {fx.stale && (
                   <span style={{ color: "var(--warn)" }}>
                     · نرخ کهنه ({faNum(fx.ageMinutes || 0)} دقیقه پیش)

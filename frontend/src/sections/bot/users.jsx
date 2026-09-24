@@ -166,8 +166,12 @@ export function BotUsersSection({ password, src }) {
               <div key={u.id}
                 className="flex items-center justify-between gap-3 p-4 flex-wrap transition-colors hover:bg-white/[.02]"
                 style={{ borderBottom: i < users.length - 1 ? "1px solid var(--border)" : "none" }}>
+                {/* پایه‌ی ۲۳۰ پیکسل: روی گوشی ستونِ کناری (سکه، موجودی، دکمه‌ها)
+                    به خطِ بعد می‌رود، نه اینکه نام را تا «سارا م…» و شماره را
+                    بیرون از کارت بفشارد */}
                 <button onClick={() => setDetail(u.tg_id)}
-                  className="min-w-0 flex-1 text-right flex items-center gap-3">
+                  className="min-w-0 text-right flex items-center gap-3"
+                  style={{ flex: "1 1 230px" }}>
                   {/* چهره‌ی کاربر — در فهرستِ بلندِ هم‌شکل، چشم روی
                       رنگ می‌ایستد نه روی شناسه‌ی چهارده‌رقمی */}
                   <Avatar name={u.first_name || u.username} id={u.tg_id} size={38} />
@@ -216,7 +220,8 @@ export function BotUsersSection({ password, src }) {
                   </div>
                   </div>
                 </button>
-                <div className="flex items-center gap-3 text-[13px] shrink-0">
+                <div className="flex items-center gap-3 text-[13px] shrink-0"
+                  style={{ marginInlineStart: "auto" }}>
                   {!!u.coins && <span style={{ color: "var(--warn)" }}>{faNum(u.coins)} سکه</span>}
                   {!!u.balance && <span style={{ color: "var(--ok)" }}>{faNum(u.balance)}</span>}
                   <button onClick={() => setMsgTo(u)} className="fx-ico-btn"

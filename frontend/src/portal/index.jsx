@@ -2742,8 +2742,8 @@ function Dashboard({ token, onOut }) {
               {me?.botUsername ? `@${me.botUsername}` : (sum ? `گروه ${sum.label}` : "")}
             </div>
           </div>
-          <button className="lg:hidden shrink-0" onClick={() => setSide(false)}
-            style={{ color: "var(--dim)" }} aria-label="بستن منو"><X size={18} /></button>
+          <button className="lg:hidden shrink-0 fx-drawer-x" onClick={() => setSide(false)}
+            aria-label="بستن منو"><X size={18} /></button>
         </div>
 
         {PORTAL_GROUPS.map((g) => (

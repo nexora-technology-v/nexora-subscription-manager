@@ -507,6 +507,18 @@ input, select, textarea, button, optgroup {
 .fx-btn-dash:hover { color: var(--accent-2); border-color: rgba(90,169,230,.45); background: rgba(43,127,214,.04); }
 
 .fx-ico { width: 36px; height: 36px; border-radius: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+/* ── لمس: هدف‌هایی که انگشت واقعاً پیدا می‌کند ──
+   ممیزیِ خودکار روی گوشی در هر صفحه ۱۴ تا ۲۴ دکمه‌ی زیرِ ۳۲ پیکسل
+   پیدا کرد: آیتم‌های منو ۳۲، دکمه‌های آیکونی ۲۸ و ۳۰ (با اندازه‌ی
+   درون‌خطی)، ابزارهای ویرایشگرِ کانال ۳۰، و بستنِ منو ۱۸×۱۸. روی
+   صفحه‌ی لمسی حداقل ۳۶ و منو ۴۰ — با موس همان اندازه‌ی قبلی. */
+.fx-drawer-x { width: 36px; height: 36px; display: grid; place-items: center;
+  border-radius: 10px; color: var(--dim); }
+.fx-drawer-x:hover { background: var(--hair-2); color: var(--text); }
+@media (pointer: coarse), (max-width: 1023.98px) {
+  [data-navkey], .fx-nav-item { min-height: 40px; }
+  .fx-ico-btn, .ch-tool { min-width: 36px !important; min-height: 36px !important; }
+}
 .fx-ico-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 34px; height: 34px; border-radius: 10px; color: var(--muted); transition: all .18s;
@@ -780,9 +792,13 @@ code, kbd, samp, pre { overflow-wrap: anywhere; }
   .fx-search { width: 100%; max-width: 190px; }
   .fx-topbar { padding: 14px 16px; }
   .fx-main { padding: 18px 16px 96px !important; }
-  .fx-g4 { grid-template-columns: repeat(2, 1fr) !important; }
-  .fx-g3 { grid-template-columns: 1fr !important; }
-  .fx-g2 { grid-template-columns: 1fr !important; }
+  /* minmax(0, 1fr) و نه 1fr: «1fr» یعنی minmax(auto, 1fr)، پس ستون از
+     کوچک‌ترین پهنای محتوایش کوچک‌تر نمی‌شد و یک فیلدِ بلند کلِ ستون را
+     از صفحه بیرون می‌داد — سکه، کد تخفیف، پاپ‌آپ و متن‌ها روی ۳۲۰
+     تا ۶۰ پیکسل بیرون زده بودند. */
+  .fx-g4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .fx-g3 { grid-template-columns: minmax(0, 1fr) !important; }
+  .fx-g2 { grid-template-columns: minmax(0, 1fr) !important; }
   .fx-hide-m { display: none !important; }
   .fx-desktop-save { display: none !important; }
   .fx-mobile-save {
@@ -797,20 +813,26 @@ code, kbd, samp, pre { overflow-wrap: anywhere; }
 }
 
 @media (max-width: 639.98px) {
-  .fx-g4 { grid-template-columns: 1fr !important; }
+  .fx-g4 { grid-template-columns: minmax(0, 1fr) !important; }
   :where(.fx-stat-num) { font-size: 28px; }
   .fx-search { display: none; }
 }
 
 @media (min-width: 1024px) and (max-width: 1279.98px) {
-  :root { --side-w: 210px; }
+  /* ۲۱۰ پیکسل «سفارش‌ها و رسیدها» و «مانیتورینگ سرورهای دیگر» را روی
+     هر صفحه‌ی لپ‌تاپِ ۱۰۲۴ تا ۱۲۸۰ پیکسلی می‌برید */
+  :root { --side-w: 228px; }
   .fx-main { padding: 22px 22px 40px; }
-  .fx-g2 { grid-template-columns: 1fr 270px !important; }
+  .fx-g2 { grid-template-columns: minmax(0, 1fr) 270px !important; }
+  /* جستجوی ۲۶۰ پیکسلی جای عنوانِ صفحه را می‌گرفت: روی لپ‌تاپِ ۱۰۲۴
+     «سفارش‌ها و …» و «همه کاربر…» بریده می‌شدند */
+  .fx-search { width: 190px; }
+  .fx-search kbd { display: none; }
 }
 
 @media (min-width: 1280px) {
   .fx-main { padding: 26px 28px 48px; }
-  .fx-g2 { grid-template-columns: 1fr 300px; }
+  .fx-g2 { grid-template-columns: minmax(0, 1fr) 300px; }
 }
 
 @media (min-width: 1600px) {
@@ -1292,7 +1314,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
    نسبتش نابرابر؛ این یکی دو ستونِ مساوی است. */
 .fx-g2-even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 900px) {
-  .fx-g2-even { grid-template-columns: 1fr; }
+  .fx-g2-even { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ── حالت خالی ──
@@ -1536,7 +1558,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   font-family: var(--num); font-variant-numeric: tabular-nums; text-align: start; word-break: break-all;
 }
 
-.mn-cells { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mn-cells { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 .mn-cell {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--r-m); padding: 12px 13px;
@@ -1576,7 +1598,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .mn-renew:active { transform: scale(.98); }
 .mn-renew:hover { filter: brightness(1.06); }
 
-.mn-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mn-acts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
 .mn-act {
   display: flex; align-items: center; justify-content: center; gap: 7px;
   font-size: 13px; font-weight: 600; font-family: inherit; color: var(--dim);
@@ -2048,7 +2070,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   outline: none; border-color: var(--accent-line);
 }
 
-.mn-pay-two { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.mn-pay-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 9px; }
 .mn-pay-two .mn-pay-btn { margin-top: 12px; }
 
 .mn-pay-btn.ghost {
@@ -2092,7 +2114,9 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 
 /* ── سفارش‌های در انتظار، بالای خانه ── */
-.mn-pend { display: grid; gap: 9px; margin-bottom: 14px; }
+/* ستونِ minmax(0,…): نامِ بلندِ پلن در ردیفِ nowrap ستون را پهن می‌کرد و
+   روی گوشیِ ۳۲۰ پیکسلی کلِ خانه‌ی مینی‌اپ ۵۷ پیکسل افقی اسکرول می‌خورد */
+.mn-pend { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; margin-bottom: 14px; }
 .mn-pend-row {
   display: flex; align-items: center; gap: 11px;
   padding: 12px 13px; border-radius: var(--r-m);
@@ -2412,12 +2436,12 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
    fixedِ تازه‌ای که این تو گذاشته شود باید همین کار را بکند. */
 .ch-wrap { container-type: inline-size; }
 
-.ch-grid { grid-template-columns: 1fr; }
+.ch-grid { grid-template-columns: minmax(0, 1fr); }
 
 /* آستانه از روی اندازه‌گیری: زیرِ ۱۰۴۰ پیکسلِ *صحنه*، دو ستون یعنی
    کادرِ نوشتن زیرِ ۵۶۰ و پیش‌نمایش زیرِ ۴۳۰ — هر دو خفه. */
 @container (min-width: 1040px) {
-  .ch-grid { grid-template-columns: 1.25fr 1fr; }
+  .ch-grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
 }
 
 /* ── پیشنهادها ──
@@ -2477,6 +2501,8 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 14px; flex-wrap: wrap;
 }
+/* shrink-0 بود: روی ۳۲۰ پیکسل فیلد و دکمه ۱۹ پیکسل از کارت بیرون می‌زدند */
+.ch-addr-ctl { display: flex; align-items: center; gap: 8px; flex: 1 1 260px; min-width: 0; justify-content: flex-end; }
 .ch-addr-in {
   flex: 1 1 180px; min-width: 0; max-width: 260px;
   font-family: var(--mono); text-align: left;
@@ -2700,7 +2726,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 
 .fx-chat {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 300px minmax(0, 1fr);
   gap: 12px;
   /* قدِ ثابت تا هر دو ستون با هم اسکرول نخورند و سرصفحه‌ی گفتگو
      سر جایش بماند.
@@ -2726,12 +2752,13 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 .fx-chat-search {
   display: flex; align-items: center; gap: 8px;
-  padding: 10px 12px; flex: none;
+  /* فیلد تا لبه‌ی نوار می‌رسد — ۱۹ پیکسل بود و لمسِ بالا و پایینش خطا می‌رفت */
+  padding: 0 12px; flex: none;
   border-bottom: 1px solid var(--border);
   color: var(--muted);
 }
 .fx-chat-search input {
-  flex: 1; min-width: 0; background: none; border: 0;
+  flex: 1; min-width: 0; background: none; border: 0; padding-block: 12px;
   color: var(--text); font-size: 12.5px; font-family: inherit;
 }
 .fx-chat-search input:focus { outline: none; }
@@ -2912,7 +2939,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 
 /* روی صفحه‌ی باریک، فهرست بالای گفتگو می‌رود */
 @media (max-width: 820px) {
-  .fx-chat { grid-template-columns: 1fr; height: auto; }
+  .fx-chat { grid-template-columns: minmax(0, 1fr); height: auto; }
   .fx-chat-list { max-height: 260px; }
   .fx-chat-pane { min-height: 440px; }
   .fx-bub { max-width: 84%; }
@@ -3288,7 +3315,7 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 .fx-tabs > button { flex-shrink: 0; white-space: nowrap; }
 
 /* انتخابِ مبلغِ شارژ */
-.mn-amt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.mn-amt-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-bottom: 10px; }
 .mn-amt {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   padding: 11px 8px; border-radius: var(--r-m);
@@ -3845,7 +3872,7 @@ html[data-mn-tpl="neon"] .nx-shop-bar > i { box-shadow: 0 0 12px rgba(var(--acce
 .pd-grid { display: grid; gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); }
 .pd-kpi {
-  display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto auto;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto auto;
   column-gap: 12px; row-gap: 2px; align-items: center; text-align: right;
   background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
   padding: 14px 16px; min-width: 0; font-family: inherit; color: inherit;
@@ -3986,12 +4013,12 @@ button.pd-kpi:active { transform: scale(.985); }
   transition: color var(--m-fast) linear, border-color var(--m-fast) linear, background var(--m-fast) linear; }
 .pd-add:hover { color: var(--accent-2); border-color: var(--accent-line); background: var(--accent-wash); }
 
-@media (max-width: 900px) { .bb-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .bb-grid { grid-template-columns: minmax(0, 1fr); } }
 
-@media (max-width: 1100px) { .pd-split { grid-template-columns: 1fr; } }
+@media (max-width: 1100px) { .pd-split { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 640px) {
   .pd-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .pd-kpi { grid-template-columns: 1fr; padding: 12px; }
+  .pd-kpi { grid-template-columns: minmax(0, 1fr); padding: 12px; }
   .pd-kpi-ico { grid-row: auto; width: 32px; height: 32px; border-radius: 10px; margin-bottom: 4px; }
   .pd-kpi-value { font-size: 20px; }
   .pd-card { padding: 14px; border-radius: 16px; }
@@ -4199,6 +4226,7 @@ button.pd-kpi:active { transform: scale(.985); }
   font-size: 13px; color: var(--dim); }
 .st-save-state i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
 .st-save-state .short { display: none; }
+.st-save-state > span { min-width: 0; overflow-wrap: anywhere; }
 .st-savebar.dirty { border-color: var(--warn-line); }
 .st-savebar.dirty .st-save-state { color: var(--text); }
 .st-savebar.dirty .st-save-state i { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }
@@ -4217,8 +4245,16 @@ button.pd-kpi:active { transform: scale(.985); }
 /* دکمه‌ی «پیش‌نمایش» فقط وقتی گوشی زیرِ فرم می‌افتد — وگرنه روی
    گوشیِ خودِ نماینده، هر انتخاب یعنی تا تهِ صفحه پایین رفتن */
 .st-peek { display: none; }
+@media (max-width: 359.98px) {
+  /* قابِ گوشی ۳۲۰ پیکسل ثابت است و روی گوشیِ ۳۲۰ پیکسلی ۳۲ پیکسل از
+     صفحه بیرون می‌زد. کلِ قاب کوچک می‌شود — داخلش هنوز همان مینی‌اپِ
+     ۳۶۰ پیکسلی است */
+  .st-side .nx-phone { zoom: .86; }
+}
+/* همان دامِ 1fr: ستونِ فرمِ استودیو از کوچک‌ترین پهنای محتوایش تنگ‌تر نمی‌شد */
+.st-main { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 1180px) {
-  .st-wrap { grid-template-columns: 1fr; }
+  .st-wrap { grid-template-columns: minmax(0, 1fr); }
   .st-side { position: static; scroll-margin-top: 80px; }
   .st-peek { display: inline-flex; }
 }
@@ -4228,10 +4264,10 @@ button.pd-kpi:active { transform: scale(.985); }
   .st-tpls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .st-pals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .st-pal { height: 38px; }
-  .st-logo { grid-template-columns: 1fr; }
+  .st-logo { grid-template-columns: minmax(0, 1fr); }
   .st-stage { min-height: 190px; }
   .st-step { padding: 14px; }
-  .st-field { grid-template-columns: 1fr; gap: 6px; }
+  .st-field { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .st-savebar { bottom: 8px; gap: 6px; padding: 8px 8px 8px 10px; flex-wrap: nowrap; }
   .st-save-state { min-width: 0; font-size: 12px; line-height: 1.5; }
   .st-save-state .long { display: none; }
@@ -4243,8 +4279,8 @@ button.pd-kpi:active { transform: scale(.985); }
 }
 
 /* ── نمودارِ ستونی و روندِ ریز (جایگزینِ منحنی) ── */
-.fx-spark { display: flex; align-items: flex-end; gap: 2px; width: 100%; max-width: 112px; }
-.fx-spark > i { flex: 1; min-width: 2px; border-radius: 2px 2px 1px 1px; background: var(--c);
+.fx-spark { display: flex; align-items: flex-end; gap: 1px; width: 100%; max-width: 112px; }
+.fx-spark > i { flex: 1; min-width: 0; border-radius: 2px 2px 1px 1px; background: var(--c);
   opacity: .38; transform-origin: bottom; animation: fx-grow .5s var(--sp-soft) both; }
 .fx-spark > i.last { opacity: 1; }
 .fx-bars-wrap { position: relative; }
@@ -4304,3 +4340,27 @@ button.pd-kpi:active { transform: scale(.985); }
 .fx-order.st-pending { border-inline-start-color: var(--accent-line); }
 .fx-order-act { display: flex; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
 .fx-order-act > button:first-child { flex: 1; justify-content: center; }
+
+/* ── متنِ بریده روی گوشی ──
+   برچسبِ شاخص‌ها («کیف پول این صفحه») و عنوانِ نوارِ بالا («کدهای تخفیف»)
+   روی ۳۲۰ پیکسل با «…» بریده می‌شدند. برچسب دو خط می‌شود، عنوان کوچک‌تر. */
+@media (max-width: 380px) {
+  .fx-kpi-label { white-space: normal; line-height: 1.35; }
+  .fx-topbar h1 { font-size: 16px; white-space: normal; line-height: 1.3;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+}
+/* آیتمِ منو: اگر باز هم جا نشد، دو خط — نه بریدن */
+.fx-nav-item > span.truncate, [data-navkey] span.truncate { white-space: normal; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* ── هدف‌های زیرِ ۲۴ پیکسل (حداقلِ WCAG 2.2) ──
+   فیلدِ جستجو خودش ۲۰ پیکسل بود داخلِ جعبه‌ی ۴۰ پیکسلی — لمسِ بالا یا
+   پایینِ جعبه به فیلد نمی‌رسید. فیلد تا لبه‌ی جعبه می‌رسد، قدِ جعبه همان. */
+.fx-search:has(input) { padding-block: 0; }
+.fx-search input { padding-block: 10px; }
+/* پیوندِ «همه» ۳۸×۱۹ بود؛ ناحیه‌ی لمس بزرگ می‌شود، جای آن نه */
+/* با ::after و نه حاشیه‌ی منفی — حاشیه‌ی منفی خودِ دکمه را از سربرگ
+   بیرون می‌برد و در هاور زمینه‌اش از کارت بیرون می‌زد */
+.pd-link { position: relative; }
+.pd-link::after { content: ""; position: absolute; inset: -8px -10px; }
+.ch-tip-x { min-width: 28px; min-height: 28px; display: inline-grid; place-items: center; }

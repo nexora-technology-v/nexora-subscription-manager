@@ -116,6 +116,9 @@ export function isoToJalaliLabel(iso) {
  */
 export function isoToJalaliStamp(iso) {
   if (!iso) return "";
+  // رشته‌ای که ISO نیست (مثلاً خطِ لاگِ sshd) همان‌طور می‌ماند —
+  // وگرنه ساعتش دو بار چسبانده می‌شد
+  if (!/^\d{4}-\d{2}-\d{2}/.test(String(iso))) return String(iso);
   const day = isoToJalaliLabel(iso);
   const t = /[T ](\d{2}):(\d{2})/.exec(String(iso));
   return t ? `${day}، ${fa(t[1])}:${fa(t[2])}` : day;

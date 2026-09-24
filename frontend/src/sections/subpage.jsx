@@ -16,6 +16,7 @@ import { AreaChart, BarList, CountUp, Donut, EmptyState, Field, InfoBox, NumberS
   SectionHead, Segmented, Skeleton, SkeletonCards, Sparkline, StatTile, StatusChip,
   Tabs, Toggle } from "../ui/index";
 import { TemplateThumb } from "./bot/themes";
+import { isoToJalaliStamp } from "../ui/jalali";
 
 /**
  * داشبورد — اولین چیزی که مالک بعد از ورود می‌بیند.
@@ -310,7 +311,8 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
                 className="fx-card fx-card-i p-3.5 text-right">
                 <div className="flex items-center gap-2 mb-2">
                   <c.icon size={14} style={{ color: "var(--muted)" }} />
-                  <span className="text-[12px] truncate" style={{ color: "var(--muted)" }}>{c.label}</span>
+                  {/* دو خط، نه «ویدیوهای آموز…» — کاشی روی گوشی ۱۴۰ پیکسل است */}
+                  <span className="text-[12px] min-w-0 leading-snug" style={{ color: "var(--muted)" }}>{c.label}</span>
                   <ChevronLeft size={13} className="mr-auto shrink-0" style={{ color: "#2A3444" }} />
                 </div>
                 <div className="text-[21px] font-bold text-white" style={{ fontFamily: "var(--mono)" }}>
@@ -966,7 +968,7 @@ function ConfigHistory({ password, onRestored }) {
               <span className="flex items-center gap-2 min-w-0">
                 <b style={{ fontFamily: "var(--mono)" }} dir="ltr">#{faNum(v.version)}</b>
                 <i className="not-italic text-[12px] truncate"
-                  style={{ color: "var(--muted)" }} dir="ltr">{v.at}</i>
+                  style={{ color: "var(--muted)" }}>{isoToJalaliStamp(v.at)}</i>
               </span>
               <button className="fx-btn-g px-3 py-1.5 text-[12.5px] flex items-center gap-1.5"
                 disabled={busy === v.version} onClick={() => back(v.version)}>

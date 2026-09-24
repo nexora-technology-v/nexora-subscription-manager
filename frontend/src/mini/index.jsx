@@ -1872,7 +1872,11 @@ export default function Mini() {
     }
   };
 
-  if (!tg()) {
+  // پیش‌نمایشِ استودیو تلگرام لازم ندارد — داده‌اش از demo است. پلِ
+  // تلگرام حالا بیرون از /app بار نمی‌شود (telegram.org بدونِ VPN فیلتر
+  // است)، و بی‌این استثنا قابِ پیش‌نمایش «باید از داخل تلگرام باز شود»
+  // نشان می‌داد.
+  if (!tg() && !PREVIEW) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6" dir="rtl">
         <div className="fx-card p-6 text-center" style={{ maxWidth: 380 }}>

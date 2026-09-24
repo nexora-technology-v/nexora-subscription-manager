@@ -15,6 +15,7 @@ import { API_URL } from "../lib/constants";
 import { errText, esc0, faNum } from "../lib/format";
 import { ConfirmModal, EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatTile, usePager } from "../ui/index";
 import { MetricCard } from "./monitoring";
+import { isoToJalaliStamp } from "../ui/jalali";
 
 export function FirewallIntrusion({ password }) {
   const [d, setD] = useState(null);
@@ -294,7 +295,7 @@ export function FirewallIntrusion({ password }) {
                   className="flex items-center justify-between py-2 text-[13px]"
                   style={{ borderBottom: "1px solid var(--border)" }}>
                   <span dir="ltr" style={{ fontFamily: "var(--mono)" }}>{a.ip}</span>
-                  <span style={{ color: "var(--muted)" }}>{a.user} · {a.at}</span>
+                  <span style={{ color: "var(--muted)" }}>{a.user} · {isoToJalaliStamp(a.at)}</span>
                 </div>
               ))}
             </div>

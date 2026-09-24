@@ -369,7 +369,7 @@ export default function App() {
               <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>پنل مدیریت</div>
             </div>
           </div>
-          <button title="بستن منو" className="lg:hidden shrink-0" onClick={() => setOpen(false)} style={{ color: "var(--dim)" }}><X size={18} /></button>
+          <button title="بستن منو" aria-label="بستن منو" className="lg:hidden shrink-0 fx-drawer-x" onClick={() => setOpen(false)}><X size={18} /></button>
         </div>
 
         <WorkspaceSwitch mode={wsMode} workspace={workspace} onSwitch={switchWorkspace}
