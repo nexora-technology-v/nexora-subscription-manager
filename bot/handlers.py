@@ -329,9 +329,18 @@ def miniapp_url(ctx):
     می‌شود، نه این‌که به تلگرام برسد و کل منو را از کار بیندازد.
     """
     url = str(ctx.s.get("miniapp_url") or "").strip()
-    if url.lower().startswith("https://"):
-        return url.rstrip("/")
-    return ""
+    if not url.lower().startswith("https://"):
+        return ""
+    url = url.rstrip("/")
+    # شناسه‌ی فروشگاه در آدرس — فقط کلیدِ کشِ ظاهر، نه احراز هویت (آن
+    # از امضای initData است). همه‌ی فروشگاه‌ها یک /app دارند؛ بی این،
+    # مینی‌اپ پیش از رسیدنِ پاسخ نمی‌دانست مالِ کیست: بارِ اول با رنگِ
+    # پیش‌فرضِ نکسورا بالا می‌آمد و بعد به پوسته‌ی فروشگاه می‌پرید، و
+    # مشتری‌ای که از دو ربات می‌خرید اسپلشِ فروشگاهِ دیگر را می‌دید.
+    tid = getattr(ctx, "tid", None)
+    if tid is not None and "shop=" not in url:
+        url += ("&" if "?" in url else "?") + f"shop={int(tid)}"
+    return url
 
 
 def main_menu(ctx, user):

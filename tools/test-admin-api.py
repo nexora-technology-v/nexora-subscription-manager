@@ -4346,6 +4346,10 @@ check("ربات همان تنظیم را می‌خواند",
 check("و آدرس http را رد می‌کند",
       _BH.miniapp_url(type("C", (), {"s": {"miniapp_url": "http://a.ir"}})()) == "",
       "تلگرام با http خودِ پیام را رد می‌کند، نه فقط دکمه را")
+check("و شناسه‌ی فروشگاه را به آدرس می‌چسباند (کلیدِ کشِ پوسته)",
+      _BH.miniapp_url(type("C", (), {"tid": 7, "s": {"miniapp_url": "https://a.ir/app/"}})())
+      == "https://a.ir/app?shop=7",
+      "بی آن، بارِ اول رنگِ نکسورا و بعد پوسته‌ی فروشگاه دیده می‌شد")
 
 _RUN = io.open(os.path.join(str(ROOT), "bot", "run.py"), encoding="utf-8").read()
 check("ربات خودش دکمه‌ی کنار کادر تایپ را تنظیم می‌کند",

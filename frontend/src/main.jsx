@@ -4,6 +4,7 @@ import { isAff, isMini, portalSlug } from "./lib/route.js";
 import { Splash } from "./lib/mark.jsx";
 import "./index.css";
 import { applyTheme, markScheme } from "./lib/mini-themes.js";
+import { readShop } from "./lib/shopcache.js";
 
 // آدرس تعیین می‌کند کدام اپ بالا بیاید.
 //
@@ -55,18 +56,12 @@ const BOOT_LABEL = { mini: "اشتراک من", portal: "پنل نمایندگی
  * کار نکند، پس هر خواندنی داخلِ try است و نبودنش فقط یعنی اسپلشِ
  * خنثی.
  */
-const SHOP_KEY = "nx_shop";
-
 function cachedShop() {
   if (WHICH !== "mini") return null;
   // پیش‌نمایشِ پرتال فروشگاهِ نمونه است؛ کشِ مرورگرِ نماینده را نخواند
   try { if (new URLSearchParams(window.location.search).get("preview") === "1") return null; }
   catch { /* */ }
-  try {
-    const raw = window.localStorage.getItem(SHOP_KEY);
-    const v = raw ? JSON.parse(raw) : null;
-    return v && typeof v === "object" ? v : null;
-  } catch { return null; }
+  return readShop();
 }
 
 const SHOP = cachedShop();

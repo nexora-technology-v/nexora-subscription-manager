@@ -4,6 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title id="page-title">Subscription</title>
+    <!-- ظاهرِ فروشگاه پیش از اولین نقاشی.
+
+         صفحه با رنگ و نامِ پیش‌فرضِ نکسورا رندر می‌شد و تا ۵ ثانیه بعد،
+         وقتی /api/public/config می‌رسید، به ظاهرِ فروشگاه (یا نماینده)
+         می‌پرید — مالک: «اول انگار صفحه‌ی خودِ نکسورا را می‌آورد». حالا
+         محتوا پنهان است تا ظاهرِ خودش بنشیند: از کشِ دفعه‌ی قبل همان
+         لحظه، و بارِ اول بعد از رسیدنِ پاسخ (حداکثر ۳ ثانیه). -->
+    <script>document.documentElement.classList.add('nx-boot');
+        setTimeout(function () { document.documentElement.classList.remove('nx-boot'); }, 3000);</script>
+    <style>
+        html.nx-boot body > *:not(.nx-boot-dot) { visibility: hidden !important; }
+        .nx-boot-dot { display: none; }
+        html.nx-boot .nx-boot-dot {
+            display: block; position: fixed; top: 50%; left: 50%; width: 30px; height: 30px;
+            margin: -15px 0 0 -15px; border-radius: 50%;
+            border: 2.5px solid rgba(255, 255, 255, 0.12); border-top-color: rgba(255, 255, 255, 0.55);
+            animation: nxBootSpin 0.8s linear infinite;
+        }
+        @keyframes nxBootSpin { to { transform: rotate(360deg); } }
+    </style>
     <style>
         /* ===== فونت‌ها و ریست =====
 
@@ -2204,6 +2224,8 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 </style>
 </head>
 <body>
+    <!-- نشانِ خنثیِ بارگذاری — نه لوگوی نکسورا، نه رنگِ هیچ فروشگاهی -->
+    <div class="nx-boot-dot" aria-hidden="true"></div>
     <!-- نورِ محیطی: زیرِ همه چیز، فقط برای عمق -->
     <div class="nx-amb" aria-hidden="true"></div>
 
@@ -4566,8 +4588,24 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 
         // ===== راه‌اندازی اولیه =====
         document.addEventListener("DOMContentLoaded", async () => {
+            // کلیدِ کش: دامنه + ایمیلِ کلاینت — همان دو چیزی که بک‌اند با آن
+            // فروشگاهِ درست (مالک یا نماینده) را پیدا می‌کند.
+            const cfgKey = "nx_subcfg:" + window.location.hostname + ":"
+                + ((sanaeiTemplateData.emails && sanaeiTemplateData.emails[0]) || "");
+            const bootDone = () => document.documentElement.classList.remove('nx-boot');
+            let cached = null;
+            try { cached = JSON.parse(localStorage.getItem(cfgKey) || "null"); } catch (e) { cached = null; }
+            if (cached) { applyRemoteConfig(cached); bootDone(); }
+
             const cfg = await fetchRemoteConfig();
-            applyRemoteConfig(cfg);
+            if (cfg) {
+                try { localStorage.setItem(cfgKey, JSON.stringify(cfg)); } catch (e) { /* فقط راحتی */ }
+                applyRemoteConfig(cfg);
+            } else if (!cached) {
+                // پنل در دسترس نبود و کشی هم نیست — همان پیش‌فرض، مثلِ قبل
+                applyRemoteConfig(null);
+            }
+            bootDone();
 
             // نوار برند تا این لحظه مخفی بوده تا کاربر ابتدا برند پیش‌فرض
             // و بعد برند واقعی (مثلاً واسطه) را نبیند. حالا نمایانش می‌کنیم —

@@ -1209,11 +1209,19 @@ var D_CODES = { ready: true,
        می‌خواند روی هارنس خطا می‌داد و هارنس حالتی را نشان می‌داد
        که سرورِ واقعی هیچ‌وقت ندارد. */
     var HDR = { "x-config-version": "7" };
-    return Promise.resolve({
+    var resp = {
       ok: status < 400, status: status,
       headers: { get: function (k) { return HDR[String(k).toLowerCase()] || null; } },
       json: function () { return Promise.resolve(data); },
       text: function () { return Promise.resolve(""); },
-    });
+    };
+    /* ?lat=2500 — تأخیرِ شبکه، به میلی‌ثانیه.
+       پاسخِ فوری هر مشکلی را پنهان می‌کند که فقط وقتی دیده می‌شود که
+       سرور دیر جواب بدهد: مینی‌اپ با رنگِ پیش‌فرض بالا می‌آمد و بعد به
+       پوسته‌ی فروشگاه می‌پرید، و در هارنس هیچ‌وقت دیده نمی‌شد. */
+    var lat = parseInt(Q0.get("lat") || "0", 10) || 0;
+    return lat > 0
+      ? new Promise(function (res) { setTimeout(function () { res(resp); }, lat); })
+      : Promise.resolve(resp);
   };
 })();

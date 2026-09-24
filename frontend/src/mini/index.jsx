@@ -21,7 +21,8 @@
  * پایینِ صفحه می‌رسد، نه به بالایش. همان الگویی که مالک نمونه‌اش را
  * فرستاد و در هر اپِ موبایلی دیده‌ایم.
  */
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { readShop, writeShop } from "../lib/shopcache.js";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle, ArrowLeft, Camera, Check, ChevronLeft, Clock, Copy,
@@ -1915,15 +1916,13 @@ export default function Mini() {
     const brand = String(me?.brand || "").trim();
     // پیش‌نمایش کشِ مرورگرِ نماینده را با فروشگاهِ نمونه پر نکند
     if (!brand || PREVIEW) return;
-    try {
-      window.localStorage.setItem("nx_shop", JSON.stringify({
-        // پوسته هم — تا صفحه‌ی ورودِ دفعه‌ی بعد از همان اول قالب و
-        // رنگ و لوگوی خودش را داشته باشد. پوسته‌ی خالی هم نوشته
-        // می‌شود: اگر قفل بسته شد، اسپلش نباید قبلی را نگه دارد.
-        brand, logo: String(me?.logo || ""), accent: String(me?.accent || ""),
-        theme: me?.theme || null,
-      }));
-    } catch { /* بی‌اهمیت */ }
+    // پوسته هم — تا صفحه‌ی ورودِ دفعه‌ی بعد از همان اول قالب و رنگ و
+    // لوگوی خودش را داشته باشد. پوسته‌ی خالی هم نوشته می‌شود: اگر قفل
+    // بسته شد، اسپلش نباید قبلی را نگه دارد. کلید برای هر فروشگاه جداست.
+    writeShop({
+      brand, logo: String(me?.logo || ""), accent: String(me?.accent || ""),
+      theme: me?.theme || null,
+    });
   }, [me?.brand, me?.logo, me?.accent, me?.theme]);
 
   /*
@@ -1942,16 +1941,34 @@ export default function Mini() {
   const theme = (PREVIEW && pv) ? pv
     : (me?.theme || (me?.accent ? { palette: "custom", accent: me.accent } : null));
   const themeKey = JSON.stringify(theme || {});
-  useEffect(() => {
+  // useLayoutEffect و نه useEffect: پوسته باید پیش از اولین نقاشیِ اپ
+  // بنشیند، وگرنه یک فریم رنگِ پیش‌فرضِ نکسورا دیده می‌شد
+  useLayoutEffect(() => {
+    // تا فروشگاه نرسیده دست به ریشه نمی‌زنیم: main.jsx پوسته‌ی کش‌شده را
+    // گذاشته، و applyTheme(null) همان را پاک می‌کرد — یعنی حتی در بارِ
+    // دوم، اسپلش و اپ چند ثانیه آبیِ نکسورا بودند
+    if (!PREVIEW && !me) return undefined;
     const paint = () => applyTheme(
       theme, document.documentElement.dataset.mnScheme || "dark");
     paint();
     const w = tg();
     w?.onEvent?.("themeChanged", paint);
     return () => { try { w?.offEvent?.("themeChanged", paint); } catch { /* */ } };
-  }, [themeKey]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [themeKey, !!me]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const logoStyle = theme?.logoStyle;
+
+  // تا فروشگاه معلوم نشده، اپ نشان داده نمی‌شود.
+  //
+  // اسپلشِ main.jsx بعد از ۱٫۷ ثانیه کنار می‌رفت و اپ با رنگ و نامِ
+  // پیش‌فرض («اشتراک من»، آبیِ نکسورا) بالا می‌آمد تا /api/mini/me برسد
+  // — مالک: «اول انگار صفحه‌ی خودِ نکسورا را می‌آورد، بعد شخصی‌سازی».
+  // همان اسپلشِ فروشگاه ادامه پیدا می‌کند؛ خطا اسپلش را کنار می‌زند.
+  if (!PREVIEW && !me && !err) {
+    const c = readShop();
+    return <Splash neutral phase="load" label="اشتراک من" name={c?.brand || ""}
+      logo={c?.logo || ""} logoStyle={c?.theme?.logoStyle} />;
+  }
 
   return (
     <div className="mn-app" dir="rtl">

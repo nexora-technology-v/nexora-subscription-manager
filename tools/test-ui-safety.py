@@ -327,7 +327,7 @@ check("عنوانِ پنجره برای مینی‌اپ نامِ ما نیست",
       "`index.html` یک عنوانِ مشترک برای هر چهار اپ دارد")
 
 check("و مینی‌اپ برند را برای دفعه‌ی بعد نگه می‌دارد",
-      '"nx_shop"' in _MINIJS and "localStorage" in _MINIJS,
+      "writeShop(" in _MINIJS and "localStorage.setItem" in ALL.get("lib/shopcache.js", ""),
       "بدونش هر بار اول یک صفحه‌ی بی‌نام دیده می‌شود")
 
 
@@ -520,6 +520,22 @@ for _m in re.finditer(r"grid-template-columns:\s*([^;{}]+)", _CSSFR):
     if _bare_fr(_m.group(1)):
         _frs.append(f"index.css:{_CSSFR[:_m.start()].count(chr(10)) + 1} {_m.group(1).strip()[:40]}")
 check("هیچ ستونِ شبکه‌ای «1fr» خام نیست (minmax(0, 1fr))", not _frs, ", ".join(_frs[:4]))
+
+# ظاهرِ فروشگاه از اولین فریم — مالک: «اول صفحه‌ی خودِ نکسورا می‌آید،
+# بعد شخصی‌سازی». سه دلیل داشت و هر سه این‌جا سنجیده می‌شوند:
+#   ۱. اپ پیش از رسیدنِ /api/mini/me با رنگِ پیش‌فرض بالا می‌آمد؛
+#   ۲. applyTheme(null) در همان فاصله پوسته‌ی کش‌شده را پاک می‌کرد؛
+#   ۳. کلیدِ کش برای همه‌ی فروشگاه‌ها یکی بود.
+_MINI = ALL.get("mini/index.jsx", "")
+check("مینی‌اپ تا رسیدنِ فروشگاه پشتِ اسپلشِ خودش می‌ماند",
+      "if (!PREVIEW && !me && !err)" in _MINI
+      and re.search(r"useLayoutEffect\(\(\) => \{\s*(//[^\n]*\n\s*)*if \(!PREVIEW && !me\) return", _MINI) is not None)
+_rawkey = [f for f, src in ALL.items() if f != "lib/shopcache.js" and '"nx_shop' in src]
+check("کشِ ظاهرِ فروشگاه یک کلید دارد و برای هر فروشگاه جداست",
+      not _rawkey, ", ".join(_rawkey) or "شناسه‌ی آدرس را test-admin-api با صدا زدنِ miniapp_url می‌سنجد")
+check("صفحه‌ی اشتراک تا نشستنِ ظاهرِ فروشگاه محتوا را نشان نمی‌دهد",
+      all(x in io.open(os.path.join(ROOT, "sub-page-index.html"), encoding="utf-8").read()
+          for x in ("classList.add('nx-boot')", "bootDone()", "nx_subcfg:")))
 
 # پلِ تلگرام فقط برای مینی‌اپ — telegram.org بدونِ VPN فیلتر است و
 # <script src> هم‌زمان در <head> پنلِ مدیر و نماینده را تا timeout سفید
