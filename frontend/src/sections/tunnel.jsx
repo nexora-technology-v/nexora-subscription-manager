@@ -12,6 +12,7 @@ import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { usePolling } from "../lib/hooks";
 import { EmptyState, Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile } from "../ui/index";
+import { isoToJalaliStamp } from "../ui/jalali";
 
 export const ENGINE_COLOR = {
   backhaul: "#34D399",
@@ -1236,7 +1237,7 @@ export function TunnelEvents({ password }) {
                 <div className="text-[13px]" style={{ color: "var(--dim)" }}>{e.message}</div>
                 <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
                   {e.node_name && `${e.node_name} · `}
-                  {e.created_at?.replace("T", " ").slice(0, 16)}
+                  {isoToJalaliStamp(e.created_at)}
                 </div>
               </div>
             </div>

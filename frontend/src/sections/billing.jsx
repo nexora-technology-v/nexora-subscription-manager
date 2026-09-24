@@ -1564,7 +1564,7 @@ export function BillingDash({ password }) {
           <p className="text-[12px] mb-4" style={{ color: "var(--muted)" }}>
             از {faNum(due)} تومانِ این دوره
           </p>
-          <Donut center="تسویه" items={[
+          <Donut center="تسویه" format={(v) => `${faNum(v)} تومان`} items={[
             { n: "دریافت‌شده", v: paid, c: "var(--ok)" },
             { n: "مانده", v: Math.max(0, due - paid), c: "var(--warn)" },
           ]} />

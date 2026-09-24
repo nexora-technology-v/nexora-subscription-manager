@@ -60,8 +60,14 @@
      آن قلم گلیفِ فارسی ندارد، عددِ فارسی هیچ‌وقت از آن استفاده
      نمی‌کرد. این زنجیره فقط قلم‌هایی را نام می‌برد که روی خودِ
      سیستم هستند — پس همه یک چیز می‌بینند. */
+  /* IRANSansX پیش از `monospace`: قلم برای *هر گلیف* جدا انتخاب
+     می‌شود، پس لاتین و رقمِ لاتین هنوز از مونو می‌آیند ولی رقم و
+     حرفِ فارسی — که هیچ‌کدام از این مونوها ندارند — به قلمِ خودِ پنل
+     می‌افتند، نه به تاهومای سیستم. ده‌ها جا faNum داخلِ مونو است؛
+     اصلاحِ تک‌تکشان همان کاری بود که یک‌بار در یازده جا شد و
+     دوباره برگشت. این‌جا یک‌بار برای همه. */
   --mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono",
-          "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+          "SF Mono", Menlo, Consolas, "Liberation Mono", "IRANSansX", monospace;
 
   /* قلمِ عدد — برای جایی که رقمِ *فارسی* نشان داده می‌شود.
      `--mono` گلیفِ فارسی ندارد، پس «۳۲» بی‌صدا به قلمِ پشتیبان
@@ -1259,9 +1265,14 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
    می‌شکست. حالا با فضای اضافه جا می‌گیرد. */
 .fx-donut-row { display: flex; align-items: center; gap: 14px; }
 .fx-donut-row > svg { width: 104px; height: 104px; flex-shrink: 0; }
-.fx-donut-row > .legend { flex: 1; min-width: 96px; }
+/* افسانه تا ۳۲۰ پیکسل — در کارتِ پهن، درصد به لبه‌ی دیگرِ کارت پرت
+   می‌شد و بینِ برچسب و عددش ۶۰۰ پیکسل خالی بود */
+.fx-donut-row > .legend { flex: 1; min-width: 96px; max-width: 320px; }
 @media (max-width: 420px) {
   .fx-donut-row { flex-wrap: wrap; justify-content: center; }
+  /* روی گوشی افسانه زیرِ دونات، تمام‌عرض — مبلغِ «۱۸٬۱۰۰٬۰۰۰ تومان»
+     کنارِ دونات جا نمی‌شد و روی برچسبش می‌افتاد */
+  .fx-donut-row > .legend { flex-basis: 100%; max-width: none; }
 }
 
 /* ── پوسته: نورِ محیطی باید دیده شود ──
@@ -4230,3 +4241,66 @@ button.pd-kpi:active { transform: scale(.985); }
 @media (prefers-reduced-motion: reduce) {
   .st-stage .bar i, .st-live i { animation: none; }
 }
+
+/* ── نمودارِ ستونی و روندِ ریز (جایگزینِ منحنی) ── */
+.fx-spark { display: flex; align-items: flex-end; gap: 2px; width: 100%; max-width: 112px; }
+.fx-spark > i { flex: 1; min-width: 2px; border-radius: 2px 2px 1px 1px; background: var(--c);
+  opacity: .38; transform-origin: bottom; animation: fx-grow .5s var(--sp-soft) both; }
+.fx-spark > i.last { opacity: 1; }
+.fx-bars-wrap { position: relative; }
+.fx-bars { position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  align-items: end; gap: clamp(1px, calc(240px / var(--n)), 6px); cursor: crosshair; touch-action: pan-y; }
+.fx-bars > .gl { position: absolute; inset-inline: 0; height: 0; border-top: 1px dashed var(--border); pointer-events: none; }
+.fx-bars > .b { position: relative; height: var(--h); min-height: 0; border-radius: 4px 4px 2px 2px;
+  background: linear-gradient(180deg, var(--c), color-mix(in srgb, var(--c) 45%, transparent));
+  opacity: .55; transform-origin: bottom; animation: fx-grow .6s var(--sp-soft) both;
+  transition: opacity var(--m-fast) linear, filter var(--m-fast) linear; }
+.fx-bars > .b.last { opacity: .9; }
+.fx-bars:hover > .b { opacity: .28; }
+.fx-bars > .b.on { opacity: 1 !important; filter: brightness(1.15);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 60%, transparent), 0 6px 16px -6px var(--c); }
+@keyframes fx-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.fx-bars-dots { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  gap: clamp(1px, calc(240px / var(--n)), 6px); margin-top: 6px; }
+.fx-bars-dots > i { justify-self: center; width: min(100%, 7px); aspect-ratio: 1; border-radius: 50%;
+  background: var(--c); opacity: var(--o); transition: transform var(--m-fast) var(--sp-snappy); }
+.fx-bars-dots > i.on { transform: scale(1.5); opacity: 1; }
+.fx-bars-wrap .fx-tip { transform: translate(-50%, -104%) scale(.95); }
+.fx-bars-wrap.fx-hot .fx-tip { opacity: 1; transform: translate(-50%, -110%) scale(1); }
+@media (prefers-reduced-motion: reduce) {
+  .fx-bars > .b, .fx-spark > i { animation: none; }
+}
+
+/* نمودارِ ستونی در کارتِ کش‌آمده خودش هم کش می‌آید — وگرنه کارت تا
+   قدِ ستونِ کناری بلند می‌شد و زیرِ نمودار ۱۵۰ پیکسل حفره می‌ماند */
+.fx-g2 > .fx-fill > .fx-bars-wrap { display: flex; flex-direction: column; }
+.fx-g2 > .fx-fill > .fx-bars-wrap > .fx-bars { flex: 1 1 auto; height: auto !important; min-height: 168px; }
+
+/* ── گوشی: دو شاخص در هر ردیف، و نوارِ ذخیره فقط وقتی لازم است ──
+   پیش‌تر زیرِ ۶۴۰ پیکسل هر کارتِ شاخص یک ردیفِ کامل با ۱۴۲ پیکسل قد
+   می‌گرفت؛ چهار کارت = کلِ صفحه‌ی اولِ گوشی، پیش از هر محتوایی. */
+@media (max-width: 1023.98px) {
+  .fx-mobile-save { transform: translateY(115%); transition: transform var(--m-base) var(--sp-snappy); }
+  .fx-mobile-save.show { transform: none; }
+}
+@media (max-width: 639.98px) {
+  .fx-g4 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+  .fx-kpi { min-height: 0; padding: 12px 12px 11px; gap: 6px; }
+  .fx-kpi-val { font-size: 21px; flex-wrap: wrap; row-gap: 2px; white-space: normal; }
+  .fx-kpi-val.long { font-size: 16px; }
+  .fx-kpi-val .u { font-size: 11px; }
+  .fx-kpi-foot { min-height: 0; }
+  .fx-kpi .fx-spark { display: none; }
+  .fx-kpi-note { font-size: 11px; }
+}
+
+/* ── سفارش‌ها: شبکه، با لبه‌ی رنگیِ وضعیت ── */
+.fx-orders { display: grid; gap: 12px; align-items: start;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
+.fx-order { padding: 16px; border-inline-start: 3px solid var(--border-2); display: grid; gap: 12px; }
+.fx-order.st-awaiting, .fx-order.st-review { border-inline-start-color: var(--warn); }
+.fx-order.st-approved { border-inline-start-color: var(--ok); }
+.fx-order.st-rejected, .fx-order.st-panel_reject { border-inline-start-color: var(--danger-line); }
+.fx-order.st-pending { border-inline-start-color: var(--accent-line); }
+.fx-order-act { display: flex; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.fx-order-act > button:first-child { flex: 1; justify-content: center; }

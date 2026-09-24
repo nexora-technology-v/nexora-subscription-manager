@@ -144,6 +144,13 @@
             position: relative;
         }
 
+        /* روی دسکتاپ کمی پهن‌تر — ۴۸۰ پیکسل وسطِ صفحه‌ی ۱۴۴۰ پیکسلی،
+           شبکه‌ی چهارتاییِ دکمه‌ها را به کاشی‌های ۹۰ پیکسلی می‌فشرد */
+        @media (min-width: 900px) {
+            body { max-width: 560px; }
+            .bottom-nav { max-width: 560px; }
+        }
+
         html[dir="ltr"] body { direction: ltr; }
         html[dir="rtl"] body { direction: rtl; }
 
@@ -567,7 +574,13 @@
             width: 108px;
             height: 108px;
             border-radius: 50%;
-            background: conic-gradient(var(--accent) 0% 100%, rgba(255, 255, 255, 0.06) 100% 100%);
+            /* زمینه‌ی حلقه یک دیسک است؛ خودِ حلقه SVG است (پایین‌تر).
+               قبلاً حلقه conic-gradient بود و «سوراخِ» وسطش یک ::after —
+               که قاعده‌ی «براقیِ شیشه‌ای» هزار خط پایین‌تر دوباره نوشتش
+               و دیسک را برداشت. نتیجه یک پای‌چارتِ نصفه بود و برچسبِ
+               آبیِ «باقی‌مانده» روی نیمه‌ی آبی خوانده نمی‌شد. conic
+               هم انیمیت نمی‌شد؛ stroke-dasharray می‌شود. */
+            background: var(--hero-2);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -1529,6 +1542,7 @@
            `.days-left` و `.days-left span` در این فهرست نبودند و
            «نامحدود» آبی روی آبی نوشته می‌شد — در اسکرین‌شاتِ مالک
            عملاً نامرئی بود. */
+        body.tpl-wallet .subscription-card .progress-text .percent,
         body.tpl-wallet .subscription-card .progress-text .value,
         body.tpl-wallet .subscription-card .username-text,
         body.tpl-wallet .subscription-card .days-left,
@@ -1548,6 +1562,13 @@
         body.tpl-wallet .subscription-card .progress-circle {
             background: rgba(255, 255, 255, 0.16) !important;
         }
+        /* `.subscription-card *` بالا هر فرزند را relative می‌کند — حلقه‌ی
+           SVG و نقطه‌ی چرخان هم، پس از جای خود بیرون می‌افتادند و حلقه
+           نصفه بیرونِ کارت می‌نشست. این دو باید absolute بمانند. */
+        body.tpl-wallet .subscription-card .ring-svg,
+        body.tpl-wallet .subscription-card .radar-sweep { position: absolute; }
+        /* حلقه روی کارتِ رنگی: رنگِ زمینه‌ی صفحه، نه accent روی accent */
+        body.tpl-wallet .ring-arc { stroke: var(--bg) !important; filter: none; }
         body.tpl-wallet .action-cell {
             border-radius: 16px !important;
             padding: 14px 6px !important;
@@ -1703,6 +1724,22 @@
         }
 
         .progress-text { position: relative; z-index: 3; }
+
+        /* ── حلقه‌ی درصد (SVG) ── */
+        .ring-svg {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            transform: rotate(-90deg); z-index: 1; overflow: visible; pointer-events: none;
+        }
+        .ring-svg circle { fill: none; stroke-width: 8; }
+        .ring-track { stroke: rgba(255, 255, 255, 0.07); }
+        .ring-arc {
+            stroke: var(--accent); stroke-linecap: round;
+            filter: drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.55));
+            transition: stroke-dasharray 1.15s cubic-bezier(.34, 1.15, .5, 1), stroke 0.4s linear;
+        }
+        body.tpl-wallet .ring-track { stroke: rgba(0, 0, 0, 0.12); }
+        @media (prefers-reduced-motion: reduce) { .ring-arc { transition: none; } }
+
 
         /* دکمه‌ها — کلید فیزیکی */
         .action-cell {
@@ -2293,6 +2330,11 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             </div>
             <div class="status-left">
                 <div class="progress-circle" id="sub-progress-circle">
+                    <svg class="ring-svg" viewBox="0 0 108 108" aria-hidden="true">
+                        <circle class="ring-track" cx="54" cy="54" r="46"></circle>
+                        <circle class="ring-arc" id="ring-arc" cx="54" cy="54" r="46"
+                                stroke-dasharray="0 289.03"></circle>
+                    </svg>
                     <div class="radar-sweep"></div>
                     <div class="progress-text">
                         <span class="percent en-font" id="live-percent-display">0%</span>
@@ -2837,31 +2879,23 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
          * background کار می‌کند. پس از صفر شروع می‌کنیم و در فریم بعدی
          * مقدار واقعی را می‌گذاریم تا مرورگر بینشان را پر کند.
          */
-        function sweepRing(percent, color) {
-            const el = document.getElementById('sub-progress-circle');
-            if (!el) return;
-
+        // محیطِ دایره با r=46 — همان که در SVG است
+        const RING_C = 2 * Math.PI * 46;
+        function paintRing(percent, color) {
+            const arc = document.getElementById('ring-arc');
+            if (!arc) return;
             const pct = Math.max(0, Math.min(100, Number(percent) || 0));
-            const col = color || 'var(--accent)';
-            const paint = (p) =>
-                `conic-gradient(${col} 0% ${p}%, rgba(255,255,255,0.06) ${p}% 100%)`;
-
-            if (prefersReducedMotion()) {
-                el.style.background = paint(pct);
-                return;
-            }
-
-            el.classList.remove('nx-sweeping');
-            el.style.background = paint(0);
-
-            // دو فریم صبر می‌کنیم تا مرورگر مقدار صفر را ثبت کند،
-            // وگرنه هر دو تغییر با هم دیده می‌شوند و انیمیشنی رخ نمی‌دهد.
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    el.classList.add('nx-sweeping');
-                    el.style.background = paint(pct);
-                });
-            });
+            arc.style.strokeDasharray = `${(RING_C * pct) / 100} ${RING_C}`;
+            if (color) arc.style.stroke = color;
+        }
+        function sweepRing(percent, color) {
+            const arc = document.getElementById('ring-arc');
+            if (!arc) return;
+            if (prefersReducedMotion()) { paintRing(percent, color); return; }
+            paintRing(0, color);
+            // دو فریم صبر تا مرورگر صفر را ثبت کند — وگرنه هر دو مقدار
+            // در یک فریم می‌نشینند و جاروبی دیده نمی‌شود
+            requestAnimationFrame(() => requestAnimationFrame(() => paintRing(percent, color)));
         }
 
         /**
@@ -2875,7 +2909,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             const suffix = o.suffix || '';
 
             if (prefersReducedMotion()) {
-                el.textContent = target.toFixed(decimals) + suffix;
+                el.textContent = locDigits(target.toFixed(decimals) + suffix);
                 return;
             }
 
@@ -2883,7 +2917,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             const tick = (now) => {
                 const p = Math.min((now - start) / dur, 1);
                 const eased = 1 - Math.pow(1 - p, 3);
-                el.textContent = (target * eased).toFixed(decimals) + suffix;
+                el.textContent = locDigits((target * eased).toFixed(decimals) + suffix);
                 if (p < 1) requestAnimationFrame(tick);
             };
             requestAnimationFrame(tick);
@@ -3627,7 +3661,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             } else if (sanaeiClientData.daysLeft === null) {
                 document.getElementById("live-days-count").innerHTML = `<span style="font-size:22px;">${data.unlimitedText}</span>`;
             } else {
-                document.getElementById("live-days-count").innerHTML = `${sanaeiClientData.daysLeft} <span id="days-label">${data.daysUnit}</span>`;
+                document.getElementById("live-days-count").innerHTML = `${locDigits(sanaeiClientData.daysLeft)} <span id="days-label">${data.daysUnit}</span>`;
             }
 
             document.getElementById("stat-limit").innerText = sanaeiClientData.totalByte > 0 ? formatBytes(sanaeiClientData.totalByte) : data.unlimitedText;
@@ -3652,11 +3686,11 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
                 if (percentRemaining < 0) percentRemaining = 0;
                 if (percentRemaining > 100) percentRemaining = 100;
             }
-            setText("detail-remaining-value", percentRemaining + '%');
+            setText("detail-remaining-value", locDigits(percentRemaining + '%'));
             sanaeiClientData.percentRemaining = percentRemaining;
 
             if (sanaeiClientData.totalByte > 0) {
-                setText("detail-remaining-volume", remainingVolume > 0 ? formatBytes(remainingVolume) : '0 B');
+                setText("detail-remaining-volume", remainingVolume > 0 ? formatBytes(remainingVolume) : locDigits('0 B'));
             } else {
                 setText("detail-remaining-volume", data.unlimitedText);
             }
@@ -3704,9 +3738,8 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
                 sweepRing(percentRemaining, ringColor);
                 countTo(pctEl, percentRemaining, { suffix: "%", duration: 1150 });
             } else {
-                pctEl.innerText = percentRemaining + "%";
-                ringEl.style.background =
-                    `conic-gradient(${ringColor} 0% ${percentRemaining}%, rgba(255, 255, 255, 0.05) ${percentRemaining}% 100%)`;
+                pctEl.innerText = locDigits(percentRemaining + "%");
+                paintRing(percentRemaining, ringColor);
             }
             updateStatusUI();
             updateAlertBanners();
@@ -3953,13 +3986,28 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
             };
         }
 
+        /**
+         * رقم‌ها به زبانِ صفحه.
+         *
+         * در حالتِ فارسی نیمی از عددها فارسی بودند (تاریخ، «۹ دقیقه
+         * پیش») و نیمی لاتین («18 روز»، «50%»، «24.9 GB») — در یک کارت،
+         * کنارِ هم. حالا هر عددی که نشان داده می‌شود از این‌جا رد می‌شود.
+         */
+        function locDigits(v) {
+            const s = String(v);
+            if (currentLang !== 'fa') return s;
+            return s.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[d])
+                    .replace(/([۰-۹])\.([۰-۹])/g, '$1٫$2')
+                    .replace(/%/g, '٪');
+        }
+
         function formatBytes(bytes) {
-            if (bytes === 0) return "0 B";
+            if (bytes === 0) return locDigits("0 B");
             if (bytes < 0 || bytes === undefined || bytes === null) return "---";
             const k = 1024;
             const sizes = ["Bytes", "KB", "MB", "GB", "TB"];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+            return locDigits(parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]);
         }
 
         function renderActionMenus() {

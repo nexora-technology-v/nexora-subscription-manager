@@ -14,7 +14,7 @@ import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { Avatar, EmptyState, Field, InfoBox, Msg, MoneyInput, NumberInput, SectionHead, StatTile } from "../ui/index";
 import { BotInboundsSection } from "./bot/inbounds";
-import { isoToJalaliLabel } from "../ui/jalali";
+import { isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
 
 
 /** همان الگوی بقیه‌ی بخش‌ها: بخوان، نگه دار، دوباره بخوان. */
@@ -373,7 +373,7 @@ function Row({ t, groups, password, onSaved, setMsg }) {
                 </span>
                 <span dir="ltr" style={{ color: "var(--muted)",
                                          fontFamily: "var(--mono)" }}>
-                  {String(r.created_at || "").slice(0, 16)}
+                  {isoToJalaliStamp(r.created_at)}
                 </span>
               </div>
             ))}

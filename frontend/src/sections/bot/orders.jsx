@@ -12,6 +12,7 @@ import {
 import { errText, faNum } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
 import { Avatar, EmptyState, Field, Msg, PageSkeleton, SectionHead, StatTile, StatusPill, Tabs } from "../../ui/index";
+import { isoToJalaliLabel, isoToJalaliStamp } from "../../ui/jalali";
 
 export const REJECT_REASONS = [
   "مبلغ واریزی با مبلغ سفارش مطابقت ندارد.",
@@ -115,7 +116,7 @@ export function BotOrdersSection({ password }) {
             value={faNum(sumAmount)} unit="تومان" color="var(--ok)"
             hint={orders.length ? `میانگین ${faNum(Math.round(sumAmount / orders.length))}` : ""} />
           <StatTile label="تازه‌ترین" icon={Clock} tone="var(--warn)"
-            value={newest ? faNum(String(newest).slice(0, 10)) : "—"}
+            value={newest ? isoToJalaliLabel(newest) : "—"}
             hint={waiting ? `${faNum(waiting)} مورد در انتظار تایید` : "چیزی معطل نمانده"} />
         </div>
       )}
@@ -130,9 +131,13 @@ export function BotOrdersSection({ password }) {
           hint={filter === "awaiting"
             ? "هر رسیدی که مشتری بفرستد همین‌جا می‌آید — و از گروه تلگرام هم می‌شود تاییدش کرد."
             : "فیلتر بالا را عوض کنید تا سفارش‌های دیگر را ببینید."} />
-      ) : orders.map((o) => (
-        <div key={o.id} className="fx-card p-4 mb-3">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
+      ) : (
+        /* شبکه، نه ستونِ تمام‌عرض: هر سفارش یک کارتِ ۱۱۴۰ پیکسلی بود با
+           نام در یک لبه و دکمه‌ی تایید در لبه‌ی دیگر — چشم برای هر رسید
+           عرضِ کلِ صفحه را طی می‌کرد. */
+        <div className="fx-orders">{orders.map((o) => (
+        <div key={o.id} className={`fx-card fx-order st-${o.status || "none"}`}>
+          <div className="flex items-start justify-between gap-3">
             {o.receipt_type === "photo" && (
               <button onClick={() => setZoom(o.id)}
                 className="shrink-0 rounded-xl overflow-hidden relative"
@@ -164,19 +169,20 @@ export function BotOrdersSection({ password }) {
                 <div className="mt-2.5 rounded-xl p-3 text-[13px] leading-relaxed whitespace-pre-wrap"
                   dir="auto" style={{
                     background: "var(--surface-3)", border: "1px solid var(--border)",
-                    color: "var(--dim)", fontFamily: "var(--mono)",
+                    color: "var(--dim)",
                     maxHeight: 130, overflowY: "auto",
                   }}>
                   {o.receipt_text}
                 </div>
               )}
-              <div className="text-[12px] mt-1.5" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                #{o.id} · {o.created_at?.slice(0, 16)}
+              <div className="text-[12px] mt-1.5" style={{ color: "var(--muted)" }}>
+                #{faNum(o.id)} · {isoToJalaliStamp(o.created_at)}
               </div>
             </div>
 
+          </div>
             {(o.status === "awaiting" || o.status === "review") && (
-              <div className="flex gap-2 shrink-0">
+              <div className="fx-order-act">
                 <button onClick={() => act(o.id, "approve")} disabled={busy === o.id}
                   className="px-3.5 py-2.5 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5"
                   style={{ background: "var(--ok-soft)", color: "var(--ok)", border: "1px solid var(--ok-line)" }}>
@@ -188,9 +194,9 @@ export function BotOrdersSection({ password }) {
                 </button>
               </div>
             )}
-          </div>
         </div>
-      ))}
+        ))}</div>
+      )}
 
       {zoom && createPortal(
         <div onClick={() => setZoom(null)}

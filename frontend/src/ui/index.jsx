@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { faNum, errText, toFaDigits } from "../lib/format";
+import { isoToJalaliLabel } from "./jalali.jsx";
 
 /**
  * ارقام فارسی و عربی و جداکننده‌ها را به عددِ خامِ لاتین تبدیل می‌کند.
@@ -323,54 +324,28 @@ export const reducedMotion = () =>
    !!window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
 
 /**
- * اسپارک‌لاین — خطِ ریزِ کنار عدد.
+ * روندِ ریزِ کنارِ عدد — ستون‌های کوچک، نه خط.
  *
- * زیرش با گرادیان پر می‌شود تا حجم دیده شود، و خط موقع ورود
- * *کشیده* می‌شود نه اینکه یکباره ظاهر شود: چشم مسیر را دنبال
- * می‌کند و جهتِ روند بدون خواندن عدد فهمیده می‌شود.
+ * نسخه‌ی قبلی خطی بود که بینِ نقطه‌ها نرم می‌شد و کف و سقفش را از
+ * خودِ داده می‌گرفت؛ پس سری‌ای که بینِ ۴۰ و ۴۲ بالا و پایین می‌رفت
+ * شبیهِ نوسانِ شدید دیده می‌شد. ستون‌ها از صفر می‌آیند و روزِ آخر
+ * پررنگ است — «امروز کجاییم» اولین چیزی است که چشم می‌گیرد.
  */
 export function Sparkline({ data, color = "var(--accent-2)", height = 32 }) {
-  const id = useRef(`sp${Math.random().toString(36).slice(2, 9)}`).current;
-  const ref = useRef(null);
-  const ok = data && data.length >= 2;
-
-  useEffect(() => {
-    const ln = ref.current?.querySelector("path.ln");
-    if (!ln || reducedMotion()) return;
-    // getTotalLength در هر محیطی نیست (jsdom ندارد، و همین‌جا هم
-    // تست گرفتش). بدون این محافظ، نبودنش کلِ بخش را می‌انداخت —
-    // برای یک انیمیشنِ تزئینی. اگر نبود، خط بدون کشیده‌شدن رسم
-    // می‌شود و هیچ چیز دیگری فرق نمی‌کند.
-    let len;
-    try { len = ln.getTotalLength?.(); } catch { return; }
-    if (!len) return;
-    ln.style.setProperty("--len", len);
-    ln.classList.remove("fx-draw");
-    void ln.getBoundingClientRect();
-    ln.classList.add("fx-draw");
-  }, [data]);
-
-  if (!ok) return <div style={{ height }} />;
-
-  const W = 108, H = 34, pad = 4;
-  const mx = Math.max(...data), mn = Math.min(...data), rg = mx - mn || 1;
-  const pts = data.map((v, i) => [
-    (i / (data.length - 1)) * W,
-    H - pad - ((v - mn) / rg) * (H - pad * 2),
-  ]);
-
+  const pts = (data || []).filter((v) => typeof v === "number" && isFinite(v));
+  if (pts.length < 2) return <div style={{ height }} />;
+  // بیشتر از ۲۴ ستون در ۱۰۸ پیکسل فقط خاکستری می‌شود — آخرین‌ها
+  const tail = pts.slice(-24);
+  const max = Math.max(...tail, 1);
+  const anim = !reducedMotion();
   return (
-    <svg ref={ref} className="fx-spark" viewBox={`0 0 ${W} ${H}`}
-      style={{ width: "100%", maxWidth: W, height }} aria-hidden="true">
-      <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity=".5" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={smoothPath(pts, H)} fill={`url(#${id})`} />
-      <path className="ln" d={smoothPath(pts)} stroke={color} />
-    </svg>
+    <div className="fx-spark" dir="ltr" style={{ height, "--c": color }} aria-hidden="true">
+      {tail.map((v, i) => (
+        <i key={i} className={i === tail.length - 1 ? "last" : ""}
+          style={{ height: `${Math.max(v > 0 ? 8 : 4, (v / max) * 100)}%`,
+                   ...(anim ? { animationDelay: `${i * 18}ms` } : { animation: "none" }) }} />
+      ))}
+    </div>
   );
 }
 
@@ -524,8 +499,14 @@ export function Msg({ msg }) {
 }
 
 export function StatusPill({ s }) {
+  // هر وضعیتی که بکند و ربات می‌نویسند — نبودنِ یکی یعنی کلمه‌ی خامِ
+  // انگلیسی («pending») وسطِ پنلِ فارسی، که همین پیش آمده بود.
   const map = {
+    pending: ["منتظر رسید", "var(--accent-2)", "var(--accent-soft)"],
     awaiting: ["در انتظار", "var(--warn)", "var(--warn-soft)"],
+    expired: ["مهلت گذشت", "var(--muted)", "var(--hair-2)"],
+    cancelled: ["لغوشده", "var(--muted)", "var(--hair-2)"],
+    panel_reject: ["در صف رد", "var(--danger)", "var(--danger-soft)"],
     review: ["بررسی", "var(--warn)", "var(--warn-soft)"],
     approved: ["تاییدشده", "var(--ok)", "var(--ok-soft)"],
     panel_approve: ["در صف ساخت", "var(--accent-2)", "var(--accent-soft)"],
@@ -747,7 +728,7 @@ export function SkeletonTable({ rows = 6, cols = 4 }) {
  * بخش‌ها یکی‌یکی کشیده می‌شوند و با موس روی هرکدام، بقیه کم‌رنگ
  * می‌شوند: مقایسه‌ی یک سهم با کل، بدون خواندن عدد.
  */
-export function Donut({ items, size = 124, center }) {
+export function Donut({ items, size = 124, center, format = (v) => faNum(v) }) {
   const [hi, setHi] = useState(null);
   const [on, setOn] = useState(false);
   const R = 45, C = 2 * Math.PI * R;
@@ -796,10 +777,14 @@ export function Donut({ items, size = 124, center }) {
             onMouseEnter={() => setHi(s.i)} onMouseLeave={() => setHi(null)}
             onFocus={() => setHi(s.i)} onBlur={() => setHi(null)}>
             <i className="w-2 h-2 rounded-[3px] shrink-0" style={{ background: s.c }} />
-            <span className="truncate">{s.n}</span>
-            <b className="mr-auto shrink-0" style={{ fontFamily: "var(--mono)" }}>
+            {/* بریده نه — «نزدیک ا…» در کارتِ باریک نمی‌گفت چیست */}
+            <span className="min-w-0" style={{ lineHeight: 1.35 }}>{s.n}</span>
+            {/* خودِ مقدار هم، نه فقط درصد — «۸۳٪» بدونِ «۳۴۲ نفر»
+                نمی‌گوید چند نفر پشتش است */}
+            <b className="mr-auto shrink-0" style={{ color: "var(--text)" }}>{format(s.v)}</b>
+            <em className="shrink-0 not-italic" style={{ color: "var(--muted)", minWidth: 34, textAlign: "left" }}>
               {faNum(Math.round((s.v / tot) * 100))}٪
-            </b>
+            </em>
           </button>
         ))}
       </div>
@@ -945,29 +930,31 @@ export class ErrorBoundary extends React.Component {
 
 
 /**
- * نمودار سطحی — یک یا دو سری روی یک محور.
+ * نمودارِ ستونیِ روزانه — جایگزینِ منحنی.
  *
- * چرا دو سری روی *یک* نمودار و نه دو نمودار زیر هم: دو نمودارِ
- * جدا یعنی دو بار خواندنِ محور و دو بار پیداکردنِ همان روز. وقتی
- * روی هم بیفتند، «فروش بالا رفت ولی تعداد سفارش نه» در یک نگاه
- * دیده می‌شود. ارتفاع کارت هم نصف می‌شود — که همان فضای خالی بود.
+ * مالک: «نمودارِ خطی جالب نیست». حق داشت، و فقط سلیقه نبود: منحنیِ
+ * نرم‌شده بینِ دو روز مقدار «اختراع» می‌کرد — شمارِ سفارش عدد صحیح
+ * است، ولی منحنی بینِ ۲ و ۵ از ۳٫۴ هم رد می‌شد و در روزهای صفر زیرِ
+ * کف فرو می‌رفت. هر ستون یک روز است؛ چیزی بینشان کشیده نمی‌شود.
  *
- * سری دوم مقیاسِ خودش را دارد: تومان و «تعداد» هیچ‌وقت روی یک
- * مقیاس معنا نمی‌دهند؛ با یک مقیاس، خطِ تعداد همیشه صاف کفِ نمودار
- * می‌چسبد.
+ * سری دوم (مثلاً تعدادِ سفارش) مقیاسِ خودش را دارد و روی ستون‌ها
+ * نمی‌نشیند — دو مقیاس روی یک ستون گمراه‌کننده است. زیرِ نمودار یک
+ * ردیفِ نقطه است که شدتش همان مقدار است: «فروش بالا رفت ولی تعداد
+ * نه» هنوز در یک نگاه دیده می‌شود.
  *
- * `data`/`color` مثل قبل کار می‌کنند — ده جای پنل همان‌طور صدایش
- * می‌زنند و نباید دست بخورند.
+ * API همان AreaChart است (`data`, `data2`, `format`...) تا هیچ
+ * فراخوانی عوض نشود؛ `labels` اختیاری است و سرِ تولتیپ می‌نشیند
+ * (تاریخِ ISO شمسی می‌شود).
  */
 export function AreaChart({
   data, color = "var(--accent-2)", height = 90, label,
-  format = (v) => String(v), fill = true,
-  data2, color2 = "var(--cy)", label2, format2,
+  format = (v) => String(v),
+  data2, color2 = "var(--cy)", label2, format2, labels,
 }) {
   const [hover, setHover] = useState(null);
   const [tipX, setTipX] = useState(0);
   const tipRef = useRef(null);
-  const id = useRef(`ac${Math.random().toString(36).slice(2, 9)}`).current;
+  const boxRef = useRef(null);
 
   const clean = (a) => (a || []).filter((v) => typeof v === "number" && isFinite(v));
   const pts = clean(data);
@@ -980,150 +967,87 @@ export function AreaChart({
     );
   }
 
-  const W = 100, H = 34, PB = 1;
   const max = Math.max(...pts, 1);
   const max2 = Math.max(...pts2, 1);
-  const x = (i, n) => (i / ((n || pts.length) - 1)) * W;
-  // کف صفر است تا نسبت‌ها صادقانه دیده شوند
-  const y = (v) => H - (v / max) * (H - 2) - PB;
-  const y2 = (v) => H - (v / max2) * (H - 2) - PB;
+  const n = pts.length;
+  const last = n - 1;
+  const hv = hover ?? last;
+  const j = pts2.length ? Math.min(pts2.length - 1, Math.round((hv / last) * (pts2.length - 1))) : 0;
+  const lab = labels && labels[hv] != null ? String(labels[hv]) : "";
+  const labFa = /^\d{4}-\d{2}-\d{2}/.test(lab) ? isoToJalaliLabel(lab) : lab;
+  const anim = !reducedMotion();
 
-  const curve = (arr, fy) => {
-    const n = arr.length;
-    let d = `M ${x(0, n)},${fy(arr[0])}`;
-    for (let i = 0; i < n - 1; i++) {
-      const p0 = arr[i === 0 ? 0 : i - 1], p1 = arr[i];
-      const p2 = arr[i + 1], p3 = arr[i + 2 < n ? i + 2 : i + 1];
-      const c1x = x(i, n) + (x(i + 1, n) - x(i === 0 ? 0 : i - 1, n)) / 6;
-      const c1y = fy(p1) + (fy(p2) - fy(p0)) / 6;
-      const c2x = x(i + 1, n) - (x(i + 2 < n ? i + 2 : i + 1, n) - x(i, n)) / 6;
-      const c2y = fy(p2) - (fy(p3) - fy(p1)) / 6;
-      d += ` C ${c1x},${c1y} ${c2x},${c2y} ${x(i + 1, n)},${fy(p2)}`;
-    }
-    return d;
-  };
-
-  const d = curve(pts, y);
-  const area = `${d} L ${W},${H} L 0,${H} Z`;
-  const d2 = pts2.length >= 2 ? curve(pts2, y2) : null;
-
-  const track = (clientX, el) => {
+  const pick = (clientX) => {
+    const el = boxRef.current;
+    if (!el) return;
     const r = el.getBoundingClientRect();
-    const rel = (clientX - r.left) / r.width;
-    // چیدمان راست‌به‌چپ است ولی نمودار زمانی چپ‌به‌راست می‌ماند
-    const i = Math.round(rel * (pts.length - 1));
-    const idx = Math.max(0, Math.min(pts.length - 1, i));
+    // محورِ زمان چپ‌به‌راست می‌ماند، حتی در صفحه‌ی راست‌به‌چپ
+    const idx = Math.max(0, Math.min(last, Math.floor(((clientX - r.left) / r.width) * n)));
     setHover(idx);
-    // تولتیپ داخل نمودار می‌ماند.
-    //
-    // بدون این، در دو سرِ نمودار نصفش بیرون می‌زد و چون
-    // translate(-50%) دارد، پهنای *کلِ صفحه* را زیاد می‌کرد —
-    // اندازه‌گیری‌شده: کارت ۴۸۰ پیکسل، محتوا ۵۲۱. یعنی یک نوار
-    // اسکرول افقی که هیچ‌کس دلیلش را پیدا نمی‌کرد.
-    const half = ((tipRef.current && tipRef.current.offsetWidth) || 140) / 2 + 6;
-    const px = (x(idx) / W) * r.width;
+    // تولتیپ داخلِ کارت می‌ماند — نصفه‌بیرون‌زده پهنای صفحه را زیاد می‌کرد
+    const half = ((tipRef.current && tipRef.current.offsetWidth) || 150) / 2 + 6;
+    const px = ((idx + 0.5) / n) * r.width;
     setTipX(Math.max(half, Math.min(r.width - half, px)));
   };
-  const onMove = (e) => track(e.clientX, e.currentTarget);
-  const onTouch = (e) => track(e.touches[0].clientX, e.currentTarget);
-
-  const hv = hover ?? 0;
-  // نقطه‌ی متناظر در سری دوم — اگر طولشان یکی نبود، نسبتی
-  const j = pts2.length
-    ? Math.min(pts2.length - 1, Math.round((hv / (pts.length - 1)) * (pts2.length - 1)))
-    : 0;
 
   return (
-    <div className={`relative ${hover !== null ? "fx-hot" : ""}`}>
-      {/* تولتیپ شیشه‌ای — روی نمودار، نه زیرش.
-          ظرف dir نمی‌گیرد: متنِ فارسی داخلش راست‌چین می‌ماند و
-          مختصاتِ SVG اصلاً به جهتِ نوشتار کاری ندارد. */}
-      {/* پیش از اولین هاور وسط می‌ماند: با left:0 و translate(-50%)
-          نصفش بیرونِ کارت بود و همان پهنای صفحه را زیاد می‌کرد. */}
+    <div className={`fx-bars-wrap ${hover !== null ? "fx-hot" : ""}`}>
       <div className="fx-tip" ref={tipRef}
-        style={{ left: hover === null ? "50%" : tipX,
-                 top: `${(y(pts[hv]) / H) * 100}%` }}>
+        style={{ left: hover === null ? "50%" : tipX, top: 0 }}>
+        {labFa && <div className="text-[11px] mb-1" style={{ color: "var(--muted)" }}>{labFa}</div>}
         <div className="flex items-center gap-2 text-[12px]">
           <i className="w-2 h-2 rounded-[3px] shrink-0" style={{ background: color }} />
           <span style={{ color: "var(--muted)" }}>{label || "مقدار"}</span>
-          <b className="mr-auto" style={{ color, fontFamily: "var(--mono)" }}>
-            {hover !== null ? format(pts[hv]) : ""}
-          </b>
+          <b className="mr-auto" style={{ color: "var(--text)" }}>{format(pts[hv])}</b>
         </div>
-        {d2 && (
+        {pts2.length > 0 && (
           <div className="flex items-center gap-2 text-[12px] mt-1">
-            <i className="w-2 h-2 rounded-[3px] shrink-0" style={{ background: color2 }} />
+            <i className="w-2 h-2 rounded-full shrink-0" style={{ background: color2 }} />
             <span style={{ color: "var(--muted)" }}>{label2 || ""}</span>
-            <b className="mr-auto" style={{ color: color2, fontFamily: "var(--mono)" }}>
-              {hover !== null ? (format2 || format)(pts2[j]) : ""}
-            </b>
+            <b className="mr-auto" style={{ color: "var(--text)" }}>{(format2 || format)(pts2[j])}</b>
           </div>
         )}
       </div>
 
-      <svg className="fx-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
-        style={{ height, cursor: "crosshair" }}
-        onMouseMove={onMove} onMouseLeave={() => setHover(null)}
-        onTouchMove={onTouch} onTouchEnd={() => setHover(null)}>
-        <defs>
-          <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.38" />
-            <stop offset="100%" stopColor={color} stopOpacity="0.02" />
-          </linearGradient>
-          <clipPath id={`${id}c`}>
-            <rect className={reducedMotion() ? "" : "fx-reveal"} x="0" y="0" width={W} height={H} />
-          </clipPath>
-        </defs>
-
-        {/* خطوط راهنمای افقی — بدون آن‌ها منحنی در فضای خالی شناور است */}
-        {[0.25, 0.5, 0.75].map((f) => (
-          <line key={f} className="gl" x1="0" y1={H * f} x2={W} y2={H * f}
-            vectorEffect="non-scaling-stroke" />
+      <div ref={boxRef} className="fx-bars" dir="ltr" style={{ height, "--n": n }}
+        onMouseMove={(e) => pick(e.clientX)} onMouseLeave={() => setHover(null)}
+        onTouchStart={(e) => pick(e.touches[0].clientX)}
+        onTouchMove={(e) => pick(e.touches[0].clientX)} onTouchEnd={() => setHover(null)}
+        role="img" aria-label={`${label || "نمودار"} — بیشینه ${format(max)}`}>
+        {[0.25, 0.5, 0.75].map((f) => <i key={f} className="gl" style={{ bottom: `${f * 100}%` }} />)}
+        {pts.map((v, i) => (
+          <span key={i} className={`b ${i === hv && hover !== null ? "on" : ""} ${i === last ? "last" : ""}`}
+            style={{ "--h": `${Math.max(v > 0 ? 3 : 0, (v / max) * 100)}%`, "--c": color,
+                     ...(anim ? { animationDelay: `${Math.min(i * 14, 420)}ms` } : { animation: "none" }) }} />
         ))}
+      </div>
 
-        <g clipPath={`url(#${id}c)`}>
-          {fill && <path d={area} fill={`url(#${id})`} />}
-          <path d={d} fill="none" stroke={color} strokeWidth="1.8"
-            strokeLinecap="round" strokeLinejoin="round"
-            vectorEffect="non-scaling-stroke" />
-          {d2 && (
-            <path d={d2} fill="none" stroke={color2} strokeWidth="1.3"
-              strokeDasharray="3 4" strokeLinecap="round" opacity=".62"
-              vectorEffect="non-scaling-stroke" />
-          )}
-        </g>
+      {pts2.length > 0 && (
+        <div className="fx-bars-dots" dir="ltr" style={{ "--n": pts2.length }} aria-hidden="true">
+          {pts2.map((v, i) => (
+            <i key={i} style={{ "--o": 0.12 + 0.88 * (v / max2), "--c": color2 }}
+              className={i === j && hover !== null ? "on" : ""} />
+          ))}
+        </div>
+      )}
 
-        <line className="fx-guide" x1={x(hv)} y1="0" x2={x(hv)} y2={H}
-          vectorEffect="non-scaling-stroke" />
-        <circle className="fx-dot" cx={x(hv)} cy={y(pts[hv])} r="2.6" fill={color}
-          stroke="var(--surface)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
-        {d2 && (
-          <circle className="fx-dot" cx={x(hv)} cy={y2(pts2[j])} r="2.2" fill={color2}
-            stroke="var(--surface)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />
-        )}
-      </svg>
-
-      {/* افسانه، و بیشینه‌ی هر سری — تا وقتی موس روی نمودار نیست هم
-          معلوم باشد این خط‌ها چه‌اند و سقفشان کجاست */}
-      <div className="flex items-center gap-3 flex-wrap text-[11.5px] mt-2"
-        style={{ color: "var(--muted)" }}>
+      {/* افسانه، و مقدارِ آخرین روز یا ستونِ زیرِ موس */}
+      <div className="flex items-center gap-3 flex-wrap text-[11.5px] mt-2" style={{ color: "var(--muted)" }}>
         <span className="flex items-center gap-1.5">
-          <i className="w-2 h-2 rounded-[3px]" style={{ background: color }} />
-          {label}
+          <i className="w-2 h-2 rounded-[3px]" style={{ background: color }} />{label}
         </span>
-        {d2 && (
+        {pts2.length > 0 && (
           <span className="flex items-center gap-1.5">
-            <i className="w-2 h-2 rounded-[3px]" style={{ background: color2 }} />
-            {label2}
+            <i className="w-2 h-2 rounded-full" style={{ background: color2 }} />{label2}
           </span>
         )}
-        <span className="mr-auto" style={{ color: hover !== null ? color : "var(--muted)" }}>
-          {hover !== null ? format(pts[hover]) : `بیشینه ${format(max)}`}
-        </span>
+        <span className="mr-auto">بیشینه {format(max)}</span>
       </div>
     </div>
   );
 }
+export const BarChart = AreaChart;
+
 
 
 /**

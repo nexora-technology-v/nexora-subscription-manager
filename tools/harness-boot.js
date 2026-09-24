@@ -187,7 +187,8 @@
              username: "user" + i, tg_id: 5000 + i,
              plan: ["یک‌ماهه", "سه‌ماهه", "شش‌ماهه"][i % 3],
              amount: [120000, 280000, 480000][i % 3],
-             status: ["approved", "pending", "rejected"][i % 3],
+             status: ["approved", "awaiting", "rejected", "awaiting", "pending", "expired"][i % 6],
+             receipt_type: i % 4 === 1 ? "text" : "", receipt_text: i % 4 === 1 ? ["کارت به کارت ۲۸۰ هزار، ساعت ۱۴:۳۰", "پیگیری ۴۴۱۲۰۹"].join(String.fromCharCode(10)) : "",
              paid_from: i % 2 ? "card" : "wallet",
              created_at: "2026-09-0" + ((i % 9) + 1) + " 12:30" };
   }) };
@@ -255,9 +256,14 @@
       return { id: i + 1, name: "تانل " + (i + 1), engine: "gost",
                status: "running", src: 1, dst: i + 2, port: 2000 + i };
     }),
+    // همان ستون‌های `recent_events` — شکلِ کهنه‌ی {at, kind, text} صفحه‌ی
+    // رویدادها را چهار ردیفِ خالی با یک نقطه نشان می‌داد
     events: mk(4, function (i) {
-      return { id: i, at: "2026-09-16 0" + i + ":00", kind: "info",
-               text: "تانل " + (i % 2 + 1) + " دوباره وصل شد" };
+      return { id: i, created_at: "2026-09-16 0" + i + ":00:00",
+               level: ["info", "warn", "info", "error"][i],
+               message: ["تانل ۱ دوباره وصل شد", "تأخیر تانل ۲ بالای ۳۰۰ میلی‌ثانیه",
+                         "سرور آلمان-۱ آنلاین شد", "تانل ۲ قطع شد — تلاش دوباره"][i],
+               node_name: ["ایران-۱", "آلمان-۱", "آلمان-۱", "فنلاند-۱"][i] };
     }),
     engines: [{ key: "gost", label: "GOST" }, { key: "frp", label: "FRP" }],
     stats: { nodes: 3, online: 3, tunnels: 2, running: 2 },
@@ -1157,11 +1163,24 @@ var D_CODES = { ready: true,
     }
     if (u.indexOf("/bot/users/report") >= 0) return REPORT;
     if (u.indexOf("/billing/") >= 0) return BILLING;
-    if (u.indexOf("/bot/orders") >= 0) return ORDERS;
+    // بکند با ?status= فیلتر می‌کند؛ بدونِ این، زبانه‌ی «در انتظار» سفارشِ
+    // تاییدشده و ردشده هم نشان می‌داد و شبیهِ باگِ پنل بود
+    if (u.indexOf("/bot/orders") >= 0) {
+      var st = (/[?&]status=([a-z_]+)/.exec(u) || [])[1] || "awaiting";
+      var rows = st === "all" ? ORDERS.orders : ORDERS.orders.filter(function (o) { return o.status === st; });
+      return { ready: true, total: rows.length, orders: rows };
+    }
     if (u.indexOf("/bot/plans") >= 0) return PLANS;
     if (u.indexOf("/bot/users") >= 0) return USERS;
+    // همان شکلِ `_funnel` — شکلِ کهنه‌ی {seen, bought} صفحه‌ی «آمار و قیف»
+    // را با «NaN٪» و قیفِ خالی نشان می‌داد و هیچ‌کس نمی‌فهمید هارنس است
     if (u.indexOf("/bot/funnel") >= 0) {
-      return { ready: true, seen: 1284, started: 640, bought: 61, conversion: 4.8 };
+      return { ready: true, started: 640, steps: [
+        { label: "ربات را باز کردند", n: 640, pct: 100 },
+        { label: "شماره ثبت کردند", n: 402, pct: 62.8 },
+        { label: "سفارش ثبت کردند", n: 188, pct: 29.4 },
+        { label: "خرید موفق", n: 131, pct: 20.5 }],
+        segments: { paid: 131, trialOnly: 96, trial: 210, idle: 413 } };
     }
     if (u.indexOf("/bot/status") >= 0 || u.indexOf("/bot/connection") >= 0) {
       return { ready: true, connected: true, username: "nexora_bot", tenants: 3 };

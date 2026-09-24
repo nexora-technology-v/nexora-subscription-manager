@@ -465,9 +465,43 @@ _isoraw = []
 for _f, _src in ALL.items():
     if not _f.endswith(".jsx"):
         continue
-    for _m in re.finditer(r"\{\s*(String\([^)]*\)|[\w.?]+)\.slice\(0,\s*10\)\s*\}", _src):
+    # هر شکلی از بریدنِ یک ستونِ تاریخ — `{x.slice(0, 10)}`، `?.slice(0, 16)`،
+    # `.replace("T", " ").slice(0, 16)`، و داخلِ faNum(String(...)). نسخه‌ی
+    # اولِ این دروازه فقط اولی را می‌شناخت و پنج جای دیگر از زیرش رد شدند.
+    for _m in re.finditer(r"\{\s*(String\([^)]*\)|[\w.?]+)\.slice\(0,\s*10\)\s*\}"
+                          r"|(_at|At|until|[dD]ate|newest)\b\s*\|?\|?[^;{}]{0,12}?\)?"
+                          r"(\.replace\([^)]*\))?\??\.slice\(0,\s*(10|16|19)\)", _src):
+        _line = _src[_src.rfind(chr(10), 0, _m.start()) + 1:_src.find(chr(10), _m.end())]
+        if "isoToJalali" in _line or "toISOString" in _line or "dayKey" in _line:
+            continue
         _isoraw.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
 check("هیچ تاریخِ میلادیِ خامی رندر نمی‌شود", not _isoraw, ", ".join(_isoraw[:5]))
+
+# نویسه‌ی کنترلیِ نامرئی در کدِ تست — `\b` که در heredocِ گیت‌بش به
+# backspace تبدیل شد، همین دروازه‌ی بالا را بی‌صدا کور کرده بود: سبز
+# می‌ماند در حالی که چهار تاریخِ میلادی از زیرش رد می‌شد.
+_ctl = []
+for _d in ("tools", os.path.join("frontend", "src")):
+    for _dp, _dn, _fn in os.walk(os.path.join(ROOT, _d)):
+        for _n in _fn:
+            if _n.endswith((".py", ".js", ".cjs", ".jsx", ".css")):
+                _t = io.open(os.path.join(_dp, _n), encoding="utf-8", errors="replace").read()
+                if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", _t):
+                    _ctl.append(_n)
+check("هیچ نویسه‌ی کنترلیِ نامرئی در کد و تست نیست", not _ctl, ", ".join(_ctl[:5]))
+
+# آلفای هگز که به یک متغیر چسبانده شود (`${c}99`) فقط روی رنگِ هگزِ خام
+# درست است. رنگ‌های پنل از توکن‌اند، پس `var(--ok)99` می‌شود — نامعتبر،
+# و مرورگر بی‌صدا کلِ background را دور می‌ریزد. نوارهای قیفِ «آمار و
+# قیف» به همین دلیل روی سرورِ واقعی خالی بودند. فقط انتخاب‌گرهای رنگ،
+# که مقدارشان هگزِ خودِ داده است، مستثنا‌اند.
+_hexa = []
+for _f, _src in ALL.items():
+    if not _f.endswith(".jsx") or _f.endswith(("sections/bot/themes.jsx", "sections/subpage.jsx")):
+        continue
+    for _m in re.finditer(r"\$\{[\w.]+\}[0-9A-Fa-f]{2}(?![0-9A-Za-z])", _src):
+        _hexa.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
+check("هیچ آلفای هگزی به رنگِ متغیر چسبانده نمی‌شود", not _hexa, ", ".join(_hexa[:5]))
 
 # ستون‌های صفر/یکِ SQLite (is_trial، is_active) عدد می‌رسند نه بولی، و
 # `{r.is_trial && …}` در React خودِ «0» را چاپ می‌کند. کنارِ نامِ هر
@@ -1268,6 +1302,13 @@ check("و هش استفاده می‌کند نه مسیر", "location.hash" in _
 
 # ═══════════════════════════════════════════════════════════
 head("قلمِ عدد · رقمِ فارسی نباید مونو بگیرد")
+
+# پشتیبانِ فارسیِ خودِ مونو — ده‌ها faNum داخلِ var(--mono) است و
+# بدونِ این، رقمِ فارسی از قلمِ سیستم (تاهوما) می‌آمد.
+_monodef = re.search(r"--mono:([^;]+);", io.open(os.path.join(ROOT, "frontend", "src", "index.css"), encoding="utf-8").read())
+check("قلمِ مونو پشتیبانِ فارسی دارد (IRANSansX پیش از monospace)",
+      bool(_monodef) and "IRANSansX" in _monodef.group(1)
+      and _monodef.group(1).index("IRANSansX") < _monodef.group(1).rindex("monospace"))
 
 # چرا: `--mono` گلیفِ فارسی ندارد. «۳۲» بی‌صدا به قلمِ پشتیبان
 # می‌افتاد و کنارِ واحدش («گیگابایت») دو قلمِ متفاوت می‌نشست —

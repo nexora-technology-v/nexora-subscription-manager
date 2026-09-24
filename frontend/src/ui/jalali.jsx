@@ -107,6 +107,20 @@ export function isoToJalaliLabel(iso) {
   return `${fa(jd)} ${MONTHS[jm - 1]} ${fa(jy)}`;
 }
 
+/**
+ * «2026-09-22 12:30» یا «2026-09-22T12:30:05» → «۳۱ شهریور ۱۴۰۵، ۱۲:۳۰»
+ *
+ * فقط تقویم عوض می‌شود، نه منطقه‌ی زمانی — ساعت همان است که رشته
+ * می‌گوید، دقیقاً مثلِ قبل که خامِ `slice(0, 16)` نشان داده می‌شد.
+ * بی‌ساعت، همان isoToJalaliLabel.
+ */
+export function isoToJalaliStamp(iso) {
+  if (!iso) return "";
+  const day = isoToJalaliLabel(iso);
+  const t = /[T ](\d{2}):(\d{2})/.exec(String(iso));
+  return t ? `${day}، ${fa(t[1])}:${fa(t[2])}` : day;
+}
+
 function isoOf(d) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
        + `-${String(d.getUTCDate()).padStart(2, "0")}`;

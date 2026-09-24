@@ -181,7 +181,7 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
             value={faNum(u.newUsers ?? 0)}
             unit={`از ${faNum(u.users ?? 0)} کل`}
             hint={`${faNum(u.blocked ?? 0)} نفر بلاک شده`}
-            spark={orderSeries} sparkColor="var(--accent-2)" color="var(--text)" />
+            color="var(--text)" />
           <StatTile
             label="سفارش موفق" icon={ShoppingCart} tone="var(--ok)"
             value={faNum(o.approved ?? 0)}
@@ -238,7 +238,7 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
               data={moneySeries} color="var(--accent-2)" height={168}
               label="درآمد روزانه" format={(v) => `${faNum(v)} تومان`}
               data2={orderSeries} color2="var(--cy)" label2="تعداد سفارش"
-              format2={(v) => `${faNum(v)} سفارش`} />
+              format2={(v) => `${faNum(v)} سفارش`} labels={daily.map((d) => d.day)} />
           )}
         </div>
 

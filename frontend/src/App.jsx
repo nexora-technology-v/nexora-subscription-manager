@@ -540,7 +540,11 @@ export default function App() {
         </main>
       </div>
 
-      <div className="fx-mobile-save">
+      {/* روی گوشی فقط وقتی چیزی برای ذخیره هست بالا می‌آید. قبلاً ۷۰
+          پیکسلِ پایینِ *هر* صفحه را می‌گرفت — حتی سفارش‌ها و حسابداری،
+          که این دکمه هیچ ربطی به‌شان ندارد — و «ذخیره شده»ی همیشگی
+          فقط جا می‌گرفت. */}
+      <div className={`fx-mobile-save ${dirty || saving ? "show" : ""}`} aria-hidden={!(dirty || saving)}>
         <div className="shrink-0"><StatusChip dirty={dirty} /></div>
         <button title="ذخیره تغییرات" onClick={save} disabled={saving || !dirty} className="fx-btn flex-1 flex items-center justify-center gap-2 py-3 text-[14px]">
           {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}

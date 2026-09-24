@@ -11,7 +11,7 @@ import {
 import { errText } from "../lib/format";
 import { API_URL } from "../lib/constants";
 import { ConfirmModal, Field, InfoBox, Msg, PageSkeleton, SectionHead } from "../ui/index";
-import { isoToJalaliLabel } from "../ui/jalali";
+import { isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
 
 export function RollbackCard({ password }) {
   const [snaps, setSnaps] = useState([]);
@@ -85,7 +85,7 @@ export function RollbackCard({ password }) {
                   {s.hasBot && <span className="fx-pill" style={{ background: "var(--accent-soft)", color: "var(--accent-2)" }}>شامل ربات</span>}
                 </div>
                 <div className="text-[12px] mt-1" style={{ color: "var(--muted)", fontFamily: "var(--mono)" }}>
-                  {s.createdAt?.replace("T", " ").slice(0, 16)} · {s.sizeMb} MB
+                  {isoToJalaliStamp(s.createdAt)} · {s.sizeMb} MB
                 </div>
               </div>
               <button onClick={() => setConfirm(s)}

@@ -42,7 +42,9 @@ export function BotStatsSection({ password }) {
   const seg = d.segments || {};
   const cards = [
     ["استارت‌زده", d.started, "کل کسانی که ربات را باز کردند", "var(--accent-2)"],
-    ["خرید کرده", seg.paid, d.started ? `${Math.round(seg.paid * 100 / d.started)}٪ نرخ تبدیل` : "", "var(--ok)"],
+    // بدونِ عدد، «NaN٪» روی صفحه می‌آمد — درصدی که حساب نشده، نوشته نمی‌شود
+    ["خرید کرده", seg.paid, d.started && Number.isFinite(seg.paid)
+      ? `${faNum(Math.round(seg.paid * 100 / d.started))}٪ نرخ تبدیل` : "", "var(--ok)"],
     ["فقط تست گرفته", seg.trialOnly, "هدف خوبی برای پیگیری", "var(--warn)"],
     ["بدون هیچ اقدام", seg.idle, "نه خرید، نه تست", "var(--muted)"],
   ];
@@ -111,7 +113,9 @@ export function BotStatsSection({ password }) {
                   <div style={{
                     width: `${Math.max(s.pct, 1)}%`, height: "100%",
                     borderRadius: 99,
-                    background: `linear-gradient(90deg, ${c}, ${c}99)`,
+                    // آلفای هگز چسبیده به var(--…) رنگِ نامعتبر می‌سازد و مرورگر کلِ شیب را
+                    // دور می‌ریزد — قیف روی سرورِ واقعی هم نوارِ خالی بود
+                    background: `linear-gradient(90deg, ${c}, color-mix(in srgb, ${c} 60%, transparent))`,
                     // حرکت نرم موقع تغییر بازه — نه پرش ناگهانی
                     transition: "width .5s cubic-bezier(.4,0,.2,1)",
                   }} />
@@ -278,8 +282,8 @@ export function BotReportSection({ password }) {
             data={d.daily.map((x) => x.sum)}
             color="var(--accent-2)"
             height={110}
-            label={`${d.daily[0].day} تا ${d.daily[d.daily.length - 1].day}`}
-            format={(v) => `${faNum(v)} تومان`} />
+            label={`${isoToJalaliLabel(d.daily[0].day)} تا ${isoToJalaliLabel(d.daily[d.daily.length - 1].day)}`}
+            format={(v) => `${faNum(v)} تومان`} labels={d.daily.map((x) => x.day)} />
         </div>
       )}
 
