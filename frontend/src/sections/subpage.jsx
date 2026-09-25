@@ -79,6 +79,8 @@ function BillingMini({ data, onGo }) {
 
       {!data ? (
         <Skeleton h={120} />
+      ) : data.error ? (
+        <p className="text-[13px]" style={{ color: "var(--danger)" }}>{data.error}</p>
       ) : !groups.length ? (
         <EmptyState icon={Layers} text="بدهی بازی نیست"
           hint="هر نماینده‌ای که این دوره کانفیگ ساخته باشد، این‌جا با مبلغش می‌آید." />
@@ -122,9 +124,11 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
     let alive = true;
     fetch(`${API_URL}/api/admin/billing/overview`,
       { headers: { "X-Admin-Password": password } })
-      .then((r) => (r.ok ? r.json() : null))
+      // پیش‌تر خطای HTTP `null` می‌شد (اسکلتِ همیشگی) و خطای شبکه
+      // `ready: false` (کارت پنهان، انگار حسابداری تنظیم نشده)
+      .then((r) => okJson(r, "خواندنِ بدهی‌ها ناموفق بود"))
       .then((j) => { if (alive) setBill(j); })
-      .catch(() => { if (alive) setBill({ ready: false }); });
+      .catch((e) => { if (alive) setBill({ error: errMsg(e) }); });
     return () => { alive = false; };
   }, [password]);
 

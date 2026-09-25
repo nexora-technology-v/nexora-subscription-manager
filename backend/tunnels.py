@@ -15,6 +15,9 @@ import secrets
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
+import logging
+
+_log = logging.getLogger("nexora.tunnels")
 
 # ═══════════════════════════════════════════════════════════
 #  موتورهای تانل
@@ -207,8 +210,8 @@ def conn():
         jcols = {r[1] for r in con.execute("PRAGMA table_info(jobs)")}
         if "attempts" not in jcols:
             con.execute("ALTER TABLE jobs ADD COLUMN attempts INTEGER DEFAULT 0")
-    except Exception:
-        pass
+    except Exception as _exc:
+        _log.warning("tunnels schema migration: %s", _exc)
 
     con.commit()
     return con
@@ -230,8 +233,8 @@ def log(node_id=None, tunnel_id=None, level="info", message=""):
                      (SELECT id FROM events ORDER BY id DESC LIMIT 500)""")
         c.commit()
         c.close()
-    except Exception:
-        pass
+    except Exception as _exc:
+        _log.warning("tunnel event write: %s", _exc)
 
 
 # ═══════════════════════════════════════════════════════════

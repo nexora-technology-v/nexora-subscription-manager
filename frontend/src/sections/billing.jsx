@@ -1062,23 +1062,32 @@ export function BillingSettings({ password }) {
 
   const restore = async (file) => {
     setBusy("restore");
+    // «فایل معتبر نبود» فقط برای خودِ فایل؛ پیش‌تر قطعیِ شبکه هم همین بود
+    let parsed;
     try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
+      parsed = JSON.parse(await file.text());
+    } catch {
+      setMsg({ t: "err", m: "فایل معتبر نبود — JSONِ خوانا نیست" });
+      setBusy(null); if (fileRef.current) fileRef.current.value = "";
+      return;
+    }
+    try {
       const res = await fetch(`${API_URL}/api/admin/billing/restore`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Admin-Password": password },
         body: JSON.stringify({ data: parsed.data || parsed }),
       });
-      const d = await res.json().catch(() => ({}));
-      if (res.ok && d.warning) {
-        setMsg({ t: "err", m: `بازیابی ناقص بود — ${d.warning}` });
-      } else if (res.ok) {
+      const d = await okJson(res, "بازیابی ناموفق");
+      // بکند می‌گوید اگر نسخه‌ی امنِ پیش از بازیابی گرفته نشد — یعنی راهِ
+      // برگشت نیست؛ پیش‌تر این پیام به رابط نمی‌رسید
+      const safety = d.safetyWarning ? ` — ${d.safetyWarning}` : "";
+      if (d.warning) {
+        setMsg({ t: "err", m: `بازیابی ناقص بود — ${d.warning}${safety}` });
+      } else {
         const n = Object.values(d.restored || {}).reduce((x, y) => x + y, 0);
-        setMsg({ t: "ok", m: `بازیابی شد — ${n} ردیف` });
+        setMsg({ t: safety ? "err" : "ok", m: `بازیابی شد — ${faNum(n)} ردیف${safety}` });
       }
-      else setMsg({ t: "err", m: errText(d.detail, "بازیابی ناموفق") });
-    } catch { setMsg({ t: "err", m: "فایل معتبر نبود" }); }
+    } catch (e) { setMsg({ t: "err", m: errMsg(e) }); }
     finally { setBusy(null); if (fileRef.current) fileRef.current.value = ""; }
   };
 

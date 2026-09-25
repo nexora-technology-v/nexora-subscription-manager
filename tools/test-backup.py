@@ -185,6 +185,17 @@ check("و ردیفِ تازه روی قدیمی‌ها ریخته نشده",
       [r[0] for r in _c.execute("SELECT id FROM t ORDER BY id")] == [1, 2])
 _c.close()
 
+head("نسخه‌ی امنِ ناموفق گفته می‌شود")
+# بی نسخه‌ی امن راهِ برگشت نیست؛ حسابداری این را می‌گفت و ربات نه
+_orig_copy = APP._sqlite_copy
+APP._sqlite_copy = lambda *a, **k: (_ for _ in ()).throw(OSError("disk full"))
+try:
+    _rs = APP.bot_restore({"data": bak["data"]}, x_admin_password="x")
+finally:
+    APP._sqlite_copy = _orig_copy
+check("بازگردانیِ ربات بی نسخه‌ی امن هشدار می‌دهد",
+      _rs.get("safetyWarning") and _rs.get("safetyCopy") is None, str(_rs.get("safetyWarning")))
+
 head("یک حلقه‌ی بازگردانی، نه دو")
 
 import ast as _ast

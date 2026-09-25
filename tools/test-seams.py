@@ -1636,6 +1636,110 @@ for _f in _prod:
             continue
         if _a.is_global and _m.group(1) not in _IP_OK and not any(_a in _n for _n in _DOC):
             _pub.append(f"{os.path.relpath(_f, ROOT)}: {_m.group(1)}")
+# ستون‌های tenants که بکند می‌خواند — در اسکیمای *واقعی*.
+#
+# هشدارِ سلامتِ سرور `SELECT bot_token, admin_id, group_id FROM tenants` بود؛
+# آن دو ستون هرگز وجود نداشتند (`owner_tg_id`، `admin_group_id`). کوئری
+# همیشه خطا می‌داد، `except: pass` می‌بلعید، و هیچ هشداری هرگز نرفت —
+# سال‌ها بی‌نشانه. اسکیما از خودِ `init_db()` ساخته می‌شود، با همه‌ی
+# مهاجرت‌ها، نه با خواندنِ متنِ CREATE.
+import tempfile as _tf
+import importlib as _il
+import sqlite3 as _sq
+_tmpdb = os.path.join(_tf.mkdtemp(prefix="nx-seams-"), "bot.db")
+os.environ["BOT_DB_PATH"] = _tmpdb
+sys.path.insert(0, ROOT)
+from bot import db as _botdb  # noqa: E402
+_il.reload(_botdb)
+_botdb.init_db()
+_c = _sq.connect(_tmpdb)
+_tables = {r[0]: {x[1] for x in _c.execute(f"PRAGMA table_info({r[0]})")}
+           for r in _c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+_c.close()
+_tcols = _tables.get("tenants", set())
+
+# همه‌ی جدول‌های ربات، در بکند و خودِ ربات. فقط کوئریِ تک‌جدولی (بی JOIN)
+# سنجیده می‌شود — ستونِ با نامِ مستعار نیاز به تجزیه‌ی واقعیِ SQL دارد.
+_bad_cols = []
+for _label, _src in (("app.py", APP_PY), ("handlers.py", HANDLERS),
+                     ("run.py", rd("bot", "run.py")), ("db.py", DB_PY)):
+    for _node in ast.walk(ast.parse(_src)):
+        _txt = None
+        if isinstance(_node, ast.Constant) and isinstance(_node.value, str):
+            _txt = _node.value
+        elif isinstance(_node, ast.JoinedStr):
+            _txt = "".join(v.value for v in _node.values
+                           if isinstance(v, ast.Constant) and isinstance(v.value, str))
+        if not _txt:
+            continue
+        _flat = " ".join(_txt.split())
+        if re.search(r"\bJOIN\b", _flat, re.I):
+            continue
+        for _m in re.finditer(r"SELECT\s+(.+?)\s+FROM\s+(\w+)\b", _flat, re.I):
+            _cols = _tables.get(_m.group(2))
+            if _cols is None:
+                continue
+            for _col in _m.group(1).split(","):
+                _w = _col.strip().split()[0] if _col.strip() else ""
+                if re.fullmatch(r"[a-z_]+", _w) and _w != "distinct" and _w not in _cols:
+                    _bad_cols.append(f"{_label}:{_node.lineno} {_m.group(2)}.{_w}")
+        for _m in re.finditer(r"UPDATE\s+(\w+)\s+SET\s+([a-z_]+)\s*=", _flat, re.I):
+            _cols = _tables.get(_m.group(1))
+            if _cols is not None and _m.group(2) not in _cols:
+                _bad_cols.append(f"{_label}:{_node.lineno} {_m.group(1)}.{_m.group(2)}")
+check("هر ستونی که کوئری می‌خواند در اسکیمای واقعیِ ربات هست",
+      len(_tcols) > 10 and len(_tables) > 10 and not _bad_cols,
+      "، ".join(sorted(set(_bad_cols))[:5]) if _bad_cols else f"{len(_tables)} جدول")
+
+
+# `except …: pass` در کدِ محصول — مسیرِ خرابِ بی‌صدا.
+#
+# هشدارِ سلامتِ سرور سال‌ها فرستاده نشد چون کوئری‌اش ستونِ ناموجود
+# می‌خواند و `except Exception: pass` خطا را می‌بلعید. هیچ‌کس نفهمید.
+# هر بلعیدن حالا یا لاگ می‌کند یا در این فهرست با دلیل آمده است.
+# استثنای خودکار: بدنه‌ای که فقط import است، یا close/rollback داخلِ پاک‌سازی.
+_SILENT_OK = {
+    ("app.py", "_client_ip"): "آدرسِ نامعتبر در هدر یعنی نادیده‌گرفتنِ آن هدر",
+    ("app.py", "_auth_failed"): "دیکشنریِ خالی — چیزی برای حذف نیست",
+    ("core.py", "validate_discount"): "تاریخِ انقضای ناخوانا یعنی بی‌انقضا (قابلیتِ وصل‌نشده)",
+    ("firewall.py", "tunnel_ports_in_use"): "خطی از خروجی که پورت ندارد",
+    ("firewall.py", "block_refusal"): "آی‌پیِ محافظتِ نامعتبر — مقایسه معنا ندارد",
+    ("monitor.py", "cpu"): "os.getloadavg روی ویندوز نیست",
+    ("monitor.py", "_net_counters"): "خطِ سربرگ یا ناقصِ /proc/net/dev",
+    ("health.py", "check_services"): "شمارِ ری‌استارتِ ناخوانا یعنی صفر",
+    ("health.py", "check_ipv6"): "شکستِ اتصال *همان* نتیجه‌ی آزمونِ IPv6 است",
+}
+_silent = []
+for _rel in ("backend/app.py", "backend/tunnels.py", "backend/firewall.py",
+             "backend/intrusion.py", "backend/monitor.py", "backend/netid.py",
+             "backend/fx.py", "backend/health.py",
+             "bot/handlers.py", "bot/run.py", "bot/db.py", "bot/xui.py", "bot/core.py",
+             "bot/tg.py"):
+    _p = os.path.join(ROOT, *_rel.split("/"))
+    if not os.path.exists(_p):
+        continue
+    _base = os.path.basename(_p)
+
+    def _walk(node, fn):
+        for _ch in ast.iter_child_nodes(node):
+            _f = _ch.name if isinstance(_ch, (ast.FunctionDef, ast.AsyncFunctionDef)) else fn
+            if isinstance(_ch, ast.Try):
+                for _h in _ch.handlers:
+                    if len(_h.body) == 1 and isinstance(_h.body[0], ast.Pass):
+                        _b0 = _ch.body[0]
+                        if isinstance(_b0, (ast.Import, ast.ImportFrom)):
+                            continue
+                        if ast.unparse(_b0).endswith((".close()", ".rollback()")):
+                            continue
+                        if (_base, fn) in _SILENT_OK:
+                            continue
+                        _silent.append(f"{_rel}:{_h.lineno} ({fn})")
+            _walk(_ch, _f)
+    _walk(ast.parse(open(_p, encoding="utf-8").read()), "-")
+check("هیچ `except: pass`ِ بی‌دلیلی در کدِ محصول نیست", not _silent,
+      "، ".join(_silent[:5]) if _silent else f"{len(_SILENT_OK)} استثنای دلیل‌دار")
+
+
 def _latin_money(src, label):
     """f-stringِ فارسی با `{x:,}` — مبلغِ لاتین وسطِ جمله‌ی فارسی."""
     _fa = re.compile(r"[؀-ۿ]")

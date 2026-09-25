@@ -147,6 +147,8 @@ export function ChannelSection({ password }) {
   const [savingAddr, setSavingAddr] = useState(false);
   // فاز ۲: پیشنهادها · فاز ۳: هوش مصنوعی
   const [tips, setTips] = useState([]);
+  // بخش‌های فرعی که صفحه را گروگان نمی‌گیرند — ولی بی‌صدا هم نیستند
+  const [sideErr, setSideErr] = useState("");
   const [ai, setAi] = useState(null);
   const [aiTask, setAiTask] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
@@ -168,15 +170,22 @@ export function ChannelSection({ password }) {
       try {
         const pj = await call("/api/admin/bot/plans", password);
         plans = (pj.plans || []).filter((p) => !p.is_trial);
-      } catch { plans = []; }
+      } catch (e) {
+        plans = [];
+        setSideErr(`پلن‌ها برای قالب‌ها خوانده نشد: ${e.message}`);
+      }
       setCfg({ ...s, plans });
       setAddr(s.channel_id || "");
       // پیشنهادها و وضعیتِ هوش مصنوعی صفحه را گروگان نمی‌گیرند:
       // اگر نیامدند، بقیه‌ی بخش باید کار کند.
       call("/api/admin/channel/suggestions", password)
-        .then((x) => setTips(x.suggestions || [])).catch(() => setTips([]));
+        .then((x) => setTips(x.suggestions || []))
+        .catch((e) => { setTips([]); setSideErr(`پیشنهادها خوانده نشد: ${e.message}`); });
       call("/api/admin/channel/ai", password)
-        .then(setAi).catch(() => setAi({ ready: false, why: "خوانده نشد" }));
+        .then(setAi)
+        // «خوانده نشد» تنها و بی‌دلیل بود، و بعدش راهنمای «آدرس را تنظیم
+        // کنید» می‌آمد — در حالی که مشکل خواندن بود، نه تنظیم
+        .catch((e) => setAi({ ready: false, readFailed: true, why: `وضعیتِ هوش مصنوعی خوانده نشد: ${e.message}` }));
     } catch (e) {
       setMsg({ t: "err", m: e.message });
       setData({ posts: [], target: "", limits: { text: 4096, caption: 1024 } });
@@ -385,6 +394,9 @@ export function ChannelSection({ password }) {
           قالب همیشگی است؛ پیشنهاد *امروز* است و پشتش یک رویدادِ
           واقعی دارد. هر کارت دلیلش را با عدد می‌گوید، وگرنه
           می‌شود همان محتوای توخالی که نمی‌خواستیم. */}
+      {sideErr && (
+        <p className="text-[12px] mt-3" style={{ color: "var(--warn)" }}>{sideErr}</p>
+      )}
       {tips.length > 0 && (
         <div className="ch-tips mt-3">
           {tips.map((t) => (
@@ -449,8 +461,10 @@ export function ChannelSection({ password }) {
         {ai && !ai.ready ? (
           <div className="mt-3">
             <InfoBox>
-              {ai.why} — با «تنظیم» آدرس و مدلِ سرویسِ خودتان را بگذارید.
-              بدونِ این هم بقیه‌ی بخش کامل کار می‌کند.
+              {ai.readFailed ? ai.why : <>
+                {ai.why} — با «تنظیم» آدرس و مدلِ سرویسِ خودتان را بگذارید.
+              </>}
+              {" "}بدونِ این هم بقیه‌ی بخش کامل کار می‌کند.
             </InfoBox>
           </div>
         ) : (

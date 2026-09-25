@@ -341,10 +341,10 @@ def _connect():
         con.execute("PRAGMA journal_mode=WAL")
         con.execute("PRAGMA synchronous=NORMAL")
         con.execute("PRAGMA busy_timeout=20000")
-    except sqlite3.Error:
+    except sqlite3.Error as _exc:
         # روی فایل‌سیستم شبکه‌ای WAL پشتیبانی نمی‌شود — همان حالت
         # پیش‌فرض کار می‌کند، فقط کندتر
-        pass
+        log.warning("db migration/setup (_connect): %s", _exc)
 
     return con
 
@@ -456,8 +456,8 @@ def _migrate(con):
             cols = [r[1] for r in con.execute(f"PRAGMA table_info({table})")]
             if col not in cols:
                 con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {spec}")
-        except sqlite3.Error:
-            pass
+        except sqlite3.Error as _exc:
+            log.warning("db migration/setup (_migrate): %s", _exc)
 
     # دفتر شارژ اعتبار نماینده‌ها.
     #
@@ -475,8 +475,8 @@ def _migrate(con):
         )""")
         con.execute("CREATE INDEX IF NOT EXISTS idx_credit_tenant "
                     "ON credit_tx(tenant_id, id DESC)")
-    except sqlite3.Error:
-        pass
+    except sqlite3.Error as _exc:
+        log.warning("db migration/setup (_migrate): %s", _exc)
 
     # نام پلن اشتراک‌های قدیمی را از جدول پلن‌ها پر می‌کنیم.
     #
@@ -488,8 +488,8 @@ def _migrate(con):
             "  SELECT name FROM plans WHERE plans.id = subscriptions.plan_id) "
             "WHERE (plan_name IS NULL OR plan_name = '') "
             "  AND plan_id IS NOT NULL")
-    except sqlite3.Error:
-        pass
+    except sqlite3.Error as _exc:
+        log.warning("db migration/setup (_migrate): %s", _exc)
 
     # وضعیتِ قدیمیِ «review» همان «awaiting» است: کدِ امروز دیگر آن را
     # نمی‌نویسد، ولی تایید و رد هنوز می‌پذیرندش.

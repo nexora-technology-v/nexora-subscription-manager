@@ -97,6 +97,7 @@ fs.writeFileSync(entry, [
   `export { BotTextsSection } from ${S("bot/texts.jsx")};`,
   `export { BotSection } from ${S("bot/connection.jsx")};`,
   `export { ChannelSection } from ${S("channel.jsx")};`,
+  `export { OverviewSection } from ${S("subpage.jsx")};`,
   `export { FirewallIntrusion } from ${S("intrusion.jsx")};`,
   `export { PortalAdmin, PortalAddon, ResellerInbounds } from ${S("portal-admin.jsx")};`,
   `export { BillingClients, BillingPayments, BillingDash, BillingSettings, BillingInvoice, BillingPeriod, BillingGroups } from ${S("billing.jsx")};`,
@@ -187,6 +188,11 @@ const CASES = [
   ["پیگیریِ تست — نه فرمِ پیش‌فرض", C.BotDiscountsSection, pw, "/bot/settings$"],
   ["پاسخ‌های آماده — نه ذخیره‌ی خالی", C.BotInboxSection, pw, "/bot/settings$"],
   ["آدرسِ کانال — نه ذخیره‌ی خالی", C.ChannelSection, pw, "/bot/settings$"],
+  // بخش‌های فرعی که صفحه را نگه نمی‌دارند — ولی بی‌صدا هم نیستند
+  ["کانال — پیشنهادها", C.ChannelSection, pw, "/channel/suggestions$"],
+  ["کانال — وضعیتِ هوش مصنوعی", C.ChannelSection, pw, "/channel/ai$"],
+  ["داشبوردِ اشتراک — بدهیِ نماینده‌ها", C.OverviewSection,
+   { ...pw, config: {}, stats: {}, navigate: noop, dirty: false }, "/billing/overview$"],
 ];
 
 (async () => {
@@ -214,6 +220,7 @@ ${D}── پرتالِ نماینده ──${X}`);
     ["پرتال · چت", "chat", "/api/portal/inbox$"],
     ["پرتال · متن‌ها و قفلِ کانال", "texts", "/api/portal/bot-settings$"],
     ["پرتال · رویدادها", "events", "/api/portal/events$"],
+    ["پرتال · قیفِ فروش در داشبورد", "home", "/api/portal/funnel$"],
   ];
   for (let i = 0; i < PORTAL.length; i++) {
     const [name, page, route] = PORTAL[i];

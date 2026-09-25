@@ -18,6 +18,9 @@ import shutil
 import subprocess
 import time
 from datetime import datetime
+import logging
+
+_log = logging.getLogger("nexora.firewall")
 
 #: پورت‌هایی که بستنشان یعنی قطع دسترسی خودِ مدیر یا خوابیدن سرویس.
 #: این‌ها بدون تایید صریح حذف نمی‌شوند. پایه است، نه همه‌ی فهرست:
@@ -53,8 +56,8 @@ def _sshd_config_ports():
     files = [SSHD_CONFIG]
     try:
         files += sorted(glob.glob(os.path.join(SSHD_CONFIG_DIR, "*.conf")))
-    except Exception:
-        pass
+    except Exception as _exc:
+        _log.debug("sshd config glob: %s", _exc)
 
     for path in files:
         try:
@@ -310,8 +313,8 @@ def _default_incoming(out=""):
         if m:
             v = m.group(1).upper()
             return "deny" if v in ("DROP", "REJECT") else ("allow" if v == "ACCEPT" else "?")
-    except OSError:
-        pass
+    except OSError as _exc:
+        _log.debug("ufw defaults read: %s", _exc)
     ok, verbose = _run(["ufw", "status", "verbose"])
     if ok and ("deny (incoming)" in verbose or "reject (incoming)" in verbose):
         return "deny"
@@ -977,8 +980,8 @@ def safe_enable(confirm=False, rollback_minutes=5, force=False):
     try:
         if os.path.exists(_ARM_FLAG):
             os.remove(_ARM_FLAG)
-    except Exception:
-        pass
+    except Exception as _exc:
+        _log.warning("rollback arm flag removal: %s", _exc)
 
     sched_ok, how = _schedule_rollback(minutes)
     if not sched_ok and not force:
@@ -1146,9 +1149,9 @@ def _blocklist_write(ip, note, remove):
             rows.append(f"{ip} | {stamp} | {(note or '').replace('|', ' ')[:60]}")
         with open(BLOCKLIST, "w", encoding="utf-8") as f:
             f.write("\n".join(rows) + ("\n" if rows else ""))
-    except Exception:
+    except Exception as _exc:
         # نوشتن فایل نباید مانع بستن آدرس شود
-        pass
+        _log.warning("blocklist dir: %s", _exc)
 
 
 def blackhole_restore():
@@ -1170,8 +1173,8 @@ def blackhole_restore():
                 ok, _ = _run(["ip", "route", "add", "blackhole", ip], timeout=10)
                 if ok:
                     done += 1
-    except Exception:
-        pass
+    except Exception as _exc:
+        _log.warning("blocklist read on restore: %s", _exc)
     return done
 
 

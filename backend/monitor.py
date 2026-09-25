@@ -24,6 +24,9 @@ import re
 import shutil
 import subprocess
 import time
+import logging
+
+_log = logging.getLogger("nexora.monitor")
 
 
 def _load_netid():
@@ -548,8 +551,8 @@ def _tunnel_peers():
                     h = (r["host"] or "").strip()
                     if h:
                         peers[h] = r["name"] or "نود تانل"
-            except Exception:
-                pass
+            except Exception as _exc:
+                _log.debug("tunnel peers query: %s", _exc)
             con.close()
         except Exception:
             pass

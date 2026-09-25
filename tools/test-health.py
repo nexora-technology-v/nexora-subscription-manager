@@ -270,14 +270,49 @@ def _fake_urlopen(req, timeout=None):
 _ur.urlopen = _fake_urlopen
 
 
+def _real_tenants_ddl():
+    """
+    CREATEِ واقعیِ جدولِ tenants — از خودِ `init_db()`ِ ربات، با مهاجرت‌ها.
+
+    این تست جدولی دست‌ساز با ستون‌های `admin_id` و `group_id` می‌ساخت —
+    همان نام‌های غلطی که کوئریِ `_health_alert` داشت. پس تست با باگ
+    هم‌نظر بود و سبز می‌ماند، در حالی که روی سرورِ واقعی کوئری همیشه
+    می‌شکست و هیچ هشداری هرگز نرفت. اسکیما حالا از منبعِ واقعی می‌آید.
+    """
+    import tempfile as _tf2
+    import importlib as _il2
+    _p = os.path.join(_tf2.mkdtemp(prefix="nx-health-schema-"), "bot.db")
+    _old = os.environ.get("BOT_DB_PATH")
+    os.environ["BOT_DB_PATH"] = _p
+    try:
+        sys.path.insert(0, ROOT)
+        from bot import db as _bdb
+        _il2.reload(_bdb)
+        _bdb.init_db()
+        c = _sq.connect(_p)
+        ddl = c.execute("SELECT sql FROM sqlite_master WHERE name='tenants'").fetchone()[0]
+        c.close()
+        return ddl
+    finally:
+        if _old is None:
+            os.environ.pop("BOT_DB_PATH", None)
+        else:
+            os.environ["BOT_DB_PATH"] = _old
+
+
+_TENANTS_DDL = _real_tenants_ddl()
+
+
 def _tenants(rows):
-    """بازسازی جدول مستاجرها با ردیف‌های داده‌شده."""
+    """بازسازی جدول مستاجرها — با اسکیمای واقعی — از ردیف‌های داده‌شده.
+
+    هر ردیف: (id، name، parent_id، bot_token، owner_tg_id، admin_group_id)
+    """
     c = _sq.connect(str(_AP.BOT_DB))
     c.execute("DROP TABLE IF EXISTS tenants")
-    c.execute("""CREATE TABLE tenants (id INTEGER PRIMARY KEY, name TEXT,
-                 parent_id INTEGER, bot_token TEXT, admin_id INTEGER,
-                 group_id INTEGER)""")
-    c.executemany("INSERT INTO tenants VALUES (?,?,?,?,?,?)", rows)
+    c.execute(_TENANTS_DDL)
+    c.executemany("INSERT INTO tenants (id, name, parent_id, bot_token, owner_tg_id, "
+                  "admin_group_id) VALUES (?,?,?,?,?,?)", rows)
     c.commit()
     c.close()
 

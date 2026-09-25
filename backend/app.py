@@ -1465,8 +1465,8 @@ def system_info(x_admin_password: str = Header(...)):
     if version_file.exists():
         try:
             version = version_file.read_text(encoding="utf-8").strip()
-        except OSError:
-            pass
+        except OSError as _exc:
+            log.debug("system_info read: %s", _exc)
 
     html_path = Path(os.getenv("SUBPAGE_HTML_PATH", "../sub-page-index.html"))
     template_ok = html_path.exists()
@@ -1480,8 +1480,8 @@ def system_info(x_admin_password: str = Header(...)):
             m = _re.search(r'const SUBPAGE_CONFIG_API = "([^"]*)"', content)
             if m:
                 api_url = m.group(1)
-        except OSError:
-            pass
+        except OSError as _exc:
+            log.debug("system_info read: %s", _exc)
 
     cfg = load_config()
     return {
@@ -1518,8 +1518,8 @@ def check_update(x_admin_password: str = Header(...)):
     if vf.exists():
         try:
             current = vf.read_text(encoding="utf-8").strip()
-        except OSError:
-            pass
+        except OSError as _exc:
+            log.warning("check_update read: %s", _exc)
 
     # خواندن مخزن از فایل .github (اگر نصب‌کننده آن را ساخته باشد)
     repo, token = None, None
@@ -1531,8 +1531,8 @@ def check_update(x_admin_password: str = Header(...)):
                     repo = line.split("=", 1)[1].strip().strip('"').strip("'")
                 elif line.startswith("GITHUB_TOKEN="):
                     token = line.split("=", 1)[1].strip().strip('"').strip("'")
-        except OSError:
-            pass
+        except OSError as _exc:
+            log.warning("check_update read: %s", _exc)
 
     if not repo:
         return {
@@ -2424,8 +2424,8 @@ def bot_xui_trace(x_admin_password: str = Header(...)):
     schema = None
     try:
         schema = client.request_schema("/panel/api/clients", "post")
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.debug("x-ui request schema: %s", _exc)
 
     if schema:
         props = list((schema.get("properties") or {}).keys())
@@ -4544,8 +4544,8 @@ def _selfheal_scripts():
             if not os.access(p, os.X_OK):
                 os.chmod(p, 0o755)
                 fixed += 1
-        except OSError:
-            pass
+        except OSError as _exc:
+            log.warning("selfheal: script permission check: %s", _exc)
     return f"{fixed} اسکریپت اجرایی شد" if fixed else None
 
 
@@ -4695,8 +4695,8 @@ def _history_sample():
         HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(HISTORY_PATH, "w", encoding="utf-8") as f:
             json.dump(rows, f, ensure_ascii=False)
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning("usage history dir: %s", _exc)
 
 
 @app.get("/api/admin/usage-history")
@@ -5432,8 +5432,8 @@ def _start_health_loop():
 
     try:
         threading.Thread(target=loop, daemon=True).start()
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.error("health/maintenance loop thread did not start: %s", _exc, exc_info=True)
 
 
 def _selfheal_plan_costs():
@@ -5477,8 +5477,8 @@ def _selfheal():
             r = fn()
             if r:
                 done.append(r)
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning("selfheal step failed: %s", _exc)
 
     if done:
         try:
@@ -5529,8 +5529,8 @@ def bot_service(action: str, x_admin_password: str = Header(...)):
         if not Path("/etc/systemd/system/nexora-bot.service").exists():
             try:
                 _selfheal_bot_service()
-            except Exception:
-                pass
+            except Exception as _exc:
+                log.warning("bot service selfheal: %s", _exc)
 
     ok, err = _svc(action)
     if not ok:
@@ -5712,6 +5712,9 @@ def bot_restore(payload: dict, x_admin_password: str = Header(...)):
             out["skipped"] = skipped
             out["skippedWhy"] = why
             out["warning"] = _restore_warning(skipped, why)
+        # هم‌تراز با حسابداری: بی‌نسخه‌ی امن، راهِ برگشت نیست — گفته شود
+        if safety is None:
+            out["safetyWarning"] = "نسخه‌ی امنِ پیش از بازگردانی گرفته نشد"
         if missing:
             out["unknownTables"] = missing
         return out
@@ -5814,14 +5817,14 @@ def list_snapshots(x_admin_password: str = Header(...)):
         if vf.exists():
             try:
                 ver = vf.read_text().strip()
-            except OSError:
-                pass
+            except OSError as _exc:
+                log.debug("snapshot metadata: %s", _exc)
 
         size = 0
         try:
             size = sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
-        except OSError:
-            pass
+        except OSError as _exc:
+            log.debug("snapshot metadata: %s", _exc)
 
         out.append({
             "id": d.name,
@@ -5888,8 +5891,9 @@ def run_rollback(payload: dict, x_admin_password: str = Header(...)):
             Path(log).write_text(
                 f"[{datetime.now():%H:%M:%S}] بازگشت به نسخه {snap} آغاز شد\n",
                 encoding="utf-8")
-        except Exception:
-            pass
+        except Exception as _exc:
+            # `log` این‌جا مسیرِ فایل است، نه لاگر
+            logging.getLogger("nexora.panel").warning("rollback log write: %s", _exc)
 
         # بدون شل. آرگومان‌ها فهرست‌اند، پس هیچ مقداری تفسیر نمی‌شود.
         # start_new_session همان کاری را می‌کند که setsid می‌کرد:
@@ -6084,8 +6088,8 @@ def _subscriber(tid, tg_id):
                                 "enable": t.get("enable", True),
                                 "inboundId": t.get("inboundId"),
                             }
-                except Exception:
-                    pass
+                except Exception as _exc:
+                    log.debug("subscriber traffic: %s", _exc)
         except Exception:
             pass
 
@@ -6406,8 +6410,8 @@ def github_get(x_admin_password: str = Header(...)):
             for line in f.read_text(encoding="utf-8").splitlines():
                 if line.startswith("GITHUB_REPO="):
                     repo = line.split("=", 1)[1].strip().strip('"').strip("'")
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning("reading github repo file: %s", _exc)
     return {"repo": repo, "configured": bool(repo)}
 
 
@@ -6430,8 +6434,8 @@ def github_put(payload: dict, x_admin_password: str = Header(...)):
         f = _root_dir() / ".github"
         try:
             f.unlink(missing_ok=True)
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning("github token file cleanup: %s", _exc)
         return {"ok": True, "repo": "", "configured": False}
 
     if repo.count("/") != 1 or not all(repo.split("/")):
@@ -6637,8 +6641,8 @@ def _xui_conn():
         if not xdb.with_name(xdb.name + "-wal").exists():
             try:
                 return _try_open(f"file:{xdb}?immutable=1"), None
-            except Exception:
-                pass
+            except Exception as _exc:
+                log.debug("x-ui immutable open: %s", _exc)
 
         msg = str(first)
         low = msg.lower()
@@ -6697,8 +6701,8 @@ def _billing_conn():
         except Exception:
             try:
                 BILLING_DB.unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as _exc:
+                log.warning("billing db setup: %s", _exc)
         con = _open()
     con.executescript("""
         CREATE TABLE IF NOT EXISTS group_config (
@@ -6829,8 +6833,8 @@ def _billing_conn():
                           ("settled_until", "TEXT")):
             if col not in cols:
                 con.execute(f"ALTER TABLE group_config ADD COLUMN {col} {decl}")
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning("billing db setup: %s", _exc)
 
     con.commit()
     return con
@@ -8623,13 +8627,21 @@ def expenses_add(payload: dict, x_admin_password: str = Header(...)):
         raise HTTPException(status_code=500, detail="ماژول نرخ ارز بارگذاری نشد")
     conv = FX.to_toman(amount, currency, manual_rate=p.get("rate"))
     if conv.get("toman") is None:
+        _why = conv.get("error") or "نرخ ارز در دسترس نیست"
         raise HTTPException(
             status_code=400,
-            detail=(conv.get("error") or "نرخ ارز در دسترس نیست") +
-                   " — نرخ را دستی وارد کنید")
+            # نرخِ دستیِ خراب راهنمای «نرخ را دستی وارد کنید» نمی‌خواهد
+            detail=_why if "دستی" in _why else _why + " — نرخ را دستی وارد کنید")
 
+    # تاریخِ خراب پیش‌تر خام ذخیره می‌شد و بعد در تبدیلِ شمسی و فیلترِ
+    # بازه بی‌صدا از قلم می‌افتاد
     spent_at = str(p.get("spentAt") or "").strip()[:10] \
         or datetime.now().strftime("%Y-%m-%d")
+    try:
+        from datetime import date as _dx
+        _dx.fromisoformat(spent_at)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"تاریخِ هزینه نامعتبر است: {spent_at}")
     recurring = str(p.get("recurring") or "once")
     if recurring not in ("once", "monthly", "yearly"):
         recurring = "once"
@@ -8638,7 +8650,8 @@ def expenses_add(payload: dict, x_admin_password: str = Header(...)):
     try:
         gb = int(gb) if gb not in (None, "") else None
     except (TypeError, ValueError):
-        gb = None
+        # حجمِ ناخوانا پیش‌تر بی‌صدا None می‌شد و هزینه‌ی حجم بی‌گیگ ثبت می‌شد
+        raise HTTPException(status_code=400, detail="حجم (گیگابایت) باید عدد باشد")
 
     con = _billing_conn()
     try:
@@ -9397,8 +9410,8 @@ def billing_xui_path(x_admin_password: str = Header(...)):
         try:
             tables = [r["name"] for r in con.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.debug("x-ui table list: %s", _exc)
         finally:
             con.close()
 
@@ -10886,8 +10899,8 @@ def billing_diagnose(x_admin_password: str = Header(...)):
     try:
         cfg = load_config()
         manual = ((cfg.get("advanced") or {}).get("xuiDbPath") or "").strip()
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.debug("diagnose config read: %s", _exc)
     env = os.getenv("XUI_DB_PATH", "").strip()
     path = _xui_db_path()
 
@@ -11691,8 +11704,8 @@ def _external_base(request):
             if not proto:
                 proto = "https" if not host.startswith(("127.", "localhost")) else "http"
             return f"{proto}://{host}"
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.debug("external base from request: %s", _exc)
 
     try:
         return str(request.base_url).rstrip("/")
@@ -11909,11 +11922,11 @@ def _health_ports():
                 for r in con.execute("SELECT port FROM inbounds WHERE enable=1"):
                     if r[0]:
                         ports.add(int(r[0]))
-            except Exception:
-                pass
+            except Exception as _exc:
+                log.warning("health: reading x-ui ports: %s", _exc)
             con.close()
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning("health: reading x-ui ports: %s", _exc)
     return sorted(ports)[:12]
 
 
@@ -12005,24 +12018,42 @@ def _health_alert(server, data, key):
         # آن‌وقت هشدارِ سرورِ مالک با رباتِ نماینده و به گروهِ نماینده
         # فرستاده می‌شود: دیسک پر، سرویس خاموش، انقضای گواهی و نام
         # میزبان‌ها می‌رود دست شخص سوم، و مالک هیچ خبری نمی‌گیرد.
+        # ستون‌ها `admin_id` و `group_id` خوانده می‌شدند که در جدولِ tenants
+        # هرگز نبوده‌اند (نامشان `owner_tg_id` و `admin_group_id` است). پس
+        # این کوئری همیشه خطا می‌داد، `except: pass` می‌بلعیدش، و **هیچ
+        # هشدارِ سروری — دیسکِ پر، سرویسِ خاموش، گواهیِ رو به انقضا — هرگز
+        # فرستاده نشد.** مسیریابی حالا همان `staff_chat`ِ ربات است: گروهِ
+        # مدیریت با تاپیکِ alerts، وگرنه پیویِ صاحبِ ربات.
         r = con.execute(
-            "SELECT bot_token, admin_id, group_id FROM tenants "
+            "SELECT bot_token, owner_tg_id, admin_group_id, topics FROM tenants "
             "WHERE parent_id IS NULL ORDER BY id LIMIT 1").fetchone()
         con.close()
         if not r or not r["bot_token"]:
+            log.info("health alert not sent: bot has no token")
             return
-        target = r["group_id"] or r["admin_id"]
+        thread = None
+        if r["admin_group_id"]:
+            target = r["admin_group_id"]
+            try:
+                thread = (json.loads(r["topics"] or "{}") or {}).get("alerts")
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                thread = None
+        else:
+            target = r["owner_tg_id"]
         if not target:
+            log.info("health alert not sent: no admin group and no owner chat")
             return
         import urllib.request
-        body = json.dumps({"chat_id": target, "text": text,
-                           "parse_mode": "HTML"}).encode()
+        msg = {"chat_id": target, "text": text, "parse_mode": "HTML"}
+        if thread:
+            msg["message_thread_id"] = thread
         req = urllib.request.Request(
             f"https://api.telegram.org/bot{r['bot_token']}/sendMessage",
-            data=body, headers={"Content-Type": "application/json"})
+            data=json.dumps(msg).encode(), headers={"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=12)
-    except Exception:
-        pass
+    except Exception as e:
+        # توکن در آدرس است؛ فقط نوع و متنِ کوتاهِ خطا، نه URL
+        log.warning("health alert not sent: %s: %s", type(e).__name__, str(e)[:160])
 
 
 try:
@@ -12106,13 +12137,13 @@ def health_all(x_admin_password: str = Header(...)):
                         d["nodeId"] = n["id"]
                         servers.append(d)
                         continue
-                    except Exception:
-                        pass
+                    except Exception as _exc:
+                        log.debug("health report parse: %s", _exc)
                 servers.append({"server": n["name"], "nodeId": n["id"],
                                 "level": "unknown", "summary": "هنوز گزارشی نرسیده",
                                 "checks": []})
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.debug("health report parse: %s", _exc)
 
     worst = "ok"
     for s in servers:

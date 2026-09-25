@@ -740,7 +740,9 @@ export function MaintenanceCard({ password }) {
         body: JSON.stringify({ action: "xray" }),
       });
       const j = await res.json().catch(() => ({}));
-      setMsg({ t: j.ok ? "ok" : "err", m: j.note || errText(j.detail, "انجام شد") });
+      // پیش‌تر پیش‌فرض برای هر دو حالت «انجام شد» بود — در رنگِ خطا هم
+      setMsg({ t: j.ok ? "ok" : "err",
+               m: j.note || errText(j.detail, j.ok ? "انجام شد" : `اجرا نشد (${res.status})`) });
       await load();
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setSaving(false); }

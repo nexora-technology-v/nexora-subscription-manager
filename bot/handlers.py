@@ -179,8 +179,8 @@ class Ctx:
                 names = self.inbound_names()
                 if len(names) > 1 and names.get(int(iid)):
                     parts.append(names[int(iid)])
-            except (TypeError, ValueError):
-                pass
+            except (TypeError, ValueError) as _exc:
+                log.debug("sub_label step: %s", _exc)
 
         return " · ".join(parts) if parts else "اشتراک"
 
@@ -356,8 +356,8 @@ def main_menu(ctx, user):
     try:
         if DB.affiliate_by_tg(ctx.tid, user["tg_id"]):
             rows.append([("💼 پنل همکاری در فروش", "affiliate")])
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.debug("main_menu step: %s", _exc)
 
     # مینی‌اپ.
     #
@@ -1518,16 +1518,16 @@ def approve_order(ctx, order_id, admin_tg_id):
         buyer = ctx.db.get_user_by_id(order["user_id"])
         if buyer:
             ctx.bot.action(buyer["tg_id"], "typing")
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning("buyer lookup on approve: %s", _exc)
 
     # ساخت کانفیگ چند ثانیه طول می‌کشد؛ بدون این، مشتری سکوت می‌بیند
     try:
         u0 = ctx.db.get_user_by_id(order["user_id"])
         if u0:
             ctx.bot.action(u0["tg_id"], "typing")
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.warning("buyer lookup on approve: %s", _exc)
 
     ok, result = provision(ctx, order_id)
     if not ok:
@@ -1632,8 +1632,8 @@ def _notify_referrer_joined(ctx, referrer_id, tg_user):
         ctx.bot.send(ref["tg_id"], text,
                      keyboard=kb([[("🎁 دعوت دوستان", "ref")],
                                   [("‹ منوی اصلی", "menu")]]))
-    except TelegramError:
-        pass
+    except TelegramError as _exc:
+        log.warning("referrer join notice: %s", _exc)
 
 
 
@@ -1688,8 +1688,8 @@ def _reward_referrer(ctx, user, order_id):
 
     try:
         ctx.bot.send(ref["tg_id"], text)
-    except TelegramError:
-        pass
+    except TelegramError as _exc:
+        log.warning("referrer reward notice: %s", _exc)
 
 
 def provision(ctx, order_id):
@@ -1988,8 +1988,8 @@ def _add_days_iso(iso, days):
             cur = datetime.fromisoformat(iso)
             if cur > base:
                 base = cur
-        except ValueError:
-            pass
+        except ValueError as _exc:
+            log.debug("_add_days_iso step: %s", _exc)
     return (base + timedelta(days=days)).isoformat(timespec="seconds")
 
 
@@ -2201,8 +2201,8 @@ def show_subs(ctx, user, chat_id, message_id):
     client = None
     try:
         client = ctx.xui
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.debug("show_subs step: %s", _exc)
 
     for s in subs:
         d = core.days_left(s.get("expires_at"))
@@ -2216,8 +2216,8 @@ def show_subs(ctx, user, chat_id, message_id):
                     up = int(t.get("up") or 0)
                     down = int(t.get("down") or 0)
                     used_gb = round((up + down) / (1024 ** 3), 1)
-            except Exception:
-                pass
+            except Exception as _exc:
+                log.debug("show_subs step: %s", _exc)
 
         total_gb = s.get("gb") or 0
         pct = None
@@ -3093,8 +3093,8 @@ def admin_order_detail(ctx, user, chat_id, message_id, order_id):
         try:
             ctx.bot.send_photo(chat_id, o["receipt_file"], caption=txt, keyboard=kb(rows))
             return
-        except TelegramError:
-            pass
+        except TelegramError as _exc:
+            log.debug("admin_order_detail step: %s", _exc)
 
     return _reply(ctx, chat_id, message_id, txt, kb(rows))
 
@@ -3282,8 +3282,8 @@ def admin_input(ctx, user, chat_id, text, state, data):
                     try:
                         ctx.bot.edit(chat_id, pid,
                                      f"📢 ارسال… {core.fa(i)} از {core.fa(len(ids))}")
-                    except Exception:
-                        pass
+                    except Exception as _exc:
+                        log.warning("admin action side effect: %s", _exc)
 
         report = [
             "📢 <b>پیام همگانی ارسال شد</b>", "",
@@ -3301,8 +3301,8 @@ def admin_input(ctx, user, chat_id, text, state, data):
                 ctx.bot.edit(chat_id, pid, "\n".join(report),
                              keyboard=back_kb("admin"))
                 return
-            except Exception:
-                pass
+            except Exception as _exc:
+                log.warning("admin action side effect: %s", _exc)
         return _reply(ctx, chat_id, None, "\n".join(report), back_kb("admin"))
 
     if kind == "find":
@@ -3356,8 +3356,8 @@ def admin_input(ctx, user, chat_id, text, state, data):
 
         try:
             ctx.bot.send(u["tg_id"], user_msg)
-        except TelegramError:
-            pass
+        except TelegramError as _exc:
+            log.warning("admin action side effect: %s", _exc)
         return _reply(ctx, chat_id, None, f"✅ {note}",
                       kb([[("‹ بازگشت", f"adm:u:{target}")]]))
 
@@ -3435,8 +3435,8 @@ def admin_input(ctx, user, chat_id, text, state, data):
                                      f"💬 <b>درباره سفارش #{o['id']}</b>\n\n{esc(txt)}")
                     return _reply(ctx, chat_id, None, "✅ پیام رسید.",
                                   kb([[("‹ بازگشت", f"adm:o:{target}")]]))
-                except TelegramError:
-                    pass
+                except TelegramError as _exc:
+                    log.warning("admin action side effect: %s", _exc)
         return _reply(ctx, chat_id, None,
                       "❌ نرسید — احتمالاً کاربر ربات را بلاک کرده.",
                       back_kb("adm:orders"))
@@ -3464,8 +3464,8 @@ def _reply(ctx, chat_id, message_id, text, keyboard):
     if message_id:
         try:
             return ctx.bot.edit(chat_id, message_id, text, keyboard)
-        except TelegramError:
-            pass
+        except TelegramError as _exc:
+            log.debug("_reply step: %s", _exc)
     return ctx.bot.send(chat_id, text, keyboard=keyboard)
 
 
@@ -3494,8 +3494,8 @@ def dispatch(tenant, bot, update):
         log.exception("خطای پردازش آپدیت %s", update.get("update_id"))
         try:
             ctx.notify_group(_error_alert(update, e), topic="alerts")
-        except Exception:
-            pass
+        except Exception as _exc:
+            log.warning("error alert to admin group: %s", _exc)
     return None
 
 
@@ -3702,8 +3702,8 @@ def _on_callback(ctx, cq):
 
     try:
         ctx.bot.answer_cb(cq["id"])
-    except TelegramError:
-        pass
+    except TelegramError as _exc:
+        log.debug("_on_callback step: %s", _exc)
 
     if data in _SIMPLE:
         return _SIMPLE[data](ctx, user, chat_id, mid)
@@ -3818,8 +3818,8 @@ def _on_callback(ctx, cq):
                     try:
                         ctx.bot.edit_markup(chat_id, mid, keyboard=kb(
                             [[(f"✅ تایید شد — سفارش #{arg}", f"adm:o:{arg}")]]))
-                    except TelegramError:
-                        pass
+                    except TelegramError as _exc:
+                        log.debug("_on_callback step: %s", _exc)
                     ctx.bot.send(chat_id,
                                  f"✅ <b>سفارش #{arg} تایید شد</b>\n"
                                  "کانفیگ ساخته و برای مشتری ارسال شد.")
@@ -3938,8 +3938,8 @@ def do_reject(ctx, order_id, admin_tg_id, reason):
 
     try:
         ctx.bot.send(u["tg_id"], txt, keyboard=kb(rows))
-    except TelegramError:
-        pass
+    except TelegramError as _exc:
+        log.warning("rejection notice to customer: %s", _exc)
 
     # و همان خبر در صندوقِ مینی‌اپ.
     #
@@ -4232,8 +4232,8 @@ def _renew_gave_up(ctx, sub, why):
                         "یا به پشتیبانی پیام بدهید."),
             ),
             keyboard=kb([[("📊 اشتراک‌های من", "mysubs")]]))
-    except TelegramError:
-        pass
+    except TelegramError as _exc:
+        log.warning("renewal-failed notice to customer: %s", _exc)
     ctx.notify_group(
         f"⚠️ تمدید خودکار ممکن نیست\n👤 <code>{user['tg_id']}</code>\n"
         f"{esc(why)}", topic="alerts")
@@ -4254,8 +4254,8 @@ def _tell_renew_stuck(ctx, user, sub, plan):
             ),
             keyboard=kb([[("🔁 تمدید دستی", f"renew:{sub['id']}")],
                          [("📊 اشتراک‌های من", "mysubs")]]))
-    except TelegramError:
-        pass
+    except TelegramError as _exc:
+        log.debug("_tell_renew_stuck step: %s", _exc)
 
 
 def auto_renew_subscription(tenant, bot, sub):
@@ -4303,8 +4303,8 @@ def auto_renew_subscription(tenant, bot, sub):
                      ),
                      keyboard=kb([[("👛 شارژ کیف پول", "wallet")],
                                   [("📊 اشتراک‌های من", "mysubs")]]))
-        except TelegramError:
-            pass
+        except TelegramError as _exc:
+            log.debug("auto_renew_subscription step: %s", _exc)
         return
 
     order = ctx.db.create_order(user["id"], plan["id"], plan["price"], plan["price"],
@@ -4368,8 +4368,8 @@ def auto_renew_subscription(tenant, bot, sub):
                                  "همان است و وصل می‌ماند."),
                      ),
                      keyboard=kb([[("📊 اشتراک‌های من", "mysubs")]]))
-        except TelegramError:
-            pass
+        except TelegramError as _exc:
+            log.debug("auto_renew_subscription step: %s", _exc)
         ctx.notify_group(f"🔁 تمدید خودکار\n👤 <code>{user['tg_id']}</code>\n"
                          f"💰 {core.toman(plan['price'])} تومان", topic="renewals")
     else:

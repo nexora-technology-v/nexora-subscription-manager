@@ -4838,6 +4838,58 @@ check("ذخیره‌ی کامل (خوانده، یک کلید عوض، پس فر
       app.bot_settings_put({"settings": {**_full_st, "winback": {"enabled": True}}},
                            x_admin_password="testpw").get("ok") is True)
 
+head("هزینه‌ها: ورودیِ خراب ۴۰۰ می‌گیرد، نه جایگزینیِ بی‌صدا")
+# نرخِ دستیِ نامعتبر پیش‌تر بی‌صدا با نرخِ بازار عوض می‌شد؛ تاریخِ خراب خام
+# ذخیره می‌شد؛ حجمِ ناخوانا None می‌شد
+_base_exp = {"kind": "server_abroad", "label": "آزمون", "amount": 10, "currency": "EUR"}
+for _bad, _needle in (({"rate": "abc"}, "دستی"), ({"rate": "-5"}, "دستی"),
+                      ({"rate": "250000", "spentAt": "2026-13-45"}, "تاریخ"),
+                      ({"rate": "250000", "gb": "ده"}, "حجم")):
+    try:
+        app.expenses_add({**_base_exp, **_bad}, x_admin_password="testpw")
+        _st, _dt = 200, ""
+    except app.HTTPException as _e:
+        _st, _dt = _e.status_code, str(_e.detail)
+    check(f"هزینه با {list(_bad)[-1]} نامعتبر ۴۰۰ می‌گیرد", _st == 400 and _needle in _dt, f"{_st} {_dt[:60]}")
+_ok_exp = app.expenses_add({**_base_exp, "rate": "250000.4"}, x_admin_password="testpw")
+check("نرخِ دستیِ اعشاری پذیرفته و گرد می‌شود",
+      bool(_ok_exp.get("ok", True)) and "2500000" in json.dumps(_ok_exp, ensure_ascii=False),
+      json.dumps(_ok_exp, ensure_ascii=False)[:120])
+
+head("هشدارِ سلامتِ سرور واقعاً فرستاده می‌شود")
+# کوئری ستون‌های `admin_id` و `group_id` را می‌خواند که در tenants نیستند؛
+# خطا بلعیده می‌شد و هیچ هشداری هرگز نرفت. این‌جا ارسال واقعاً ضبط می‌شود.
+import urllib.request as _ur  # noqa: E402
+_sent = []
+_orig_open = _ur.urlopen
+_ur.urlopen = lambda req, timeout=None: _sent.append(json.loads(req.data.decode())) or None
+_bw3 = _sq3.connect(str(app.BOT_DB))
+try:
+    # این دیتابیسِ تست جدولِ کمینه‌ی دست‌سازِ tenants را دارد؛ ستون‌های
+    # اسکیمای واقعی (bot/db.py) که این‌جا لازم‌اند اضافه می‌شوند
+    _tc = {r[1] for r in _bw3.execute("PRAGMA table_info(tenants)")}
+    for _c, _t in (("owner_tg_id", "INTEGER"), ("admin_group_id", "INTEGER"),
+                   ("topics", "TEXT DEFAULT '{}'")):
+        if _c not in _tc:
+            _bw3.execute(f"ALTER TABLE tenants ADD COLUMN {_c} {_t}")
+    _bw3.execute("UPDATE tenants SET bot_token=?, admin_group_id=?, topics=? "
+                 "WHERE id=(SELECT id FROM tenants WHERE parent_id IS NULL ORDER BY id LIMIT 1)",
+                 ("999:TESTTOKEN", -100123, json.dumps({"alerts": 77})))
+    _bw3.commit()
+finally:
+    _bw3.close()
+try:
+    app._health_state.pop("t-alert", None)
+    app._health_alert("سرورِ آزمون", {"level": "crit", "summary": "دیسک پر",
+                                        "checks": [{"level": "crit", "title": "دیسک", "detail": "۹۸٪"}]},
+                      key="t-alert")
+finally:
+    _ur.urlopen = _orig_open
+check("هشدارِ خرابی به گروهِ مدیریت می‌رود", len(_sent) == 1 and _sent[0].get("chat_id") == -100123,
+      str(_sent)[:120])
+check("و در تاپیکِ alerts", bool(_sent) and _sent[0].get("message_thread_id") == 77,
+      str(_sent[0] if _sent else None)[:120])
+
 head("کارِ پس‌زمینه‌ی شکسته بی‌صدا نیست")
 # حلقه‌ی سلامت هر سه شکستش را با pass می‌بلعید؛ نگهداریِ خودکار می‌توانست
 # ماه‌ها اجرا نشود و «اجرای بعدی: …» همچنان نشان داده شود.

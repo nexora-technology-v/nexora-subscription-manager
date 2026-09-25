@@ -147,14 +147,19 @@ def to_toman(amount, currency, manual_rate=None):
     if cur in ("IRT", "TOMAN", "تومان"):
         return {"toman": int(round(amt)), "rate": 1, "source": "toman"}
 
-    if manual_rate:
+    if manual_rate not in (None, "", 0):
+        # نرخِ دستیِ نامعتبر پیش‌تر بی‌صدا نادیده گرفته می‌شد و نرخِ بازار
+        # جایش می‌نشست — هزینه‌ای که مدیر با نرخِ خودش وارد کرده بود با
+        # عددِ دیگری ذخیره می‌شد. حالا خطا برمی‌گردد.
         try:
-            r = int(manual_rate)
-            if r > 0:
-                return {"toman": int(round(amt * r)), "rate": r,
-                        "source": "manual"}
+            r = int(round(float(manual_rate)))
         except (TypeError, ValueError):
-            pass
+            return {"toman": None, "rate": None, "source": None,
+                    "error": "نرخِ دستی عدد نیست"}
+        if r <= 0:
+            return {"toman": None, "rate": None, "source": None,
+                    "error": "نرخِ دستی باید بزرگ‌تر از صفر باشد"}
+        return {"toman": int(round(amt * r)), "rate": r, "source": "manual"}
 
     rate = live(cur)
     if rate.get("ok") and rate.get("toman"):

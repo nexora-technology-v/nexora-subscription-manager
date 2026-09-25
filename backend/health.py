@@ -20,6 +20,9 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+import logging
+
+_log = logging.getLogger("nexora.health")
 
 OK, WARN, CRIT = "ok", "warn", "crit"
 
@@ -304,8 +307,9 @@ def check_dns():
         for line in Path("/etc/resolv.conf").read_text().splitlines():
             if line.startswith("nameserver"):
                 servers.append(line.split()[1])
-    except Exception:
-        pass
+    except Exception as _exc:
+        # بی‌این، «سروری تعریف نشده» و «فایل خوانده نشد» یک شکل بودند
+        _log.warning("reading /etc/resolv.conf: %s", _exc)
 
     detail = f"{ms} ms" + (f" · {', '.join(servers[:3])}" if servers else "")
 

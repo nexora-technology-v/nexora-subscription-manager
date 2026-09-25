@@ -25,6 +25,9 @@ import os
 import re
 import sqlite3
 import time
+import logging
+
+_log = logging.getLogger("nexora.netid")
 
 #: موتورهای تانلی که پنل نصب می‌کند یا کاربر ممکن است داشته باشد.
 #: backpack و backhaul هر دو در نصب‌های واقعی دیده شده‌اند.
@@ -254,11 +257,11 @@ def client_ips():
                         for ip in re.findall(r"[0-9a-fA-F:.]{3,45}",
                                              str(r[ipcol] or "")):
                             note(ip, who)
-                except Exception:
-                    pass
+                except Exception as _exc:
+                    _log.debug("client ip lookup: %s", _exc)
             con.close()
-        except Exception:
-            pass
+        except Exception as _exc:
+            _log.debug("client ip lookup: %s", _exc)
         break
 
     # ۲) لاگ دسترسی Xray
@@ -568,8 +571,8 @@ def rdns_warm(ips, timeout=1.2, workers=12):
             with ThreadPoolExecutor(max_workers=min(workers, len(todo))) as p:
                 for n in todo:
                     p.submit(rdns, n, timeout)
-        except Exception:
-            pass
+        except Exception as _exc:
+            _log.warning("ip identify worker pool: %s", _exc)
 
     t = threading.Thread(target=work, daemon=True)
     t.start()

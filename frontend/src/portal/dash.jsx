@@ -130,9 +130,18 @@ function Funnel({ src }) {
   const [f, setF] = useState(null);
   useEffect(() => {
     let alive = true;
-    src.funnel().then((j) => { if (alive) setF(j); }).catch(() => { if (alive) setF(null); });
+    src.funnel().then((j) => { if (alive) setF(j); })
+      .catch((e) => { if (alive) setF({ error: e.message || "خوانده نشد" }); });
     return () => { alive = false; };
   }, [src]);
+  // پیش‌تر خطا کارت را بی‌صدا حذف می‌کرد — همان شکلِ «هنوز کسی ربات را باز نکرده»
+  if (f && f.error) {
+    return (
+      <section className="pd-card pd-funnel">
+        <p style={{ color: "var(--danger)", fontSize: 13 }}>قیفِ فروش خوانده نشد: {f.error}</p>
+      </section>
+    );
+  }
   if (!f || !f.ready || !f.started) return null;
   return (
     <section className="pd-card pd-funnel">

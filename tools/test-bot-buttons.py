@@ -156,8 +156,11 @@ for b, label in [("buy", "خرید اشتراک"), ("mysubs", "اشتراک‌ه
 head("سلامت ساختار")
 
 check("_SIMPLE خالی نیست", len(simple) > 5, f"{len(simple)} ورودی")
+# هر دو شکل — `except Exception:` و `except Exception as e:`. نسخه‌ی قبلی
+# فقط اولی را می‌دید و در واقع روی catchِ *درونیِ* ارسالِ هشدار سبز می‌شد،
+# نه روی catchِ بیرونی که همین بررسی قرار بود بسنجد.
 check("dispatch استثنا را می‌گیرد",
-      "except Exception:" in SRC.split("def dispatch")[1][:900])
+      re.search(r"except Exception( as \w+)?:", SRC.split("def dispatch")[1][:900]) is not None)
 check("callback نامعتبر لاگ می‌شود", "callback نامعتبر" in SRC)
 
 # هر تابعی که به عنوان هندلر ثبت شده، باید واقعاً وجود داشته باشد

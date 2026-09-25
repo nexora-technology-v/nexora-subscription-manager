@@ -817,8 +817,8 @@ class XUI:
                 got = self._req("POST", "/panel/api/setting/all")
                 if isinstance(got, dict):
                     self._settings = got
-            except XUIError:
-                pass
+            except XUIError as _exc:
+                log.debug("x-ui probe (panel_settings): %s", _exc)
         return self._settings
 
     def panel_sub_base(self):
@@ -1019,8 +1019,8 @@ class XUI:
         if reset_traffic:
             try:
                 self.reset_client_traffic(inbound_id, current.get("email"))
-            except XUIError:
-                pass
+            except XUIError as _exc:
+                log.debug("x-ui probe (extend_subscription): %s", _exc)
 
         # حجمِ نهایی را هم برمی‌گردانیم.
         #
@@ -1064,10 +1064,10 @@ class XUI:
                     body = r.json()
                     if isinstance(body, dict) and body.get("success") is not False:
                         self._api_mode = "modern"
-                except ValueError:
-                    pass
-        except (requests.RequestException, XUIError):
-            pass
+                except ValueError as _exc:
+                    log.debug("x-ui probe (detect_api): %s", _exc)
+        except (requests.RequestException, XUIError) as _exc:
+            log.debug("x-ui probe (detect_api): %s", _exc)
 
         return self._api_mode
 

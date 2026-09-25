@@ -8,7 +8,7 @@ import React, { useState, useEffect } from "react";
 import {
   Download, Loader2, Upload,
 } from "lucide-react";
-import { errText } from "../../lib/format";
+import { errMsg, errText, faNum, okJson } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
 import { ConfirmModal, InfoBox, Msg, SectionHead } from "../../ui/index";
 
@@ -64,14 +64,13 @@ export function BotBackupSection({ password }) {
         headers: { "Content-Type": "application/json", "X-Admin-Password": password },
         body: JSON.stringify({ data: payload.data }),
       });
-      const d = await res.json();
-      if (res.ok) {
-        const total = Object.values(d.restored || {}).reduce((x, y) => x + y, 0);
-        // بازگردانیِ نصفه نباید مثل بازگردانیِ سالم به نظر برسد
-        if (d.warning) setMsg({ t: "err", m: `${total} رکورد بازیابی شد، ولی ${d.warning}` });
-        else setMsg({ t: "ok", m: `${total} رکورد بازیابی شد` });
-      } else setMsg({ t: "err", m: errText(d.detail, "بازیابی ناموفق") });
-    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+      const d = await okJson(res, "بازیابی ناموفق");
+      const total = faNum(Object.values(d.restored || {}).reduce((x, y) => x + y, 0));
+      const safety = d.safetyWarning ? ` — ${d.safetyWarning}` : "";
+      // بازگردانیِ نصفه نباید مثل بازگردانیِ سالم به نظر برسد
+      if (d.warning) setMsg({ t: "err", m: `${total} رکورد بازیابی شد، ولی ${d.warning}${safety}` });
+      else setMsg({ t: safety ? "err" : "ok", m: `${total} رکورد بازیابی شد${safety}` });
+    } catch (e) { setMsg({ t: "err", m: errMsg(e) }); }
     finally { setBusy(null); }
   };
 

@@ -56,8 +56,9 @@ class Bot:
             ad = requests.adapters.HTTPAdapter(pool_connections=4,
                                                pool_maxsize=8, max_retries=0)
             self._session.mount("https://", ad)
-        except Exception:
-            pass
+        except Exception as _exc:
+            # فقط کارایی است، نه درستی — ولی بی‌صدا نه
+            log.debug("http adapter tuning: %s", _exc)
 
     # ---------- هسته ----------
     def call(self, method: str, **params):
