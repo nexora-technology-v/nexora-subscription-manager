@@ -2571,7 +2571,21 @@ function ChannelLock({ src }) {
   const [st, setSt] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
-  useEffect(() => { src.settings().then(setSt).catch(() => setSt({})); }, [src]);
+  const [loadErr, setLoadErr] = useState("");
+  // پیش‌تر خطا `setSt({})` بود: فرم با «خاموش» و کانالِ خالی نشان داده
+  // می‌شد و «ذخیره» همان را می‌نوشت — قفلِ واقعیِ کانالِ نماینده بی‌صدا
+  // خاموش می‌شد. حالا فرم فقط با داده‌ی خوانده‌شده نشان داده می‌شود.
+  useEffect(() => {
+    src.settings().then((j) => { setSt(j); setLoadErr(""); })
+      .catch((e) => setLoadErr(e.message || "خواندن ناموفق بود"));
+  }, [src]);
+  if (loadErr && !st) {
+    return (
+      <div className="fx-card p-4 mt-4 text-[13px]" style={{ color: "var(--danger)" }}>
+        تنظیمِ عضویتِ اجباری در کانال خوانده نشد: {loadErr}
+      </div>
+    );
+  }
   if (!st) return null;
   const save = async () => {
     setBusy(true); setMsg(null);

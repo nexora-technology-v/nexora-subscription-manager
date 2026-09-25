@@ -8,7 +8,7 @@ import React, { useState, useEffect } from "react";
 import {
   AlertTriangle, Bot, CheckCircle2, Circle, CreditCard, Eye, HelpCircle, Key, Loader2, Plus as PlusIcon, Power, Radio, RefreshCw, Save, Server, ShieldCheck, Trash2, Users, XCircle, Zap,
 } from "lucide-react";
-import { errText, faNum } from "../../lib/format";
+import { errMsg, errText, faNum, okJson } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
 import { ConfirmModal, Field, InfoBox, Msg, PageSkeleton, SectionHead, Toggle } from "../../ui/index";
 
@@ -309,20 +309,31 @@ export function BotSection({ password, dirty }) {
   const [msg, setMsg] = useState(null);
   const [showTok, setShowTok] = useState(false);
   const [authMode, setAuthMode] = useState("token");
+  // خطای خواندن جدا از msg نگه داشته می‌شود: msg چند ثانیه بعد پاک می‌شد
+  // و شاخه‌ی «خوانده نشد» به «ماژول ربات ممکن است نصب نشده باشد» برمی‌گشت
+  const [loadErr, setLoadErr] = useState("");
 
   const load = async () => {
     try {
       const [s, st] = await Promise.all([
-        fetch(`${API_URL}/api/admin/bot/settings`, { headers: { "X-Admin-Password": password } }).then(r => r.json()),
-        fetch(`${API_URL}/api/admin/bot/status`, { headers: { "X-Admin-Password": password } }).then(r => r.json()),
+        fetch(`${API_URL}/api/admin/bot/settings`, { headers: { "X-Admin-Password": password } })
+          .then((r) => okJson(r, "خواندنِ تنظیماتِ ربات ناموفق بود")),
+        // وضعیت فرعی است؛ شکستش صفحه را نمی‌اندازد ولی گفته می‌شود
+        fetch(`${API_URL}/api/admin/bot/status`, { headers: { "X-Admin-Password": password } })
+          .then((r) => okJson(r, "خواندنِ وضعیتِ ربات ناموفق بود"))
+          .catch((e) => ({ _err: errMsg(e) })),
       ]);
-      setStatus(st);
+      setLoadErr("");
+      if (st && st._err) {
+        setStatus(null);
+        setMsg({ t: "err", m: st._err });
+      } else setStatus(st);
       // بک‌اند ممکن است tenant را null بدهد یا فیلدهایش ناقص باشند.
       // اینجا یک شکل کامل می‌سازیم تا هیچ‌جای رابط روی null نخورد.
       // اگر ماژول ربات در دسترس نیست، حالت خطا نشان می‌دهیم
       if (!s.ready && !s.tenant) {
         setT(null);
-        if (s.error) setMsg({ t: "err", m: s.error });
+        if (s.error) setLoadErr(s.error);
         return;
       }
 
@@ -341,7 +352,7 @@ export function BotSection({ password, dirty }) {
       // اگر قبلاً با یوزر/رمز تنظیم شده بود، همان حالت را نشان بده
       if (tn.panel_user && !tn.panel_token_set) setAuthMode("login");
       if (s.error) setMsg({ t: "err", m: s.error });
-    } catch { setMsg({ t: "err", m: "اتصال به سرور برقرار نشد" }); }
+    } catch (e) { setLoadErr(errMsg(e)); }
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, [password]);
@@ -379,7 +390,7 @@ export function BotSection({ password, dirty }) {
             تنظیمات ربات خوانده نشد
           </div>
           <p className="text-[13px] mb-5 max-w-sm mx-auto leading-relaxed" style={{ color: "var(--muted)" }}>
-            {msg?.m || "ماژول ربات ممکن است نصب نشده باشد."}
+            {loadErr || msg?.m || "ماژول ربات ممکن است نصب نشده باشد."}
           </p>
           <button onClick={() => { setLoading(true); load(); }}
             className="fx-btn px-5 py-2.5 text-[14px] inline-flex items-center gap-2">

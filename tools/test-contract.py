@@ -396,8 +396,9 @@ FIELD_READS = [
      {"owner", "ownerKind", "ownerWhy", "ptr", "clients"}),
     # سطحِ بالا: کلِ یک کامپوننت، `d` خودِ پاسخ است (path خالی)
     # هزینه‌ها `d.count` و `d.trafficCost` می‌خواند که بکند نمی‌فرستاد
+    # `error` را خودِ رابط می‌گذارد (catchِ useJson)، نه بکند
     ("sections/expenses.jsx", "export function BillingExpenses(", "d",
-     "/api/admin/billing/expenses", [], set()),
+     "/api/admin/billing/expenses", [], {"error"}),
     ("sections/expenses.jsx", "export function BillingLedger(", "d",
      "/api/admin/billing/ledger", [], set()),
     # فهرست‌های اصلیِ هر بخش — هیچ‌کدام امروز شبح ندارند؛ برای اینکه نداشته بمانند

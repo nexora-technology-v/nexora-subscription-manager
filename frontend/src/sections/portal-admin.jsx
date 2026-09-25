@@ -12,7 +12,7 @@ import {
 
 import { API_URL } from "../lib/constants";
 import { errMsg, errText, faNum, okJson } from "../lib/format";
-import { Avatar, ConfirmModal, EmptyState, Field, InfoBox, Msg, MoneyInput, NumberInput, SectionHead, StatTile } from "../ui/index";
+import { Avatar, ConfirmModal, EmptyState, Field, InfoBox, LoadError, Msg, MoneyInput, NumberInput, SectionHead, StatTile } from "../ui/index";
 import { BotInboundsSection } from "./bot/inbounds";
 import { isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
 
@@ -584,6 +584,16 @@ export function ResellerInbounds({ password }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list.length]);
 
+  // بعد از هوک‌ها — بی‌این، خطا یک ردیفِ خالیِ «نماینده:» می‌ساخت
+  if (data?.error) {
+    return (
+      <>
+        <SectionHead icon={Network} title="اینباند نماینده‌ها" />
+        <LoadError what="فهرستِ نماینده‌ها" err={data.error} onRetry={reload} />
+      </>
+    );
+  }
+
   return (
     <>
       <SectionHead icon={Network} title="اینباند نماینده‌ها"
@@ -858,6 +868,10 @@ export function PortalAdmin({ password }) {
       {!data ? (
         <EmptyState icon={Users} text={loading ? "در حال بارگذاری…"
           : "فهرست نماینده‌ها خوانده نشد"} />
+      ) : data.error ? (
+        /* خطا — چه از fetch، چه `ready: false`ِ خودِ بکند — پیش‌تر به شاخه‌ی
+           «هنوز نماینده‌ای ساخته نشده» می‌افتاد، چون `tenants` خالی بود */
+        <LoadError what="فهرستِ نماینده‌ها" err={data.error} onRetry={reload} />
       ) : !(data.tenants || []).length ? (
         <EmptyState icon={Users}
           text="هنوز نماینده‌ای ساخته نشده — دکمه‌ی «نماینده‌ی جدید» بالا" />

@@ -1051,7 +1051,7 @@
      "amount": 300000,
      "paid_at": "2026-09-15",
      "note": "",
-     "created_at": "2026-09-25 13:34:01",
+     "created_at": "2026-09-25 16:03:32",
      "group_name": "goroh-c"
     },
     {
@@ -1060,7 +1060,7 @@
      "amount": 1200000,
      "paid_at": "2026-09-05",
      "note": "کارت‌به‌کارت",
-     "created_at": "2026-09-25 13:34:01",
+     "created_at": "2026-09-25 16:03:32",
      "group_name": "goroh-a"
     },
     {
@@ -1069,7 +1069,7 @@
      "amount": 900000,
      "paid_at": "2026-08-21",
      "note": "نقدی",
-     "created_at": "2026-09-25 13:34:01",
+     "created_at": "2026-09-25 16:03:32",
      "group_name": "goroh-b"
     },
     {
@@ -1078,7 +1078,7 @@
      "amount": 1800000,
      "paid_at": "2026-08-06",
      "note": "کارت‌به‌کارت",
-     "created_at": "2026-09-25 13:34:01",
+     "created_at": "2026-09-25 16:03:32",
      "group_name": "goroh-a"
     }
    ]
@@ -1100,7 +1100,7 @@
      "recurring": "once",
      "spent_at": "2026-09-13",
      "note": "",
-     "created_at": "2026-09-25 13:34:04"
+     "created_at": "2026-09-25 16:03:37"
     },
     {
      "id": 3,
@@ -1115,7 +1115,7 @@
      "recurring": "once",
      "spent_at": "2026-09-13",
      "note": "",
-     "created_at": "2026-09-25 13:34:03"
+     "created_at": "2026-09-25 16:03:35"
     },
     {
      "id": 2,
@@ -1130,7 +1130,7 @@
      "recurring": "once",
      "spent_at": "2026-09-13",
      "note": "",
-     "created_at": "2026-09-25 13:34:03"
+     "created_at": "2026-09-25 16:03:35"
     },
     {
      "id": 1,
@@ -1145,7 +1145,7 @@
      "recurring": "once",
      "spent_at": "2026-09-13",
      "note": "",
-     "created_at": "2026-09-25 13:34:03"
+     "created_at": "2026-09-25 16:03:35"
     }
    ],
    "kinds": {
@@ -1235,7 +1235,7 @@
       "amount": 240000,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "goroh-a_10",
@@ -1264,7 +1264,7 @@
       "amount": 1080000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792935240829
+      "expiry": 1792944211799
      },
      {
       "email": "goroh-a_11",
@@ -1293,7 +1293,7 @@
       "amount": 190000,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "goroh-a_12",
@@ -1322,7 +1322,7 @@
       "amount": 480000,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "goroh-a_13",
@@ -1351,7 +1351,7 @@
       "amount": 360000,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "goroh-a_14",
@@ -1380,7 +1380,7 @@
       "amount": 720000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      },
      {
       "email": "goroh-a_2",
@@ -1409,7 +1409,7 @@
       "amount": 480000,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "goroh-a_3",
@@ -1438,7 +1438,7 @@
       "amount": 285000,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "goroh-a_4",
@@ -1467,7 +1467,7 @@
       "amount": 810000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      },
      {
       "email": "goroh-a_5",
@@ -1496,7 +1496,7 @@
       "amount": 960000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792935240829
+      "expiry": 1792944211799
      },
      {
       "email": "goroh-a_6",
@@ -1525,7 +1525,7 @@
       "amount": 190000,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "goroh-a_7",
@@ -1554,7 +1554,7 @@
       "amount": 555000,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "goroh-a_8",
@@ -1583,7 +1583,7 @@
       "amount": 285000,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "goroh-a_9",
@@ -1612,7 +1612,7 @@
       "amount": 720000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      }
     ],
     "items": [
@@ -1643,7 +1643,7 @@
       "amount": 240000,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "goroh-a_10",
@@ -1672,7 +1672,7 @@
       "amount": 1080000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792935240829
+      "expiry": 1792944211799
      },
      {
       "email": "goroh-a_11",
@@ -1701,7 +1701,7 @@
       "amount": 190000,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "goroh-a_12",
@@ -1730,7 +1730,7 @@
       "amount": 480000,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "goroh-a_13",
@@ -1759,7 +1759,7 @@
       "amount": 360000,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "goroh-a_14",
@@ -1788,7 +1788,7 @@
       "amount": 720000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      },
      {
       "email": "goroh-a_2",
@@ -1817,7 +1817,7 @@
       "amount": 480000,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "goroh-a_3",
@@ -1846,7 +1846,7 @@
       "amount": 285000,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "goroh-a_4",
@@ -1875,7 +1875,7 @@
       "amount": 810000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      },
      {
       "email": "goroh-a_5",
@@ -1904,7 +1904,7 @@
       "amount": 960000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792935240829
+      "expiry": 1792944211799
      },
      {
       "email": "goroh-a_6",
@@ -1933,7 +1933,7 @@
       "amount": 190000,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "goroh-a_7",
@@ -1962,7 +1962,7 @@
       "amount": 555000,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "goroh-a_8",
@@ -1991,7 +1991,7 @@
       "amount": 285000,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "goroh-a_9",
@@ -2020,7 +2020,7 @@
       "amount": 720000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      }
     ],
     "totalAmount": 7355000,
@@ -2089,7 +2089,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "goroh-b_2",
@@ -2118,7 +2118,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "goroh-b_3",
@@ -2147,7 +2147,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "goroh-b_4",
@@ -2176,7 +2176,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      },
      {
       "email": "goroh-b_5",
@@ -2205,7 +2205,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1792935240829
+      "expiry": 1792944211799
      },
      {
       "email": "goroh-b_6",
@@ -2234,7 +2234,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "goroh-b_7",
@@ -2263,7 +2263,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "goroh-b_8",
@@ -2292,7 +2292,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "goroh-b_9",
@@ -2321,7 +2321,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      }
     ],
     "items": [
@@ -2352,7 +2352,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "goroh-b_2",
@@ -2381,7 +2381,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "goroh-b_3",
@@ -2410,7 +2410,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "goroh-b_4",
@@ -2439,7 +2439,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      },
      {
       "email": "goroh-b_5",
@@ -2468,7 +2468,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1792935240829
+      "expiry": 1792944211799
      },
      {
       "email": "goroh-b_6",
@@ -2497,7 +2497,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "goroh-b_7",
@@ -2526,7 +2526,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "goroh-b_8",
@@ -2555,7 +2555,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "goroh-b_9",
@@ -2584,7 +2584,7 @@
       "amount": 0,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      }
     ],
     "totalAmount": 0,
@@ -2721,7 +2721,7 @@
       "amount": 180000,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "goroh-c_2",
@@ -2750,7 +2750,7 @@
       "amount": 270000,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "goroh-c_3",
@@ -2779,7 +2779,7 @@
       "amount": 270000,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "goroh-c_4",
@@ -2808,7 +2808,7 @@
       "amount": 270000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      },
      {
       "email": "goroh-c_5",
@@ -2837,7 +2837,7 @@
       "amount": 270000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792935240829
+      "expiry": 1792944211799
      }
     ],
     "items": [
@@ -2868,7 +2868,7 @@
       "amount": 180000,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "goroh-c_2",
@@ -2897,7 +2897,7 @@
       "amount": 270000,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "goroh-c_3",
@@ -2926,7 +2926,7 @@
       "amount": 270000,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "goroh-c_4",
@@ -2955,7 +2955,7 @@
       "amount": 270000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      },
      {
       "email": "goroh-c_5",
@@ -2984,7 +2984,7 @@
       "amount": 270000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792935240829
+      "expiry": 1792944211799
      }
     ],
     "totalAmount": 1260000,
@@ -3059,7 +3059,7 @@
       "amount": 120000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792071238962
+      "expiry": 1792080209625
      },
      {
       "email": "ali_2",
@@ -3088,7 +3088,7 @@
       "amount": 120000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792071238962
+      "expiry": 1792080209625
      },
      {
       "email": "direct_1",
@@ -3117,7 +3117,7 @@
       "amount": 140000,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "direct_2",
@@ -3146,7 +3146,7 @@
       "amount": 120000,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "direct_3",
@@ -3175,7 +3175,7 @@
       "amount": 120000,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "direct_4",
@@ -3204,7 +3204,7 @@
       "amount": 140000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      },
      {
       "email": "sara_1",
@@ -3233,7 +3233,7 @@
       "amount": 120000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792071238962
+      "expiry": 1792080209625
      },
      {
       "email": "solo_1",
@@ -3262,7 +3262,7 @@
       "amount": 120000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792071238962
+      "expiry": 1792080209625
      }
     ],
     "items": [
@@ -3293,7 +3293,7 @@
       "amount": 120000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792071238962
+      "expiry": 1792080209625
      },
      {
       "email": "ali_2",
@@ -3322,7 +3322,7 @@
       "amount": 120000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792071238962
+      "expiry": 1792080209625
      },
      {
       "email": "direct_1",
@@ -3351,7 +3351,7 @@
       "amount": 140000,
       "active": true,
       "status": "فعال",
-      "expiry": 1789824840829
+      "expiry": 1789833811799
      },
      {
       "email": "direct_2",
@@ -3380,7 +3380,7 @@
       "amount": 120000,
       "active": true,
       "status": "فعال",
-      "expiry": 1790602440829
+      "expiry": 1790611411799
      },
      {
       "email": "direct_3",
@@ -3409,7 +3409,7 @@
       "amount": 120000,
       "active": true,
       "status": "فعال",
-      "expiry": 1791380040829
+      "expiry": 1791389011799
      },
      {
       "email": "direct_4",
@@ -3438,7 +3438,7 @@
       "amount": 140000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792157640829
+      "expiry": 1792166611799
      },
      {
       "email": "sara_1",
@@ -3467,7 +3467,7 @@
       "amount": 120000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792071238962
+      "expiry": 1792080209625
      },
      {
       "email": "solo_1",
@@ -3496,7 +3496,7 @@
       "amount": 120000,
       "active": true,
       "status": "فعال",
-      "expiry": 1792071238962
+      "expiry": 1792080209625
      }
     ],
     "totalAmount": 1000000,
@@ -3891,7 +3891,7 @@
       "amount": 300000,
       "paid_at": "2026-09-15",
       "note": "",
-      "created_at": "2026-09-25 13:34:01"
+      "created_at": "2026-09-25 16:03:32"
      }
     ]
    },
@@ -3944,6 +3944,7 @@
    "hasClients": true,
    "hasGroups": false,
    "found": [],
+   "manual": "",
    "envVar": "/etc/x-ui/x-ui.db"
   };
   var BILL_DIAG = {

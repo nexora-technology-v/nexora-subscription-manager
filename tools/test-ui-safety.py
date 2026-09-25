@@ -594,7 +594,9 @@ for _f, _src in ALL.items():
         _swallow.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1} (if ok بی‌else)")
     # ۳) `.then((r) => r.json())` — وضعیت را نمی‌سنجد، پس `{detail}`ِ خطا
     #    مثلِ داده در state می‌نشست. بیست‌وشش جا بود؛ جایش okJson است.
-    for _m in re.finditer(r"\.then\(\((\w+)\)\s*=>\s*\1\.json\(\)\)", _src):
+    #    هر دو شکل: `(r) => r.json()` و `r => r.json()`. دومی از زیرِ نسخه‌ی
+    #    اولِ این دروازه رد شده بود (تنظیماتِ حسابداری، اتصالِ ربات).
+    for _m in re.finditer(r"\.then\(\(?(\w+)\)?\s*=>\s*\1\.json\(\)\)", _src):
         _swallow.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1} (r.json بی‌سنجش — okJson)")
 check("خطای خواندن بلعیده نمی‌شود (catchِ بی‌صدا، if-okِ بی‌else)",
       not _swallow, ", ".join(_swallow[:6]))

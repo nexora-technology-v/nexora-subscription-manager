@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { errMsg, errText, faNum, okJson } from "../lib/format";
-import { ConfirmModal, EmptyState, Field, InfoBox, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile } from "../ui/index";
+import { ConfirmModal, EmptyState, Field, InfoBox, LoadError, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile } from "../ui/index";
 import { JalaliDate, isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
 
 const KIND_META = {
@@ -255,6 +255,17 @@ export function BillingExpenses({ password }) {
   if (!d) {
     return (
       <PageSkeleton />
+    );
+  }
+
+  // پیش‌تر فقط `!d` سنجیده می‌شد: خطا کلِ صفحه را با «۰ تومان هزینه» و
+  // فهرستِ خالی می‌ساخت — یعنی «هیچ هزینه‌ای ندارید»، که دروغ بود
+  if (d.error) {
+    return (
+      <div className="fx-anim">
+        <SectionHead title="هزینه‌ها" />
+        <LoadError what="هزینه‌ها" err={d.error} onRetry={load} />
+      </div>
     );
   }
 

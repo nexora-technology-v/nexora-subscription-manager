@@ -259,7 +259,10 @@ export function ChannelSection({ password }) {
     finally { setBusy(false); }
   };
 
+  // cfg تا خواندنِ موفق null است؛ PUTِ تنظیماتِ ربات کلِ دیکشنری را
+  // جایگزین می‌کند، پس ذخیره بدونِ آن فقط یک کلید می‌فرستاد و بقیه پاک می‌شد
   const saveAddr = async () => {
+    if (!cfg) { setMsg({ t: "err", m: "تنظیماتِ ربات خوانده نشده — صفحه را تازه کنید" }); return; }
     setSavingAddr(true);
     try {
       await call("/api/admin/bot/settings", password, {
@@ -316,6 +319,7 @@ export function ChannelSection({ password }) {
   };
 
   const saveAi = async () => {
+    if (!cfg) { setMsg({ t: "err", m: "تنظیماتِ ربات خوانده نشده — صفحه را تازه کنید" }); return; }
     setAiBusy(true);
     try {
       await call("/api/admin/bot/settings", password, {

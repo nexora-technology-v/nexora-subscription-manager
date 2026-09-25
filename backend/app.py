@@ -1096,9 +1096,11 @@ def _learn_panel_origin(request):
                 try:
                     st = json.loads(row["settings"] or "{}")
                 except (json.JSONDecodeError, TypeError):
-                    st = {}
+                    st = None
                 if not isinstance(st, dict):
-                    st = {}
+                    # ناخوانا: نوشتنِ {miniapp_url} رویش داده‌ی قابلِ‌نجات را پاک می‌کرد
+                    log.warning("tenant %s settings unreadable — miniapp_url not set", row["id"])
+                    continue
                 if str(st.get("miniapp_url") or "").strip():
                     continue            # خودش گذاشته — دست نمی‌زنیم
                 st["miniapp_url"] = f"https://{host}/app"
@@ -1144,6 +1146,15 @@ def update_config(payload: dict, x_admin_password: str = Header(...),
     می‌فرستد؛ اگر نخواند، خطای روشن می‌گیرد نه پاک‌شدنِ خاموش.
     """
     check_auth(x_admin_password)
+    # کلِ تنظیمات جایگزین می‌شود، پس چیزی که شبیهِ تنظیمات نیست رد می‌شود.
+    # صفحه‌ی «تنظیماتِ حسابداری» تنظیمات را با `r.json()` بی‌سنجش می‌خواند؛
+    # اگر آن خواندن ۵۰۰ می‌گرفت، `{detail: …}` با یک مسیر به‌جای کلِ
+    # تنظیمات ذخیره می‌شد. نیمی از کلیدهای سطحِ اول کف است.
+    _known = set(payload or {}) & set(DEFAULT_CONFIG)
+    if len(_known) < len(DEFAULT_CONFIG) // 2:
+        raise HTTPException(
+            status_code=400,
+            detail=f"تنظیماتِ ناقص — فقط {len(_known)} از {len(DEFAULT_CONFIG)} بخش آمده؛ ذخیره نشد")
     want = None
     if x_config_version not in (None, ""):
         try:
@@ -4259,6 +4270,28 @@ def bot_settings_put(payload: dict, x_admin_password: str = Header(...)):
             tid = cur.lastrowid
         else:
             tid = row["id"]
+
+        # `settings` کلِ دیکشنری را *جایگزین* می‌کند. سه صفحه (پیگیریِ تست،
+        # پاسخ‌های آماده، آدرسِ کانال) اگر خواندنِ تنظیمات شکست می‌خورد، با
+        # دیکشنریِ خالی ادامه می‌دادند و ذخیره‌شان فقط یک کلید را پس
+        # می‌فرستاد — یعنی همه‌ی متن‌ها، سکه، کارت‌ها و بقیه پاک می‌شد.
+        # رابط اصلاح شد؛ این نگهبان برای صفحه‌ی بعدی است که همین را تکرار
+        # کند. پیش از هر نوشتنی، تا ردِ آن هیچ اثرِ نیمه‌کاره‌ای نگذارد.
+        _incoming = payload.get("settings")
+        if row and isinstance(_incoming, dict):
+            try:
+                _cur = json.loads(con.execute(
+                    "SELECT settings FROM tenants WHERE id=?",
+                    (tid,)).fetchone()["settings"] or "{}")
+            except Exception:
+                _cur = {}
+            if isinstance(_cur, dict) and len(_cur) >= 4:
+                _lost = set(_cur) - set(_incoming)
+                if len(_lost) * 2 > len(_cur):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(f"تنظیماتِ ناقص — {len(_lost)} از {len(_cur)} بخشِ "
+                                "تنظیماتِ ربات پاک می‌شد؛ ذخیره نشد. صفحه را تازه کنید."))
 
         # فیلدهای ساده — فقط اگر مقدار داده شده باشد به‌روز می‌شوند
         simple = ["name", "bot_username", "owner_tg_id", "panel_url", "panel_user",
@@ -9281,6 +9314,31 @@ def billing_restore(payload: dict, x_admin_password: str = Header(...)):
         con.close()
 
 
+@app.put("/api/admin/billing/xui-path")
+def billing_xui_path_set(payload: dict, x_admin_password: str = Header(...)):
+    """
+    فقط مسیرِ دستیِ دیتابیسِ x-ui — نه کلِ تنظیمات.
+
+    پیش‌تر صفحه کلِ تنظیمات را می‌خواند، یک کلید را عوض می‌کرد و کل را
+    پس می‌فرستاد، بی‌آنکه نسخه‌اش را بفرستد: هر تغییری که در این فاصله
+    جای دیگری ذخیره شده بود بی‌صدا پاک می‌شد، و اگر خواندن شکست خورده
+    بود، پاسخِ خطا به‌جای تنظیمات ذخیره می‌شد. این‌جا خواندن و نوشتن هر
+    دو سمتِ سرور است.
+    """
+    check_auth(x_admin_password)
+    path = (payload or {}).get("path")
+    if path is None or not isinstance(path, str):
+        raise HTTPException(status_code=400, detail="مسیر باید متن باشد")
+    path = path.strip()
+    if len(path) > 500:
+        raise HTTPException(status_code=400, detail="مسیر بیش از حد بلند است")
+    cfg = load_config()
+    cfg.setdefault("advanced", {})
+    cfg["advanced"]["xuiDbPath"] = path
+    ver = save_config(cfg)
+    return {"ok": True, "path": path, "version": ver}
+
+
 @app.get("/api/admin/billing/xui-path")
 def billing_xui_path(x_admin_password: str = Header(...)):
     """
@@ -9321,6 +9379,8 @@ def billing_xui_path(x_admin_password: str = Header(...)):
         "hasClients": "clients" in tables or "client_traffics" in tables,
         "hasGroups": "client_groups" in tables,
         "found": found,
+        # مسیرِ دستیِ ذخیره‌شده — تا صفحه برای نشان‌دادنش کلِ تنظیمات را نخواند
+        "manual": ((load_config().get("advanced") or {}).get("xuiDbPath") or ""),
         "envVar": os.getenv("XUI_DB_PATH", ""),
     }
 
@@ -14879,13 +14939,18 @@ def portal_bot_set(payload: dict, t: dict = Depends(portal_tenant)):
         #
         # آدرس برای همه یکی است؛ مستاجر از روی امضای توکنِ ربات
         # تشخیص داده می‌شود، نه از روی آدرس.
+        # تنظیماتِ ناخوانا با {} جایگزین نمی‌شود: نوشتنِ فقط miniapp_url روی
+        # آن یعنی نابودیِ داده‌ای که هنوز با دست قابلِ نجات است
+        _corrupt = False
         try:
             mine = json.loads(t.get("settings") or "{}")
             if not isinstance(mine, dict):
-                mine = {}
+                mine, _corrupt = {}, True
         except (json.JSONDecodeError, TypeError):
-            mine = {}
-        if not str(mine.get("miniapp_url") or "").strip():
+            mine, _corrupt = {}, True
+        if _corrupt:
+            log.warning("tenant %s settings unreadable — not overwriting with miniapp_url", t["id"])
+        if not _corrupt and not str(mine.get("miniapp_url") or "").strip():
             root = con.execute(
                 "SELECT settings FROM tenants WHERE parent_id IS NULL "
                 "ORDER BY id LIMIT 1").fetchone()

@@ -136,7 +136,12 @@ function WinBack({ password }) {
   const [t, setT] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [loadErr, setLoadErr] = useState("");
 
+  // خطرناک‌ترین catchِ این مخزن بود: `setT({ settings: {} })`. فرم با
+  // پیش‌فرض‌ها باز می‌شد و «ذخیره» `{settings: {winback}}` را می‌فرستاد —
+  // و PUTِ تنظیماتِ ربات کلِ دیکشنری را *جایگزین* می‌کند. یعنی یک کلیک
+  // همه‌ی متن‌ها، سکه، کارت‌ها و بقیه‌ی تنظیماتِ ربات را پاک می‌کرد.
   const load = async () => {
     try {
       const d = await call("/api/admin/bot/settings", password);
@@ -144,7 +149,8 @@ function WinBack({ password }) {
         settings: (d.tenant?.settings && typeof d.tenant.settings === "object"
                    && !Array.isArray(d.tenant.settings)) ? d.tenant.settings : {},
       });
-    } catch { setT({ settings: {} }); }
+      setLoadErr("");
+    } catch (e) { setT(null); setLoadErr(e.message || "خواندن ناموفق بود"); }
   };
   useEffect(() => { load(); }, [password]);
   useEffect(() => {
@@ -169,7 +175,13 @@ function WinBack({ password }) {
     finally { setBusy(false); }
   };
 
-  if (!t) return null;
+  if (!t) {
+    return loadErr ? (
+      <div className="fx-card p-4 mb-4 text-[13px]" style={{ color: "var(--danger)" }}>
+        تنظیمِ پیگیریِ تست خوانده نشد: {loadErr}
+      </div>
+    ) : null;
+  }
 
   return (
     <div className="fx-card p-5 mb-4">

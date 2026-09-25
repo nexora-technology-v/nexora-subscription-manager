@@ -4772,6 +4772,57 @@ except Exception as _e:
     _rc = getattr(_e, "status_code", 0)
 check("بی‌هدر ← ۴۰۱", _rc == 401, str(_rc))
 
+head("ذخیره‌ی تنظیمات: پاسخِ خطا جای کلِ تنظیمات نمی‌نشیند")
+# «تنظیماتِ حسابداری» کلِ تنظیمات را با r.json بی‌سنجش می‌خواند و با یک مسیر
+# پس می‌فرستاد؛ خواندنِ ناموفق یعنی `{detail, advanced}` به‌جای همه‌چیز.
+try:
+    app.update_config({"detail": "boom", "advanced": {"xuiDbPath": "/x"}}, x_config_version=None,
+                      x_admin_password="testpw")
+    _uc = 200
+except app.HTTPException as _e:
+    _uc = _e.status_code
+check("تنظیماتِ ناقص ۴۰۰ می‌گیرد، نه جایگزینیِ کل", _uc == 400, str(_uc))
+_full = app.load_config()
+check("تنظیماتِ کامل هنوز ذخیره می‌شود",
+      app.update_config(_full, x_admin_password="testpw", x_config_version=None).get("ok") is True)
+_r = app.billing_xui_path_set({"path": " /opt/x-ui/x-ui.db "}, x_admin_password="testpw")
+_after = app.load_config()
+check("مسیرِ x-ui جدا ذخیره می‌شود و بقیه‌ی تنظیمات دست نمی‌خورد",
+      _r.get("path") == "/opt/x-ui/x-ui.db"
+      and (_after.get("advanced") or {}).get("xuiDbPath") == "/opt/x-ui/x-ui.db"
+      and _after.get("faq") == _full.get("faq"),
+      str(_r))
+check("و GETِ همان مسیر مقدارِ دستی را برمی‌گرداند",
+      app.billing_xui_path(x_admin_password="testpw").get("manual") == "/opt/x-ui/x-ui.db")
+app.billing_xui_path_set({"path": ""}, x_admin_password="testpw")
+
+head("تنظیماتِ ربات: ذخیره‌ی ناقص همه‌چیز را پاک نمی‌کند")
+# PUTِ تنظیماتِ ربات کلِ دیکشنری را جایگزین می‌کند. سه صفحه پس از شکستِ
+# خواندن با {} ادامه می‌دادند و ذخیره‌شان فقط یک کلید را می‌فرستاد.
+_full_st = {"brand": "B", "support_username": "@s", "coins": {"enabled": True},
+            "texts": {"welcome": "سلام"}, "quick_replies": [{"title": "x", "body": "y"}]}
+app.bot_settings_put({"settings": _full_st}, x_admin_password="testpw")
+try:
+    app.bot_settings_put({"settings": {"winback": {"enabled": True}}},
+                         x_admin_password="testpw")
+    _bs = 200
+except app.HTTPException as _e:
+    _bs = _e.status_code
+_bw2 = _sq3.connect(str(app.BOT_DB))
+try:
+    _stored = json.loads(_bw2.execute(
+        "SELECT settings FROM tenants WHERE parent_id IS NULL ORDER BY id LIMIT 1"
+    ).fetchone()[0] or "{}")
+finally:
+    _bw2.close()
+check("ذخیره‌ای که بیشترِ تنظیمات را حذف می‌کند ۴۰۰ می‌گیرد", _bs == 400, str(_bs))
+check("و تنظیماتِ ذخیره‌شده دست نخورده می‌ماند",
+      _stored.get("texts") == {"welcome": "سلام"} and "winback" not in _stored,
+      str(sorted(_stored)))
+check("ذخیره‌ی کامل (خوانده، یک کلید عوض، پس فرستاده) هنوز کار می‌کند",
+      app.bot_settings_put({"settings": {**_full_st, "winback": {"enabled": True}}},
+                           x_admin_password="testpw").get("ok") is True)
+
 head("کارِ پس‌زمینه‌ی شکسته بی‌صدا نیست")
 # حلقه‌ی سلامت هر سه شکستش را با pass می‌بلعید؛ نگهداریِ خودکار می‌توانست
 # ماه‌ها اجرا نشود و «اجرای بعدی: …» همچنان نشان داده شود.

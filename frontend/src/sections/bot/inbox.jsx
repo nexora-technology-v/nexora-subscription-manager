@@ -98,7 +98,9 @@ export function BotInboxSection({ password, src, note }) {
   const [zoom, setZoom] = useState("");
   // پاسخ‌های آماده و ویرایشگرشان
   const [quick, setQuick] = useState(null);
-  const [brand, setBrand] = useState({});
+  // null یعنی «خوانده نشده» — نه «تنظیماتِ خالی». ذخیره‌ی پاسخ‌های آماده
+  // کلِ تنظیمات را پس می‌فرستد، پس بی‌این، شکستِ خواندن همه‌چیز را پاک می‌کرد.
+  const [brand, setBrand] = useState(null);
   const [editQ, setEditQ] = useState(null);
 
   const logRef = useRef(null);
@@ -131,7 +133,10 @@ export function BotInboxSection({ password, src, note }) {
       setBrand(st);
       const q0 = Array.isArray(st.quick_replies) ? st.quick_replies : null;
       setQuick(q0 && q0.length ? q0 : QUICK_DEFAULTS);
-    } catch { setQuick(QUICK_DEFAULTS); }
+    } catch (e) {
+      setQuick(QUICK_DEFAULTS);
+      setErr(`تنظیماتِ ربات خوانده نشد؛ پاسخ‌های آماده ذخیره نمی‌شوند: ${e.message}`);
+    }
   }, [S]);
 
   useEffect(() => { loadQuick(); }, [loadQuick]);
@@ -234,8 +239,8 @@ export function BotInboxSection({ password, src, note }) {
     const th = (threads || []).find((t) => t.userId === open);
     return String(body || "")
       .replace(/\{name\}/g, (th?.name || "").trim() || "دوست عزیز")
-      .replace(/\{brand\}/g, brand.brand || "")
-      .replace(/\{support\}/g, brand.support_username || "");
+      .replace(/\{brand\}/g, (brand && brand.brand) || "")
+      .replace(/\{support\}/g, (brand && brand.support_username) || "");
   };
 
   /** درج در کادر، نه ارسال. تقریباً همیشه یک جمله باید اضافه شود. */
@@ -246,6 +251,10 @@ export function BotInboxSection({ password, src, note }) {
   };
 
   const saveQuick = async (rows) => {
+    if (!brand) {
+      setErr("تنظیماتِ ربات هنوز خوانده نشده — صفحه را تازه کنید، بعد ذخیره کنید");
+      return;
+    }
     setQuick(rows);
     try {
       await S.saveSettings({ ...brand, quick_replies: rows });

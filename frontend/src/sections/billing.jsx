@@ -14,7 +14,7 @@ import {
 import { JalaliDate, isoToJalaliLabel } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
 import { errMsg, errText, faDate, faNum, monoIf, okJson, toFaDigits } from "../lib/format";
-import { ConfirmModal, Donut, EmptyState, Field, InfoBox, Modal, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../ui/index";
+import { ConfirmModal, Donut, EmptyState, Field, InfoBox, LoadError, Modal, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../ui/index";
 
 export function BillingPeriod({ password }) {
   const { data, loading: loadingGroups } = useBilling(password);
@@ -1001,22 +1001,25 @@ export function ClientDetailModal({ client: c, onClose }) {
 
 export function BillingSettings({ password }) {
   const [info, setInfo] = useState(null);
-  const [cfg, setCfg] = useState(null);
+  const [loadErr, setLoadErr] = useState("");
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
   const fileRef = React.useRef(null);
 
+  // پیش‌تر کلِ تنظیمات هم خوانده می‌شد تا یک کلید عوض و کل پس فرستاده شود.
+  // اگر آن خواندن ۵۰۰ می‌گرفت، `{detail}` به‌جای تنظیمات ذخیره می‌شد؛ و بی
+  // نسخه، هر تغییرِ هم‌زمانِ جای دیگر بی‌صدا پاک می‌شد. حالا فقط همین
+  // مسیر خوانده و نوشته می‌شود.
   const load = async () => {
     try {
-      const [i, c2] = await Promise.all([
-        fetch(`${API_URL}/api/admin/billing/xui-path`, { headers: { "X-Admin-Password": password } }).then(r => r.json()),
-        fetch(`${API_URL}/api/admin/config`, { headers: { "X-Admin-Password": password } }).then(r => r.json()),
-      ]);
+      const res = await fetch(`${API_URL}/api/admin/billing/xui-path`,
+        { headers: { "X-Admin-Password": password } });
+      const i = await okJson(res, "خواندنِ مسیرِ x-ui ناموفق بود");
       setInfo(i);
-      setCfg(c2);
-      setPath((c2.advanced?.xuiDbPath) || "");
-    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+      setPath(i.manual || "");
+      setLoadErr("");
+    } catch (e) { setLoadErr(errMsg(e)); }
   };
   useEffect(() => { load(); }, [password]);
   useEffect(() => { if (msg) { const t = setTimeout(() => setMsg(null), 4500); return () => clearTimeout(t); } }, [msg]);
@@ -1024,24 +1027,27 @@ export function BillingSettings({ password }) {
   const savePath = async (p) => {
     setBusy("path");
     try {
-      const next = { ...cfg, advanced: { ...(cfg.advanced || {}), xuiDbPath: p } };
-      const res = await fetch(`${API_URL}/api/admin/config`, {
+      const res = await fetch(`${API_URL}/api/admin/billing/xui-path`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "X-Admin-Password": password },
-        body: JSON.stringify(next),
+        body: JSON.stringify({ path: p }),
       });
-      if (res.ok) { setMsg({ t: "ok", m: "مسیر ذخیره شد" }); load(); }
-      else setMsg({ t: "err", m: "ذخیره ناموفق" });
-    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+      await okJson(res, "ذخیره‌ی مسیر ناموفق بود");
+      setMsg({ t: "ok", m: "مسیر ذخیره شد" });
+      load();
+    } catch (e) { setMsg({ t: "err", m: errMsg(e) }); }
     finally { setBusy(null); }
   };
 
   const backup = async () => {
     setBusy("backup");
     try {
+      // پیش‌تر `r.json()` بی‌سنجش: پاسخِ خطا به‌عنوانِ «پشتیبان» دانلود
+      // می‌شد و پیام «دانلود شد — ۰ پرداخت، ۰ گروه» می‌آمد. مدیر فکر
+      // می‌کرد پشتیبان دارد.
       const d = await fetch(`${API_URL}/api/admin/billing/backup`, {
         headers: { "X-Admin-Password": password },
-      }).then(r => r.json());
+      }).then((r) => okJson(r, "گرفتنِ پشتیبان ناموفق بود"));
       const blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -1050,7 +1056,7 @@ export function BillingSettings({ password }) {
       // لغوِ فوری، دانلود را در بعضی مرورگرها پیش از شروع می‌بُرد
       setTimeout((h) => URL.revokeObjectURL(h), 2000, a.href);
       setMsg({ t: "ok", m: `دانلود شد — ${d.counts?.payments || 0} پرداخت، ${d.counts?.group_config || 0} گروه` });
-    } catch { setMsg({ t: "err", m: "بک‌آپ ناموفق" }); }
+    } catch (e) { setMsg({ t: "err", m: `بک‌آپ ناموفق: ${errMsg(e)}` }); }
     finally { setBusy(null); }
   };
 
@@ -1076,7 +1082,10 @@ export function BillingSettings({ password }) {
     finally { setBusy(null); if (fileRef.current) fileRef.current.value = ""; }
   };
 
-  if (!info) return <PageSkeleton />;
+  // پیش‌تر خطای خواندن اسکلتِ همیشگی می‌ماند (پیامش ۴٫۵ ثانیه بعد
+  // می‌رفت). حالا فقط کارتِ مسیر جایش را به خطا می‌دهد؛ پشتیبان‌گیری —
+  // که درست وقتِ خرابی لازم است — در دسترس می‌ماند.
+  if (!info && !loadErr) return <PageSkeleton />;
 
   return (
     <div className="fx-anim">
@@ -1085,6 +1094,11 @@ export function BillingSettings({ password }) {
 
       {msg && <Msg msg={msg} />}
 
+      {!info ? (
+        <div className="mb-4">
+          <LoadError what="مسیرِ دیتابیسِ x-ui" err={loadErr} onRetry={load} />
+        </div>
+      ) : (
       <div className="fx-card p-5 mb-4">
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
           <Database size={15} style={{ color: "var(--accent-2)" }} /> مسیر دیتابیس ۳x-ui
@@ -1154,6 +1168,7 @@ export function BillingSettings({ password }) {
           </div>
         </Field>
       </div>
+      )}
 
       <div className="fx-card p-5">
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
