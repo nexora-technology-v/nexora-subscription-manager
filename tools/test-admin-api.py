@@ -4772,6 +4772,19 @@ except Exception as _e:
     _rc = getattr(_e, "status_code", 0)
 check("بی‌هدر ← ۴۰۱", _rc == 401, str(_rc))
 
+head("کارِ پس‌زمینه‌ی شکسته بی‌صدا نیست")
+# حلقه‌ی سلامت هر سه شکستش را با pass می‌بلعید؛ نگهداریِ خودکار می‌توانست
+# ماه‌ها اجرا نشود و «اجرای بعدی: …» همچنان نشان داده شود.
+app._LOOP_ERR.clear()
+app._loop_fail("maint", RuntimeError("systemctl not found"))
+_mg = app.maintenance_get(x_admin_password="testpw")
+check("خطای زمان‌بندِ نگهداری در پاسخ می‌آید",
+      "systemctl not found" in ((_mg.get("tickError") or {}).get("error") or ""),
+      str(_mg.get("tickError")))
+app._loop_ok("maint")
+check("و با اجرای موفق پاک می‌شود",
+      app.maintenance_get(x_admin_password="testpw").get("tickError") is None)
+
 
 # شمارنده نباید جای دیگری بازنویسی شده باشد.
 #

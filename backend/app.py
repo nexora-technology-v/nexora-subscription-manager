@@ -5230,6 +5230,8 @@ def maintenance_get(x_admin_password: str = Header(...)):
     busy, n = _maint_busy()
     m["nextRun"] = nxt
     m["activeConnections"] = n
+    # اگر زمان‌بند خودش شکسته، «اجرای بعدی: …» دروغ است — همین را بگو
+    m["tickError"] = _LOOP_ERR.get("maint")
     return m
 
 
@@ -5301,6 +5303,29 @@ def maintenance_run_now(payload: dict = None, x_admin_password: str = Header(...
     return {"ok": ok, "note": note}
 
 
+#: آخرین خطای هر کارِ پس‌زمینه — {کار: {"error": متن, "at": زمان}}
+#
+# این حلقه هر پنج دقیقه نمونه‌ی مصرف می‌گیرد و نگهداریِ خودکار را اجرا
+# می‌کند. هر سه شکستش با `pass` بلعیده می‌شد: اگر نگهداری از کار
+# می‌افتاد، هیچ‌جا — نه لاگ، نه پنل — چیزی گفته نمی‌شد و مدیر فکر
+# می‌کرد هر شب اجرا می‌شود.
+_LOOP_ERR = {}
+
+
+def _loop_fail(key, exc):
+    """شکستِ یک کارِ پس‌زمینه را ثبت کن؛ لاگ فقط وقتی متن عوض شود، نه هر پنج دقیقه."""
+    msg = f"{type(exc).__name__}: {str(exc)[:160]}"
+    prev = _LOOP_ERR.get(key)
+    if not prev or prev.get("error") != msg:
+        log.warning("background task %s failed: %s", key, msg, exc_info=True)
+    _LOOP_ERR[key] = {"error": msg, "at": datetime.now().isoformat(timespec="minutes")}
+
+
+def _loop_ok(key):
+    if _LOOP_ERR.pop(key, None):
+        log.info("background task %s recovered", key)
+
+
 def _start_health_loop():
     """
     بررسی خودکار سلامت هر ۵ دقیقه.
@@ -5338,22 +5363,24 @@ def _start_health_loop():
                             # حتی یک sysmon — چون هیچ‌وقت خواسته نشده بود.
                             if not _sysmon_fresh(nid):
                                 TUN.queue_job(nid, "sysmon", {})
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                    except Exception as e:
+                        _loop_fail("health-jobs", e)
+            except Exception as e:
+                _loop_fail("health-jobs", e)
 
             # پنجره‌ی نگهداری هم همین‌جا بررسی می‌شود — نخ جدا لازم
             # ندارد و هر دو با سرویس بالا و پایین می‌روند
             try:
                 _history_sample()
-            except Exception:
-                pass
+                _loop_ok("history")
+            except Exception as e:
+                _loop_fail("history", e)
 
             try:
                 _maint_tick()
-            except Exception:
-                pass
+                _loop_ok("maint")
+            except Exception as e:
+                _loop_fail("maint", e)
 
             time.sleep(300)
 
@@ -6879,8 +6906,9 @@ def _read_xui_clients():
             try:
                 known_groups = [r["name"] for r in con.execute(
                     "SELECT name FROM client_groups ORDER BY id")]
-            except Exception:
-                pass
+            except Exception as e:
+                # گروه‌های بی‌کاربر از فهرست می‌افتند؛ بی‌صدا نه
+                log.warning("reading x-ui client_groups failed: %s", e)
 
         rows = []
 
@@ -7776,8 +7804,8 @@ def _record_seen(bcon, clients):
             "UPDATE client_seen SET last_seen=? WHERE email=?",
             [(now, c["email"]) for c in clients if c.get("email")])
         bcon.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("updating client_seen.last_seen failed: %s", e)
     return out
 
 

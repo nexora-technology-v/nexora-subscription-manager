@@ -657,8 +657,13 @@ def process_panel_approvals():
                         "UPDATE orders SET status='awaiting', admin_note=? "
                         "WHERE id=? AND sub_id IS NULL",
                         (f"خطای تحویل: {str(e)[:120]}", oid))
-            except Exception:
-                pass
+            except Exception as e2:
+                # اگر برگرداندن هم نشد، سفارش «تاییدشده» می‌ماند بی‌آنکه
+                # کانفیگی ساخته شده باشد — همان چیزی که قاعده‌ی «approved
+                # فقط بعد از ساخت» جلویش را می‌گیرد. پیش‌تر pass بود.
+                log.error("reverting undelivered order %s to awaiting failed: %s", oid, e2)
+                _event(tid, "order_deliver_failed", None,
+                       {"order": oid, "error": f"revert failed: {str(e2)[:160]}"})
 
 
 def trial_winback():
@@ -885,8 +890,9 @@ def scheduler_loop():
                     if row and row["value"] != last.get("reload_seen"):
                         last["reload_seen"] = row["value"]
                         log.info("پنل تغییر تنظیمات را اعلام کرد — همگام‌سازی")
-            except Exception:
-                pass
+            except Exception as e:
+                # sync_workers پایین‌تر به‌هرحال اجرا می‌شود؛ فقط گفته شود
+                log.warning("reading reload flag failed: %s", e)
 
             sync_workers()
 

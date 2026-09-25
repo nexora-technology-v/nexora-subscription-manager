@@ -864,6 +864,13 @@ export function MaintenanceCard({ password }) {
         style={{ borderTop: "1px solid var(--border)", color: "var(--muted)" }}>
         {/* تاریخِ میلادیِ خام این‌جا می‌نشست («2026-09-26 ساعت 05:00:00») و
             در راست‌به‌چپ به «26-09-2026» برمی‌گشت */}
+        {/* زمان‌بندِ شکسته پیش‌تر هیچ نشانه‌ای نداشت؛ «اجرای بعدی» همچنان
+            نشان داده می‌شد در حالی که هیچ‌وقت اجرا نمی‌شد */}
+        {m.tickError && (
+          <div className="mb-1.5" style={{ color: "var(--danger)" }}>
+            زمان‌بندِ نگهداری از کار افتاده ({isoToJalaliStamp(m.tickError.at)}): {m.tickError.error}
+          </div>
+        )}
         {m.enabled && m.nextRun
           ? <>اجرای بعدی: <b style={{ color: "var(--dim)" }}>{isoToJalaliStamp(m.nextRun)}</b></>
           : "زمان‌بندی خاموش است."}

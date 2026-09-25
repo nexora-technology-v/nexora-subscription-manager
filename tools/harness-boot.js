@@ -10856,7 +10856,7 @@ var D_CODES = { ready: true,
     if (u.indexOf("/admin/maintenance") >= 0) {
       return { enabled: true, action: "xray", hour: 5, minute: 0, days: [5], skipIfBusy: true, busyThreshold: 20,
                confirmedReboot: false, lastRun: "2026-09-19T05:00:04", lastResult: "انجام شد — Xray ری‌استارت شد",
-               nextRun: "2026-09-26T05:00:00", activeConnections: 37 };
+               nextRun: "2026-09-26T05:00:00", activeConnections: 37, tickError: null };
     }
     if (u.indexOf("/admin/config") >= 0) return CONFIG;
     if (u.indexOf("/admin/stats") >= 0) {
