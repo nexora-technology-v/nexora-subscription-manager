@@ -4796,6 +4796,20 @@ check("و GETِ همان مسیر مقدارِ دستی را برمی‌گردا
       app.billing_xui_path(x_admin_password="testpw").get("manual") == "/opt/x-ui/x-ui.db")
 app.billing_xui_path_set({"path": ""}, x_admin_password="testpw")
 
+head("بازیابیِ پشتیبانِ قدیمی، بخش‌های تازه‌تر را پاک نمی‌کند")
+_cur_cfg = app.load_config()
+_cur_cfg["resellers"] = [{"id": "r1", "name": "حسین", "enabled": True}]
+app.save_config(_cur_cfg)
+_old_bak = {k: v for k, v in _cur_cfg.items() if k not in ("resellers", "popup")}
+_imp = app.import_config({"config": _old_bak}, x_admin_password="testpw")
+_after_imp = app.load_config()
+check("بخشی که در پشتیبان نبود دست نمی‌خورد",
+      _after_imp.get("resellers") == [{"id": "r1", "name": "حسین", "enabled": True}],
+      str(_after_imp.get("resellers"))[:80])
+check("و پاسخ می‌گوید کدام بخش‌ها ماندند",
+      "resellers" in (_imp.get("kept") or []) and "دست نخورد" in _imp.get("message", ""),
+      _imp.get("message", ""))
+
 head("تنظیماتِ ربات: ذخیره‌ی ناقص همه‌چیز را پاک نمی‌کند")
 # PUTِ تنظیماتِ ربات کلِ دیکشنری را جایگزین می‌کند. سه صفحه پس از شکستِ
 # خواندن با {} ادامه می‌دادند و ذخیره‌شان فقط یک کلید را می‌فرستاد.

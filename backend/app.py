@@ -142,8 +142,10 @@ def save_password(new_password: str):
     # محدود کردن دسترسی فایل به مالک (فقط روی سیستم‌های یونیکسی)
     try:
         os.chmod(AUTH_PATH, 0o600)
-    except OSError:
-        pass
+    except OSError as e:
+        # روی ویندوز معنا ندارد؛ روی لینوکس یعنی هشِ رمز برای بقیه‌ی
+        # کاربرانِ سرور خواناست — بی‌صدا نباید بماند
+        log.warning("could not restrict %s to 0600: %s", AUTH_PATH, e)
 
 DEFAULT_CONFIG = {
     "downloadApps": {
@@ -1398,17 +1400,28 @@ def import_config(payload: dict, x_admin_password: str = Header(...)):
     if not isinstance(cfg, dict) or "downloadApps" not in cfg:
         raise HTTPException(status_code=400, detail="فایل پشتیبان معتبر نیست")
 
-    # پشتیبان از نسخه‌ی فعلی قبل از بازنویسی (برای بازگشت در صورت اشتباه)
+    # پشتیبان از نسخه‌ی فعلی قبل از بازنویسی (برای بازگشت در صورت اشتباه).
+    # save_config خودش نسخه‌ی قبلی را در تاریخچه می‌گذارد؛ این فایل اضافه
+    # است، پس شکستش کار را نمی‌ایستاند — ولی گفته می‌شود.
     try:
         backup_path = CONFIG_PATH.parent / f"config.backup.{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
         if CONFIG_PATH.exists():
             with open(CONFIG_PATH, "r", encoding="utf-8") as src, open(backup_path, "w", encoding="utf-8") as dst:
                 dst.write(src.read())
-    except OSError:
-        pass
+    except OSError as e:
+        log.warning("config file backup before import failed: %s", e)
 
-    save_config(cfg)
-    return {"ok": True, "message": "تنظیمات با موفقیت بازیابی شد"}
+    # بخشی که در پشتیبان نیست یعنی «آن موقع وجود نداشت»، نه «حذفش کن» —
+    # همان قاعده‌ی بازگردانیِ ربات. پیش‌تر پشتیبانِ قدیمی (بی `resellers`،
+    # `bot`، `popup`، …) آن بخش‌ها را بی‌صدا پاک می‌کرد.
+    current = load_config()
+    kept = sorted(k for k in current if k not in cfg)
+    save_config({**current, **cfg})
+    out = {"ok": True, "message": "تنظیمات با موفقیت بازیابی شد"}
+    if kept:
+        out["kept"] = kept
+        out["message"] += f" — {len(kept)} بخشِ تازه‌تر که در فایل نبود دست نخورد"
+    return out
 
 
 def _frontend_build_info():
@@ -6450,8 +6463,9 @@ def github_put(payload: dict, x_admin_password: str = Header(...)):
     f.write_text(f'GITHUB_REPO="{repo}"\n', encoding="utf-8")
     try:
         os.chmod(f, 0o600)
-    except Exception:
-        pass
+    except Exception as e:
+        # توکنِ گیت‌هاب در این فایل است
+        log.warning("could not restrict %s to 0600: %s", f, e)
 
     return {"ok": True, "repo": repo, "configured": True, "latestTag": tag}
 

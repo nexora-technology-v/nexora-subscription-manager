@@ -1470,23 +1470,26 @@ export function BackupCard({ password, onRestored }) {
       e.target.value = ""; return;
     }
     setBusy(true); setMsg(null);
+    // «فایل معتبر نیست» فقط برای فایل؛ پیش‌تر قطعیِ شبکه هم همین را می‌گفت
+    let parsed;
     try {
-      const text = await file.text();
-      const parsed = JSON.parse(text);
+      parsed = JSON.parse(await file.text());
+    } catch {
+      setMsg({ type: "error", text: "فایل معتبر نیست — JSONِ خوانا نبود" });
+      setBusy(false); e.target.value = ""; return;
+    }
+    try {
       const res = await fetch(`${API_URL}/api/admin/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Admin-Password": password },
         body: JSON.stringify(parsed),
       });
-      const data = await res.json();
-      if (res.ok) {
-        setMsg({ type: "ok", text: "تنظیمات بازیابی شد" });
-        onRestored();
-      } else {
-        setMsg({ type: "error", text: errText(data.detail, "بازیابی ناموفق بود") });
-      }
-    } catch {
-      setMsg({ type: "error", text: "فایل معتبر نیست" });
+      const data = await okJson(res, "بازیابی ناموفق بود");
+      // پیامِ بکند می‌گوید کدام بخش‌های تازه‌تر دست نخوردند
+      setMsg({ type: "ok", text: data.message || "تنظیمات بازیابی شد" });
+      onRestored();
+    } catch (err) {
+      setMsg({ type: "error", text: errMsg(err) });
     } finally { setBusy(false); e.target.value = ""; }
   };
 
