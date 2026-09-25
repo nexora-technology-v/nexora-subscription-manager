@@ -1858,7 +1858,7 @@ def _provision(ctx, order_id):
                     if not okc:
                         ctx.db.release_renewal(sub["id"])
                         return False, (f"اعتبارِ فروشگاه کافی نیست — لازم "
-                                       f"{charge:,}، موجودی {have:,} تومان")
+                                       f"{core.toman(charge)}، موجودی {core.toman(have)} تومان")
                 try:
                     # ایمیل را هم می‌دهیم: در 3x-ui نسخه‌ی ۳ شناسه‌ی
                     # اصلی کلاینت ایمیل است و جست‌وجو با آن مطمئن‌تر
@@ -1931,7 +1931,7 @@ def _provision(ctx, order_id):
             okc, have = DB.charge_credit(ctx.tid, charge, f"ساخت {email}")
             if not okc:
                 return False, (f"اعتبارِ فروشگاه کافی نیست — لازم "
-                               f"{charge:,}، موجودی {have:,} تومان")
+                               f"{core.toman(charge)}، موجودی {core.toman(have)} تومان")
         # گروه فقط برای نماینده فرستاده می‌شود؛ مسیرِ مالک همان است که بود.
         extra = {"group": group} if group else {}
         try:

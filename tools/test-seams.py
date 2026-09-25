@@ -1636,6 +1636,37 @@ for _f in _prod:
             continue
         if _a.is_global and _m.group(1) not in _IP_OK and not any(_a in _n for _n in _DOC):
             _pub.append(f"{os.path.relpath(_f, ROOT)}: {_m.group(1)}")
+def _latin_money(src, label):
+    """f-stringِ فارسی با `{x:,}` — مبلغِ لاتین وسطِ جمله‌ی فارسی."""
+    _fa = re.compile(r"[؀-ۿ]")
+    out = []
+    for _fn in ast.walk(ast.parse(src)):
+        if not isinstance(_fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        _body = ast.unparse(_fn)
+        # PDF قاعده‌ی خودش را دارد (reportlab، `_fa`)؛ آن‌جا دست نمی‌زنیم
+        if "pdf" in _fn.name.lower() or "drawString" in _body or "_fa(" in _body:
+            continue
+        for _n in ast.walk(_fn):
+            if not isinstance(_n, ast.JoinedStr):
+                continue
+            _lit = "".join(v.value for v in _n.values
+                           if isinstance(v, ast.Constant) and isinstance(v.value, str))
+            if not _fa.search(_lit):
+                continue
+            for _v in _n.values:
+                if (isinstance(_v, ast.FormattedValue) and _v.format_spec is not None
+                        and "," in ast.unparse(_v.format_spec)):
+                    out.append(f"{label}:{_n.lineno}")
+    return sorted(set(out))
+
+
+# مبلغِ لاتین در پیامِ فارسی — «لازم 280,000 تومان». بکند `_fnum`، ربات
+# `core.toman`. هر دو شکل پیش‌تر بی‌قاعده کنارِ هم بودند.
+_lm = _latin_money(APP_PY, "backend/app.py") + _latin_money(HANDLERS, "bot/handlers.py")
+check("مبلغ در پیامِ فارسی رقمِ فارسی دارد (_fnum / core.toman)", not _lm,
+      "، ".join(_lm[:5]) if _lm else "")
+
 check("کدِ محصول آی‌پیِ عمومیِ واقعی ندارد", not _pub,
       "، ".join(_pub[:3]) if _pub else f"{len(_prod)} فایل")
 

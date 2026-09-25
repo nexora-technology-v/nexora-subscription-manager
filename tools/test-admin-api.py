@@ -4642,7 +4642,8 @@ except Exception as e:
     _below = getattr(e, "status_code", 0) == 400
     _bmsg = str(getattr(e, "detail", ""))
 check("قیمتِ زیرِ کف ذخیره نمی‌شود", _below)
-check("و پیام هر دو عدد را می‌گوید", "110,000" in _bmsg and "120,000" in _bmsg,
+# رقمِ فارسی با جداکننده‌ی «٬» — همان faNumِ رابط (`_fnum`)
+check("و پیام هر دو عدد را می‌گوید", "۱۱۰٬۰۰۰" in _bmsg and "۱۲۰٬۰۰۰" in _bmsg,
       _bmsg[:80])
 
 AP.portal_bot_plans_save({"plans": [{"name": "سودده", "gb": 50, "days": 30,

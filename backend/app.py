@@ -1156,7 +1156,7 @@ def update_config(payload: dict, x_admin_password: str = Header(...),
     if len(_known) < len(DEFAULT_CONFIG) // 2:
         raise HTTPException(
             status_code=400,
-            detail=f"تنظیماتِ ناقص — فقط {len(_known)} از {len(DEFAULT_CONFIG)} بخش آمده؛ ذخیره نشد")
+            detail=f"تنظیماتِ ناقص — فقط {_fnum(len(_known))} از {_fnum(len(DEFAULT_CONFIG))} بخش آمده؛ ذخیره نشد")
     want = None
     if x_config_version not in (None, ""):
         try:
@@ -1420,7 +1420,7 @@ def import_config(payload: dict, x_admin_password: str = Header(...)):
     out = {"ok": True, "message": "تنظیمات با موفقیت بازیابی شد"}
     if kept:
         out["kept"] = kept
-        out["message"] += f" — {len(kept)} بخشِ تازه‌تر که در فایل نبود دست نخورد"
+        out["message"] += f" — {_fnum(len(kept))} بخشِ تازه‌تر که در فایل نبود دست نخورد"
     return out
 
 
@@ -4303,7 +4303,7 @@ def bot_settings_put(payload: dict, x_admin_password: str = Header(...)):
                 if len(_lost) * 2 > len(_cur):
                     raise HTTPException(
                         status_code=400,
-                        detail=(f"تنظیماتِ ناقص — {len(_lost)} از {len(_cur)} بخشِ "
+                        detail=(f"تنظیماتِ ناقص — {_fnum(len(_lost))} از {_fnum(len(_cur))} بخشِ "
                                 "تنظیماتِ ربات پاک می‌شد؛ ذخیره نشد. صفحه را تازه کنید."))
 
         # فیلدهای ساده — فقط اگر مقدار داده شده باشد به‌روز می‌شوند
@@ -5021,15 +5021,15 @@ def firewall_block_attackers(payload: dict, x_admin_password: str = Header(...))
         except Exception as e:
             failed.append({"ip": ip, "note": str(e)})
 
-    note = f"{len(done)} آی‌پی بسته شد"
+    note = f"{_fnum(len(done))} آی‌پی بسته شد"
     if skipped:
-        note += f" · {len(skipped)} آی‌پی چون به سرویس وصل بودند رد شد"
+        note += f" · {_fnum(len(skipped))} آی‌پی چون به سرویس وصل بودند رد شد"
     # اگر بعضی منابع افتاده‌اند، «۰ رد شد» معنای کامل ندارد
     if _st.get("failed"):
         note += (" · بخشی از تشخیص در دسترس نبود: "
                  + "، ".join(_st["failed"]))
     if failed:
-        note += f" · {len(failed)} ناموفق"
+        note += f" · {_fnum(len(failed))} ناموفق"
     return {"ok": True, "note": note, "blocked": done,
             "skipped": skipped, "failed": failed}
 
@@ -5242,7 +5242,7 @@ def _maint_tick():
         busy, n = _maint_busy()
         if busy and n >= int(m.get("busyThreshold") or 20):
             m["lastRun"] = now.isoformat(timespec="seconds")
-            m["lastResult"] = f"رد شد — {n} اتصال فعال بود"
+            m["lastResult"] = f"رد شد — {_fnum(n)} اتصال فعال بود"
             _maint_save(m)
             return
 
@@ -5450,7 +5450,7 @@ def _selfheal_plan_costs():
     except Exception:
         log.warning("همگام‌سازیِ کفِ پلن‌ها موقعِ بالاآمدن ناموفق", exc_info=True)
         return None
-    return f"کفِ {n} پلن" if n else None
+    return f"کفِ {_fnum(n)} پلن" if n else None
 
 
 @app.on_event("startup")
@@ -7115,6 +7115,25 @@ def _date_ms(d):
     """
     from datetime import datetime as _dt, timezone as _tz
     return int(_dt(d.year, d.month, d.day, tzinfo=_tz.utc).timestamp() * 1000)
+
+
+_FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
+
+def _fnum(n):
+    """
+    عدد برای پیامِ فارسی که رابط نشان می‌دهد — همان شکلِ `faNum`ِ رابط.
+
+    پیام‌های خطا و گزارش با f-stringِ خام رقمِ لاتین وسطِ جمله‌ی فارسی
+    می‌گذاشتند («2 بخشِ تازه‌تر»، «لازم 280,000 تومان»). عمداً فقط برای
+    *شمار و مبلغ* است: مسیر، آی‌پی، پورت و نسخه باید لاتین بمانند، پس
+    تبدیلِ کلِ پیام در رابط غلط بود. PDF قاعده‌ی خودش را دارد.
+    """
+    try:
+        s = f"{int(n):,}".replace(",", "٬")
+    except (TypeError, ValueError):
+        return str(n)
+    return s.translate(_FA_DIGITS)
 
 
 def _to_jalali(epoch_ms):
@@ -10972,16 +10991,16 @@ def billing_diagnose(x_admin_password: str = Header(...)):
         has_new = "clients" in tables
         has_old = "inbounds" in tables
         step("ساختار دیتابیس", has_new or has_old,
-             f"{len(tables)} جدول — " +
+             f"{_fnum(len(tables))} جدول — " +
              ("نسخه ۳.۵ به بالا" if has_new else "نسخه کلاسیک" if has_old else "ناشناخته"))
 
         if has_new:
             n = con.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
-            step("خواندن کلاینت‌ها", True, f"{n} کانفیگ")
+            step("خواندن کلاینت‌ها", True, f"{_fnum(n)} کانفیگ")
             try:
                 g = [r[0] for r in con.execute("SELECT name FROM client_groups")]
                 step("خواندن گروه‌ها", True,
-                     f"{len(g)} گروه: " + "، ".join(g[:8]) + ("..." if len(g) > 8 else ""))
+                     f"{_fnum(len(g))} گروه: " + "، ".join(g[:8]) + ("..." if len(g) > 8 else ""))
             except Exception as e:
                 step("خواندن گروه‌ها", False, str(e)[:90])
     except Exception as e:
@@ -10995,14 +11014,14 @@ def billing_diagnose(x_admin_password: str = Header(...)):
         bt = [r[0] for r in bcon.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")]
         bcon.close()
-        step("دیتابیس حسابداری", True, f"{len(bt)} جدول")
+        step("دیتابیس حسابداری", True, f"{_fnum(len(bt))} جدول")
     except Exception as e:
         step("دیتابیس حسابداری", False, f"{type(e).__name__}: {str(e)[:90]}",
              f"فایل را کنار بگذارید: mv {BILLING_DB} {BILLING_DB}.broken")
 
     clients, groups, rerr = _read_xui_clients()
     step("پردازش نهایی", clients is not None,
-         f"{len(clients)} کانفیگ، {len(groups or [])} گروه" if clients else (rerr or "ناموفق"))
+         f"{_fnum(len(clients))} کانفیگ، {_fnum(len(groups or []))} گروه" if clients else (rerr or "ناموفق"))
 
     return {"ok": all(s["ok"] for s in steps), "steps": steps}
 
@@ -12754,7 +12773,7 @@ def mini_buy(payload: dict, tu: tuple = Depends(mini_user)):
     if why == "low_balance":
         raise HTTPException(
             status_code=402,
-            detail=f"موجودی کافی نیست — {int(r['short']):,} تومان کم دارید")
+            detail=f"موجودی کافی نیست — {_fnum(r['short'])} تومان کم دارید")
     if why == "race":
         raise HTTPException(
             status_code=409,
@@ -13276,7 +13295,7 @@ def tenant_credit(tid: int, payload: dict, x_admin_password: str = Header(...)):
         if new < 0:
             raise HTTPException(
                 status_code=400,
-                detail=f"اعتبار منفی می‌شود — موجودی فعلی {base:,} تومان")
+                detail=f"اعتبار منفی می‌شود — موجودی فعلی {_fnum(base)} تومان")
 
         con.execute("UPDATE tenants SET credit=? WHERE id=?", (new, tid))
         _credit_log(con, tid, amount, new,
@@ -14160,8 +14179,8 @@ def _portal_charge(t, amount, note):
             row = con.execute("SELECT credit FROM tenants WHERE id=?",
                               (t["id"],)).fetchone()
             have = int((row["credit"] if row else 0) or 0)
-            return False, (f"اعتبار کافی نیست — لازم {amount:,} تومان، "
-                           f"موجودی {have:,} تومان")
+            return False, (f"اعتبار کافی نیست — لازم {_fnum(amount)} تومان، "
+                           f"موجودی {_fnum(have)} تومان")
         left = con.execute("SELECT credit FROM tenants WHERE id=?",
                            (t["id"],)).fetchone()
         _credit_log(con, t["id"], -amount,
@@ -15030,7 +15049,7 @@ def _clean_card(c):
         raise HTTPException(
             status_code=400,
             detail=f"شماره کارت باید ۱۶ رقم باشد — «{raw.strip()[:24]}» "
-                   f"{len(digits)} رقم است")
+                   f"{_fnum(len(digits))} رقم است")
     return {
         "number": digits,
         "holder": str(c.get("holder") or "").strip()[:60],
@@ -15832,8 +15851,8 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
         if cost and price < cost:
             raise HTTPException(
                 status_code=400,
-                detail=f"قیمتِ «{name}» ({price:,} تومان) زیرِ کفِ شماست "
-                       f"({cost:,} تومان) — با این قیمت هر فروش ضرر است")
+                detail=f"قیمتِ «{name}» ({_fnum(price)} تومان) زیرِ کفِ شماست "
+                       f"({_fnum(cost)} تومان) — با این قیمت هر فروش ضرر است")
 
         clean.append({
             "id": p.get("id"), "name": name,
@@ -16513,9 +16532,9 @@ def billing_bulk_start(payload: dict, x_admin_password: str = Header(...)):
     finally:
         con.close()
 
-    note = f"تاریخ شروع {len(changed)} گروه روی {start} تنظیم شد"
+    note = f"تاریخ شروع {_fnum(len(changed))} گروه روی {start} تنظیم شد"
     if skipped:
-        note += f" — {len(skipped)} گروه که از قبل تاریخ داشتند دست‌نخورده ماند"
+        note += f" — {_fnum(len(skipped))} گروه که از قبل تاریخ داشتند دست‌نخورده ماند"
     return {"ok": True, "note": note, "changed": changed, "skipped": skipped}
 
 

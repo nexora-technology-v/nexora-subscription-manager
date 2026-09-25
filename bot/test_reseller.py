@@ -248,8 +248,9 @@ n0 = len(CREATED)
 oid5, _ = order_for(D3, P3, tg=6003)
 ok, res = H.approve_order(ctx_for(R3), oid5, 1)
 check("اعتبارِ ناکافی — ساخته نشد", not ok and len(CREATED) == n0, str(res)[:70])
-check("و عددِ لازم و موجودی را می‌گوید", "150,000" in str(res)
-      and "100,000" in str(res))
+# پیامِ تلگرام با core.toman: رقمِ فارسی، نه «150,000»ِ لاتین وسطِ جمله
+check("و عددِ لازم و موجودی را می‌گوید", "۱۵۰،۰۰۰" in str(res)
+      and "۱۰۰،۰۰۰" in str(res), str(res)[:90])
 check("اعتبار دست نخورد", credit_of(R3) == 100000)
 
 # تمدید: کسر، و برگشت اگر پنل تمدید نکرد
