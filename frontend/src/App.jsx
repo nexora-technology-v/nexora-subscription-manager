@@ -29,6 +29,7 @@ import { BotReportSection, BotStatsSection } from "./sections/bot/stats";
 import { BotPreviewSection, BotTextsSection } from "./sections/bot/texts";
 import { ThemesSection } from "./sections/bot/themes";
 import { BotUsersSection } from "./sections/bot/users";
+import { BotMiniThemeSection } from "./sections/bot/minitheme";
 import { FirewallBlocked, FirewallRules } from "./sections/firewall";
 import { FirewallEnable } from "./sections/firewall-enable";
 import { FirewallIntrusion } from "./sections/intrusion";
@@ -528,6 +529,7 @@ export default function App() {
           {active === "tun-events" && <TunnelEvents password={password} />}
           {active === "bill-settings" && <BillingSettings password={password} />}
           {active === "bot-texts" && <BotTextsSection password={password} />}
+          {active === "bot-mini" && <BotMiniThemeSection password={password} />}
           {active === "bot-preview" && <BotPreviewSection />}
           {active === "bot-stats" && <BotStatsSection password={password} />}
           {active === "bot-backup" && <BotBackupSection password={password} />}

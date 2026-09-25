@@ -182,28 +182,51 @@ function OrbitRing({ size = 168, state = "load" }) {
  * CSS می‌گیرد (`html[data-mn-tpl]`). حرکت فقط شفافیت و جابه‌جایی است —
  * هیچ‌وقت فاصله‌ی حروف.
  */
-function ShopSplash({ logo, name, logoStyle, phase, note, onRetry, label }) {
+// شناسه‌ها همان `MINI_SPLASHES` در mini-themes.js‌اند. این‌جا فهرست
+// کپی نشده: این فایل عمداً به هیچ ماژولِ دیگری جز لوگو وابسته نیست
+// (تکه‌ی ورودی)، پس هر شناسه‌ی ناشناس همان «نوار» است.
+const SPLASH_IDS = ["bar", "ring", "pulse", "dots", "logo"];
+
+function ShopSplash({ logo, name, logoStyle, phase, note, onRetry, label, variant }) {
   const known = !!(logo || name);
+  const v = SPLASH_IDS.includes(variant) ? variant : "bar";
+  const big = v === "logo" ? 128 : 96;
+  const busy = note || "در حال آماده‌سازی";
   return (
-    <div className={`nx-splash nx-shop ${phase}`} dir="rtl" role="status" aria-live="polite">
+    <div className={`nx-splash nx-shop sp-${v} ${phase}`} dir="rtl" role="status" aria-live="polite">
       <div className="nx-shop-glow" aria-hidden="true" />
       <div className="nx-shop-stage">
-        {known ? (
-          <ShopLogo src={logo} name={name} style={logoStyle} size={96}
-            className="nx-shop-logo" />
-        ) : (
-          // هنوز نمی‌دانیم فروشگاه کیست (اولین بازکردن): جای لوگو،
-          // نه نشانِ کسِ دیگری
-          <span className="nx-shop-ghost" aria-hidden="true" />
-        )}
-        <div className="nx-shop-name">{name || label}</div>
+        <div className="nx-shop-mark">
+          {/* حلقه و موج دورِ خودِ لوگو می‌نشینند، نه زیرش */}
+          {v === "ring" && phase !== "error" && <span className="nx-sp-ring" aria-hidden="true" />}
+          {v === "pulse" && phase !== "error" && (
+            <span className="nx-sp-pulse" aria-hidden="true"><i /><i /><i /></span>
+          )}
+          {known ? (
+            <ShopLogo src={logo} name={name} style={logoStyle} size={big}
+              className="nx-shop-logo" />
+          ) : (
+            // هنوز نمی‌دانیم فروشگاه کیست (اولین بازکردن): جای لوگو،
+            // نه نشانِ کسِ دیگری
+            <span className="nx-shop-ghost" aria-hidden="true" />
+          )}
+        </div>
+        {/* «فقط لوگو» نام را نمی‌نویسد — مگر هنوز لوگویی نیست، که آن‌وقت
+            صفحه فقط یک مربعِ خالی می‌شد */}
+        {(v !== "logo" || !known) && <div className="nx-shop-name">{name || label}</div>}
         {phase === "error" ? (
           <div className="nx-fail">
             <p>{note || "اتصال برقرار نشد."}</p>
             {onRetry && <button className="nx-retry" onClick={onRetry}>تلاش دوباره</button>}
           </div>
+        ) : v === "bar" ? (
+          <div className="nx-shop-bar" aria-label={busy}><i /></div>
+        ) : v === "dots" ? (
+          <div className="nx-sp-dots" aria-label={busy}><i /><i /><i /></div>
         ) : (
-          <div className="nx-shop-bar" aria-label={note || "در حال آماده‌سازی"}><i /></div>
+          // حلقه و موج و لوگو خودشان نشانِ «در حال آمدن»‌اند؛ متن فقط
+          // برای صفحه‌خوان
+          <span className="sr-only">{busy}</span>
         )}
       </div>
     </div>
@@ -212,11 +235,11 @@ function ShopSplash({ logo, name, logoStyle, phase, note, onRetry, label }) {
 
 export function Splash({ label = "", logo = "", name = "",
                         phase = "load", note = "", onRetry,
-                        neutral = false, logoStyle = null }) {
+                        neutral = false, logoStyle = null, variant = "" }) {
   // مینی‌اپِ فروشگاه صفحه‌ی ورودِ خودش را دارد
   if (neutral) {
     return <ShopSplash logo={logo} name={name} logoStyle={logoStyle} phase={phase}
-      note={note} onRetry={onRetry} label={label} />;
+      note={note} onRetry={onRetry} label={label} variant={variant} />;
   }
   return (
     <div className={`nx-splash ${phase}`} dir="rtl" role="status" aria-live="polite">

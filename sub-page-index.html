@@ -78,7 +78,10 @@
             --alert-rgb: 240, 101, 95;
             --warn: #F4A94A;
             --warn-rgb: 244, 169, 74;
-            --nav-bg: #0C0F15;
+            /* از `--surface` — که پالت با !important عوض می‌کند. پیش‌تر یک
+               مشکیِ ثابت بود و زیرِ پالتِ رنگی (بنفش، آتشین، …) مثلِ
+               نواری از یک صفحه‌ی دیگر می‌نشست. */
+            --nav-bg: color-mix(in srgb, var(--surface) 90%, transparent);
             --hero-1: #101A28;
             --hero-2: #05070B;
             --hero-alert-1: #2A1214;
@@ -146,7 +149,7 @@
             --alert-rgb: 220, 76, 67;
             --warn: #DB8A2A;
             --warn-rgb: 219, 138, 42;
-            --nav-bg: #FFFFFF;
+            --nav-bg: color-mix(in srgb, var(--surface) 92%, transparent);
             --shadow: rgba(16, 21, 32, 0.08);
             --box-shadow-light: 0 6px 18px rgba(0,0,0,0.12);
             --notification-bg: rgba(255, 255, 255, 0.92);
@@ -158,7 +161,7 @@
             background-size: 18px 18px;
             color: var(--text);
             padding: 20px 16px 100px 16px;
-            max-width: 480px;
+            max-width: var(--page-w);
             margin: 0 auto;
             transition: background-color 0.35s ease, color 0.35s ease;
             position: relative;
@@ -166,9 +169,21 @@
 
         /* روی دسکتاپ کمی پهن‌تر — ۴۸۰ پیکسل وسطِ صفحه‌ی ۱۴۴۰ پیکسلی،
            شبکه‌ی چهارتاییِ دکمه‌ها را به کاشی‌های ۹۰ پیکسلی می‌فشرد */
+        /* پهنای صفحه و نوارِ پایین یک متغیرند.
+
+           پیش‌تر این‌جا هر دو ۵۶۰ می‌شدند، ولی قاعده‌ی اصلیِ
+           `.bottom-nav` پایین‌تر در همین فایل `max-width: 480px`
+           داشت و با همان وزن برنده می‌شد: روی دسکتاپ نوار ۴۸۰ پیکسل
+           زیرِ صفحه‌ی ۵۶۰ پیکسلی می‌ماند و از دو طرف عقب می‌افتاد. */
+        :root { --page-w: 480px; }
+        /* نوارِ پیمایشِ مرورگر هم تیره یا روشن، مثلِ خودِ صفحه. بی این،
+           روی دسکتاپ یک نوارِ سفیدِ پهن کنارِ صفحه‌ی تیره می‌نشست —
+           همان که در پیش‌نمایشِ پنل هم دیده می‌شد. */
+        html { color-scheme: dark;
+               scrollbar-color: color-mix(in srgb, var(--accent) 45%, transparent) transparent; }
+        html:has(body.light-mode) { color-scheme: light; }
         @media (min-width: 900px) {
-            body { max-width: 560px; }
-            .bottom-nav { max-width: 560px; }
+            :root { --page-w: 560px; }
         }
 
         html[dir="ltr"] body { direction: ltr; }
@@ -1961,12 +1976,37 @@
             left: 50%;
             transform: translateX(-50%);
             width: 100%;
-            max-width: 480px;
+            max-width: var(--page-w);
             background-color: var(--nav-bg);
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
             border-top: 1px solid var(--border);
             padding: 12px 16px;
             display: flex;
             z-index: 100;
+        }
+        /* روی دسکتاپ نوار بخشی از ستونِ وسط است، نه نواری که تا لبه
+           کشیده شده: گوشه‌ی بالا و لبه‌ی کناری مثلِ کارت‌ها. */
+        @media (min-width: 900px) {
+            .bottom-nav {
+                /* لبه‌به‌لبه‌ی کارت‌ها: body ۱۶ پیکسل پدینگ دارد */
+                max-width: calc(var(--page-w) - 32px);
+                border: 1px solid var(--border);
+                border-bottom: none;
+                border-radius: 18px 18px 0 0;
+            }
+        }
+        /* هر قالب زبانِ کارت‌هایش را به نوار هم می‌دهد */
+        body.tpl-wallet .bottom-nav { border-radius: 22px 22px 0 0; }
+        body.tpl-wallet .nav-item.active { border-radius: 14px; }
+        body.tpl-console .bottom-nav {
+            border-radius: 8px 8px 0 0;
+            border-color: rgba(var(--accent-rgb), 0.22);
+        }
+        body.tpl-console .nav-item.active { border-radius: 6px; }
+        body.tpl-console .nav-item {
+            font-family: 'IRANSansX', ui-monospace, Consolas, monospace;
+            letter-spacing: .5px;
         }
         .nav-item-cell { flex: 1; display: flex; justify-content: center; }
         .nav-item {
@@ -3493,6 +3533,10 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 
         async function fetchLiveSubscriptionData() {
             if (!sanaeiClientData.subUrl) return;
+            // پیش‌نمایشِ پنل آدرسِ نمونه دارد (render_preview_html) و این
+            // درخواست همیشه شکست می‌خورد — هر بار یک خطای قرمز در کنسول
+            // که شبیهِ خرابی بود. داده‌ی نمونه همان است که باید بماند.
+            if (/\/preview-sample$/.test(sanaeiClientData.subUrl)) return;
             try {
                 const response = await fetch(sanaeiClientData.subUrl, {
                     method: 'GET',

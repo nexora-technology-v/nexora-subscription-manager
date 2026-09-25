@@ -610,6 +610,10 @@ def cmd_start(ctx, msg, args=None):
 # ═══════════════════════════════════════════════════════════
 
 def show_plans(ctx, user, chat_id, message_id=None):
+    # فروشگاهِ بسته همین‌جا می‌گوید — نه بعد از انتخابِ پلن و روشِ پرداخت
+    closed = store_gate(ctx)
+    if closed:
+        return _reply(ctx, chat_id, message_id, closed, back_kb())
     # عضویت اجباری کانال — قبل از دیدن پلن‌ها
     if require_membership(ctx, chat_id, message_id, user):
         return
@@ -800,6 +804,34 @@ def find_discount(ctx, code, plan_id=None):
     return err, pct, (dict(row) if row else None)
 
 
+def store_gate(ctx):
+    """
+    آیا این فروشگاه اجازه‌ی فروش دارد؟ None یعنی بله؛ وگرنه متنی برای مشتری.
+
+    نماینده برای فروش از ربات و مینی‌اپ اشتراکِ ماهانه می‌خرد
+    (docs/specs/2026-09-26-reseller-store-subscription.md). قاعده در
+    `core.addon_open` است — همان که بکند برای پرتال صدا می‌زند.
+
+    هر پنج هسته‌ای که پول می‌گیرند یا کانفیگ می‌دهند این را صدا می‌زنند:
+    `card_order`، `wallet_purchase`، `topup_order`، `give_trial`،
+    `auto_renew_subscription`. `test_flow` با ast همین را می‌سنجد — و اینکه
+    `receipt_submit` صدایش **نزند**: رسیدِ سفارشی که وقتِ باز بودن ساخته
+    شده پولی است که در راه است.
+    """
+    t = ctx.tenant
+    if not t.get("parent_id"):
+        return None
+    try:
+        rs = json.loads((DB.root_tenant() or {}).get("settings") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        log.warning("store gate: root settings unreadable — using defaults")
+        rs = {}
+    cfg = core.addon_config(rs if isinstance(rs, dict) else {}, "store")
+    if core.addon_open(ctx.s, t.get("parent_id"), cfg["price"], "store"):
+        return None
+    return core.STORE_CLOSED
+
+
 def card_order(ctx, user, plan_id, use_coins=False, renew_sub_id=None,
                discount_code=None):
     """
@@ -817,6 +849,8 @@ def card_order(ctx, user, plan_id, use_coins=False, renew_sub_id=None,
     قیمتِ کامل می‌داد. تستِ «مینی‌اپ خودش پول جابه‌جا نمی‌کند» همین
     را گرفت.
     """
+    if store_gate(ctx):
+        return False, {"why": "store_closed"}
     p = ctx.db.get_plan(plan_id)
     if not p:
         return False, "no_plan"
@@ -882,6 +916,8 @@ def checkout(ctx, user, chat_id, message_id, plan_id, use_coins,
     ok, r = card_order(ctx, user, plan_id, use_coins=use_coins,
                        renew_sub_id=renew_sub_id, discount_code=held or None)
     if not ok:
+        if isinstance(r, dict) and r.get("why") == "store_closed":
+            return _reply(ctx, chat_id, message_id, core.STORE_CLOSED, back_kb())
         if r == "no_plan":
             return _reply(ctx, chat_id, message_id,
                           "این پلن دیگر در دسترس نیست.\n\n"
@@ -977,6 +1013,8 @@ def wallet_purchase(ctx, user, plan_id, renew_sub_id=None,
         `test_flow` با ast می‌سنجد که همین تابع هر دو پرداخت را
         بدهد.
     """
+    if store_gate(ctx):
+        return {"ok": False, "why": "store_closed"}
     p = ctx.db.get_plan(plan_id)
     if not p:
         return {"ok": False, "why": "no_plan"}
@@ -1074,6 +1112,8 @@ def wallet_pay(ctx, user, chat_id, message_id, plan_id,
         return deliver(ctx, r["user"], r["sub"])
 
     why = r["why"]
+    if why == "store_closed":
+        return _reply(ctx, chat_id, message_id, core.STORE_CLOSED, back_kb())
     if why == "no_plan":
         return _reply(ctx, chat_id, message_id,
                       "این پلن دیگر در دسترس نیست.", back_kb("buy"))
@@ -2423,6 +2463,9 @@ def topup_order(ctx, user, amount):
     برمی‌گرداند `(order, card)`؛ روی ورودیِ بد `ValueError` با متنی
     که مستقیم قابل نشان‌دادن است.
     """
+    closed = store_gate(ctx)
+    if closed:
+        raise ValueError(closed)
     try:
         amount = int(amount)
     except (TypeError, ValueError):
@@ -2853,6 +2896,9 @@ def my_orders(ctx, user, chat_id, message_id):
 
 
 def give_trial(ctx, user, chat_id, message_id):
+    closed = store_gate(ctx)
+    if closed:
+        return _reply(ctx, chat_id, message_id, closed, back_kb())
     u = ctx.db.get_user(user["tg_id"])
     if u.get("trial_used"):
         return _reply(ctx, chat_id, message_id,
@@ -4266,6 +4312,12 @@ def auto_renew_subscription(tenant, bot, sub):
     نمی‌شود تا اگر کاربر شارژ کرد، دفعه‌ی بعد انجام شود.
     """
     ctx = Ctx(bot, tenant)
+    if store_gate(ctx):
+        # پیامی به مشتری نمی‌رود: زمان‌بند هر دور دوباره این‌جا می‌رسد و
+        # هر بار یک پیام می‌شد. لاگ هست تا بی‌صدا نباشد.
+        log.warning("auto-renew skipped: store %s has no active subscription "
+                    "(sub %s)", ctx.tid, sub["id"])
+        return
     plan = ctx.db.get_plan(sub["plan_id"]) if sub["plan_id"] else None
     if not plan:
         # پلن حذف شده. قبلاً این‌جا بی‌صدا برمی‌گشت: تمدید خودکار

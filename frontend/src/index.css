@@ -3340,6 +3340,45 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
   border: 1px solid var(--warn-line);
 }
 
+/* پنلِ همکار — ستونِ وسط، نه کشیده تا لبه‌ی صفحه‌ی ۱۲۸۰ پیکسلی.
+   پیش‌تر هر ردیف در تمام‌عرض بود و میانِ نام و مبلغ یک متر فاصله. */
+.aff-main { max-width: 980px; margin: 0 auto; padding: 20px 16px 40px; }
+.aff-ref { margin-bottom: 12px; border-color: var(--accent-line); }
+.aff-link {
+  background: var(--surface-3); border: 1px dashed var(--accent-line);
+  border-radius: 12px; padding: 12px 14px;
+}
+.aff-link-text {
+  font-family: var(--mono); font-size: 13.5px; color: var(--accent-2);
+  word-break: break-all; user-select: all;
+}
+.aff-steps {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+  margin-bottom: 14px;
+}
+.aff-step {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px;
+}
+.aff-step-n {
+  flex: none; width: 26px; height: 26px; border-radius: 8px;
+  display: grid; place-items: center; font-weight: 800; font-size: 13px;
+  background: var(--accent-soft); color: var(--accent-2);
+}
+.aff-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.aff-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 9px 0; border-bottom: 1px solid var(--border);
+}
+.aff-row:last-of-type { border-bottom: none; }
+@media (max-width: 760px) {
+  .aff-steps, .aff-cols { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 420px) {
+  .aff-hide-sm { display: none; }
+}
+
 /* دعوتِ دوست */
 /* کد تخفیف در برگه‌ی پرداخت.
    بسته می‌ماند تا کسی که کد ندارد با کادرِ خالی روبه‌رو نشود. */
@@ -3854,8 +3893,63 @@ html[data-mn-tpl="neon"] .nx-shop-name {
   color: var(--accent-2); text-shadow: 0 0 18px rgba(var(--accent-rgb), .8); }
 html[data-mn-tpl="neon"] .nx-shop-bar > i { box-shadow: 0 0 12px rgba(var(--accent-rgb), .9); }
 
+/* ── سبک‌های صفحه‌ی ورود (MINI_SPLASHES) ──
+   قالب رنگ و زمینه را می‌دهد، سبک «چه چیزی حرکت می‌کند» را. همه از
+   متغیرهای پالت‌اند تا زیرِ هر قالب و هر پالت درست بنشینند. */
+.nx-shop-mark { position: relative; display: grid; place-items: center; }
+
+/* حلقه: کمانِ رنگی دورِ لوگو */
+.nx-sp-ring {
+  position: absolute; inset: -14px; border-radius: 50%;
+  border: 2.5px solid var(--hair-2);
+  border-top-color: var(--accent); border-left-color: var(--cy);
+  animation: nx-sp-spin 1.05s linear infinite;
+}
+@keyframes nx-sp-spin { to { transform: rotate(360deg); } }
+
+/* موج: سه دایره که از لوگو بیرون می‌روند */
+.nx-sp-pulse { position: absolute; inset: 0; pointer-events: none; }
+.nx-sp-pulse > i {
+  position: absolute; inset: 0; border-radius: 30%;
+  border: 1.5px solid var(--accent-edge);
+  animation: nx-sp-wave 2.1s var(--sp-soft) infinite;
+}
+.nx-sp-pulse > i:nth-child(2) { animation-delay: .7s; }
+.nx-sp-pulse > i:nth-child(3) { animation-delay: 1.4s; }
+@keyframes nx-sp-wave {
+  from { opacity: .9; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.9); }
+}
+
+/* نقطه‌ها */
+.nx-sp-dots { display: flex; gap: 7px; animation: nx-shop-up .6s var(--sp-soft) .22s both; }
+.nx-sp-dots > i {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+  animation: nx-sp-dot 1.1s var(--sp-inout) infinite;
+}
+.nx-sp-dots > i:nth-child(2) { animation-delay: .15s; background: var(--accent-2); }
+.nx-sp-dots > i:nth-child(3) { animation-delay: .3s; background: var(--cy); }
+@keyframes nx-sp-dot {
+  0%, 80%, 100% { opacity: .35; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-7px); }
+}
+
+/* فقط لوگو: نفس */
+.sp-logo .nx-shop-logo { animation: nx-shop-in .7s var(--sp-soft) both, nx-sp-breathe 2.4s var(--sp-inout) .7s infinite; }
+@keyframes nx-sp-breathe { 50% { transform: scale(1.045); } }
+
+/* روی زمینه‌ی تمام‌رنگِ «پررنگ» رنگِ اصلی دیده نمی‌شود — سفید */
+html[data-mn-tpl="bold"] .nx-sp-ring { border-color: var(--hair-3); border-top-color: var(--on-accent-hi); border-left-color: var(--on-accent-hi); }
+html[data-mn-tpl="bold"] .nx-sp-pulse > i { border-color: var(--on-accent-hi); }
+html[data-mn-tpl="bold"] .nx-sp-dots > i { background: var(--on-accent-hi); }
+html[data-mn-tpl="neon"] .nx-sp-ring { box-shadow: 0 0 18px -2px var(--accent-edge); }
+html[data-mn-tpl="neon"] .nx-sp-dots > i { box-shadow: 0 0 10px var(--accent-edge); }
+
 @media (prefers-reduced-motion: reduce) {
-  .nx-shop-logo, .nx-shop-name, .nx-shop-bar, .nx-shop-bar > i, .nx-shop-ghost { animation: none; }
+  .nx-shop-logo, .nx-shop-name, .nx-shop-bar, .nx-shop-bar > i, .nx-shop-ghost,
+  .nx-sp-ring, .nx-sp-pulse > i, .nx-sp-dots, .nx-sp-dots > i { animation: none; }
+  .nx-sp-pulse { display: none; }
+  .sp-logo .nx-shop-logo { animation: none; }
 }
 
 
@@ -4106,6 +4200,27 @@ button.pd-kpi:active { transform: scale(.985); }
 
 /* شِمای قالب — با متغیرهای پالتِ انتخابی */
 .st-tpls { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* سبک‌های صفحه‌ی ورود — نمونه‌ها کلاس‌های خودِ اسپلش را دارند */
+.st-spls { display: grid; gap: 10px; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.st-spl { position: relative; display: grid; justify-items: center; align-content: center; gap: 7px;
+  height: 92px; border-radius: 10px; overflow: hidden;
+  background: radial-gradient(70% 60% at 50% 40%, var(--accent-soft), transparent 70%), var(--bg); }
+.st-spl-mark { position: relative; display: grid; place-items: center; }
+.st-spl-logo { display: block; width: 26px; height: 26px; border-radius: 30%;
+  background: linear-gradient(140deg, var(--accent), var(--cy)); }
+.st-spl.sp-logo .st-spl-logo { width: 38px; height: 38px;
+  animation: nx-sp-breathe 2.4s var(--sp-inout) infinite; }
+.st-spl .nx-sp-ring { inset: -6px; border-width: 2px; }
+.st-spl-name { display: block; width: 40px; height: 4px; border-radius: 99px; background: var(--hair-3); }
+.st-spl-bar { display: block; width: 40px; height: 3px; border-radius: 99px; overflow: hidden; background: var(--hair-2); }
+.st-spl-bar > i { display: block; width: 42%; height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--cy));
+  animation: nx-shop-slide 1.15s var(--sp-inout) infinite; }
+.st-spl .nx-sp-dots { gap: 4px; animation: none; }
+.st-spl .nx-sp-dots > i { width: 5px; height: 5px; }
+@media (prefers-reduced-motion: reduce) {
+  .st-spl-logo, .st-spl-bar > i { animation: none !important; }
+}
 .st-thumb { --t-r: 7px; position: relative; aspect-ratio: 4 / 5; border-radius: 10px; overflow: hidden;
   background: var(--bg); display: flex; flex-direction: column; }
 .st-thumb i, .st-thumb b { display: block; border-radius: 2px; }
@@ -4202,7 +4317,29 @@ button.pd-kpi:active { transform: scale(.985); }
 .st-stage .bar i { display: block; width: 42%; height: 100%; border-radius: inherit;
   background: linear-gradient(90deg, var(--accent), var(--cy));
   animation: nx-shop-slide 1.15s var(--sp-inout) infinite; }
+.st-stage .nx-sp-ring { inset: -10px; }
+.st-stage.sp-logo .nx-shoplogo { animation: nx-sp-breathe 2.4s var(--sp-inout) infinite; }
 .st-logo-ctl { display: grid; gap: 14px; min-width: 0; }
+/* پرتال: نوارِ اشتراکِ فروشگاه (portal/store.jsx) */
+.px-store { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+  padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface-2); }
+.px-store > svg { flex: none; }
+.px-store-body { flex: 1; min-width: 220px; display: grid; gap: 3px; font-size: 12.5px; line-height: 1.7; color: var(--dim); }
+.px-store-body b { font-size: 13.5px; color: var(--text); }
+.px-store-fine { color: var(--muted); }
+.px-store-err { color: var(--danger); }
+.px-store.t-ok { border-color: var(--ok-line); background: var(--ok-wash); }
+.px-store.t-ok > svg { color: var(--ok); }
+.px-store.t-warn { border-color: var(--warn-line); background: var(--warn-wash); }
+.px-store.t-warn > svg { color: var(--warn); }
+.px-store.t-danger { border-color: var(--danger-line); background: var(--danger-wash); }
+.px-store.t-danger > svg { color: var(--danger); }
+@media (max-width: 520px) { .px-store > button { width: 100%; justify-content: center; } }
+.st-logo-src { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; min-width: 0; }
+.st-logo-src small { flex-basis: 100%; font-size: 11.5px; line-height: 1.7; color: var(--dim); }
+.st-stage.drag { border-color: var(--accent-edge); border-style: dashed; }
+.st-drop { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px;
+  font-size: 13px; font-weight: 700; color: var(--accent-2); background: var(--scrim-3); pointer-events: none; }
 .st-field { display: grid; grid-template-columns: 52px minmax(0, 1fr); align-items: center; gap: 10px; }
 .st-field > span { font-size: 12.5px; color: var(--muted); }
 .st-mini-picks { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -4233,7 +4370,8 @@ button.pd-kpi:active { transform: scale(.985); }
   font-size: 13px; color: var(--dim); }
 .st-save-state i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
 .st-save-state .short { display: none; }
-.st-save-state > span { min-width: 0; overflow-wrap: anywhere; }
+/* «anywhere» روی گوشی «ذخیره‌نشده» را حرف‌به‌حرف زیرِ هم می‌شکست */
+.st-save-state > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-savebar.dirty { border-color: var(--warn-line); }
 .st-savebar.dirty .st-save-state { color: var(--text); }
 .st-savebar.dirty .st-save-state i { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }
@@ -4269,6 +4407,7 @@ button.pd-kpi:active { transform: scale(.985); }
   .st-hero { padding: 16px; }
   .st-hero-state { justify-items: start; text-align: right; }
   .st-tpls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .st-spls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .st-pals { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .st-pal { height: 38px; }
   .st-logo { grid-template-columns: minmax(0, 1fr); }
@@ -4279,6 +4418,8 @@ button.pd-kpi:active { transform: scale(.985); }
   .st-save-state { min-width: 0; font-size: 12px; line-height: 1.5; }
   .st-save-state .long { display: none; }
   .st-save-state .short { display: inline; }
+  /* سه دکمه و وضعیت در ۳۶۰ پیکسل جا نمی‌شدند — آیکونِ تنها، برچسب در aria */
+  .st-savebar .st-hide-sm { display: none; }
   .st-savebar .fx-btn, .st-savebar .fx-btn-g, .st-savebar .st-ghost { padding-inline: 10px; white-space: nowrap; flex: none; }
 }
 @media (prefers-reduced-motion: reduce) {

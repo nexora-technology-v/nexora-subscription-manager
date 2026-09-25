@@ -4,7 +4,8 @@ import { isAff, isMini, portalSlug } from "./lib/route.js";
 import { Splash } from "./lib/mark.jsx";
 import "./index.css";
 import { applyTheme, markScheme } from "./lib/mini-themes.js";
-import { readShop } from "./lib/shopcache.js";
+import { readShop, writeShop } from "./lib/shopcache.js";
+import { API_URL } from "./lib/constants";
 
 // آدرس تعیین می‌کند کدام اپ بالا بیاید.
 //
@@ -64,21 +65,56 @@ function cachedShop() {
   return readShop();
 }
 
-const SHOP = cachedShop();
+let SHOP = cachedShop();
 
 // پوسته‌ی فروشگاه (قالب + پالت) پیش از اولین رندر، تا صفحه‌ی ورود هم
 // مالِ خودش باشد — قالبِ «پررنگ» اسپلشِ تمام‌رنگ دارد، «مینیمال» بی‌مدار.
 // پوسته‌ی تلگرام این‌جا هنوز روی ریشه ننشسته، پس از خودِ SDK پرسیده
 // می‌شود؛ مینی‌اپ بعداً با پوسته‌ی قطعی دوباره می‌سازدش.
-const SHOP_THEME = SHOP
-  ? (SHOP.theme || (SHOP.accent ? { palette: "custom", accent: SHOP.accent } : null))
-  : null;
-try {
-  if (WHICH === "mini") {
-    const scheme = markScheme(window.Telegram && window.Telegram.WebApp);
-    if (SHOP_THEME) applyTheme(SHOP_THEME, scheme);
-  }
-} catch { /* رنگ تزئین است، نه شرطِ بالاآمدن */ }
+const themeOf = (sh) => (sh
+  ? (sh.theme || (sh.accent ? { palette: "custom", accent: sh.accent } : null))
+  : null);
+let SHOP_THEME = themeOf(SHOP);
+function paintShop() {
+  try {
+    if (WHICH === "mini") {
+      const scheme = markScheme(window.Telegram && window.Telegram.WebApp);
+      if (SHOP_THEME) applyTheme(SHOP_THEME, scheme);
+    }
+  } catch { /* رنگ تزئین است، نه شرطِ بالاآمدن */ }
+}
+paintShop();
+
+/**
+ * بارِ اول، ظاهرِ فروشگاه را پیش از اولین فریم بپرس.
+ *
+ * بی‌کش، اسپلش خنثی بود و بعد به لوگو و رنگِ فروشگاه می‌پرید —
+ * مالک و نماینده هر دو دیدند «اولش لوگو و رنگ نمی‌آید». حالا اگر
+ * کشی نیست و آدرس `?shop=` دارد، `/api/mini/brand` پرسیده می‌شود —
+ * با سقفِ ۹۰۰ میلی‌ثانیه، تا سرورِ کُند صفحه را گروگان نگیرد. شکست یعنی
+ * همان اسپلشِ خنثیِ قبلی، نه صفحه‌ی سفید.
+ */
+async function prefetchShop() {
+  if (WHICH !== "mini" || SHOP) return;
+  let id = "";
+  try { id = new URLSearchParams(window.location.search).get("shop") || ""; } catch { return; }
+  if (!/^\d{1,9}$/.test(id)) return;
+  const ctl = typeof AbortController === "function" ? new AbortController() : null;
+  const timer = ctl && setTimeout(() => ctl.abort(), 900);
+  try {
+    const r = await fetch(`${API_URL}/api/mini/brand?shop=${id}`,
+      ctl ? { signal: ctl.signal } : undefined);
+    if (!r.ok) return;
+    const j = await r.json();
+    if (!j || typeof j !== "object") return;
+    SHOP = { brand: String(j.brand || ""), logo: String(j.logo || ""),
+             accent: String(j.accent || ""), theme: j.theme || null };
+    SHOP_THEME = themeOf(SHOP);
+    writeShop(SHOP);
+    paintShop();
+  } catch { /* شبکه یا سقفِ زمان — اسپلشِ خنثی، مثلِ قبل */ }
+  finally { if (timer) clearTimeout(timer); }
+}
 
 // عنوانِ پنجره هم همین است — تلگرام آن را بالای مینی‌اپ نشان
 // می‌دهد، و `index.html` یک عنوانِ مشترک برای هر چهار اپ دارد.
@@ -101,6 +137,7 @@ function Booting({ phase, note, onRetry }) {
     name={(SHOP && SHOP.brand) || ""}
     logo={(SHOP && SHOP.logo) || ""}
     logoStyle={SHOP_THEME && SHOP_THEME.logoStyle}
+    variant={SHOP_THEME && SHOP_THEME.splash}
     neutral={WHICH === "mini"} />;
 }
 
@@ -154,10 +191,14 @@ function Gate({ children }) {
   return <Booting phase={phase} note="در حال آماده‌سازی…" />;
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <Suspense fallback={<Booting />}>
-      <Gate><Root /></Gate>
-    </Suspense>
-  </React.StrictMode>
-);
+prefetchShop().finally(() => {
+  try { if (WHICH === "mini") document.title = (SHOP && SHOP.brand) || document.title; }
+  catch { /* عنوان تزئین است */ }
+  ReactDOM.createRoot(document.getElementById("root")).render(
+    <React.StrictMode>
+      <Suspense fallback={<Booting />}>
+        <Gate><Root /></Gate>
+      </Suspense>
+    </React.StrictMode>
+  );
+});

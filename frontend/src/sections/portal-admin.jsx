@@ -652,7 +652,25 @@ export function ResellerInbounds({ password }) {
  * «صفر» در این مخزن یک‌بار «رایگان» و یک‌بار «تعریف‌نشده» معنی
  * داده و همان ابهام باگ شده.
  */
-export function PortalAddon({ password }) {
+// مسیرها کامل و لفظی — test-seams صدازدن‌ها را از متن پیدا می‌کند
+const ADDON_KINDS = {
+  theme: {
+    get: "/api/admin/portal-addon", grant: "/api/admin/portal-addon/grant",
+    title: "پوسته‌ی شخصیِ نماینده‌ها",
+    desc: "نماینده می‌تواند رنگ و لوگوی خودش را روی مینی‌اپِ مشتریانش بگذارد. مبلغ از اعتبارِ خودش کم می‌شود.",
+    free: "قیمت صفر است — این قابلیت برای همه‌ی نماینده‌ها باز است.",
+  },
+  // برگه: docs/specs/2026-09-26-reseller-store-subscription.md
+  store: {
+    get: "/api/admin/store-addon", grant: "/api/admin/store-addon/grant",
+    title: "اشتراکِ ربات و مینی‌اپِ نماینده‌ها",
+    desc: "بی این اشتراک، ربات و مینی‌اپِ نماینده نمی‌فروشند — خرید، تمدید، شارژِ کیف پول و تستِ رایگان می‌ایستند. کانفیگ‌های فعلیِ مشتری‌ها دست نمی‌خورند. مبلغ از اعتبارِ خودِ نماینده کم می‌شود.",
+    free: "قیمت صفر است — ربات و مینی‌اپِ همه‌ی نماینده‌ها بی‌اشتراک می‌فروشند.",
+  },
+};
+
+export function PortalAddon({ password, kind = "theme" }) {
+  const K = ADDON_KINDS[kind];
   const [d, setD] = useState(null);
   const [price, setPrice] = useState("");
   const [days, setDays] = useState("");
@@ -661,7 +679,7 @@ export function PortalAddon({ password }) {
 
   const load = async () => {
     try {
-      const r = await fetch(`${API_URL}/api/admin/portal-addon`,
+      const r = await fetch(`${API_URL}${K.get}`,
                             { headers: { "X-Admin-Password": password } });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(errText(j.detail, "خوانده نشد"));
@@ -671,12 +689,12 @@ export function PortalAddon({ password }) {
 
   useEffect(() => { load(); },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [password]);
+    [password, kind]);
 
   const save = async () => {
     setBusy("save");
     try {
-      const r = await fetch(`${API_URL}/api/admin/portal-addon`, {
+      const r = await fetch(`${API_URL}${K.get}`, {
         method: "POST",
         headers: { "Content-Type": "application/json",
                    "X-Admin-Password": password },
@@ -693,7 +711,7 @@ export function PortalAddon({ password }) {
   const grant = async (tenant, g) => {
     setBusy(`g${tenant}`);
     try {
-      const r = await fetch(`${API_URL}/api/admin/portal-addon/grant`, {
+      const r = await fetch(`${API_URL}${K.grant}`, {
         method: "POST",
         headers: { "Content-Type": "application/json",
                    "X-Admin-Password": password },
@@ -710,14 +728,9 @@ export function PortalAddon({ password }) {
 
   return (
     <div className="fx-card p-4 mb-4">
-      <div className="text-[13px] font-semibold text-white mb-1">
-        پوسته‌ی شخصیِ نماینده‌ها
-      </div>
+      <div className="text-[13px] font-semibold text-white mb-1">{K.title}</div>
       <p className="text-[12px] leading-relaxed mb-3"
-        style={{ color: "var(--muted)" }}>
-        نماینده می‌تواند رنگ و لوگوی خودش را روی مینی‌اپِ مشتریانش
-        بگذارد. مبلغ از اعتبارِ خودش کم می‌شود.
-      </p>
+        style={{ color: "var(--muted)" }}>{K.desc}</p>
 
       <Msg msg={msg} onClose={() => setMsg(null)} />
 
@@ -741,7 +754,7 @@ export function PortalAddon({ password }) {
                  border: `1px solid ${free ? "var(--ok-line)" : "var(--accent-fill)"}`,
                  color: free ? "var(--ok)" : "var(--dim)" }}>
         {free
-          ? "قیمت صفر است — این قابلیت برای همه‌ی نماینده‌ها باز است."
+          ? K.free
           : `هر نماینده ${faNum(price)} تومان می‌دهد و ${faNum(days)} روز باز می‌ماند.`}
       </div>
 
@@ -830,8 +843,6 @@ export function PortalAdmin({ password }) {
         شما، نه رمز پنل x-ui.
       </InfoBox>
 
-      <PortalAddon password={password} />
-
       {/* بدون این، نخواندنِ فهرست گروه‌ها بی‌صدا می‌ماند و مدیر فقط
           یک منوی خالی می‌دید. */}
       {data?.groupsError && (
@@ -881,6 +892,14 @@ export function PortalAdmin({ password }) {
             onSaved={reload} setMsg={setMsg} />
         ))
       )}
+
+      {/* قیمت‌گذاری بعد از فهرست: کاری است که یک‌بار انجام می‌شود، و
+          بالای صفحه فهرستِ نماینده‌ها — کارِ هرروزه — را زیرِ تا می‌برد */}
+      <div className="text-[13px] font-semibold mt-6 mb-3" style={{ color: "var(--dim)" }}>
+        قابلیت‌های پولیِ نماینده‌ها
+      </div>
+      <PortalAddon password={password} kind="store" />
+      <PortalAddon password={password} />
     </>
   );
 }

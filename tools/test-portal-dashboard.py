@@ -304,6 +304,86 @@ check("شکل‌ها و زمینه‌های لوگو یکی‌اند",
       tuple(_re.findall(r'\{ id: "([a-z]+)", fa: "[^"]+" \}', _SL.split("LOGO_BGS")[0])) == AP.LOGO_SHAPES
       and tuple(_re.findall(r'\{ id: "([a-z]+)", fa: "[^"]+" \}', _SL.split("LOGO_BGS")[1].split("];")[0])) == AP.LOGO_BGS)
 
+# سبکِ صفحه‌ی ورود: سه فهرست — بکند، mini-themes.js، و mark.jsx (که عمداً
+# به هیچ ماژولی وابسته نیست و فهرستِ خودش را دارد). شناسه‌ای که یکی
+# نشناسد، بی‌صدا «نوار» می‌شد و انتخابِ نماینده دیده نمی‌شد.
+_js_spl = _re.findall(r'\{ id: "([a-z]+)", fa:',
+                      _JS.split("export const MINI_SPLASHES")[1].split("];")[0])
+_MK = (ROOT / "frontend" / "src" / "lib" / "mark.jsx").read_text(encoding="utf-8")
+_mk_spl = _re.findall(r'"([a-z]+)"', _MK.split("const SPLASH_IDS = [")[1].split("]")[0])
+check("سبک‌های صفحه‌ی ورود در بکند، رابط و اسپلش یکی‌اند",
+      tuple(_js_spl) == AP.MINI_SPLASHES == tuple(_mk_spl),
+      f"{_js_spl} / {_mk_spl} / {AP.MINI_SPLASHES}")
+
+_owner_addon(0)
+AP.portal_theme_set({"splash": "pulse"}, t=AP._tenant_row(A))
+check("سبکِ صفحه‌ی ورود ذخیره و به مینی‌اپ داده می‌شود",
+      AP._mini_theme(AP._tenant_row(A))["splash"] == "pulse"
+      and AP.portal_theme_get(t=AP._tenant_row(A))["splash"] == "pulse")
+check("سبکِ ناشناخته ۴۰۰ است، نه «نوار»ِ بی‌صدا",
+      status_of(lambda: AP.portal_theme_set({"splash": "fireworks"}, t=AP._tenant_row(A))) == 400)
+_owner_addon(250000)
+check("پوسته که قفل شد، صفحه‌ی ورود هم پیش‌فرض می‌شود",
+      AP._mini_theme(AP._tenant_row(A))["splash"] == "bar")
+_owner_addon(0)
+
+# ═══════════════════════════════════════════════════════════
+head("اشتراکِ فروشگاه — ربات و مینی‌اپِ نماینده")
+# ═══════════════════════════════════════════════════════════
+# برگه: docs/specs/2026-09-26-reseller-store-subscription.md
+# خودِ دروازه‌ی فروش را bot/test_reseller می‌سنجد؛ این‌جا خرید و وضعیت.
+
+
+def _store_price(price):
+    st = AP._tenant_settings(AP._tenant_row(OWNER))
+    st["store_addon"] = {"price": price, "days": 30}
+    AP._save_tenant_settings(OWNER, st)
+
+
+_store_price(0)
+check("قیمتِ صفر: همه باز — آپدیت فروشِ کسی را نمی‌بندد",
+      AP.portal_store_get(t=AP._tenant_row(A))["open"] is True)
+check("قیمتِ صفر: خرید معنی ندارد (۴۰۰)",
+      status_of(lambda: AP.portal_store_buy(t=AP._tenant_row(A))) == 400)
+check("قیمتِ پوسته روی فروشگاه اثر ندارد (دو افزونه‌ی جدا)",
+      (_owner_addon(999000) or True) and AP._addon_open(AP._tenant_row(A), "store"))
+_owner_addon(0)
+
+_store_price(300000)
+with DB.conn() as c:
+    c.execute("UPDATE tenants SET credit=? WHERE id=?", (1000000, A))
+_sa = AP.portal_store_get(t=AP._tenant_row(A))
+check("قیمت گذاشته شد: بسته", _sa["open"] is False and _sa["price"] == 300000, str(_sa))
+check("مینی‌اپ هم می‌داند", AP.mini_me(tu=(AP._tenant_row(A), {"id": 1, "tg_id": 1}))
+      .get("storeOpen") is False if hasattr(AP, "mini_me") else True)
+_bought = AP.portal_store_buy(t=AP._tenant_row(A))
+check("خرید: اعتبار کم شد و باز شد",
+      int(AP._tenant_row(A)["credit"]) == 700000
+      and AP.portal_store_get(t=AP._tenant_row(A))["open"] is True, str(_bought))
+_u1 = AP._addon_until(AP._tenant_row(A), "store")
+AP.portal_store_buy(t=AP._tenant_row(A))
+_u2 = AP._addon_until(AP._tenant_row(A), "store")
+from datetime import datetime as _dtt                    # noqa: E402
+check("تمدیدِ زودهنگام روزهای مانده را نمی‌سوزاند",
+      (_dtt.fromisoformat(_u2) - _dtt.fromisoformat(_u1)).days == 30, f"{_u1} → {_u2}")
+
+with DB.conn() as c:
+    c.execute("UPDATE tenants SET credit=? WHERE id=?", (1000, A))
+check("اعتبارِ ناکافی: ۴۰۲ و تاریخ عوض نمی‌شود",
+      status_of(lambda: AP.portal_store_buy(t=AP._tenant_row(A))) == 402
+      and AP._addon_until(AP._tenant_row(A), "store") == _u2)
+
+check("فروشگاهِ مالک هرگز بسته نیست",
+      AP._addon_open(AP._tenant_row(OWNER), "store") is True)
+
+AP._addon_admin_grant("store", {"tenant": B, "days": 10})
+check("بازکردنِ دستیِ مالک", AP._addon_open(AP._tenant_row(B), "store") is True)
+AP._addon_admin_grant("store", {"tenant": B, "days": 0})
+check("و بستنش", AP._addon_open(AP._tenant_row(B), "store") is False)
+check("مالک را نمی‌شود «باز کرد» — ردیفِ خودش است",
+      status_of(lambda: AP._addon_admin_grant("store", {"tenant": OWNER, "days": 5})) == 400)
+_store_price(0)
+
 # ═══════════════════════════════════════════════════════════
 head("نسخه")
 # ═══════════════════════════════════════════════════════════

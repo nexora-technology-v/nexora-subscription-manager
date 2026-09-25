@@ -371,7 +371,58 @@ def main():
     print(f"  {G}OK{X} all {len(MUST_MATCH)} must-match routes agree with the backend\n")
     if not field_reads():
         sys.exit(1)
+    if not billing_columns():
+        sys.exit(1)
     sys.exit(0)
+
+
+def billing_columns():
+    """
+    ستون‌هایی که کوئری‌های حسابداری می‌خوانند، در اسکیمای واقعیِ billing.db.
+
+    همان دروازه‌ی `test-seams` برای جدول‌های ربات — که هشدارِ سلامت را
+    گرفت: کوئری ستونِ ناموجود می‌خواند و `except: pass` می‌بلعید. اسکیمای
+    حسابداری فقط با import کردنِ خودِ app ساخته می‌شود، پس این‌جاست.
+    """
+    import ast as _ast
+    import re as _re
+    c = APP._billing_conn()
+    try:
+        tables = {r[0]: {x[1] for x in c.execute(f"PRAGMA table_info({r[0]})")}
+                  for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    finally:
+        c.close()
+    src = (ROOT / "backend" / "app.py").read_text(encoding="utf-8")
+    bad = []
+    for node in _ast.walk(_ast.parse(src)):
+        if isinstance(node, _ast.Constant) and isinstance(node.value, str):
+            txt = node.value
+        elif isinstance(node, _ast.JoinedStr):
+            txt = "".join(v.value for v in node.values
+                          if isinstance(v, _ast.Constant) and isinstance(v.value, str))
+        else:
+            continue
+        flat = " ".join(txt.split())
+        if _re.search(r"\bJOIN\b", flat, _re.I):
+            continue
+        for m in _re.finditer(r"SELECT\s+(.+?)\s+FROM\s+(\w+)\b", flat, _re.I):
+            cols = tables.get(m.group(2))
+            if cols is None:
+                continue
+            for col in m.group(1).split(","):
+                w = col.strip().split()[0] if col.strip() else ""
+                if _re.fullmatch(r"[a-z_]+", w) and w != "distinct" and w not in cols:
+                    bad.append(f"app.py:{node.lineno} {m.group(2)}.{w}")
+        for m in _re.finditer(r"UPDATE\s+(\w+)\s+SET\s+([a-z_]+)\s*=", flat, _re.I):
+            cols = tables.get(m.group(1))
+            if cols is not None and m.group(2) not in cols:
+                bad.append(f"app.py:{node.lineno} {m.group(1)}.{m.group(2)}")
+    print(f"{D}── billing columns: queries vs real billing.db ({len(tables)} tables) ──{X}")
+    for b in sorted(set(bad)):
+        print(f"  {R}✗{X} {b}")
+    if not bad:
+        print(f"  {G}OK{X} every billing column the queries use exists\n")
+    return len(tables) > 3 and not bad
 
 
 #: رابط فقط فیلدی را بخواند که بکند واقعاً می‌فرستد.

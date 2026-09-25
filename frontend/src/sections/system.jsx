@@ -726,6 +726,18 @@ export function LivePreview({ dirty, onSave, saving, password }) {
   const [device, setDevice] = useState("mobile");
   const [loading, setLoading] = useState(true);
   const [zoom, setZoom] = useState(100);
+  // پهنای واقعیِ جایی که قاب در آن می‌نشیند. روی گوشی قابِ ۳۹۰ پیکسلی
+  // در کارتِ ۳۵۸ پیکسلی جا نمی‌شد و سمتِ چپِ صفحه‌ی اشتراک بریده می‌شد؛
+  // «۱۰۰٪» یعنی «تا جایی که جا دارد»، نه «بیرون بزن».
+  const boxRef = useRef(null);
+  const [boxW, setBoxW] = useState(0);
+  useEffect(() => {
+    const el = boxRef.current;
+    if (!el || typeof ResizeObserver !== "function") return undefined;
+    const ro = new ResizeObserver(([e]) => setBoxW(e.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   /*
    * امتحانِ قالب‌ها بدونِ ذخیره.
@@ -796,7 +808,11 @@ export function LivePreview({ dirty, onSave, saving, password }) {
     desktop: { w: 1200, label: "دسکتاپ", icon: Monitor, sub: "لپ‌تاپ" },
   };
   const d = DEVICES[device];
-  const scale = zoom / 100;
+  const H = 760;
+  // حاشیه‌ی ۲۴ پیکسلی از هر طرف (p-6)
+  const fit = boxW ? Math.max(0.3, (boxW - 48) / d.w) : 1;
+  const scale = Math.min(zoom / 100, fit);
+  const fitted = scale < zoom / 100;
 
   const refresh = () => { setLoading(true); setKey((k) => k + 1); };
 
@@ -845,8 +861,10 @@ export function LivePreview({ dirty, onSave, saving, password }) {
 
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1 px-1 py-1 rounded-[11px]" style={{ background: "var(--surface-3)", border: "1px solid var(--border-2)" }}>
-            <button onClick={() => setZoom((z) => Math.max(50, z - 10))} className="fx-ico-btn" style={{ width: 28, height: 28 }} aria-label="کوچک‌نمایی"><Minus size={13} /></button>
-            <span className="text-[13px] w-11 text-center" style={{ color: "var(--dim)", fontFamily: "var(--mono)" }}>{zoom}%</span>
+            <button onClick={() => setZoom((z) => Math.max(50, Math.min(z, Math.round(scale * 100)) - 10))} className="fx-ico-btn" style={{ width: 28, height: 28 }} aria-label="کوچک‌نمایی"><Minus size={13} /></button>
+            {/* عددِ واقعی — وقتی قاب برای جاشدن کوچک شده، همان را بگو */}
+            <span className="text-[13px] w-11 text-center" style={{ color: fitted ? "var(--accent-2)" : "var(--dim)", fontFamily: "var(--mono)" }}
+              title={fitted ? "برای جاشدن در صفحه کوچک شده" : undefined}>{Math.round(scale * 100)}%</span>
             <button onClick={() => setZoom((z) => Math.min(150, z + 10))} className="fx-ico-btn" style={{ width: 28, height: 28 }} aria-label="بزرگ‌نمایی"><Plus size={13} /></button>
           </div>
           <a href={`${API_URL}/api/preview`} target="_blank" rel="noreferrer" className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
@@ -940,9 +958,14 @@ export function LivePreview({ dirty, onSave, saving, password }) {
           </div>
         )}
 
-        <div className="nx-preview-scroll" style={{ background: "#05070C" }}>
-          <div className="flex justify-center p-6" style={{ minWidth: device === "desktop" ? d.w * scale + 48 : "auto" }}>
-            <div className="relative" style={{ width: d.w * scale, transition: "width .25s ease" }}>
+        <div className="nx-preview-scroll" ref={boxRef} style={{ background: "var(--bg)" }}>
+          <div className="flex justify-center p-6">
+            {/* جعبه دقیقاً اندازه‌ی قابِ بزرگ‌نمایی‌شده است و قاب از گوشه‌ی
+                بالا-چپ بزرگ می‌شود. پیش‌تر پهنای جعبه کوچک می‌شد ولی قاب با
+                پهنای اصلی از وسطِ خودش کوچک می‌شد — در ۵۰٪ قاب نیم‌پهنا به
+                راست می‌لغزید، و ارتفاعِ ۷۶۰ هم هرگز کم نمی‌شد. */}
+            <div className="relative shrink-0" style={{ width: d.w * scale, height: H * scale,
+              transition: "width .25s ease, height .25s ease" }}>
               {loading && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-[18px] z-10" style={{ background: "var(--surface-3)" }}>
                   <Loader2 size={22} className="animate-spin" style={{ color: "var(--accent-2)" }} />
@@ -961,14 +984,15 @@ export function LivePreview({ dirty, onSave, saving, password }) {
                 onLoad={() => setLoading(false)}
                 title="پیش‌نمایش صفحه اشتراک"
                 style={{
+                  position: "absolute", top: 0, left: 0,
                   width: d.w,
-                  height: 760,
+                  height: H,
                   border: "1px solid var(--border-2)",
                   borderRadius: 18,
                   background: "var(--bg)",
                   display: "block",
                   transform: `scale(${scale})`,
-                  transformOrigin: "top center",
+                  transformOrigin: "0 0",
                   transition: "transform .25s ease",
                 }}
               />

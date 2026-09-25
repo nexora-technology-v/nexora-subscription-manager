@@ -1946,9 +1946,15 @@ def bot_affiliates(x_admin_password: str = Header(...)):
             FROM affiliates a
             LEFT JOIN tenants t ON t.id = a.tenant_id
             ORDER BY a.id DESC""")]
+        _links = {}
         for r in rows:
             r["balance"] = r["earned"] - r["payouts"]
             r["isOwn"] = bool(r["isOwn"])
+            # لینکِ دعوتِ همین همکار — تا مالک بداند دقیقاً چه بفرستد
+            _t = r.get("tenant_id")
+            if _t not in _links:
+                _links[_t] = _aff_ref_link(_t, "X")[1]
+            r["refLink"] = _aff_link_fmt(_links[_t], r.get("code"))
 
         # همکارهای نماینده‌ها پاک نمی‌شوند — هیچ صفحه‌ی دیگری آنها را
         # نشان نمی‌دهد و پنل نماینده اصلاً بخش همکاری ندارد. فقط جدا
@@ -2289,11 +2295,14 @@ def aff_summary(aff: dict = Depends(aff_session)):
     finally:
         con.close()
 
+    ref, bot = _aff_ref_link(aff.get("tenant_id"), aff.get("code"))
     return {
         "name": aff.get("name") or "", "code": aff.get("code") or "",
         "percent": float(aff.get("percent") or 0),
         "earned": int(earned or 0), "paid": int(paid or 0), "balance": int(balance),
         "users": users, "commissions": comms, "payouts": pays,
+        # لینکی که همکار پخش می‌کند؛ خالی یعنی ربات هنوز نام کاربری ندارد
+        "refLink": ref, "botUsername": bot,
     }
 
 
@@ -12521,6 +12530,40 @@ def _bot_username(t):
     return who
 
 
+def _aff_ref_link(tenant_id, code):
+    """
+    لینکی که همکارِ فروش به مشتری‌هایش می‌دهد: `t.me/<ربات>?start=aff_<کد>`.
+
+    ربات همین را در منوی همکار نشان می‌داد، ولی پنلِ همکار و صفحه‌ی مالک
+    فقط «کد» را داشتند — نه مالک می‌دانست چه بفرستد، نه همکار چه پخش
+    کند. شکلِ لینک باید دقیقاً همانِ ربات باشد (`handlers.affiliate_menu`)؛
+    تستِ برابری در test-admin-api همین را می‌سنجد.
+
+    برمی‌گرداند: (لینک یا ""، نامِ کاربریِ ربات یا "")
+    """
+    if not code:
+        return "", ""
+    con = _bot_conn()
+    if not con:
+        return "", ""
+    try:
+        row = con.execute("SELECT id, bot_username, bot_token FROM tenants WHERE id=?",
+                          (int(tenant_id),)).fetchone()
+    finally:
+        con.close()
+    if not row:
+        return "", ""
+    bot = _bot_username(dict(row))
+    if not bot:
+        return "", ""
+    return _aff_link_fmt(bot, code), bot
+
+
+def _aff_link_fmt(bot, code):
+    """تنها جایی که شکلِ لینکِ همکار در بکند ساخته می‌شود."""
+    return f"https://t.me/{bot}?start=aff_{code}" if bot and code else ""
+
+
 def _ref_count(tid, uid):
     """چند نفر با کدِ این کاربر وارد شده‌اند."""
     con = _bot_conn()
@@ -12536,6 +12579,56 @@ def _ref_count(tid, uid):
         return 0
     finally:
         con.close()
+
+
+def _shop_brand(t, st=None):
+    """
+    ظاهرِ عمومیِ یک فروشگاه: نام، لوگو، رنگ و پوسته.
+
+    یک‌جا، چون دو جا لازم است: `mini_me` (بعد از ورود) و
+    `mini_brand` (پیش از اولین فریم، بی‌ورود). اگر دو نسخه بودند،
+    اسپلش ظاهری نشان می‌داد و اپ ظاهرِ دیگری.
+    """
+    st = st if st is not None else _tenant_settings(t)
+    return {
+        "brand": st.get("brand") or t.get("name") or "",
+        # لوگوی همین فروشگاه. خالی یعنی «نشان نکسورا» — رابط خودش
+        # تصمیم می‌گیرد، این‌جا حدس نمی‌زنیم.
+        "logo": _logo_url(t["id"]),
+        # رنگ و پوسته پشتِ قفلِ اشتراکِ نماینده؛ قفل این‌جا سنجیده
+        # می‌شود، نه فقط موقعِ ذخیره — تا تمام‌شدنِ اشتراک رنگ را بی‌آنکه
+        # پاک کند از کار بیندازد.
+        "accent": (_clean_accent(st.get("mini_accent")) if _addon_open(t) else ""),
+        "theme": _mini_theme(t, st),
+    }
+
+
+@app.get("/api/mini/brand")
+def mini_brand(shop: int = 0):
+    """
+    ظاهرِ فروشگاه برای **اولین فریم**، پیش از ورود.
+
+    بارِ اولی که مشتری مینی‌اپ را باز می‌کند، هنوز کشی نیست و `/me`
+    هم تا بعد از اسپلش نمی‌رسد؛ پس اسپلش خنثی بود و بعد به ظاهرِ
+    فروشگاه می‌پرید — «اولش لوگو و رنگ نمی‌آید». شناسه‌ی فروشگاه را
+    ربات در آدرس می‌گذارد (`?shop=`).
+
+    فقط همان چیزهایی که هر مشتری در خودِ اپ می‌بیند — فهرستِ مجاز،
+    نه کلِ تنظیمات. هویت این‌جا مهم نیست و چیزی جز ظاهر برنمی‌گردد.
+    """
+    if shop <= 0:
+        raise HTTPException(status_code=404, detail="فروشگاه مشخص نیست")
+    con = _bot_conn()
+    if not con:
+        raise HTTPException(status_code=503, detail="دیتابیس ربات در دسترس نیست")
+    try:
+        row = con.execute("SELECT * FROM tenants WHERE id=? AND COALESCE(is_active,1)=1",
+                          (int(shop),)).fetchone()
+    finally:
+        con.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="فروشگاه پیدا نشد")
+    return _shop_brand(dict(row))
 
 
 @app.get("/api/mini/me")
@@ -12555,22 +12648,10 @@ def mini_me(tu: tuple = Depends(mini_user)):
         "username": u.get("username") or "",
         "balance": int(u.get("balance") or 0),
         "coins": int(u.get("coins") or 0),
-        "brand": st.get("brand") or t.get("name") or "",
+        **_shop_brand(t, st),
         "support": st.get("support_username") or st.get("support") or "",
         "botUsername": _bot_username(t),
         "trialUsed": bool(u.get("trial_used")),
-        # لوگوی همین فروشگاه. خالی یعنی «نشان نکسورا» — رابط خودش
-        # تصمیم می‌گیرد، این‌جا حدس نمی‌زنیم.
-        "logo": _logo_url(t["id"]),
-        # رنگِ فروشگاهِ نماینده. خالی یعنی پوسته‌ی پیش‌فرض.
-        #
-        # قفل این‌جا هم سنجیده می‌شود، نه فقط موقعِ ذخیره: اگر
-        # اشتراکِ نماینده تمام شود، رنگ باید بی‌آنکه پاک شود از کار
-        # بیفتد — تا اگر دوباره تهیه کرد، همان رنگِ قبلی برگردد.
-        "accent": (_clean_accent(st.get("mini_accent"))
-                   if _addon_open(t) else ""),
-        # قالب، پالت و سبکِ لوگو — همه پشتِ همان قفل
-        "theme": _mini_theme(t, st),
         "avatar": _avatar_url(t["id"], u["id"]),
         "phone": u.get("phone") or "",
         # دعوتِ دوست — کدِ خودِ کاربر و اینکه چند نفر با آن آمده‌اند.
@@ -12578,6 +12659,9 @@ def mini_me(tu: tuple = Depends(mini_user)):
         # مجبور بود از منوی ربات پیدایش کند.
         "refCode": u.get("ref_code") or "",
         "refCount": _ref_count(t["id"], u["id"]),
+        # فروشگاهِ نماینده‌ای که اشتراکش تمام شده نمی‌فروشد. خودِ خرید را
+        # هسته‌ها رد می‌کنند؛ این فقط تا مینی‌اپ پیش از زدنِ «خرید» بگوید.
+        "storeOpen": _addon_open(t, "store"),
     }
 
 
@@ -12813,6 +12897,8 @@ def mini_buy(payload: dict, tu: tuple = Depends(mini_user)):
         raise HTTPException(
             status_code=502,
             detail="ساخت اشتراک نشد و مبلغ کامل به کیف پولتان برگشت")
+    if why == "store_closed":
+        raise HTTPException(status_code=409, detail=_bot_core().STORE_CLOSED)
     raise HTTPException(status_code=404, detail="این پلن دیگر در دسترس نیست")
 
 
@@ -13101,6 +13187,8 @@ def mini_order(payload: dict, tu: tuple = Depends(mini_user)):
         if isinstance(r, dict) and r.get("why") == "discount":
             raise HTTPException(status_code=400,
                                 detail=r.get("detail") or "کد تخفیف معتبر نیست")
+        if isinstance(r, dict) and r.get("why") == "store_closed":
+            raise HTTPException(status_code=409, detail=_bot_core().STORE_CLOSED)
         if r == "no_card":
             raise HTTPException(
                 status_code=409,
@@ -13486,68 +13574,60 @@ def tenant_create(payload: dict, x_admin_password: str = Header(...)):
         con.close()
 
 
-@app.get("/api/admin/portal-addon")
-def portal_addon_get(x_admin_password: str = Header(...)):
-    """قیمت و مدتِ «پوسته‌ی شخصیِ نماینده» — و اینکه هرکس تا کِی دارد."""
-    check_auth(x_admin_password)
-    cfg = _addon_config()
-
+def _addon_admin_get(kind):
+    """قیمت و مدتِ یک افزونه — و اینکه هر نماینده تا کِی دارد."""
+    cfg = _addon_config(kind)
     rows = []
     con = _bot_conn()
     if con:
         try:
             for r in con.execute(
-                    "SELECT id, name, settings FROM tenants "
+                    "SELECT id, name, settings, parent_id FROM tenants "
                     "WHERE parent_id IS NOT NULL ORDER BY id"):
                 t = dict(r)
                 rows.append({
                     "id": t["id"],
                     "name": t.get("name") or "",
-                    "until": _addon_until(t),
-                    "open": _addon_open(t),
+                    "until": _addon_until(t, kind),
+                    "open": _addon_open(t, kind),
                 })
         except Exception:
-            log.debug("فهرست پوسته‌ها خوانده نشد", exc_info=True)
+            # فهرستِ خالی بی‌توضیح یعنی «هیچ نماینده‌ای نیست» — که دروغ است
+            log.warning("فهرستِ افزونه‌ی %s خوانده نشد", kind, exc_info=True)
+            raise HTTPException(status_code=503, detail="فهرست نماینده‌ها خوانده نشد")
         finally:
             con.close()
-
     return dict(cfg, resellers=rows)
 
 
-@app.post("/api/admin/portal-addon")
-def portal_addon_set(payload: dict, x_admin_password: str = Header(...)):
+def _addon_admin_set(kind, payload):
     """
     قیمت و مدت را مالک تعیین می‌کند.
 
-    **صفر یعنی رایگان برای همه** — نه «خاموش». اگر مالک نخواهد
-    پولی باشد، صفر می‌گذارد و قفل برای همه باز می‌شود. این صریح
-    نوشته شده چون «صفر» در این مخزن یک‌بار «رایگان» و یک‌بار
-    «تعریف‌نشده» معنی داده و همان ابهام باگ شده.
+    **صفر یعنی رایگان برای همه** — نه «خاموش». این صریح نوشته شده چون
+    «صفر» در این مخزن یک‌بار «رایگان» و یک‌بار «تعریف‌نشده» معنی داده و
+    همان ابهام باگ شده.
     """
-    check_auth(x_admin_password)
     p = payload or {}
     try:
         price = max(0, int(p.get("price") or 0))
         days = max(1, int(p.get("days") or 30))
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="عدد نامعتبر")
-
     root = _root_tenant_row()
     st = _tenant_settings(root)
-    st["portal_addon"] = {"price": price, "days": days}
+    st[_bot_core().ADDONS[kind][0]] = {"price": price, "days": days}
     _save_tenant_settings(root["id"], st)
     return {"ok": True, "price": price, "days": days}
 
 
-@app.post("/api/admin/portal-addon/grant")
-def portal_addon_grant(payload: dict, x_admin_password: str = Header(...)):
+def _addon_admin_grant(kind, payload):
     """
-    باز یا بسته‌کردنِ دستیِ پوسته برای یک نماینده — بدونِ پول.
+    باز یا بسته‌کردنِ دستیِ افزونه برای یک نماینده — بدونِ پول.
 
-    چرا لازم است: نماینده‌ی تازه، یا کسی که آفلاین پرداخت کرده.
-    بدون این، تنها راهِ بازکردن دست‌بردن در دیتابیس بود.
+    چرا لازم است: نماینده‌ی تازه، یا کسی که آفلاین پرداخت کرده. بدون
+    این، تنها راهِ بازکردن دست‌بردن در دیتابیس بود.
     """
-    check_auth(x_admin_password)
     p = payload or {}
     try:
         tid = int(p.get("tenant") or 0)
@@ -13556,35 +13636,58 @@ def portal_addon_grant(payload: dict, x_admin_password: str = Header(...)):
         raise HTTPException(status_code=400, detail="ورودی نامعتبر")
     if tid <= 0:
         raise HTTPException(status_code=400, detail="نماینده مشخص نیست")
-
     row = _tenant_row(tid)
     if not row:
         raise HTTPException(status_code=404, detail="نماینده پیدا نشد")
     if row.get("parent_id") is None:
         raise HTTPException(status_code=400,
                             detail="این ردیفِ خودِ مالک است، نه نماینده")
-
-    st = _tenant_settings(row)
     if days <= 0:
-        # بستن: تاریخ پاک می‌شود ولی **رنگ می‌ماند** — اگر دوباره
-        # باز شد، همان پوسته‌ی قبلی برمی‌گردد و لازم نیست از نو
-        # بسازدش.
-        st.pop("theme_until", None)
-    else:
-        from datetime import datetime as _dt, timedelta as _td
-        base = _dt.now()
-        cur = st.get("theme_until") or ""
-        if cur:
-            try:
-                have = _dt.fromisoformat(str(cur)[:19])
-                if have > base:
-                    base = have
-            except (TypeError, ValueError):
-                log.warning("theme_until مستاجر %s خوانده نشد (%r) — "
-                            "تمدید از امروز حساب شد", tid, str(cur)[:32])
-        st["theme_until"] = (base + _td(days=days)).isoformat(timespec="seconds")
-    _save_tenant_settings(tid, st)
-    return {"ok": True, "until": st.get("theme_until") or ""}
+        # بستن: تاریخ پاک می‌شود ولی تنظیماتِ دیگر (رنگ، …) می‌مانند — اگر
+        # دوباره باز شد، همان قبلی برمی‌گردد
+        st = _tenant_settings(row)
+        st.pop(_bot_core().ADDONS[kind][1], None)
+        _save_tenant_settings(tid, st)
+        return {"ok": True, "until": ""}
+    return {"ok": True, "until": _addon_extend(row, kind, days)}
+
+
+@app.get("/api/admin/portal-addon")
+def portal_addon_get(x_admin_password: str = Header(...)):
+    """قیمت و مدتِ «پوسته‌ی شخصیِ نماینده» — و اینکه هرکس تا کِی دارد."""
+    check_auth(x_admin_password)
+    return _addon_admin_get("theme")
+
+
+@app.post("/api/admin/portal-addon")
+def portal_addon_set(payload: dict, x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    return _addon_admin_set("theme", payload)
+
+
+@app.post("/api/admin/portal-addon/grant")
+def portal_addon_grant(payload: dict, x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    return _addon_admin_grant("theme", payload)
+
+
+@app.get("/api/admin/store-addon")
+def store_addon_get(x_admin_password: str = Header(...)):
+    """قیمت و مدتِ اشتراکِ ربات و مینی‌اپِ نماینده‌ها — و وضعیتِ هرکدام."""
+    check_auth(x_admin_password)
+    return _addon_admin_get("store")
+
+
+@app.post("/api/admin/store-addon")
+def store_addon_set(payload: dict, x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    return _addon_admin_set("store", payload)
+
+
+@app.post("/api/admin/store-addon/grant")
+def store_addon_grant(payload: dict, x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    return _addon_admin_grant("store", payload)
 
 
 @app.get("/api/admin/tenant/portal-list")
@@ -15387,6 +15490,8 @@ def _clean_accent(raw):
 MINI_TEMPLATES = ("aurora", "mono", "bold", "neon")
 MINI_PALETTES = ("ocean", "violet", "emerald", "sunset", "rose", "gold",
                  "crimson", "slate", "custom")
+# سبکِ صفحه‌ی ورود — همان `MINI_SPLASHES` رابط (test-portal-dashboard)
+MINI_SPLASHES = ("bar", "ring", "pulse", "dots", "logo")
 LOGO_SHAPES = ("rounded", "circle", "square")
 LOGO_BGS = ("none", "light", "accent")
 
@@ -15415,7 +15520,7 @@ def _mini_theme(t, st=None):
     st = st if st is not None else _tenant_settings(t)
     if not _addon_open(t):
         return {"tpl": "aurora", "palette": "", "accent": "",
-                "logoStyle": _clean_logo_style({})}
+                "logoStyle": _clean_logo_style({}), "splash": "bar"}
     accent = _clean_accent(st.get("mini_accent"))
     palette = st.get("mini_palette") if st.get("mini_palette") in MINI_PALETTES else ""
     # پیش از قالب‌ها فقط رنگ بود — همان رنگ، پالتِ دلخواه است
@@ -15423,55 +15528,139 @@ def _mini_theme(t, st=None):
         palette = "custom"
     return {"tpl": st.get("mini_tpl") if st.get("mini_tpl") in MINI_TEMPLATES else "aurora",
             "palette": palette, "accent": accent,
-            "logoStyle": _clean_logo_style(st.get("logo_style"))}
+            "logoStyle": _clean_logo_style(st.get("logo_style")),
+            "splash": st.get("mini_splash") if st.get("mini_splash") in MINI_SPLASHES else "bar"}
 
 
-def _addon_config():
+def _bot_core():
     """
-    قیمت و مدتِ «پوسته‌ی شخصی»، از تنظیماتِ مالک.
+    `bot/core.py` — قاعده‌ی افزونه‌های پولی آن‌جاست تا ربات و بکند یکی بخوانند.
 
-    برمی‌گرداند: {"price": تومان, "days": روز}
-    قیمتِ صفر یعنی رایگان — قفل باز است برای همه.
+    فقط stdlib وارد می‌کند، پس برخلافِ `_bot_handlers` بارشدنش به
+    tg/xui/requests بسته نیست. همان شیءِ ماژولی است که handlers می‌گیرد
+    (نامِ مسطحِ `core` روی همان مسیر).
+    """
+    if "core" in _BOT_MODS:
+        return _BOT_MODS["core"]
+    import sys as _sys
+    bot_dir = str(Path(__file__).resolve().parent.parent / "bot")
+    if bot_dir not in _sys.path:
+        _sys.path.insert(0, bot_dir)
+    import core as _c                  # noqa: E402
+    _BOT_MODS["core"] = _c
+    return _c
+
+
+def _addon_config(kind="theme"):
+    """
+    قیمت و مدتِ یک افزونه («theme» پوسته، «store» اشتراکِ فروشگاه) از
+    تنظیماتِ مالک: {"price": تومان, "days": روز}. قیمتِ صفر = رایگان برای همه.
     """
     try:
         root = _root_tenant_row()
     except HTTPException:
         return {"price": 0, "days": 30}
-    st = _tenant_settings(root).get("portal_addon") or {}
-    try:
-        price = max(0, int(st.get("price") or 0))
-        days = max(1, int(st.get("days") or 30))
-    except (TypeError, ValueError):
-        price, days = 0, 30
-    return {"price": price, "days": days}
+    return _bot_core().addon_config(_tenant_settings(root), kind)
 
 
-def _addon_until(t):
-    """تا کِی پوسته‌ی شخصیِ این نماینده باز است؟ ISO یا خالی."""
-    return str(_tenant_settings(t).get("theme_until") or "")
+def _addon_until(t, kind="theme"):
+    """تا کِی این افزونه برای این نماینده باز است؟ ISO یا خالی."""
+    return str(_tenant_settings(t).get(_bot_core().ADDONS[kind][1]) or "")
 
 
-def _addon_open(t):
+def _addon_open(t, kind="theme"):
     """
-    آیا این نماینده الان اجازه‌ی پوسته‌ی شخصی دارد؟
+    آیا این مستاجر الان این افزونه را دارد؟ قاعده در `core.addon_open`.
 
-    قیمتِ صفر یعنی برای همه باز است. وگرنه تاریخ سنجیده می‌شود.
+    فروشگاهِ خودِ مالک هرگز قفل نیست. پیش‌تر بود: همین که مالک برای
+    نماینده‌ها قیمتِ پوسته می‌گذاشت، مینی‌اپِ **خودش** هم به پوسته‌ی
+    پیش‌فرض برمی‌گشت — «لوگو و رنگِ شخصی‌سازی‌شده نمی‌آید».
     """
-    if _addon_config()["price"] <= 0:
+    if not t.get("parent_id"):
         return True
-    until = _addon_until(t)
-    if not until:
-        return False
+    return _bot_core().addon_open(_tenant_settings(t), t.get("parent_id"),
+                                  _addon_config(kind)["price"], kind)
+
+
+def _addon_extend(t, kind, days):
+    """
+    تاریخِ افزونه را `days` روز جلو می‌برد و تاریخِ تازه را برمی‌گرداند.
+
+    تمدیدِ زودهنگام روزهای مانده را نمی‌سوزاند. تاریخِ خراب یعنی روزهای
+    مانده را نمی‌دانیم و از «الان» شروع می‌کنیم — به ضررِ نماینده، پس
+    دست‌کم دیده شود.
+    """
+    from datetime import datetime as _dt, timedelta as _td
+    key = _bot_core().ADDONS[kind][1]
+    st = _tenant_settings(_tenant_row(t["id"]) or t)
+    base = _dt.now()
+    cur = str(st.get(key) or "")
+    if cur:
+        try:
+            have = _dt.fromisoformat(cur[:19])
+            if have > base:
+                base = have
+        except (TypeError, ValueError):
+            log.warning("%s مستاجر %s خوانده نشد (%r) — تمدید از امروز حساب شد",
+                        key, t["id"], cur[:32])
+    until = (base + _td(days=days)).isoformat(timespec="seconds")
+    st[key] = until
+    _save_tenant_settings(t["id"], st)
+    return until
+
+
+ADDON_LABELS = {"theme": "پوسته‌ی شخصیِ مینی‌اپ",
+                "store": "اشتراکِ ربات و مینی‌اپ"}
+
+
+def _addon_buy(t, kind):
+    """
+    تهیه یا تمدیدِ یک افزونه — از اعتبارِ خودِ نماینده.
+
+    **اول کسر، بعد تمدید.** اگر برعکس بود، شکستِ کسر یعنی قابلیتی که
+    پولش نرسیده باز می‌ماند. و اگر نوشتنِ تاریخ شکست بخورد، پول
+    برمی‌گردد — همان قاعده‌ی `close_order` در ربات.
+    """
+    cfg = _addon_config(kind)
+    if cfg["price"] <= 0:
+        raise HTTPException(status_code=400,
+                            detail="این قابلیت رایگان است و نیازی به تهیه ندارد")
+
+    ok, why = _portal_charge(t, cfg["price"], ADDON_LABELS[kind])
+    if not ok:
+        raise HTTPException(status_code=402, detail=why)
     try:
-        from datetime import datetime as _dt
-        return _dt.fromisoformat(until[:19]) > _dt.now()
-    except (TypeError, ValueError):
-        return False
+        until = _addon_extend(t, kind, cfg["days"])
+    except Exception as e:
+        _portal_refund(t, cfg["price"])
+        log.exception("تمدیدِ %s ناموفق", kind)
+        raise HTTPException(status_code=500,
+                            detail=f"تهیه انجام نشد و پول برگشت: {type(e).__name__}")
+    return {"ok": True, "until": until, "paid": cfg["price"]}
+
+
+def _addon_status(t, kind):
+    """وضعیتِ یک افزونه برای پرتال — همان شکل برای پوسته و فروشگاه."""
+    cfg = _addon_config(kind)
+    credit = int(t.get("credit") or 0)
+    return {"open": _addon_open(t, kind), "until": _addon_until(t, kind),
+            "price": cfg["price"], "days": cfg["days"],
+            "credit": credit, "postpaid": credit < 0}
 
 
 @app.get("/api/portal/theme")
 def portal_theme_get(t: dict = Depends(portal_tenant)):
     """پوسته‌ی فعلی، و اینکه قفل باز است یا نه."""
+    return _theme_get(t)
+
+
+def _theme_get(t):
+    """
+    پوسته‌ی مینی‌اپِ یک فروشگاه — همان برای نماینده (پرتال) و مالک (پنل).
+
+    مالک تا ۱.۱۰۹ هیچ راهی برای شخصی‌سازیِ مینی‌اپِ **خودش** نداشت: استودیو
+    فقط در پرتالِ نماینده بود. حالا هر دو از همین‌جا می‌خوانند.
+    """
     st = _tenant_settings(t)
     cfg = _addon_config()
     return {
@@ -15481,6 +15670,7 @@ def portal_theme_get(t: dict = Depends(portal_tenant)):
         "palette": (st.get("mini_palette") if st.get("mini_palette") in MINI_PALETTES
                     else ("custom" if _clean_accent(st.get("mini_accent")) else "ocean")),
         "logoStyle": _clean_logo_style(st.get("logo_style")),
+        "splash": st.get("mini_splash") if st.get("mini_splash") in MINI_SPLASHES else "bar",
         "brand": st.get("brand") or t.get("name") or "",
         "logo": _logo_url(t["id"]),
         "open": _addon_open(t),
@@ -15502,6 +15692,11 @@ def portal_theme_set(payload: dict, t: dict = Depends(portal_tenant)):
     می‌تواند درخواست را مستقیم بفرستد — همان قاعده‌ای که برای
     حجم‌های مجاز هم رعایت شد.
     """
+    return _theme_save(t, payload)
+
+
+def _theme_save(t, payload):
+    """ذخیره‌ی پوسته — مشترکِ پرتال و پنلِ مالک. قفل همین‌جاست."""
     if not _addon_open(t):
         raise HTTPException(
             status_code=402,
@@ -15531,6 +15726,12 @@ def portal_theme_set(payload: dict, t: dict = Depends(portal_tenant)):
         st["mini_palette"] = p["palette"]
     if "logo_style" in p:
         st["logo_style"] = _clean_logo_style(p.get("logo_style"))
+    if "splash" in p:
+        # ناشناس ۴۰۰ است، نه «نوار» بی‌صدا — وگرنه انتخاب ذخیره شده به نظر
+        # می‌رسید و مشتری چیزِ دیگری می‌دید
+        if p.get("splash") not in MINI_SPLASHES:
+            raise HTTPException(status_code=400, detail="این سبکِ صفحه‌ی ورود وجود ندارد")
+        st["mini_splash"] = p["splash"]
 
     _save_tenant_settings(t["id"], st)
     return {"ok": True, "accent": _clean_accent(st.get("mini_accent")),
@@ -15539,49 +15740,23 @@ def portal_theme_set(payload: dict, t: dict = Depends(portal_tenant)):
 
 @app.post("/api/portal/theme/buy")
 def portal_theme_buy(t: dict = Depends(portal_tenant)):
-    """
-    تهیه یا تمدیدِ پوسته‌ی شخصی — از اعتبارِ خودِ نماینده.
+    """تهیه یا تمدیدِ پوسته‌ی شخصی — از اعتبارِ خودِ نماینده."""
+    return _addon_buy(t, "theme")
 
-    **اول کسر، بعد تمدید.** اگر برعکس بود، شکستِ کسر یعنی قابلیتی
-    که پولش نرسیده باز می‌ماند. و اگر نوشتنِ تاریخ شکست بخورد،
-    پول برمی‌گردد — همان قاعده‌ی `close_order` در ربات.
-    """
-    cfg = _addon_config()
-    if cfg["price"] <= 0:
-        raise HTTPException(status_code=400,
-                            detail="این قابلیت رایگان است و نیازی به تهیه ندارد")
 
-    ok, why = _portal_charge(t, cfg["price"], "پوسته‌ی شخصیِ مینی‌اپ")
-    if not ok:
-        raise HTTPException(status_code=402, detail=why)
+# ── اشتراکِ فروشگاه: ربات و مینی‌اپِ نماینده فقط با آن می‌فروشند ──
+# برگه: docs/specs/2026-09-26-reseller-store-subscription.md
 
-    try:
-        from datetime import datetime as _dt, timedelta as _td
-        base = _dt.now()
-        cur = _addon_until(t)
-        if cur:
-            # تمدیدِ زودهنگام نباید روزهای باقی‌مانده را بسوزاند
-            try:
-                have = _dt.fromisoformat(cur[:19])
-                if have > base:
-                    base = have
-            except (TypeError, ValueError):
-                # تاریخِ خراب یعنی روزهای باقی‌مانده را نمی‌دانیم و
-                # از «الان» شروع می‌کنیم. این به ضررِ نماینده است،
-                # پس دست‌کم دیده شود — مسیرِ خرابِ بی‌صدا ممنوع.
-                log.warning("theme_until مستاجر %s خوانده نشد (%r) — "
-                            "تمدید از امروز حساب شد", t["id"], cur[:32])
-        until = (base + _td(days=cfg["days"])).isoformat(timespec="seconds")
-        st = _tenant_settings(t)
-        st["theme_until"] = until
-        _save_tenant_settings(t["id"], st)
-    except Exception as e:
-        _portal_refund(t, cfg["price"])
-        log.exception("تمدید پوسته ناموفق")
-        raise HTTPException(status_code=500,
-                            detail=f"تهیه انجام نشد و پول برگشت: {type(e).__name__}")
+@app.get("/api/portal/store")
+def portal_store_get(t: dict = Depends(portal_tenant)):
+    """آیا ربات و مینی‌اپِ این نماینده الان می‌فروشند، و تا کِی."""
+    return _addon_status(t, "store")
 
-    return {"ok": True, "until": until, "paid": cfg["price"]}
+
+@app.post("/api/portal/store/buy")
+def portal_store_buy(t: dict = Depends(portal_tenant)):
+    """تهیه یا تمدیدِ اشتراکِ فروشگاه — از اعتبارِ خودِ نماینده."""
+    return _addon_buy(t, "store")
 
 
 @app.post("/api/portal/brand")
@@ -15589,6 +15764,11 @@ def portal_brand(payload: dict, t: dict = Depends(portal_tenant)):
     """
     برند رباتِ نماینده — فقط همان چند کلیدی که مال اوست.
     """
+    return _brand_save(t, payload)
+
+
+def _brand_save(t, payload):
+    """نام و برندِ فروشگاه — فقط کلیدهای `PORTAL_BRAND_KEYS`؛ مشترکِ پرتال و مالک."""
     p = payload or {}
     try:
         st = json.loads(t.get("settings") or "{}")
@@ -16401,6 +16581,42 @@ def portal_logo_set(payload: dict, t: dict = Depends(portal_tenant)):
 @app.delete("/api/portal/logo")
 def portal_logo_clear(t: dict = Depends(portal_tenant)):
     _logo_clear(t["id"])
+    return {"ok": True}
+
+
+# ── پوسته‌ی مینی‌اپِ خودِ مالک ──
+#
+# همان توابعِ پرتال، روی مستاجرِ ریشه. نسخه‌ی دومی از «ذخیره‌ی پوسته»
+# ساخته نشد — دو نسخه یعنی روزی یکی قاعده‌ای را فراموش می‌کند.
+
+@app.get("/api/admin/bot/mini-theme")
+def admin_mini_theme_get(x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    return _theme_get(_root_tenant_row())
+
+
+@app.post("/api/admin/bot/mini-theme")
+def admin_mini_theme_set(payload: dict, x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    return _theme_save(_root_tenant_row(), payload)
+
+
+@app.post("/api/admin/bot/brand")
+def admin_brand_set(payload: dict, x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    return _brand_save(_root_tenant_row(), payload)
+
+
+@app.post("/api/admin/bot/logo")
+def admin_logo_set(payload: dict, x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    return _logo_save(_root_tenant_row()["id"], payload)
+
+
+@app.delete("/api/admin/bot/logo")
+def admin_logo_clear(x_admin_password: str = Header(...)):
+    check_auth(x_admin_password)
+    _logo_clear(_root_tenant_row()["id"])
     return {"ok": True}
 
 

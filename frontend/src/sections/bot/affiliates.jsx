@@ -6,11 +6,67 @@
  */
 import React, { useState, useEffect } from "react";
 import {
-  AlertTriangle, Check, CheckCircle2, Coins, DollarSign, Eye, EyeOff, Key, Loader2, Plus as PlusIcon, Sliders, Trash2, Users, Wallet,
+  AlertTriangle, Check, CheckCircle2, Coins, Copy, DollarSign, Eye, EyeOff, Key, Loader2, Plus as PlusIcon, Send, Sliders, Trash2, Users, Wallet,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errMsg, errText, faNum, okJson } from "../../lib/format";
 import { ConfirmModal, EmptyState, Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile } from "../../ui/index";
+
+/**
+ * لینکِ دعوتِ همکار، و پیامی که مالک برایش می‌فرستد.
+ *
+ * پیش‌تر این‌جا فقط «aff_کد» بود. نه مالک می‌دانست دقیقاً چه چیزی
+ * بفرستد، نه همکار چه چیزی پخش کند: لینکِ کامل فقط داخلِ ربات دیده
+ * می‌شد، و آدرسِ پنلِ همکار هیچ‌جا.
+ */
+function AffLinkBox({ a }) {
+  const [done, setDone] = useState("");
+  const panel = `${window.location.origin}/aff`;
+  const invite = [
+    `پنلِ همکاریِ شما: ${panel}`,
+    `کد: ${a.code}`,
+    "رمز: همان که برایتان ساخته شده",
+    a.refLink ? `لینکِ دعوت برای مشتری‌ها: ${a.refLink}` : "",
+    `از هر خریدِ مشتری‌هایتان ${a.percent}٪ پورسانت دارید.`,
+  ].filter(Boolean).join("\n");
+  const copy = async (text, what) => {
+    try { await navigator.clipboard.writeText(text); setDone(what); }
+    catch { setDone("fail"); }
+    setTimeout(() => setDone(""), 1800);
+  };
+  return (
+    <div className="mt-2.5 rounded-xl p-2.5" style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
+      {a.refLink ? (
+        <div className="text-[12.5px] break-all" dir="ltr"
+          style={{ fontFamily: "var(--mono)", color: "var(--accent-2)", userSelect: "all" }}>
+          {a.refLink}
+        </div>
+      ) : (
+        <div className="text-[12px]" style={{ color: "var(--warn)" }}>
+          لینک ساخته نشد: نامِ کاربریِ ربات معلوم نیست (اتصال و تنظیماتِ ربات).
+          تا آن موقع مشتری کدِ همکار را در ربات وارد می‌کند.
+        </div>
+      )}
+      <div className="flex gap-2 mt-2 flex-wrap">
+        {a.refLink && (
+          <button type="button" onClick={() => copy(a.refLink, "link")}
+            className="fx-btn-g px-2.5 py-1.5 text-[12px] flex items-center gap-1">
+            {done === "link" ? <Check size={12} /> : <Copy size={12} />} کپیِ لینک
+          </button>
+        )}
+        <button type="button" onClick={() => copy(invite, "msg")}
+          className="fx-btn-g px-2.5 py-1.5 text-[12px] flex items-center gap-1"
+          title="آدرسِ پنل، کد و لینک — آماده برای فرستادن به همکار">
+          {done === "msg" ? <Check size={12} /> : <Send size={12} />} کپیِ پیام برای همکار
+        </button>
+        {done === "fail" && (
+          <span className="text-[11.5px]" style={{ color: "var(--warn)" }}>مرورگر اجازه‌ی کپی نداد</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 
 export function BotAffiliates({ password }) {
   const [data, setData] = useState(null);
@@ -172,11 +228,12 @@ export function BotAffiliates({ password }) {
                   ltr و مونو را نگه می‌دارند. */}
               <div className="text-[12px] mt-1.5"
                 style={{ color: "var(--muted)", textAlign: "right" }}>
-                <bdi style={{ fontFamily: "var(--mono)" }}>
-                  aff_{a.code}{a.tg_id ? ` · ${a.tg_id}` : ""}
+                کد <bdi style={{ fontFamily: "var(--mono)" }}>
+                  {a.code}{a.tg_id ? ` · ${a.tg_id}` : ""}
                 </bdi>
                 {!a.tg_id && " · بدون تلگرام"}
               </div>
+              <AffLinkBox a={a} />
               {a.note && (
                 <div className="text-[12px] mt-1" style={{ color: "var(--muted)" }}>
                   {a.note}

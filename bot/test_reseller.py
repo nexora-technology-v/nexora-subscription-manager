@@ -414,6 +414,102 @@ kb4 = str(H.main_menu(ctx_for(R4), u4))
 check("تست روشن ولی بی‌پلن: دکمه نشان داده نمی‌شود", "trial" not in kb4,
       "دکمه‌ای که جوابش «فعال نیست» است از نبودنش بدتر است")
 
+# ═══════════════════════════════════════════════════════════
+section("اشتراکِ فروشگاه — بی‌اشتراک، ربات و مینی‌اپ نمی‌فروشند")
+# ═══════════════════════════════════════════════════════════
+# برگه: docs/specs/2026-09-26-reseller-store-subscription.md
+# رفتار سنجیده می‌شود، نه متن: هر هسته واقعاً صدا زده می‌شود و پولی
+# که نباید جابه‌جا شود، شمرده می‌شود.
+R7, D7, P7 = reseller("فروشگاه-بسته", "shut", "grp-shut", 900000)
+u7 = D7.get_user(7001) or D7.create_user(7001, first_name="خریدار")
+D7.exec("UPDATE users SET balance=? WHERE tenant_id=? AND tg_id=?", (400000, R7, 7001))
+u7 = D7.get_user(7001)
+st7 = db.tenant_settings(R7)
+st7["cards"] = [{"number": "6037000000000000", "holder": "x", "bank": "y"}]
+db.save_tenant_settings(R7, st7)
+
+
+def set_store(price, until=None):
+    rs = db.tenant_settings(ROOT)
+    rs["store_addon"] = {"price": price, "days": 30}
+    db.save_tenant_settings(ROOT, rs)
+    st = db.tenant_settings(R7)
+    if until is None:
+        st.pop("store_until", None)
+    else:
+        st["store_until"] = until
+    db.save_tenant_settings(R7, st)
+
+
+def n_orders():
+    with db.conn() as c:
+        return c.execute("SELECT COUNT(*) FROM orders WHERE tenant_id=?", (R7,)).fetchone()[0]
+
+
+def said(text):
+    return bool(SENT) and text in (SENT[-1].get("text") or "")
+
+
+set_store(0)
+check("قیمتِ صفر (پیش‌فرض): باز — به‌روزرسانی فروشِ کسی را قطع نمی‌کند",
+      H.store_gate(ctx_for(R7)) is None)
+
+set_store(500000)
+c7 = ctx_for(R7)
+check("قیمت گذاشته شد، تاریخی نیست: بسته", H.store_gate(c7) == H.core.STORE_CLOSED)
+
+n0 = n_orders()
+ok, r = H.card_order(c7, u7, P7["id"])
+check("کارت: سفارش ساخته نمی‌شود",
+      not ok and r == {"why": "store_closed"} and n_orders() == n0, str(r))
+
+r = H.wallet_purchase(c7, u7, P7["id"])
+check("کیف پول: رد می‌شود و موجودی دست نمی‌خورد",
+      r == {"ok": False, "why": "store_closed"}
+      and D7.get_user(7001)["balance"] == 400000 and n_orders() == n0, str(r)[:80])
+
+try:
+    H.topup_order(c7, u7, 100000)
+    check("شارژِ کیف پول رد می‌شود", False, "no error")
+except ValueError as e:
+    check("شارژِ کیف پول رد می‌شود — با همان جمله",
+          str(e) == H.core.STORE_CLOSED and n_orders() == n0, str(e)[:60])
+
+SENT.clear()
+H.give_trial(c7, {"tg_id": 7001}, 7001, None)
+check("تست رایگان: همان جمله", said(H.core.STORE_CLOSED))
+
+SENT.clear()
+H.show_plans(c7, {"tg_id": 7001}, 7001, None)
+check("دکمه‌ی خرید: همان اول می‌گوید، نه بعد از انتخابِ پلن", said(H.core.STORE_CLOSED))
+
+SENT.clear()
+H.checkout(c7, u7, 7001, None, P7["id"], False)
+check("پوسته‌ی کارت (checkout) جمله را نشان می‌دهد، نه KeyError", said(H.core.STORE_CLOSED))
+
+SENT.clear()
+H.wallet_pay(c7, u7, 7001, None, P7["id"])
+check("پوسته‌ی کیف پول هم", said(H.core.STORE_CLOSED))
+
+H.auto_renew_subscription(db.get_tenant(R7), FakeBot(),
+                          {"id": 1, "plan_id": P7["id"], "user_id": u7["id"]})
+check("تمدیدِ خودکار: نه سفارشی، نه کسری",
+      n_orders() == n0 and D7.get_user(7001)["balance"] == 400000)
+
+check("فروشگاهِ مالک هرگز بسته نیست", H.store_gate(ctx_for(ROOT)) is None)
+
+set_store(500000, (datetime.now() + timedelta(days=5)).isoformat(timespec="seconds"))
+c7 = ctx_for(R7)
+check("با اشتراکِ فعال: باز", H.store_gate(c7) is None)
+ok, r = H.card_order(c7, u7, P7["id"])
+check("و سفارشِ کارت ساخته می‌شود", ok and n_orders() == n0 + 1, str(r)[:60])
+
+set_store(500000, (datetime.now() - timedelta(days=1)).isoformat(timespec="seconds"))
+check("اشتراکِ تمام‌شده: بسته", H.store_gate(ctx_for(R7)) == H.core.STORE_CLOSED)
+set_store(500000, "not-a-date")
+check("تاریخِ خراب: بسته، نه بازِ بی‌صدا", H.store_gate(ctx_for(R7)) == H.core.STORE_CLOSED)
+set_store(0)
+
 print(f"\n{'═' * 52}\n  {PASS} پاس · {FAIL} شکست\n{'═' * 52}")
 try:
     os.remove(tmp)

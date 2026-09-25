@@ -349,8 +349,11 @@ _MINI_SRC = io.open(os.path.join(ROOT, "frontend", "src", "mini", "index.jsx"),
                     encoding="utf-8").read()
 _MAIN_SRC = io.open(os.path.join(ROOT, "frontend", "src", "main.jsx"),
                     encoding="utf-8").read()
-_PORTAL_SRC = io.open(os.path.join(ROOT, "frontend", "src", "portal", "index.jsx"),
-                      encoding="utf-8").read()
+# استودیوی پوسته از ۱.۱۱۰ در portal/studio.jsx است (پنلِ مالک هم از آن
+# استفاده می‌کند)؛ سنجش‌های «پرتال» هر دو فایل را می‌بینند.
+_PORTAL_SRC = "".join(
+    io.open(os.path.join(ROOT, "frontend", "src", "portal", f), encoding="utf-8").read()
+    for f in ("index.jsx", "studio.jsx"))
 
 # رنگ‌های ثابتِ برند در قاعده‌های مینی‌اپ و اسپلش
 _FIXED = re.compile(r"#1F6FBF|#14B8A6|#2DD4BF|#5AA9E6|#04221E"
@@ -446,8 +449,9 @@ check("پرتالِ نماینده نمودارِ خطی ندارد",
 check("خانه‌ی پرتال داشبوردِ تازه است",
       "<HomeDash " in _PORT and "function HomeDash(" in _DASH)
 # صفحه‌ی درون‌خطی کارتِ باریکِ وسطِ صفحه نیست — نصفِ صفحه خالی می‌ماند
-_frame = _PORT[_PORT.index("function Frame("):_PORT.index("async function api(")] \
-    if "function Frame(" in _PORT and "async function api(" in _PORT else ""
+_STUDIO = ALL.get("portal/studio.jsx", "")
+_frame = _STUDIO[_STUDIO.index("export function Frame("):_STUDIO.index("const ACCENTS")] \
+    if "export function Frame(" in _STUDIO and "const ACCENTS" in _STUDIO else ""
 # روشن/تیره پیش از اولین رندر — وگرنه صفحه‌ی ورودِ مشتریِ پوسته‌ی
 # روشن سیاه است و بعد ناگهان سفید می‌شود. و یک قاعده، نه دو: هر جا
 # colorScheme خوانده شود جز tgScheme، دو پاسخِ متفاوت ممکن می‌شود.

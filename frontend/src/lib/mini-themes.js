@@ -47,6 +47,26 @@ export const MINI_PALETTES = [
 ];
 
 export const DEFAULT_TEMPLATE = "aurora";
+
+/*
+ * سبکِ صفحه‌ی ورود — جدا از قالب.
+ *
+ * قالب هنوز رنگ و زمینه‌ی اسپلش را می‌دهد (پررنگ تمام‌رنگ است، مینیمال
+ * بی‌نور)؛ این فقط «چه چیزی حرکت می‌کند» است. پیش‌تر هر فروشگاه یک
+ * اسپلش داشت: لوگو، نام، نوارِ باریک.
+ *
+ * شناسه‌ها با `MINI_SPLASHES` در بکند یکی‌اند — test-portal-dashboard
+ * برابری‌شان را می‌سنجد؛ شناسه‌ای که بکند نشناسد بی‌صدا «نوار» می‌شد.
+ */
+export const MINI_SPLASHES = [
+  { id: "bar", fa: "نوار", desc: "لوگو، نام و نوارِ پیشرفتِ باریک — پیش‌فرض" },
+  { id: "ring", fa: "حلقه", desc: "کمانی از رنگِ اصلی دورِ لوگو می‌چرخد" },
+  { id: "pulse", fa: "موج", desc: "موج‌های نرم از لوگو بیرون می‌روند" },
+  { id: "dots", fa: "نقطه‌ها", desc: "سه نقطه زیرِ نام — جمع‌وجور و آرام" },
+  { id: "logo", fa: "فقط لوگو", desc: "لوگوی بزرگ که نفس می‌کشد؛ بی‌نام، بی‌نوار" },
+];
+export const DEFAULT_SPLASH = "bar";
+export const cleanSplash = (v) => (MINI_SPLASHES.some((x) => x.id === v) ? v : DEFAULT_SPLASH);
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
 function hexHsl(hex) {

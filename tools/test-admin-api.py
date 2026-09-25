@@ -2561,7 +2561,9 @@ check("مسیرهای مینی‌اپ پیدا شدند", len(_mini_routes) >= 3
 # هر مسیر باید از mini_user رد شود — مثل همان قاعده‌ای که برای
 # /api/portal/* هست
 _unguarded = []
-for _r in _mini_routes:
+# تنها استثنا، همان که test-seams دارد: برندِ فروشگاه برای اولین فریمِ
+# اسپلش، پیش از ورود. آن‌جا سنجیده می‌شود که جز `_shop_brand` چیزی ندهد.
+for _r in [r for r in _mini_routes if r != "/api/mini/brand"]:
     _i = _APSRC.find('"%s"' % _r)
     _seg = _APSRC[_i:_i + 400]
     if "Depends(mini_user)" not in _seg:

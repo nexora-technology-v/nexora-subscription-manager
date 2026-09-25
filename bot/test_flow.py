@@ -1027,6 +1027,18 @@ check("wallet_pay خودش پول جابه‌جا نمی‌کند",
       and "create_order" not in _shell,
       "پوسته فقط پیام می‌سازد؛ پول در هسته حرکت می‌کند")
 
+# اشتراکِ فروشگاه: هر هسته‌ای که پول می‌گیرد یا کانفیگ می‌دهد، دروازه را
+# صدا می‌زند (docs/specs/2026-09-26-reseller-store-subscription.md). رفتار
+# را test_reseller می‌سنجد؛ این فقط نمی‌گذارد هسته‌ی ششمی بی‌دروازه بیاید
+# یا یکی از این پنج در بازنویسی دروازه‌اش را جا بیندازد.
+for _path in ("card_order", "wallet_purchase", "topup_order", "give_trial",
+              "auto_renew_subscription"):
+    check(f"{_path} پیش از فروش اشتراکِ فروشگاه را می‌سنجد",
+          "store_gate" in _calls_in(_path))
+check("receipt_submit دروازه را صدا نمی‌زند",
+      "store_gate" not in _calls_in("receipt_submit"),
+      "رسیدِ سفارشی که وقتِ باز بودن ساخته شد، پولی است که در راه است")
+
 
 # ═══════════════════════════════════════════════════════════
 section("هر رویدادِ پولی باید در گروه مدیریت دیده شود")

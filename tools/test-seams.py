@@ -586,10 +586,23 @@ check("هر مسیر نماینده به مستاجر خودش محدود است
 # مشتری‌ها دیوار می‌کشد: بدون سنجیدنش، فرستادن شناسه‌ی دیگری کافی
 # است تا کسی اشتراک‌های دیگری را ببیند.
 _mini = [(p, n) for p, n in _routes if p.startswith("/api/mini")]
-_mini_open = [p for p, n in _mini if "mini_user" not in _ast.unparse(n)]
+# فهرستِ مجاز، با دلیل. `/api/mini/brand` پیش از ورود صدا زده می‌شود —
+# برای اولین فریمِ اسپلش، وقتی initData هنوز سنجیده نشده — و فقط همان
+# نام و لوگو و پوسته‌ای را می‌دهد که هر کسی با بازکردنِ ربات می‌بیند.
+_MINI_PUBLIC = {"/api/mini/brand"}
+_mini_open = [p for p, n in _mini
+              if "mini_user" not in _ast.unparse(n) and p not in _MINI_PUBLIC]
 check("هر مسیر مینی‌اپ امضای تلگرام را می‌سنجد", not _mini_open,
       "، ".join(_mini_open) if _mini_open
       else f"{len(_mini)} مسیر، همه پشت mini_user")
+# و مسیرِ عمومی فقط برند می‌دهد: اگر کسی فردا موجودی یا اشتراک به آن
+# اضافه کند، این‌جا می‌ایستد — نه روزی که کسی شناسه‌ها را بشمارد.
+_brand_fn = next((n for p, n in _mini if p == "/api/mini/brand"), None)
+_brand_src = _ast.unparse(_brand_fn) if _brand_fn else ""
+check("مسیرِ عمومیِ مینی‌اپ فقط ظاهرِ فروشگاه را می‌دهد",
+      _brand_fn is not None and "return _shop_brand(" in _brand_src
+      and _brand_src.count("return ") == 1,
+      "هر چیزِ بیشتری پشتِ امضای تلگرام است")
 
 # هر مسیر `/api/aff/*` جز ورود و خروج باید از `aff_session` رد شود.
 # بدون این، فردا مسیری اضافه می‌شود که دادهٔ همکارِ دیگر را می‌دهد و
@@ -1470,10 +1483,16 @@ check("ذخیره‌ی پوسته در بکند قفل را می‌سنجد",
       "_addon_open(t)" in _theme_set and "402" in _theme_set,
       "رابط فقط راحتی است")
 
-_buy = APP_PY.split("def portal_theme_buy(")[1].split("\n@app.")[0] \
-    if "def portal_theme_buy(" in APP_PY else ""
+# خریدِ هر افزونه (پوسته، اشتراکِ فروشگاه) از یک هسته رد می‌شود
+_buy = APP_PY.split("def _addon_buy(")[1].split("\ndef ")[0] \
+    if "def _addon_buy(" in APP_PY else ""
+for _route in ("portal_theme_buy", "portal_store_buy"):
+    _rb = APP_PY.split(f"def {_route}(")[1].split("\n@app.")[0] \
+        if f"def {_route}(" in APP_PY else ""
+    check(f"{_route} از هسته‌ی خرید رد می‌شود", "_addon_buy(" in _rb,
+          "نسخه‌ی دومِ «کسر و تمدید» روزی یکی از دو قاعده را جا می‌اندازد")
 check("اول کسر، بعد تمدید",
-      _buy.find("_portal_charge(") < _buy.find("theme_until")
+      _buy.find("_portal_charge(") < _buy.find("_addon_extend(")
       and _buy.find("_portal_charge(") > 0,
       "برعکسش یعنی قابلیتی که پولش نرسیده باز می‌ماند")
 check("و اگر تمدید شکست خورد پول برمی‌گردد",
@@ -1488,10 +1507,13 @@ check("رنگ فقط #RRGGBB پذیرفته می‌شود",
 
 # قفل موقعِ *خواندن* هم سنجیده شود، نه فقط موقعِ نوشتن: اشتراکِ
 # تمام‌شده باید رنگ را خاموش کند بی‌آنکه پاکش کند
+# رنگ و پوسته از `_shop_brand` می‌آیند (مشترکِ `mini_me` و `mini_brand`)
 _me = APP_PY.split("def mini_me(")[1].split("\n@app.")[0] \
     if "def mini_me(" in APP_PY else ""
+_sb = APP_PY.split("def _shop_brand(")[1].split("\n@app.")[0] \
+    if "def _shop_brand(" in APP_PY else ""
 check("مینی‌اپ رنگ را فقط وقتی قفل باز است می‌گیرد",
-      "_addon_open(t)" in _me,
+      "_shop_brand(" in _me and "_addon_open(t)" in _sb,
       "اشتراکِ تمام‌شده رنگ را خاموش می‌کند، نه پاک")
 
 
@@ -1738,6 +1760,18 @@ for _rel in ("backend/app.py", "backend/tunnels.py", "backend/firewall.py",
     _walk(ast.parse(open(_p, encoding="utf-8").read()), "-")
 check("هیچ `except: pass`ِ بی‌دلیلی در کدِ محصول نیست", not _silent,
       "، ".join(_silent[:5]) if _silent else f"{len(_SILENT_OK)} استثنای دلیل‌دار")
+
+
+# لینکِ دعوتِ همکار دو جا ساخته می‌شود: منوی همکار در ربات، و بکند (پنلِ
+# همکار و صفحه‌ی مالک). اگر یکی عوض شود، همکار دو لینکِ متفاوت می‌بیند و
+# یکی‌شان مشتری را به نامِ او ثبت نمی‌کند.
+def _aff_tpls(src):
+    return {re.sub(r"\{[^}]*\}", "{}", m)
+            for m in re.findall(r'f"(https://t\.me/\{[^}]+\}\?start=aff_\{[^}]+\})"', src)}
+_bot_aff, _be_aff = _aff_tpls(HANDLERS), _aff_tpls(APP_PY)
+check("لینکِ همکار در ربات و بکند یک شکل دارد",
+      len(_bot_aff) == 1 and _bot_aff == _be_aff,
+      f"ربات {sorted(_bot_aff)} · بکند {sorted(_be_aff)}")
 
 
 def _latin_money(src, label):

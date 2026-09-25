@@ -41,7 +41,11 @@
     var qs = Q0;
     var as = qs.get("as");
     if (as === "portal") history.replaceState({}, "", "/r/hossein");
-    else if (as === "mini") history.replaceState({}, "", "/app");
+    // `shop` همان است که ربات در نشانیِ واقعی می‌گذارد (handlers.miniapp_url)؛
+    // بی آن، بارِ اولِ بی‌کش — پرسیدنِ برند پیش از اولین فریم — در هارنس
+    // هیچ‌وقت اجرا نمی‌شد و فقط روی گوشیِ مشتری دیده می‌شد
+    else if (as === "mini") history.replaceState({}, "",
+      /^\d{1,9}$/.test(qs.get("shop") || "") ? "/app?shop=" + qs.get("shop") : "/app");
     else if (as === "aff") history.replaceState({}, "", "/aff");
 
     /* پوسته‌ی تلگرام:  ?scheme=dark  یا  ?scheme=light
@@ -5533,6 +5537,7 @@
      "tenant_id": 1,
      "name": "کانال تکنو",
      "code": "TECH",
+     "refLink": "https://t.me/nexora_vpn_bot?start=aff_TECH",
      "tg_id": 9015,
      "percent": 15.0,
      "active": 1,
@@ -5553,6 +5558,7 @@
      "tenant_id": 1,
      "name": "سارا رحیمی",
      "code": "SR12",
+     "refLink": "https://t.me/nexora_vpn_bot?start=aff_SR12",
      "tg_id": 9012,
      "percent": 12.0,
      "active": 1,
@@ -5573,6 +5579,7 @@
      "tenant_id": 1,
      "name": "حسین نوری",
      "code": "HN10",
+     "refLink": "https://t.me/nexora_vpn_bot?start=aff_HN10",
      "tg_id": 9010,
      "percent": 10.0,
      "active": 1,
@@ -9903,9 +9910,34 @@
   // ?addon=1 یعنی پوسته‌ی شخصی فعال است — تا حالتِ قفل‌باز هم دیده شود
   var P_THEME = { accent: "", brand: "حسین VPN", logo: "",
                   tpl: "aurora", palette: "ocean",
-                  logoStyle: { shape: "rounded", bg: "none", pad: 0 },
+                  logoStyle: { shape: "rounded", bg: "none", pad: 0 }, splash: "bar",
                   open: Q0.get("addon") === "1", until: Q0.get("addon") === "1" ? "2026-10-23" : "",
                   price: 250000, days: 30, credit: 1800000, postpaid: false };
+
+  // اشتراکِ فروشگاهِ نماینده. ?store=0 بسته، ?store=soon سه روز مانده،
+  // ?store=free قیمتِ صفر (نوار دیده نمی‌شود)؛ پیش‌فرض: فعال، ۲۰ روز
+  var _stq = Q0.get("store");
+  var P_STORE = { price: _stq === "free" ? 0 : 300000, days: 30,
+                  open: _stq !== "0",
+                  until: _stq === "0" ? "2026-09-20T10:00:00"
+                    : new Date(Date.now() + (_stq === "soon" ? 3 : 20) * 864e5).toISOString().slice(0, 19),
+                  credit: 1200000, postpaid: false };
+  // افزونه‌ها از نگاهِ مالک — یک نماینده‌ی باز و یکی بسته، تا هر دو دکمه دیده شوند
+  function ADDON_ADMIN(price) {
+    return { price: price, days: 30, resellers: [
+      { id: 2, name: "حسین", until: "2026-10-18T12:00:00", open: true },
+      { id: 3, name: "مهدی", until: "2026-10-02T09:00:00", open: true },
+      { id: 4, name: "سارا", until: "", open: false },
+      { id: 5, name: "امیر", until: "2026-09-01T09:00:00", open: false } ] };
+  }
+
+  // پوسته‌ی مینی‌اپِ خودِ مالک — همیشه باز (بکند: `_addon_open` ریشه را
+  // قفل نمی‌کند)، با یک انتخابِ غیرپیش‌فرض تا ذخیره‌شده دیده شود
+  var O_THEME = { accent: "", brand: "نکسورا", logo: "",
+                  tpl: "neon", palette: "violet",
+                  logoStyle: { shape: "circle", bg: "accent", pad: 6 }, splash: "ring",
+                  open: true, until: null, price: 250000, days: 30,
+                  credit: 0, postpaid: false };
 
   var P_STATS = { total: 96, active: 84, inactive: 12, expired: 5,
                   expiringSoon: 7, neverExpires: 2, nearQuota: 6, overQuota: 2,
@@ -9976,7 +10008,9 @@
                phone: "", avatar: "",
                refCode: "NX7K2M", refCount: 3,
                tgId: 1278109787, username: "maryam_k",
-               botUsername: "nexora_vpn_bot" };
+               botUsername: "nexora_vpn_bot",
+               // ?store=0 — فروشگاهِ نماینده‌ای که اشتراکش تمام شده
+               storeOpen: Q0.get("store") !== "0" };
   /* پاداش‌ها. عددها واقع‌نما: ۳۶ سکه یعنی پله‌ی ۲۰ باز شده و
      پله‌ی ۴۰ نزدیک است — همان حالتی که نوارِ پیشرفت را معنادار
      می‌کند. با صفر، کارت شاخه‌ی «هنوز چیزی ندارید» را می‌گرفت و
@@ -10297,6 +10331,7 @@ var D_CODES = { ready: true,
     if (u.indexOf("/aff/summary") >= 0) {
       return {
         name: "رضا مرادی", code: "AFF1", percent: 10,
+        refLink: "https://t.me/nexora_vpn_bot?start=aff_AFF1", botUsername: "nexora_vpn_bot",
         earned: 480000, paid: 300000, balance: 180000,
         users: [
           { id: 1, first_name: "مریم کاظمی", username: "maryam", tg_id: 6001,
@@ -10516,9 +10551,20 @@ var D_CODES = { ready: true,
       return { ok: true, percent: 25, price: 90000, off: 30000, base: 120000 };
     }
     if (u.indexOf("/mini/rewards") >= 0) return M_REWARDS;
+    // برندِ فروشگاه پیش از ورود (main.jsx: prefetchShop) — بارِ اول، بی‌کش
+    if (u.indexOf("/mini/brand") >= 0) {
+      return { brand: M_ME.brand, logo: M_ME.logo, accent: M_ME.accent || "",
+               theme: M_ME.theme };
+    }
     if (u.indexOf("/mini/me") >= 0) return M_ME;
     if (u.indexOf("/mini/subs") >= 0) return M_SUBS;
     if (u.indexOf("/mini/plans") >= 0) return M_PLANS;
+    if (u.indexOf("/portal/store/buy") >= 0) {
+      P_STORE.open = true;
+      P_STORE.until = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 19);
+      return { ok: true, until: P_STORE.until, paid: P_STORE.price };
+    }
+    if (u.indexOf("/portal/store") >= 0) return P_STORE;
     if (u.indexOf("/portal/theme/buy") >= 0) {
       P_THEME.open = true;
       P_THEME.until = "2026-11-12T12:00:00";   // همان ISOِ میلادیِ بکند
@@ -10540,6 +10586,7 @@ var D_CODES = { ready: true,
         if (tb.tpl) P_THEME.tpl = tb.tpl;
         if (tb.palette) P_THEME.palette = tb.palette;
         if (tb.logo_style) P_THEME.logoStyle = tb.logo_style;
+        if (tb.splash) P_THEME.splash = tb.splash;
         return { ok: true };
       }
       return P_THEME;
@@ -10881,6 +10928,28 @@ var D_CODES = { ready: true,
       var rows = st === "all" ? ORDERS.orders : ORDERS.orders.filter(function (o) {
         return o.status === st || (st === "awaiting" && o.status === "review"); });
       return { orders: rows, dbReady: true };
+    }
+    if (u.indexOf("/admin/store-addon") >= 0 || u.indexOf("/admin/portal-addon") >= 0) {
+      if (u.indexOf("/grant") >= 0 || method === "POST") return { ok: true, until: "" };
+      return ADDON_ADMIN(u.indexOf("store") >= 0 ? 300000 : 250000);
+    }
+    if (u.indexOf("/admin/bot/mini-theme") >= 0) {
+      if (method === "POST") {
+        var ob = body || {};
+        ["tpl", "palette", "splash"].forEach(function (k) { if (ob[k]) O_THEME[k] = ob[k]; });
+        if ("accent" in ob) O_THEME.accent = ob.accent || "";
+        if (ob.logo_style) O_THEME.logoStyle = ob.logo_style;
+        return { ok: true };
+      }
+      return O_THEME;
+    }
+    if (u.indexOf("/admin/bot/brand") >= 0) {
+      O_THEME.brand = (body || {}).brand || O_THEME.brand;
+      return { ok: true };
+    }
+    if (u.indexOf("/admin/bot/logo") >= 0) {
+      O_THEME.logo = method === "DELETE" ? "" : FAKE_LOGO;
+      return { ok: true };
     }
     if (u.indexOf("/bot/plans") >= 0) return PLANS;
     /* کاربران — فیلتر، جستجو و صفحه مثلِ `_users_page` بکند؛ بدونِ این هر

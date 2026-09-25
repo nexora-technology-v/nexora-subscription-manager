@@ -607,6 +607,11 @@ function PlanCard({ p, onBuy }) {
   );
 }
 
+// فروشگاهِ بسته — عنوان «فروش موقتاً متوقف است» است (همان جمله‌ی ربات،
+// core.STORE_CLOSED)؛ این فقط آنچه مشتری باید بداند.
+const STORE_PAUSED = "اشتراک‌های فعلی‌تان مثلِ قبل کار می‌کنند. کمی بعد دوباره "
+  + "سر بزنید یا به پشتیبانی پیام بدهید.";
+
 function BuyView({ plans, onBuy }) {
   // گروه‌بندی بر اساس مدت — فهرستِ بلندِ بی‌سر، چیزی به کسی
   // نمی‌گوید؛ «۱ ماهه» و «۳ ماهه» تصمیم را ساده می‌کنند
@@ -1991,7 +1996,7 @@ export default function Mini() {
   if (!PREVIEW && !me && !err) {
     const c = readShop();
     return <Splash neutral phase="load" label="اشتراک من" name={c?.brand || ""}
-      logo={c?.logo || ""} logoStyle={c?.theme?.logoStyle} />;
+      logo={c?.logo || ""} logoStyle={c?.theme?.logoStyle} variant={c?.theme?.splash} />;
   }
 
   return (
@@ -1999,7 +2004,7 @@ export default function Mini() {
       {PREVIEW && splash > 0 && (
         <div className="mn-splash-replay" key={splash}>
           <Splash name={me?.brand || ""} logo={me?.logo || ""} logoStyle={logoStyle}
-            neutral phase="load" />
+            variant={theme?.splash} neutral phase="load" />
         </div>
       )}
       {/* ── نوار برند ── */}
@@ -2036,6 +2041,14 @@ export default function Mini() {
               ببندید و از منوی ربات ادامه بدهید.</span>
           </div>
         )}
+        {/* فروشگاهِ نماینده‌ای که اشتراکش تمام شده: پیش از زدنِ «خرید» بگو،
+            نه بعد از انتخابِ پلن و روشِ پرداخت. خودِ خرید را هسته رد می‌کند. */}
+        {!err && me && me.storeOpen === false && (
+          <div className="mn-err" role="status">
+            <b>فروش موقتاً متوقف است</b>
+            <span>{STORE_PAUSED}</span>
+          </div>
+        )}
         {!err && ordersErr && (
           <div className="mn-err">
             <b>وضعیتِ سفارش‌های قبلی‌تان خوانده نشد</b>
@@ -2070,7 +2083,10 @@ export default function Mini() {
         ) : view === "detail" ? (
           <SubDetail s={detail} onBack={() => setDetail(null)} onRenew={renew} />
         ) : view === "buy" ? (
-          <BuyView plans={plans} onBuy={buy} />
+          me?.storeOpen === false ? (
+            <EmptyState icon={ShoppingCart} text="فروش موقتاً متوقف است"
+              hint={STORE_PAUSED} />
+          ) : <BuyView plans={plans} onBuy={buy} />
         ) : view === "me" ? (
           <SettingsView me={me} onSave={saveProfile} onAvatar={setAvatar}
             onDropAvatar={dropAvatar} onTopUp={topUp}

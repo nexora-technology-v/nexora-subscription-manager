@@ -424,3 +424,63 @@ def pretty_phone(p):
         n = "0" + d[2:]
         return f"{n[:4]} {n[4:7]} {n[7:]}"
     return d or "—"
+
+
+# ═══════════════════════════════════════════════════════════
+#  افزونه‌های پولیِ نماینده — پوسته، و اشتراکِ فروشگاه
+# ═══════════════════════════════════════════════════════════
+#
+# برگه: docs/specs/2026-09-26-reseller-store-subscription.md
+#
+# این قاعده **فقط این‌جا** نوشته شده. بکند (پرتال، مینی‌اپ) و ربات هر دو
+# همین را صدا می‌زنند؛ پیش‌تر پوسته قاعده‌ی خودش را در app.py داشت و
+# نسخه‌ی دوم برای ربات یعنی همان باگی که این مخزن هفت بار خورده.
+
+#: نوع → (کلیدِ قیمت در تنظیماتِ ریشه، کلیدِ تاریخ در تنظیماتِ نماینده)
+ADDONS = {
+    "theme": ("portal_addon", "theme_until"),
+    "store": ("store_addon", "store_until"),
+}
+
+#: همان جمله در ربات و مینی‌اپ — مشتری نباید دو توضیح ببیند
+STORE_CLOSED = ("فروشِ این فروشگاه موقتاً متوقف است. "
+                "لطفاً کمی بعد دوباره سر بزنید یا به پشتیبانی پیام بدهید.")
+
+
+def addon_config(root_settings, kind):
+    """
+    قیمت و مدتِ یک افزونه از تنظیماتِ مالک: {"price": تومان, "days": روز}.
+
+    قیمتِ صفر یعنی **رایگان برای همه**، نه «تعریف‌نشده» — و پیش‌فرض همین
+    است، تا به‌روزرسانی فروشِ هیچ نماینده‌ای را بی‌خبر قطع نکند.
+    """
+    key = ADDONS[kind][0]
+    st = (root_settings or {}).get(key) if isinstance(root_settings, dict) else None
+    st = st if isinstance(st, dict) else {}
+    try:
+        price = max(0, int(st.get("price") or 0))
+        days = max(1, int(st.get("days") or 30))
+    except (TypeError, ValueError):
+        price, days = 0, 30
+    return {"price": price, "days": days}
+
+
+def addon_open(tenant_settings, parent_id, price, kind, now=None):
+    """
+    آیا این مستاجر الان این افزونه را دارد؟
+
+    فروشگاهِ خودِ مالک (بی‌والد) هرگز قفل نیست. قیمتِ صفر یعنی برای همه
+    باز. وگرنه تاریخ؛ تاریخِ نخواندنی یعنی **بسته** — بازِ بی‌صدا یعنی
+    فروشِ رایگان، و این‌جا اشتباه به ضررِ مالک است نه نماینده.
+    """
+    if not parent_id:
+        return True
+    if int(price or 0) <= 0:
+        return True
+    until = str((tenant_settings or {}).get(ADDONS[kind][1]) or "")
+    if not until:
+        return False
+    try:
+        return datetime.fromisoformat(until[:19]) > (now or datetime.now())
+    except (TypeError, ValueError):
+        return False
