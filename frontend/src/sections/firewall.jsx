@@ -742,7 +742,7 @@ function BulkBlock({ password, onDone, setMsg }) {
 
           <textarea className="fx-input" rows={7} dir="ltr" value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={"91.99.12.4\n45.9.148.7\n185.220.101.0/24"}
+            placeholder={"203.0.113.4\n198.51.100.7\n192.0.2.0/24"}
             style={{ fontFamily: "var(--mono)", resize: "vertical" }} />
 
           <div className="flex gap-2 mt-2 flex-wrap">
@@ -925,9 +925,9 @@ export function FirewallBlocked({ password }) {
 
         <div className="flex gap-2 flex-wrap items-end">
           <div className="flex-1" style={{ minWidth: 200 }}>
-            <Field label="آدرس آی‌پی" hint="یک آدرس یا یک رنج مثل 91.99.12.0/24">
+            <Field label="آدرس آی‌پی" hint="یک آدرس یا یک رنج مثل 203.0.113.0/24">
               <input className="fx-input" dir="ltr" value={ip}
-                onChange={(e) => setIp(e.target.value)} placeholder="91.99.12.4"
+                onChange={(e) => setIp(e.target.value)} placeholder="203.0.113.4"
                 style={{ fontFamily: "var(--mono)" }} />
             </Field>
           </div>

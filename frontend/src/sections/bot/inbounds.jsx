@@ -294,10 +294,13 @@ export function BotInboundsSection({ password, tenant = null }) {
               <div className="text-[14px] font-semibold text-white mb-3 flex items-center gap-2">
                 <Layers size={15} style={{ color: "var(--muted)" }} /> اینباندهای پنل
               </div>
+              {/* دو ستون روی دسکتاپ: هر ردیف فقط نام و پروتکل دارد و در
+                  تمام‌عرض، دو سومِ نوار خالی می‌ماند */}
+              <div className="grid gap-2 sm:grid-cols-2">
               {inbounds.map((i) => {
                 const used = mode === "all" ? i.enable : String(i.id) === String(d?.default);
                 return (
-                  <div key={i.id} className="flex items-center gap-3 p-3 rounded-xl mb-2"
+                  <div key={i.id} className="flex items-center gap-3 p-3 rounded-xl min-w-0"
                     style={{ background: "var(--surface-3)", border: "1px solid var(--border)", opacity: used ? 1 : 0.45 }}>
                     {used
                       ? <CheckCircle2 size={15} style={{ color: "var(--ok)", flexShrink: 0 }} />
@@ -323,6 +326,7 @@ export function BotInboundsSection({ password, tenant = null }) {
                   </div>
                 );
               })}
+              </div>
             </div>
           ) : (
             <EmptyState icon={Network} text="پنل هیچ اینباندی ندارد"

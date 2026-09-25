@@ -189,6 +189,18 @@ check("ثبت رسید", A.get_order(oid)["receipt_file"] == "file_123")
 check("در صف بررسی", len(A.pending_orders()) >= 1, f"{len(A.pending_orders())} سفارش")
 check("صف بررسی مستاجر دیگر خالی است", len(B.pending_orders()) == 0)
 
+# وضعیتِ قدیمیِ «review» — در بعضی صفحه‌ها «در انتظار» بود و در بعضی
+# نه. بعد از init دیگر نباید وجود داشته باشد، و همان رسید باید در صفِ
+# بررسیِ خودِ ربات هم دیده شود.
+_n0 = len(A.pending_orders())
+A.exec("UPDATE orders SET status='review' WHERE tenant_id=? AND id=?", (t1, oid))
+check("رسیدِ «review» پیش از مهاجرت از صف بیرون است",
+      len(A.pending_orders()) == _n0 - 1, "همان ناسازگاری‌ای که مهاجرت می‌بندد")
+db.init_db()
+check("مهاجرت «review» را «awaiting» می‌کند",
+      A.get_order(oid)["status"] == "awaiting", A.get_order(oid)["status"])
+check("و رسید دوباره در صفِ بررسی است", len(A.pending_orders()) == _n0)
+
 A.exec("UPDATE orders SET status='approved' WHERE tenant_id=? AND id=?", (t1, oid))
 check("تایید سفارش", A.get_order(oid)["status"] == "approved")
 

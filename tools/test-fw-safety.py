@@ -200,7 +200,7 @@ _sp.loader.exec_module(MON)
 # فایروال اصلاً نمی‌دیدشان.
 SS = "\n".join([
     'tcp   LISTEN 0 4096  0.0.0.0:22    0.0.0.0:*  users:(("sshd",pid=1,fd=3))',
-    'tcp   LISTEN 0 4096  65.108.213.175:7777 0.0.0.0:*  users:(("backpack",pid=9,fd=5))',
+    'tcp   LISTEN 0 4096  203.0.113.175:7777 0.0.0.0:*  users:(("backpack",pid=9,fd=5))',
     'tcp   LISTEN 0 4096  127.0.0.1:9090 0.0.0.0:*  users:(("panel",pid=7,fd=4))',
     'udp   UNCONN 0 0     10.0.0.5:47995 0.0.0.0:*  users:(("backhaul",pid=8,fd=6))',
     'tcp   LISTEN 0 4096  [::]:443      [::]:*     users:(("xray",pid=5,fd=9))',
@@ -221,7 +221,7 @@ check("پورت UDP روی آدرس خصوصی هم عمومی است",
 check("IPv6 روی همه‌ی رابط‌ها عمومی است", rows[443]["public"] is True)
 check("لوپ‌بک عمومی نیست", rows[9090]["public"] is False)
 check("لوپ‌بک IPv6 هم عمومی نیست", rows[6010]["public"] is False)
-check("آدرس اتصال گزارش می‌شود", rows[7777]["bind"] == "65.108.213.175",
+check("آدرس اتصال گزارش می‌شود", rows[7777]["bind"] == "203.0.113.175",
       rows[7777].get("scope", ""))
 check("نام پردازه خوانده می‌شود", rows[7777]["process"] == "backpack")
 

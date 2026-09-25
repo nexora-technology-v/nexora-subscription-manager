@@ -491,6 +491,21 @@ def _migrate(con):
     except sqlite3.Error:
         pass
 
+    # وضعیتِ قدیمیِ «review» همان «awaiting» است: کدِ امروز دیگر آن را
+    # نمی‌نویسد، ولی تایید و رد هنوز می‌پذیرندش.
+    #
+    # سه جا (فهرستِ سفارش‌ها، شمارِ داشبورد، پرتال) آن را جزوِ «در
+    # انتظار» می‌شمردند و چهار جا نه (گزارشِ فروش، زنگِ هشدار، فهرست و
+    # آمارِ خودِ ربات). پس یک رسید در یک صفحه منتظر بود و در صفحه‌ی
+    # دیگر نبود. به‌جای اصلاحِ هفت کوئری، وضعیت یک‌بار یکی می‌شود.
+    # این تایید نیست؛ فقط نامِ یک وضعیتِ در انتظار عوض می‌شود.
+    try:
+        cur = con.execute("UPDATE orders SET status='awaiting' WHERE status='review'")
+        if cur.rowcount:
+            log.info("migrated %d legacy 'review' orders to 'awaiting'", cur.rowcount)
+    except sqlite3.Error as e:
+        log.warning("could not migrate legacy 'review' orders: %s", e)
+
 
 # ═══════════════════════════════════════════════════════════
 #  همکاری در فروش

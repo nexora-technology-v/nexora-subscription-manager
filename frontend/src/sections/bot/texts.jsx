@@ -300,16 +300,22 @@ export function BotTextsSection({ password, src, behaviour = BOT_BEHAVIOUR,
         desc="تنظیم‌هایی که ربات موقع کار می‌خواند — بدون اینها روی مقدار پیش‌فرض می‌ماند." />
 
       <div className="fx-card p-4 mt-3">
-        {behaviour.map((f) => (
+        {behaviour.map((f) => {
+          // نشانی‌ها زیرِ برچسب می‌نشینند، نه در ستونِ ۲۰۰ پیکسلی کنارش.
+          // آنجا «https://panel.example.com/app» بریده می‌شد و هشدارِ
+          // خالی‌بودنِ مینی‌اپ در چهار خطِ باریک زیرِ ورودی می‌پیچید.
+          const wide = f.type === "miniapp" || f.k === "sub_base_url";
+          return (
           <div key={f.k}
-            className="flex items-start justify-between gap-4 py-3"
+            className={wide ? "py-3" : "flex items-start justify-between gap-4 py-3"}
             style={{ borderBottom: "1px solid var(--border)" }}>
             <div className="min-w-0 flex-1">
               <div className="text-[14px] font-semibold text-white">{f.label}</div>
               <div className="text-[12px] mt-1 leading-relaxed"
                 style={{ color: "var(--muted)" }}>{f.hint}</div>
             </div>
-            <div className="shrink-0" style={{ width: f.type === "bool" ? "auto" : 200 }}>
+            <div className={wide ? "mt-2.5 w-full max-w-[520px]" : "shrink-0"}
+              style={wide ? undefined : { width: f.type === "bool" ? "auto" : 200 }}>
               {f.type === "bool" && (
                 <Toggle label={f.label}
                   checked={s[f.k] === undefined ? f.def : !!s[f.k]}
@@ -338,7 +344,8 @@ export function BotTextsSection({ password, src, behaviour = BOT_BEHAVIOUR,
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
 
         {/* مدیرها آیدی عددی‌اند، پس هر خط یک عدد — نه CSV که با فاصله خراب شود */}
         {showAdmins && <div className="pt-3">

@@ -754,6 +754,9 @@ TENANT_FREE = {
     "UPDATE subscriptions SET plan_name":
         "مهاجرت یک‌باره — عمداً روی همه‌ی مستاجرها، و روی plan_id که "
         "سراسری یکتاست",
+    "UPDATE orders SET status='awaiting' WHERE status='review'":
+        "مهاجرت یک‌باره — نامِ وضعیتِ قدیمیِ در انتظار، برای همه‌ی "
+        "مستاجرها؛ هیچ ردیفی از مستاجری به مستاجرِ دیگر نمی‌رود",
 }
 
 
@@ -1601,6 +1604,40 @@ for _var, _why in (("M_ORDERS", "کارتِ سفارشِ در انتظارِ م�
 _leak = sorted(set(re.findall(r"[A-Za-z]:\\\\+Users\\\\+[^\\\"]+|/tmp/[\w.-]+|/home/[\w.-]+", _BOOT)))
 check("هارنس مسیرِ دستگاهِ سازنده را ندارد", not _leak,
       "، ".join(_leak[:3]) if _leak else "")
+
+# آی‌پیِ عمومیِ واقعی در کدِ محصول — فقط بازه‌های مستند (RFC 5737).
+#
+# نمونه‌ی `placeholder` در صفحه‌ی آی‌پی‌های بسته‌شده «91.99.12.4» بود و
+# یک خطِ «خروجیِ واقعیِ ss» در تست، آدرسِ یک سرورِ واقعی را داشت. مخزن
+# عمومی است. تست‌های شناساییِ شبکه (netid، intrusion) عمداً بیرون‌اند:
+# برای سنجیدنِ «آی‌پیِ ایران» به بازه‌ی واقعیِ ایران نیاز دارند.
+import glob as _glob
+import ipaddress as _ipa
+_DOC = [_ipa.ip_network(n) for n in ("192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24")]
+_IP_OK = {"1.2.3.4", "1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "9.9.9.9"}
+_IP_RE = re.compile(r"(?<![\w.])((?:\d{1,3}\.){3}\d{1,3})(?![\w.])")
+_J = lambda *a: os.path.join(ROOT, *a)
+_prod = (_glob.glob(_J("frontend", "src", "**", "*.js*"), recursive=True)
+         + _glob.glob(_J("backend", "*.py"))
+         + [f for f in _glob.glob(_J("bot", "*.py"))
+            if not os.path.basename(f).startswith("test_")]
+         + _glob.glob(_J("*.sh"))
+         + [_J("sub-page-index.html"), _J("tools", "harness-boot.js")])
+_pub = []
+for _f in _prod:
+    try:
+        _src = open(_f, encoding="utf-8").read()
+    except OSError:
+        continue
+    for _m in _IP_RE.finditer(_src):
+        try:
+            _a = _ipa.ip_address(_m.group(1))
+        except ValueError:
+            continue
+        if _a.is_global and _m.group(1) not in _IP_OK and not any(_a in _n for _n in _DOC):
+            _pub.append(f"{os.path.relpath(_f, ROOT)}: {_m.group(1)}")
+check("کدِ محصول آی‌پیِ عمومیِ واقعی ندارد", not _pub,
+      "، ".join(_pub[:3]) if _pub else f"{len(_prod)} فایل")
 
 
 # ═══════════════════════════════════════════════════════════
