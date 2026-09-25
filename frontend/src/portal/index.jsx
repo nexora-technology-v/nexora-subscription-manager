@@ -2650,15 +2650,22 @@ function Dashboard({ token, onOut }) {
         api("/api/portal/me", { token }),
         api("/api/portal/summary", { token }).catch((e) => ({ _err: e.message })),
         api("/api/portal/configs", { token }).catch((e) => ({ _err: e.message })),
-        api("/api/portal/plans", { token }).catch(() => null),
+        api("/api/portal/plans", { token }).catch((e) => ({ _err: e.message })),
       ]);
-      api("/api/portal/stats", { token }).then(setStats).catch(() => setStats(null));
+      // آمار جدا می‌آید تا صفحه منتظرش نماند؛ ولی شکستش بی‌صدا نیست:
+      // پیش‌تر کارت‌های فروش بی‌هیچ توضیحی از داشبورد غیب می‌شدند
+      api("/api/portal/stats", { token }).then(setStats).catch((e) => {
+        setStats(null);
+        setErr((prev) => prev || `آمارِ فروش خوانده نشد: ${e.message}`);
+      });
       setMe(m);
       setPlans(pl && !pl._err ? pl : null);
       setSum(s && s._err ? null : s);
       setList(c && c._err ? null : c);
       if (c && c._err) setErr(c._err);
       else if (s && s._err) setErr(s._err);
+      // بی‌نرخ، «کانفیگ تازه» هیچ پله‌ای ندارد و تمدید قیمت نشان نمی‌دهد
+      else if (pl && pl._err) setErr(`نرخ‌ها خوانده نشد: ${pl._err}`);
     } catch (e) {
       // نشست که بسته شود، باید به صفحه‌ی ورود برگردیم — نه اینکه
       // یک صفحه‌ی خالی بماند.

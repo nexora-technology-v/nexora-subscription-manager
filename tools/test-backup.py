@@ -161,6 +161,42 @@ check("بازگردانی سالم هیچ هشداری ندارد",
       not APP.bot_restore({"data": bak["data"]},
                           x_admin_password="x").get("skipped"),
       "وگرنه هشدارِ همیشگی یعنی هشدارِ نادیده‌گرفته‌شده")
+check("و دلیلِ ردیفِ جامانده را هم می‌گوید، نه فقط تعداد",
+      "NOT NULL" in (res2.get("skippedWhy") or {}).get("users", "")
+      and "NOT NULL" in (res2.get("warning") or ""),
+      (res2.get("skippedWhy") or {}).get("users", "بدون دلیل"))
+
+head("خالی‌نشدنِ جدول، بازگردانی را متوقف می‌کند")
+
+# پیش‌تر DELETEِ ناموفق با pass بلعیده می‌شد و INSERT OR REPLACE ردیف‌های
+# پشتیبان را روی ردیف‌های قدیمی می‌ریخت — مخلوطی که هیچ‌جا ثبت نبود.
+import sqlite3 as _sq
+_c = _sq.connect(":memory:")
+_c.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
+_c.execute("INSERT INTO t VALUES (1, 'old'), (2, 'old')")
+_c.execute("CREATE TRIGGER no_del BEFORE DELETE ON t BEGIN SELECT RAISE(ABORT, 'locked'); END")
+try:
+    APP._restore_tables(_c, ["t"], {"t": [{"id": 3, "v": "new"}]})
+    _stopped = False
+except RuntimeError as e:
+    _stopped = "locked" in str(e)
+check("DELETEِ ناموفق خطا می‌دهد، نه ادامه", _stopped)
+check("و ردیفِ تازه روی قدیمی‌ها ریخته نشده",
+      [r[0] for r in _c.execute("SELECT id FROM t ORDER BY id")] == [1, 2])
+_c.close()
+
+head("یک حلقه‌ی بازگردانی، نه دو")
+
+import ast as _ast
+_tree = _ast.parse(open(os.path.join(ROOT, "backend", "app.py"), encoding="utf-8").read())
+_fns = {n.name: n for n in _ast.walk(_tree) if isinstance(n, _ast.FunctionDef)}
+for _name in ("bot_restore", "billing_restore"):
+    _calls = {getattr(c.func, "id", "") for c in _ast.walk(_fns[_name]) if isinstance(c, _ast.Call)}
+    _own = any(isinstance(n, _ast.Constant) and isinstance(n.value, str)
+               and n.value.startswith("DELETE FROM") for n in _ast.walk(_fns[_name]))
+    check(f"{_name} از _restore_tables می‌گذرد و حلقه‌ی خودش را ندارد",
+          "_restore_tables" in _calls and not _own,
+          "دو نسخه‌ی این حلقه در دو جهت از هم دور افتاده بودند")
 
 head("پشتیبانِ نسخه‌ی قدیمی هم بازمی‌گردد")
 

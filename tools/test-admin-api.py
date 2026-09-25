@@ -4687,6 +4687,29 @@ finally:
 check("پلنِ بی‌کف با همگام‌سازیِ آغاز پر می‌شود",
       _n >= 1 and _cost3 and _cost3[0] == 150000, f"{_n} پلن · {_cost3}")
 
+# ── ورودیِ خرابِ گروه: ۴۰۰، نه صفر یا نادیده‌گرفتنِ بی‌صدا ──
+#
+# «نرخ حجمی» نامعتبر بی‌صدا ۰ ذخیره می‌شد، و «تسویه‌شده تا»ی خراب
+# ذخیره می‌شد و بعد `_bill_since` از رویش می‌پرید — صورتحساب ماه‌های
+# تسویه‌شده را دوباره حساب می‌کرد.
+for _bad, _why in (({"per_gb": "abc"}, "نرخ حجمی"),
+                   ({"settled_until": "1405-13-40"}, "تسویه‌شده تا"),
+                   ({"period_start": "not-a-date"}, "شروع همکاری")):
+    try:
+        AP.billing_group_put("goroh-bad", {"label": "x", **_bad}, x_admin_password="testpw")
+        _st, _dt = 200, ""
+    except AP.HTTPException as e:
+        _st, _dt = e.status_code, str(e.detail)
+    check(f"«{_why}»ِ نامعتبر ۴۰۰ می‌گیرد", _st == 400, f"{_st} {_dt[:60]}")
+
+# دادهٔ خرابی که از قبل در دیتابیس نشسته: پله‌ی بعد انتخاب می‌شود، ولی گفته می‌شود
+_since, _src = AP._bill_since({"settled_until": "1405-13-40", "period_start": "2026-01-01"})
+check("«تسویه‌شده تا»ی خراب بی‌صدا رد نمی‌شود",
+      _since == "2026-01-01" and "نامعتبر" in _src and "تسویه‌شده تا" in _src, _src)
+_since2, _src2 = AP._bill_since({"settled_until": "2026-03-01", "period_start": "2026-01-01"})
+check("و تاریخِ سالم برچسبِ هشدار نمی‌گیرد",
+      _since2 == "2026-03-01" and "نامعتبر" not in _src2, _src2)
+
 # ── برابری: کدام پنل؟ ──
 #
 # بکند (`_panel_row`) و ربات (`panel_source`) دو پیاده‌سازیِ یک

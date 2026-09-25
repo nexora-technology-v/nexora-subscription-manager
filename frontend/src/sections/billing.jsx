@@ -260,7 +260,12 @@ export function BillingPeriod({ password }) {
                   </span>
                 </div>
 
-                {inv.settledUntil && (
+                {/* «تسویه‌شده تا»ی خراب پیش‌تر بی‌صدا نادیده گرفته می‌شد و
+                    ماه‌های تسویه‌شده دوباره در این جمع می‌آمدند */}
+                {inv.settledInvalid && (
+                  <Msg msg={{ t: "err", m: `«تسویه‌شده تا» نامعتبر است (${inv.settledInvalid}) — ماه‌های پیش از آن هم حساب شده‌اند. از «پرداخت‌ها» دوباره تسویه کنید.` }} />
+                )}
+                {inv.settledUntil && !inv.settledInvalid && (
                   <div className="text-[12px] mt-3" style={{ color: "var(--muted)" }}>
                     {faNum(inv.skippedSettled)} کانفیگ قبل از
                     {" "}{isoToJalaliLabel(inv.settledUntil)} تسویه‌شده

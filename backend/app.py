@@ -5505,6 +5505,61 @@ def _tables_of(con, order=()):
     return known + sorted(found - set(known))
 
 
+def _restore_tables(con, order, data):
+    """
+    جدول‌های `order` را خالی و از `data` پر می‌کند؛ همان برای ربات و حسابداری.
+
+    این حلقه پیش‌تر دو بار نوشته شده بود — یک‌بار در بازگردانیِ ربات و
+    یک‌بار در حسابداری — و هر دو دو چیز را بی‌صدا رد می‌کردند:
+
+      - `DELETE` ناموفق با `pass` بلعیده می‌شد. بعد `INSERT OR REPLACE`
+        ردیف‌های پشتیبان را روی ردیف‌های قدیمی می‌ریخت: نه داده‌ی قبلی،
+        نه داده‌ی پشتیبان، بلکه مخلوطی که هیچ‌جا ثبت نشده بود. حالا
+        همان‌جا می‌ایستد و فراخوان rollback می‌کند.
+      - ردیفِ درج‌نشده شمرده می‌شد ولی *چرا*یش نه. حالا اولین خطای هر
+        جدول هم برمی‌گردد.
+
+    برمی‌گرداند: (restored, skipped, why) — why = {جدول: اولین خطا}
+    """
+    restored, skipped, why = {}, {}, {}
+    # خالی‌کردن به ترتیبِ وارونه (فرزند پیش از والد)، پر کردن به ترتیبِ راست
+    for t in reversed(order):
+        try:
+            con.execute(f"DELETE FROM {t}")
+        except Exception as e:
+            raise RuntimeError(f"خالی‌کردنِ جدولِ {t} ناموفق بود: {str(e)[:120]}")
+    for t in order:
+        rows = data.get(t) or []
+        if not rows:
+            restored[t] = 0
+            continue
+        cols = [r[1] for r in con.execute(f"PRAGMA table_info({t})")]
+        usable = [c for c in cols if any(isinstance(r, dict) and c in r for r in rows)]
+        if not usable:
+            restored[t] = 0
+            continue
+        ph = ",".join("?" * len(usable))
+        sql = f"INSERT OR REPLACE INTO {t} ({','.join(usable)}) VALUES ({ph})"
+        n = 0
+        for r in rows:
+            try:
+                con.execute(sql, [r.get(c) for c in usable])
+                n += 1
+            except Exception as e:
+                why.setdefault(t, f"{type(e).__name__}: {str(e)[:100]}")
+        restored[t] = n
+        if n < len(rows):
+            skipped[t] = len(rows) - n
+    return restored, skipped, why
+
+
+def _restore_warning(skipped, why):
+    """«بعضی ردیف‌ها بازنگشتند» با دلیلِ هر جدول — یک متن برای هر دو بازگردانی."""
+    return ("بعضی ردیف‌ها بازنگشتند: "
+            + "، ".join(f"{k} ({v}" + (f" — {why[k]}" if why.get(k) else "") + ")"
+                       for k, v in skipped.items()))
+
+
 @app.get("/api/admin/bot/backup")
 def bot_backup(x_admin_password: str = Header(...)):
     """دانلود بک‌آپ کامل ربات (JSON)."""
@@ -5572,38 +5627,9 @@ def bot_restore(payload: dict, x_admin_password: str = Header(...)):
         # بدون اینکه جدولی که در آن نبوده خالی شود.
         present = _tables_of(con, _BOT_TABLE_ORDER)
         order = [t for t in present if t in data]
-        restored, skipped = {}, {}
-
-        for t in reversed(order):
-            try:
-                con.execute(f"DELETE FROM {t}")
-            except Exception:
-                pass
-
-        for t in order:
-            rows = data.get(t) or []
-            if not rows:
-                restored[t] = 0
-                continue
-            cols = [r[1] for r in con.execute(f"PRAGMA table_info({t})")]
-            usable = [c for c in cols if any(c in r for r in rows)]
-            if not usable:
-                restored[t] = 0
-                continue
-            ph = ",".join("?" * len(usable))
-            sql = f"INSERT OR REPLACE INTO {t} ({','.join(usable)}) VALUES ({ph})"
-            n = 0
-            for r in rows:
-                try:
-                    con.execute(sql, [r.get(c) for c in usable])
-                    n += 1
-                except Exception:
-                    pass
-            restored[t] = n
-            # ردیفی که درج نشد باید دیده شود. قبلاً بی‌صدا رد می‌شد و
-            # جوابْ «ok» بود — یعنی بازگردانیِ نصفه، بدون هیچ نشانه‌ای.
-            if n < len(rows):
-                skipped[t] = len(rows) - n
+        # ردیفی که درج نشد باید دیده شود. قبلاً بی‌صدا رد می‌شد و
+        # جوابْ «ok» بود — یعنی بازگردانیِ نصفه، بدون هیچ نشانه‌ای.
+        restored, skipped, why = _restore_tables(con, order, data)
 
         missing = sorted(set(data) - set(order))
         con.commit()
@@ -5611,9 +5637,8 @@ def bot_restore(payload: dict, x_admin_password: str = Header(...)):
                "safetyCopy": str(safety) if safety else None}
         if skipped:
             out["skipped"] = skipped
-            out["warning"] = ("بعضی ردیف‌ها بازنگشتند: "
-                              + "، ".join(f"{k} ({v})"
-                                          for k, v in skipped.items()))
+            out["skippedWhy"] = why
+            out["warning"] = _restore_warning(skipped, why)
         if missing:
             out["unknownTables"] = missing
         return out
@@ -7388,12 +7413,23 @@ def _bill_since(conf, explicit=""):
             return ""
         return v
 
+    # تاریخِ خرابی که از قبل ذخیره شده، بی‌صدا رد نمی‌شود: اگر «تسویه‌شده
+    # تا» نامعتبر است و به پله‌ی بعد می‌رسیم، برچسبِ منبع همین را می‌گوید —
+    # سربرگِ صورتحساب آن را نشان می‌دهد، پس مدیر می‌بیند چرا ماه‌های
+    # تسویه‌شده دوباره آمده‌اند.
+    bad = []
     for value, why in ((explicit, "تاریخ انتخابی"),
                        ((conf or {}).get("settled_until"), "تسویه‌شده تا"),
                        ((conf or {}).get("period_start"), "شروع همکاری")):
         v = ok(value)
         if v:
+            if bad:
+                why = f"{why} — «{'، '.join(bad)}» نامعتبر بود"
             return v, why
+        if (value or "").strip():
+            bad.append(why)
+    if bad:
+        return "", f"«{'، '.join(bad)}» نامعتبر بود"
     return "", ""
 
 
@@ -8293,21 +8329,34 @@ def billing_group_put(group_key: str, payload: dict, x_admin_password: str = Hea
                 status_code=400,
                 detail=f"ردیف نرخ شماره {i} خوانده نشد — حجم و قیمت باید عدد باشند")
 
+    # مثلِ ردیف‌های نرخ: ورودیِ نامعتبر ۴۰۰ است، نه صفرِ بی‌صدا. پیش‌تر
+    # «نرخ حجمی» نامعتبر بی‌صدا ۰ ذخیره می‌شد — یعنی واسطه‌ی حجمی از
+    # آن به بعد هیچ بدهی‌ای نداشت.
     try:
         per_gb = int(payload.get("per_gb") or payload.get("perGb") or 0)
     except (TypeError, ValueError):
-        per_gb = 0
+        raise HTTPException(status_code=400, detail="نرخ حجمی باید عدد باشد")
 
     try:
         period_days = int(payload.get("period_days") or payload.get("periodDays") or 30)
     except (TypeError, ValueError):
-        period_days = 30
+        raise HTTPException(status_code=400, detail="طولِ دوره باید عدد باشد")
     period_days = max(1, min(period_days, 365))
 
     period_start = (payload.get("period_start")
                     or payload.get("periodStart") or "").strip()[:10]
     settled_until = (payload.get("settled_until")
                      or payload.get("settledUntil") or "").strip()[:10]
+    # تاریخِ خراب همین‌جا رد می‌شود. پیش‌تر ذخیره می‌شد و `_bill_since`
+    # بی‌صدا از رویش می‌پرید — صورتحساب از «شروع همکاری» حساب می‌شد و
+    # ماه‌های تسویه‌شده دوباره روی فاکتور می‌نشستند.
+    from datetime import date as _d8
+    for _v, _label in ((period_start, "شروع همکاری"), (settled_until, "تسویه‌شده تا")):
+        if _v:
+            try:
+                _d8.fromisoformat(_v)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"تاریخِ «{_label}» نامعتبر است: {_v}")
 
     con = _billing_conn()
     try:
@@ -9172,51 +9221,33 @@ def billing_restore(payload: dict, x_admin_password: str = Header(...)):
                 f"billing-before-restore-{datetime.now():%Y%m%d-%H%M%S}.db")
             shutil.copy2(BILLING_DB, safety)
     except Exception:
-        pass
+        # مثلِ ربات: بی‌نسخه‌ی امن هم ادامه می‌دهیم، ولی گفته می‌شود
+        log.warning("نسخه‌ی امنِ حسابداری پیش از بازگردانی گرفته نشد", exc_info=True)
+        safety = None
 
     con = _billing_conn()
     try:
-        restored, skipped = {}, {}
         # فقط جدول‌هایی که هم در فایل‌اند و هم در این دیتابیس. قبلاً
         # سه جدولِ ثابت بی‌قید خالی می‌شدند — یعنی بازگردانیِ یک
         # پشتیبانِ قدیمی، داده‌ی جدول‌هایی را که در آن نبود پاک می‌کرد.
-        for t in [x for x in _tables_of(con, ("group_config", "payments",
-                                              "renewals", "expenses",
-                                              "client_seen"))
-                  if x in data]:
-            rows = data.get(t) or []
-            try:
-                con.execute(f"DELETE FROM {t}")
-            except Exception:
-                pass
-            if not rows:
-                restored[t] = 0
-                continue
-            cols = [r[1] for r in con.execute(f"PRAGMA table_info({t})")]
-            usable = [x for x in cols if any(x in r for r in rows)]
-            if not usable:
-                restored[t] = 0
-                continue
-            ph = ",".join("?" * len(usable))
-            sql = f"INSERT OR REPLACE INTO {t} ({','.join(usable)}) VALUES ({ph})"
-            n = 0
-            for r in rows:
-                try:
-                    con.execute(sql, [r.get(x) for x in usable])
-                    n += 1
-                except Exception:
-                    pass
-            restored[t] = n
-            if n < len(rows):
-                skipped[t] = len(rows) - n
+        order = [x for x in _tables_of(con, ("group_config", "payments",
+                                             "renewals", "expenses",
+                                             "client_seen"))
+                 if x in data]
+        try:
+            restored, skipped, why = _restore_tables(con, order, data)
+        except Exception as e:
+            con.rollback()
+            raise HTTPException(status_code=500, detail=f"بازیابی ناموفق: {str(e)[:200]}")
         con.commit()
         out = {"ok": True, "restored": restored,
                "safetyCopy": str(safety) if safety else None}
         if skipped:
             out["skipped"] = skipped
-            out["warning"] = ("بعضی ردیف‌ها بازنگشتند: "
-                              + "، ".join(f"{k} ({v})"
-                                          for k, v in skipped.items()))
+            out["skippedWhy"] = why
+            out["warning"] = _restore_warning(skipped, why)
+        if safety is None and BILLING_DB.exists():
+            out["safetyWarning"] = "نسخه‌ی امنِ پیش از بازگردانی گرفته نشد"
         return out
     finally:
         con.close()
@@ -10171,6 +10202,7 @@ def billing_period(group_key: str, start: str = "", end: str = "",
         bcon.close()
 
     settled = (conf.get("settled_until") or "").strip()[:10]
+    settled_bad = None
 
     from datetime import date, timedelta as _td
     if full:
@@ -10189,7 +10221,10 @@ def billing_period(group_key: str, start: str = "", end: str = "",
             try:
                 p_start = max(p_start, date.fromisoformat(settled))
             except ValueError:
-                pass
+                # نه pass: شروع جلو نمی‌رود و ماه‌های تسویه‌شده می‌آیند؛
+                # همان در پاسخ گفته می‌شود
+                log.warning("settled_until نامعتبر برای %s: %r", group_key, settled)
+                settled_bad = settled
         p_end = date.today() + _td(days=1)
     elif start and end:
         try:
@@ -10312,6 +10347,7 @@ def billing_period(group_key: str, start: str = "", end: str = "",
             "full": bool(full),
         },
         "settledUntil": settled or None,
+        "settledInvalid": settled_bad,
         "skippedSettled": skipped,
         "perGb": per_gb,
         "newConfigs": sorted(new_configs, key=lambda x: x["date"] or ""),

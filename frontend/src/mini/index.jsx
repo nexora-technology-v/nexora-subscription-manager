@@ -1097,7 +1097,12 @@ function PaySheet({ pay, me, rw, onClose, onConfirm, onTopUp,
       r.onload = () => res(String(r.result || ""));
       r.onerror = () => rej(new Error("فایل خوانده نشد"));
       r.readAsDataURL(f);
-    }).catch(() => null);
+    }).catch((err) => {
+      // پیش‌تر هیچ اتفاقی نمی‌افتاد: مشتری عکس را انتخاب می‌کرد و صفحه
+      // ساکت می‌ماند
+      onReceipt({ err: err.message || "فایل خوانده نشد" });
+      return null;
+    });
     if (data) onReceipt({ data });
   };
 
