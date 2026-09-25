@@ -400,7 +400,7 @@ export function PhonePreview({ config, os }) {
               <div className="flex items-center gap-1"><span className="w-1 h-1 rounded-full" style={{ background: "var(--ok)" }} /><span>Nexora</span></div>
             </div>
             <div className="px-3.5 pb-4">
-              <div className="text-[12px] font-bold text-white text-center my-3">دانلود برنامه ها</div>
+              <div className="text-[12px] font-bold text-white text-center my-3">دانلود برنامه‌ها</div>
               <div className="rounded-lg px-2.5 py-2 mb-3 flex items-start gap-1.5" style={{ background: "rgba(43,127,214,.1)", border: "1px solid rgba(43,127,214,.3)" }}>
                 <Star size={9} className="shrink-0 mt-0.5" style={{ color: "var(--accent-2)" }} fill="var(--accent-2)" />
                 <div className="text-[10.5px] leading-relaxed" style={{ color: "var(--accent-2)" }}>پیشنهاد ما: <b>{rec?.name || "—"}</b></div>
@@ -626,14 +626,14 @@ export function BannersSection({ config, setConfig }) {
               <div className="flex items-center gap-2 mb-4"><Clock size={14} style={{ color: "var(--warn)" }} /><span className="text-[14px] font-semibold text-white">هشدار پایان زمان</span></div>
               <NumberStepper value={b.lowQuotaDaysThreshold ?? 3} onChange={(v) => update({ lowQuotaDaysThreshold: v })} min={1} max={30} unit="روز" />
               <p className="text-[12px] mt-3 leading-relaxed" style={{ color: "#475569" }}>
-                از <b style={{ color: "var(--warn)" }}>{b.lowQuotaDaysThreshold ?? 3} روز</b> مانده به انقضا، بنر نمایش داده می‌شود.
+                از <b style={{ color: "var(--warn)" }}>{faNum(b.lowQuotaDaysThreshold ?? 3)} روز</b> مانده به انقضا، بنر نمایش داده می‌شود.
               </p>
             </div>
             <div className="fx-card p-5">
               <div className="flex items-center gap-2 mb-4"><Package size={14} style={{ color: "var(--warn)" }} /><span className="text-[14px] font-semibold text-white">هشدار پایان حجم</span></div>
               <NumberStepper value={b.lowQuotaPercentThreshold ?? 15} onChange={(v) => update({ lowQuotaPercentThreshold: v })} min={1} max={50} unit="درصد" />
               <p className="text-[12px] mt-3 leading-relaxed" style={{ color: "#475569" }}>
-                وقتی کمتر از <b style={{ color: "var(--warn)" }}>{b.lowQuotaPercentThreshold ?? 15}٪</b> حجم باقی باشد، بنر ظاهر می‌شود.
+                وقتی کمتر از <b style={{ color: "var(--warn)" }}>{faNum(b.lowQuotaPercentThreshold ?? 15)}٪</b> حجم باقی باشد، بنر ظاهر می‌شود.
               </p>
             </div>
           </div>
@@ -751,7 +751,7 @@ export function ReferralSection({ config, setConfig }) {
       <div className="fx-card p-5 mb-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="fx-ico" style={{ background: "rgba(43,127,214,.12)" }}><Gift size={16} style={{ color: "var(--accent-2)" }} /></div>
+            <div className="fx-ico" style={{ background: "var(--accent-soft)" }}><Gift size={16} style={{ color: "var(--accent-2)" }} /></div>
             <div className="min-w-0">
               <div className="text-[14px] font-semibold text-white">نمایش کارت رفرال</div>
               <div className="text-[13px] mt-0.5" style={{ color: "var(--muted)" }}>اگر خاموش کنید، کارت معرفی نمایش داده نمی‌شود</div>
@@ -760,8 +760,13 @@ export function ReferralSection({ config, setConfig }) {
           <Toggle checked={r.enabled} onChange={() => setConfig({ ...config, referral: { ...r, enabled: !r.enabled } })} label="رفرال" />
         </div>
       </div>
+      {/* متنِ قبلی می‌گفت پاداشِ خودکار «باید در ربات پیاده‌سازی شود» —
+          در حالی که ربات از خیلی قبل «سکه و دعوت» را داشت. مدیر را به
+          ساختنِ چیزی می‌فرستاد که وجود داشت، و نمی‌گفت این کارت چه می‌کند. */}
       <InfoBox tone="warn">
-        فعلاً این کارت فقط یک لینک پیام آماده به پشتیبانی است، بدون ردیابی خودکار پاداش. برای پاداش‌دهی خودکار، باید منطق جداگانه‌ای در ربات تلگرام پیاده‌سازی شود.
+        این کارت دوستِ مشتری را با پیامِ آماده‌ی «فلانی معرفیم کرده» (با نامِ کاربریِ معرف) به <b>پشتیبانی</b> می‌فرستد؛
+        پس پاداشِ معرفی‌هایی که از این‌جا می‌آیند را <b>دستی</b> می‌دهید. پاداشِ خودکارِ دعوت در خودِ ربات است —
+        بخشِ <b>ربات تلگرام ← سکه و دعوت</b>.
       </InfoBox>
     </div>
   );
@@ -1259,7 +1264,9 @@ export function ResellersSection({ config, setConfig, requestDelete, password })
                   </div>
                   <div className="min-w-0">
                     <div className="text-[14px] font-semibold text-white truncate">{r.name || "بدون نام"}</div>
-                    <div className="text-[12px] mt-0.5 truncate" style={{ color: "var(--muted)" }}>
+                    {/* پیچیدن، نه بریدن: پیشوند و دامنه همان چیزی است که مدیر
+                        برای تشخیصِ واسطه لازم دارد و روی گوشی نصفش می‌رفت */}
+                    <div className="text-[12px] mt-0.5 break-words" style={{ color: "var(--muted)" }}>
                       {r.emailPrefix ? `پیشوند: ${r.emailPrefix}_` : ""}
                       {r.emailPrefix && r.domains?.length ? " · " : ""}
                       {r.domains?.length ? r.domains.join(", ") : ""}
@@ -1672,8 +1679,11 @@ export function PopupSection({ config, setConfig }) {
                     {e}
                   </button>
                 ))}
-                <input className="fx-input" style={{ width: 80, textAlign: "center", fontSize: 17 }}
-                  value={p.icon || ""} onChange={(e) => update({ icon: e.target.value })} maxLength={4} />
+                {/* ورودیِ ایموجیِ دلخواه — همان مقدارِ فعلی را نشان می‌دهد، پس
+                    بی‌نشانه شبیهِ یک دکمه‌ی تکراری کنارِ فهرست بود */}
+                <input className="fx-input" style={{ width: 88, textAlign: "center", fontSize: 17, borderStyle: "dashed" }}
+                  value={p.icon || ""} onChange={(e) => update({ icon: e.target.value })} maxLength={4}
+                  placeholder="دلخواه" title="یا یک ایموجیِ دلخواه بنویسید" aria-label="ایموجیِ دلخواه" />
               </div>
             </Field>
 

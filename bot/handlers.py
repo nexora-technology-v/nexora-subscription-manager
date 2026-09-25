@@ -1147,7 +1147,10 @@ def receipt_submit(ctx, user, order_id, rtype, rfile=None, rtext=None,
                 _release_coins(ctx, order_id)
                 return False, "expired"
         except ValueError:
-            pass
+            # مهلتِ ناخوانا یعنی قاعده‌ی مهلت اجرا نشد؛ رسید پذیرفته می‌شود،
+            # ولی بی‌صدا نه
+            log.warning("order %s has unreadable expires_at %r — deadline not enforced",
+                        order_id, order.get("expires_at"))
 
     t = DB.get_tenant(ctx.tid)
     # گروه، یا پیویِ صاحبِ ربات — همان قاعده‌ی `notify_group`.
@@ -3265,8 +3268,8 @@ def admin_input(ctx, user, chat_id, text, state, data):
                         ctx.db.exec(
                             "UPDATE users SET is_blocked=1 WHERE tenant_id=? AND tg_id=?",
                             (ctx.tid, uid))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        log.warning("marking user %s blocked failed: %s", uid, e)
                 else:
                     failed += 1
             except Exception:
@@ -3400,8 +3403,9 @@ def admin_input(ctx, user, chat_id, text, state, data):
                 "UPDATE tickets SET status='answered', answer=?, "
                 "answered_at=CURRENT_TIMESTAMP WHERE tenant_id=? AND id=?",
                 (txt[:2000], ctx.tid, int(target)))
-        except Exception:
-            pass
+        except Exception as e:
+            # پاسخ رفته، ولی تیکت «باز» می‌ماند و ممکن است دوباره جواب بگیرد
+            log.warning("closing ticket %s after reply failed: %s", target, e)
 
         return _reply(ctx, chat_id, None,
                       f"✅ پاسخ تیکت <code>#{target}</code> برای مشتری رفت.",
