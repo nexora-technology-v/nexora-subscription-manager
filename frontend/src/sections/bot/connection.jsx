@@ -8,14 +8,15 @@ import React, { useState, useEffect } from "react";
 import {
   AlertTriangle, Bot, CheckCircle2, Circle, CreditCard, Eye, HelpCircle, Key, Loader2, Plus as PlusIcon, Power, Radio, RefreshCw, Save, Server, ShieldCheck, Trash2, Users, XCircle, Zap,
 } from "lucide-react";
-import { errText } from "../../lib/format";
+import { errText, faNum } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { Field, InfoBox, Msg, PageSkeleton, SectionHead, Toggle } from "../../ui/index";
+import { ConfirmModal, Field, InfoBox, Msg, PageSkeleton, SectionHead, Toggle } from "../../ui/index";
 
 export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState("");
   const [applied, setApplied] = useState(false);
+  const [askStop, setAskStop] = useState(false);
   useEffect(() => { if (applied) { const t = setTimeout(() => setApplied(false), 3000); return () => clearTimeout(t); } }, [applied]);
   if (!status) return null;
 
@@ -64,7 +65,7 @@ export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
             </div>
             <div className="text-[13px] mt-0.5" style={{ color: "var(--muted)" }}>
               {ready
-                ? `${status.stats?.users ?? 0} کاربر · ${status.stats?.plans ?? 0} پلن فعال · ${status.stats?.pendingOrders ?? 0} رسید در انتظار`
+                ? `${faNum(status.stats?.users ?? 0)} کاربر · ${faNum(status.stats?.plans ?? 0)} پلن فعال · ${faNum(status.stats?.pendingOrders ?? 0)} رسید در انتظار`
                 : (status.message || "توکن را وارد و ذخیره کنید")}
             </div>
           </div>
@@ -92,7 +93,8 @@ export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
                 {busy === "restart" ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
                 ری‌استارت
               </button>
-              <button onClick={() => act("stop")} disabled={!!busy}
+              {/* خاموش‌کردن فروش را کامل می‌خواباند — با یک کلیکِ اشتباه نه */}
+              <button onClick={() => setAskStop(true)} disabled={!!busy}
                 className="px-3.5 py-2.5 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5"
                 style={{ background: "var(--danger-soft)", border: "1px solid var(--danger-line)", color: "var(--danger)" }}>
                 {busy === "stop" ? <Loader2 size={13} className="animate-spin" /> : <Power size={13} />}
@@ -144,6 +146,12 @@ export function BotStatusBar({ status, password, onChange, dirty, onApplied }) {
           style={{ background: "var(--danger-soft)", border: "1px solid var(--danger-fill)", color: "var(--danger)" }}>
           <AlertTriangle size={13} /> {err}
         </div>
+      )}
+      {askStop && (
+        <ConfirmModal title="خاموش‌کردنِ ربات"
+          desc="تا وقتی دوباره روشنش نکنید، هیچ مشتری‌ای نمی‌تواند بخرد، تمدید کند یا کانفیگش را بگیرد؛ یادآوری‌ها و تمدیدِ خودکار هم متوقف می‌شوند."
+          confirmLabel="خاموش کن" onCancel={() => setAskStop(false)}
+          onConfirm={() => { setAskStop(false); act("stop"); }} />
       )}
     </div>
   );

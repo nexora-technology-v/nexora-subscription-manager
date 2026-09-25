@@ -99,7 +99,7 @@ export function FirewallIntrusion({ password }) {
     el.download = onlyUnknown
       ? "nexora-attackers-unknown.txt" : "nexora-attackers.txt";
     el.click();
-    URL.revokeObjectURL(el.href);
+    setTimeout((h) => URL.revokeObjectURL(h), 2000, el.href);
     setMsg({ t: "ok", m: `${rows.length} آدرس در فایل ذخیره شد` });
   };
 

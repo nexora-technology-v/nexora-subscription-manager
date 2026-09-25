@@ -1444,7 +1444,7 @@ export function BackupCard({ password, onRestored }) {
       a.href = url;
       a.download = `nexora-backup-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
       setMsg({ type: "ok", text: "فایل پشتیبان دانلود شد" });
     } catch {
       setMsg({ type: "error", text: "دریافت پشتیبان ناموفق بود" });

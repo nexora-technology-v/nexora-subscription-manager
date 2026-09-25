@@ -485,6 +485,15 @@ for _f, _src in ALL.items():
     # «اجرای بعدی: 26-09-2026» را در مانیتورینگ نشان می‌داد.
     for _m in re.finditer(r"\{\s*[\w.?]+\.replace\(\s*[\"'/]T[\"'/]", _src):
         _isoraw.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
+    # و با جایگزین: `{e.at || "—"}` — شکلی که `{e.at}` نبود و از هر دو رد شد؛
+    # رویدادهای ربات روی سرور تاریخِ میلادیِ خام نشان می‌دادند چون داده‌ی
+    # ساختگیِ هارنس از قبل شمسی نوشته شده بود.
+    for _m in re.finditer(r"\{\s*[\w]+\??\.(at|created_at|updated_at|createdAt|updatedAt|paid_at|expires_at"
+                          r"|expiresAt|sent_at|scheduled_at|last_seen)\s*(\|\||\?\?)", _src):
+        _ln = _src[_src.rfind(chr(10), 0, _m.start()) + 1:_src.find(chr(10), _m.end())]
+        if "JalaliDate" in _ln or "value={" in _ln:
+            continue      # مقدارِ انتخابگرِ تاریخ است، نه متنِ نمایش‌داده‌شده
+        _isoraw.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
 check("هیچ تاریخِ میلادیِ خامی رندر نمی‌شود", not _isoraw, ", ".join(_isoraw[:5]))
 
 # کلاسِ `fx-*` که در CSS تعریف نشده بی‌صدا هیچ اثری ندارد. `fx-btn-ghost`
@@ -501,6 +510,37 @@ for _f, _src in ALL.items():
             if _c not in _fx_def:
                 _fx_miss.append(f"{_c} ({_f}:{_src[:_m.start()].count(chr(10)) + 1})")
 check("هر کلاسِ fx-* که در JSX هست در CSS تعریف شده", not _fx_miss, ", ".join(_fx_miss[:5]))
+
+# رمز در آدرس — `<img src=".../receipt/12?pw=${password}">` رمزِ مدیر را در
+# لاگِ nginx، تاریخچه‌ی مرورگر و Referer می‌گذاشت. هر راز باید در هدر برود.
+_urlsecret = []
+# تنها استثنا: دستورِ نصبِ ایجنت. متنی است که مدیر یک‌بار روی خودِ نود
+# اجرا می‌کند (curl … | bash) و مسیرِ نصب توکن را فقط از پارامتر می‌گیرد؛
+# هیچ درخواستی از مرورگر با آن زده نمی‌شود.
+_URL_OK = {("sections/tunnel.jsx", "/api/agent/install.sh?token=")}
+for _f, _src in ALL.items():
+    for _m in re.finditer(r"[?&](pw|pass|password|token|secret|key)=\$\{", _src):
+        _ln = _src[_src.rfind(chr(10), 0, _m.start()) + 1:_src.find(chr(10), _m.end())]
+        if any(_f == a and b in _ln for a, b in _URL_OK):
+            continue
+        _urlsecret.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
+check("هیچ رازی در پارامترِ آدرس نیست (هدر، نه ?pw=)", not _urlsecret, ", ".join(_urlsecret[:5]))
+
+# ستون‌های پرچمِ دیتابیس ۰/۱‌اند، نه true/false. `p.is_active !== false` برای ۰
+# «روشن» می‌داد و پلنِ خاموش در پنل روشن دیده می‌شد.
+_intflag = []
+for _f, _src in ALL.items():
+    for _m in re.finditer(r"\b(is_active|is_trial|is_blocked|is_active_sub)\s*!==\s*false", _src):
+        _intflag.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
+check("پرچمِ ۰/۱ دیتابیس با «!== false» سنجیده نمی‌شود", not _intflag, ", ".join(_intflag[:5]))
+
+# لغوِ blob بلافاصله بعد از click دانلود را در فایرفاکس پیش از شروع می‌بُرد —
+# پنج جا همین شکل را داشتند (بکاپ، صورتحساب، گزارش، خروجیِ آی‌پی‌ها)
+_revoke = []
+for _f, _src in ALL.items():
+    for _m in re.finditer(r"\.click\(\);\s*\n\s*URL\.revokeObjectURL\(", _src):
+        _revoke.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
+check("blob بلافاصله بعد از click لغو نمی‌شود", not _revoke, ", ".join(_revoke[:5]))
 
 # نویسه‌ی کنترلیِ نامرئی در کدِ تست — `\b` که در heredocِ گیت‌بش به
 # backspace تبدیل شد، همین دروازه‌ی بالا را بی‌صدا کور کرده بود: سبز

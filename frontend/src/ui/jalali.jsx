@@ -103,6 +103,10 @@ export function isoToJalaliLabel(iso) {
   if (!iso) return "";
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso));
   if (!m) return String(iso);
+  // سالِ زیرِ ۱۷۰۰ یعنی رشته خودش شمسی است. دوباره تبدیل‌کردنش «۲۵ دی ۷۸۳»
+  // می‌ساخت — همان چیزی که داده‌ی ساختگیِ کدهای تخفیف نشان داد. تاریخِ
+  // شمسی همان‌طور که هست نشان داده می‌شود، نه اینکه خرابش کنیم.
+  if (+m[1] < 1700) return `${fa(+m[3])} ${MONTHS[+m[2] - 1] || ""} ${fa(+m[1])}`;
   const { jy, jm, jd } = toJalali(+m[1], +m[2], +m[3]);
   return `${fa(jd)} ${MONTHS[jm - 1]} ${fa(jy)}`;
 }

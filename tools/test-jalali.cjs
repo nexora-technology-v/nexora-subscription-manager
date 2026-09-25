@@ -121,6 +121,10 @@ check("ورودی خالی خطا نمی‌دهد", J.isoToJalaliLabel("") === "
 check("ورودی خراب همان‌طور برمی‌گردد",
       J.isoToJalaliLabel("چیز") === "چیز");
 check("ورودی null خطا نمی‌دهد", J.isoToJalaliLabel(null) === "");
+// رشته‌ی از قبل شمسی دوباره تبدیل نمی‌شود — «۲۵ دی ۷۸۳» از همین می‌آمد
+check("تاریخِ شمسی دوباره تبدیل نمی‌شود",
+      J.isoToJalaliLabel("1405-01-15") === "۱۵ فروردین ۱۴۰۵",
+      J.isoToJalaliLabel("1405-01-15"));
 
 fs.rmSync(OUT, { recursive: true, force: true });
 

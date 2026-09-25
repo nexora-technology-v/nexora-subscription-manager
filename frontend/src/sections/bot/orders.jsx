@@ -21,6 +21,45 @@ export const REJECT_REASONS = [
   "رسید معتبر تشخیص داده نشد.",
 ];
 
+/* رسید با هدر، نه با رمز در آدرس.
+   پیش‌تر `<img src=".../receipt/12?pw=رمز">` بود: رمزِ مدیر در لاگِ
+   nginx، تاریخچه‌ی مرورگر و Referer می‌نشست — برای هر رسیدِ صفحه. حالا
+   تصویر با fetch و هدر گرفته و از blob نشان داده می‌شود؛ بکند دیگر
+   `?pw=` را نمی‌پذیرد. شکست هم دیده می‌شود، نه اینکه تصویر بی‌صدا
+   پنهان شود. */
+export function ReceiptImg({ id, password, style, alt = "رسید" }) {
+  const [src, setSrc] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    let url = null;
+    let alive = true;
+    setSrc(null); setErr(null);
+    fetch(`${API_URL}/api/admin/bot/receipt/${id}`, { headers: { "X-Admin-Password": password } })
+      .then(async (r) => {
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          throw new Error(errText(j.detail, "رسید باز نشد"));
+        }
+        return r.blob();
+      })
+      .then((b) => { if (!alive) return; url = URL.createObjectURL(b); setSrc(url); })
+      .catch((e) => { if (alive) setErr(e.message || "رسید باز نشد"); });
+    return () => { alive = false; if (url) URL.revokeObjectURL(url); };
+  }, [id, password]);
+  if (err) {
+    return (
+      <span className="grid place-items-center text-center text-[10.5px] p-1.5 leading-snug"
+        style={{ ...style, color: "var(--danger)" }} title={err}>
+        <AlertTriangle size={14} />{err}
+      </span>
+    );
+  }
+  if (!src) return <span className="fx-sk block" style={style} />;
+  return <img src={src} alt={alt} style={style} />;
+}
+
+const KIND_LABEL = { new: "خرید", renew: "تمدید", topup: "شارژ کیف پول" };
+
 export function BotOrdersSection({ password }) {
   const [rejecting, setRejecting] = useState(null);
   const [reason, setReason] = useState("");
@@ -34,7 +73,13 @@ export function BotOrdersSection({ password }) {
   const load = async (f = filter) => {
     setLoading(true);
     try {
-      const d = await fetch(`${API_URL}/api/admin/bot/orders?status=${f}`, { headers: { "X-Admin-Password": password } }).then(r => r.json());
+      const r = await fetch(`${API_URL}/api/admin/bot/orders?status=${f}`, { headers: { "X-Admin-Password": password } });
+      const d = await r.json().catch(() => ({}));
+      // خطا پیش‌تر به «رسیدی در انتظار تایید نیست» ختم می‌شد — صفِ
+      // خالی و صفِ خوانده‌نشده یک شکل بودند
+      if (!r.ok) { setMsg({ t: "err", m: errText(d.detail, "خواندنِ سفارش‌ها ناموفق بود") }); return; }
+      if (d.error) setMsg({ t: "err", m: `خواندنِ سفارش‌ها ناقص ماند: ${d.error}` });
+      else if (d.dbReady === false) setMsg({ t: "err", m: "دیتابیسِ ربات پیدا نشد — ربات نصب و اجرا شده؟" });
       setOrders(d.orders || []);
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
     finally { setLoading(false); }
@@ -53,7 +98,7 @@ export function BotOrdersSection({ password }) {
         headers: { "Content-Type": "application/json", "X-Admin-Password": password },
         body: JSON.stringify({ reason }),
       });
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       if (res.ok) {
         setMsg({ t: "ok", m: "سفارش رد شد — دلیل برای مشتری فرستاده می‌شود" });
         load(filter);
@@ -68,7 +113,7 @@ export function BotOrdersSection({ password }) {
       const res = await fetch(`${API_URL}/api/admin/bot/orders/${id}/${action}`, {
         method: "POST", headers: { "X-Admin-Password": password },
       });
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       if (res.ok) {
         setMsg({ t: "ok", m: action === "approve" ? "تایید شد — ربات کانفیگ را می‌سازد" : "سفارش رد شد" });
         load(filter);
@@ -143,10 +188,8 @@ export function BotOrdersSection({ password }) {
                 className="shrink-0 rounded-xl overflow-hidden relative"
                 style={{ width: 84, height: 108, border: "1px solid var(--border-2)", background: "var(--surface-3)" }}
                 title="بزرگ‌نمایی">
-                <img src={`${API_URL}/api/admin/bot/receipt/${o.id}?pw=${encodeURIComponent(password)}`}
-                  alt="رسید" loading="lazy"
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                <ReceiptImg id={o.id} password={password}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 <span className="absolute bottom-1 left-1 right-1 py-0.5 rounded text-[10.5px] flex items-center justify-center gap-1"
                   style={{ background: "var(--scrim-3)", color: "#fff" }}>
                   <Search size={9} /> بزرگ‌نمایی
@@ -154,15 +197,24 @@ export function BotOrdersSection({ password }) {
               </button>
             )}
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                 <Avatar name={o.first_name || o.username} id={o.tg_id} size={26} />
                 <span className="text-[14px] font-semibold text-white">{o.first_name || "بدون نام"}</span>
                 {o.username && <span className="text-[13px]" dir="ltr" style={{ color: "var(--muted)" }}>@{o.username}</span>}
                 <StatusPill s={o.status} />
               </div>
+              <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                <span className="fx-pill" style={{ background: "var(--accent-soft)", color: "var(--accent-2)" }}>
+                  {KIND_LABEL[o.kind] || "سفارش"}
+                </span>
+                {o.plan_name && <span className="text-[13px] font-semibold text-white">{o.plan_name}</span>}
+                {o.paid_from === "wallet" && (
+                  <span className="fx-pill" style={{ background: "var(--hair-2)", color: "var(--muted)" }}>از کیف پول</span>
+                )}
+              </div>
               <div className="text-[13px] leading-relaxed" style={{ color: "var(--dim)" }}>
-                مبلغ: <b style={{ color: "var(--text)" }}>{Number(o.amount || 0).toLocaleString("fa-IR")}</b> تومان
-                {o.coins_used > 0 && <> · {o.coins_used} سکه ({o.discount_pct}٪ تخفیف)</>}
+                مبلغ: <b style={{ color: "var(--text)" }}>{faNum(Number(o.amount || 0))}</b> تومان
+                {o.coins_used > 0 && <> · {faNum(o.coins_used)} سکه ({faNum(o.discount_pct || 0)}٪ تخفیف)</>}
               </div>
 
               {o.receipt_type === "text" && o.receipt_text && (
@@ -202,9 +254,10 @@ export function BotOrdersSection({ password }) {
         <div onClick={() => setZoom(null)}
           className="fixed inset-0 z-[110] flex items-center justify-center p-6"
           style={{ background: "var(--veil)", cursor: "zoom-out" }}>
-          <img src={`${API_URL}/api/admin/bot/receipt/${zoom}?pw=${encodeURIComponent(password)}`} alt="رسید"
-            style={{ maxWidth: "92vw", maxHeight: "88vh", borderRadius: 14, objectFit: "contain" }}
-            onClick={(e) => e.stopPropagation()} />
+          <span onClick={(e) => e.stopPropagation()}>
+            <ReceiptImg id={zoom} password={password}
+              style={{ maxWidth: "92vw", maxHeight: "88vh", minWidth: 120, minHeight: 120, borderRadius: 14, objectFit: "contain" }} />
+          </span>
           <button title="بستن" onClick={() => setZoom(null)}
             className="absolute top-5 left-5 fx-ico-btn" style={{ width: 38, height: 38 }}>
             <X size={18} />

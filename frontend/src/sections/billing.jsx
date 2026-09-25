@@ -404,7 +404,8 @@ export function BillingClients({ password }) {
       a.href = URL.createObjectURL(blob);
       a.download = `nexora-clients-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
-      URL.revokeObjectURL(a.href);
+      // لغوِ فوری، دانلود را در بعضی مرورگرها پیش از شروع می‌بُرد
+      setTimeout((h) => URL.revokeObjectURL(h), 2000, a.href);
     } catch { /* بی‌صدا */ }
   };
 
@@ -1031,7 +1032,8 @@ export function BillingSettings({ password }) {
       a.href = URL.createObjectURL(blob);
       a.download = `nexora-billing-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
-      URL.revokeObjectURL(a.href);
+      // لغوِ فوری، دانلود را در بعضی مرورگرها پیش از شروع می‌بُرد
+      setTimeout((h) => URL.revokeObjectURL(h), 2000, a.href);
       setMsg({ t: "ok", m: `دانلود شد — ${d.counts?.payments || 0} پرداخت، ${d.counts?.group_config || 0} گروه` });
     } catch { setMsg({ t: "err", m: "بک‌آپ ناموفق" }); }
     finally { setBusy(null); }
@@ -2041,7 +2043,8 @@ export function BillingInvoice({ password }) {
       a.href = URL.createObjectURL(blob);
       a.download = `nexora-${sel}-${new Date().toISOString().slice(0, 10)}.pdf`;
       a.click();
-      URL.revokeObjectURL(a.href);
+      // لغوِ فوری، دانلود را در بعضی مرورگرها پیش از شروع می‌بُرد
+      setTimeout((h) => URL.revokeObjectURL(h), 2000, a.href);
     } catch {
       alert("اتصال به سرور برقرار نشد");
     } finally { setBusy(false); }

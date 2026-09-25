@@ -181,7 +181,7 @@ export function BotReportSection({ password }) {
       a.href = URL.createObjectURL(blob);
       a.download = filename;
       a.click();
-      URL.revokeObjectURL(a.href);
+      setTimeout((h) => URL.revokeObjectURL(h), 2000, a.href);
     } catch {
       alert("اتصال به سرور برقرار نشد");
     } finally { setBusy(false); }

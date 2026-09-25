@@ -69,6 +69,8 @@ export function BotAffiliates({ password }) {
   }
 
   const list = data.affiliates || [];
+  // فقط همکارهای خودِ مالک — مالِ نماینده‌ها هزینه‌ی خودشان است (resellerOwed)
+  const paidTotal = list.filter((a) => a.isOwn !== false).reduce((x, a) => x + (Number(a.payouts) || 0), 0);
 
   return (
     <div className="fx-anim">
@@ -85,6 +87,9 @@ export function BotAffiliates({ password }) {
 
       {list.length > 0 && (
         <>
+        {/* «پرداخت‌شده» از `payouts` هر همکار جمع می‌شود. پیش‌تر از
+            `totalPaid` خوانده می‌شد که بکند هرگز نفرستاد (فقط هارنسِ قدیم
+            داشتش)، پس روی سرور همیشه صفر بود — حتی بعد از تسویه. */}
         <div className="fx-g3 grid grid-cols-3 gap-3">
           <StatTile label="بدهی به همکاران" icon={Wallet}
             tone={data.totalOwed > 0 ? "var(--warn)" : "var(--ok)"}
@@ -95,21 +100,19 @@ export function BotAffiliates({ password }) {
             value={faNum(list.length)}
             hint={`${faNum(list.filter((a) => (a.sales || a.orders || 0) > 0).length)} نفر فروش داشته‌اند`} />
           <StatTile label="پرداخت‌شده تا امروز" icon={Check} tone="var(--ok)"
-            value={faNum(data.totalPaid || 0)} unit="تومان" color="var(--ok)"
+            value={faNum(paidTotal)} unit="تومان" color="var(--ok)"
             hint={data.resellerOwed > 0
                   ? `${faNum(data.resellerOwed)} بدهیِ همکارهای نماینده‌ها`
                   : "پورسانتِ پرداخت‌شده"} />
         </div>
 
-        <div className="fx-card p-5 mb-4">
+        {data.resellerOwed > 0 && <div className="fx-card p-5 mb-4">
 
           {/* بدهیِ همکارهای نماینده‌ها جداست و در این عدد نمی‌آید —
               هزینه‌ی همان نماینده است، نه شما. قبلاً با هم جمع
               می‌شدند و «مجموع بدهی» بزرگ‌تر از واقعیت بود. */}
           {data.resellerOwed > 0 && (
-            <div className="flex justify-between items-baseline flex-wrap gap-2
-                            mt-3 pt-3"
-              style={{ borderTop: "1px solid var(--border)" }}>
+            <div className="flex justify-between items-baseline flex-wrap gap-2">
               <span className="text-[12.5px]" style={{ color: "var(--muted)" }}>
                 بدهی همکاران نماینده‌ها <span style={{ opacity: .75 }}>
                   (هزینه‌ی خودشان، نه شما)</span>
@@ -120,7 +123,7 @@ export function BotAffiliates({ password }) {
               </span>
             </div>
           )}
-        </div>
+        </div>}
         </>
       )}
 

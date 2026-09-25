@@ -31,7 +31,9 @@ export function BotBackupSection({ password }) {
       a.href = URL.createObjectURL(blob);
       a.download = `nexora-bot-backup-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
-      URL.revokeObjectURL(a.href);
+      // لغوِ فوری، دانلود را در بعضی مرورگرها (فایرفاکس) پیش از شروع می‌بُرد
+      const href = a.href;
+      setTimeout(() => URL.revokeObjectURL(href), 2000);
       const total = Object.values(d.counts || {}).reduce((x, y) => x + y, 0);
       setMsg({ t: "ok", m: `بک‌آپ دانلود شد — ${total} رکورد` });
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }

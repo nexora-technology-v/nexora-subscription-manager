@@ -2520,19 +2520,24 @@ def bot_orders(status: str = "awaiting", limit: int = 50,
         if status not in allowed:
             status = "awaiting"
 
+        # نامِ پلن هم — کارتِ سفارش تا امروز نمی‌گفت مشتری *چه* خریده؛
+        # مدیر رسیدِ ۲۸۰ هزار تومانی را بی‌آنکه بداند سه‌ماهه است یا
+        # شارژِ کیف پول تایید می‌کرد
+        _sel = ("SELECT o.*, u.first_name, u.username, u.tg_id, "
+                "p.name AS plan_name, COALESCE(p.is_trial,0) AS plan_is_trial "
+                "FROM orders o LEFT JOIN users u ON u.id=o.user_id "
+                "LEFT JOIN plans p ON p.id=o.plan_id ")
         if status == "all":
-            rows = con.execute(
-                "SELECT o.*, u.first_name, u.username, u.tg_id FROM orders o "
-                "LEFT JOIN users u ON u.id=o.user_id "
-                "ORDER BY o.created_at DESC LIMIT ?", (min(limit, 200),)
-            ).fetchall()
+            rows = con.execute(_sel + "ORDER BY o.created_at DESC LIMIT ?",
+                               (min(limit, 200),)).fetchall()
+        elif status == "awaiting":
+            # «review» وضعیتِ قدیمی است که تایید و رد هنوز می‌پذیرندش ولی هیچ
+            # زبانه‌ای نشانش نمی‌داد — رسیدی که فقط در «همه» پیدا می‌شد
+            rows = con.execute(_sel + "WHERE o.status IN ('awaiting','review') "
+                               "ORDER BY o.created_at DESC LIMIT ?", (min(limit, 200),)).fetchall()
         else:
-            rows = con.execute(
-                "SELECT o.*, u.first_name, u.username, u.tg_id FROM orders o "
-                "LEFT JOIN users u ON u.id=o.user_id "
-                "WHERE o.status=? ORDER BY o.created_at DESC LIMIT ?",
-                (status, min(limit, 200))
-            ).fetchall()
+            rows = con.execute(_sel + "WHERE o.status=? ORDER BY o.created_at DESC LIMIT ?",
+                               (status, min(limit, 200))).fetchall()
 
         return {"orders": [dict(r) for r in rows], "dbReady": True}
     except Exception as e:
@@ -5818,13 +5823,14 @@ def run_rollback(payload: dict, x_admin_password: str = Header(...)):
 
 
 @app.get("/api/admin/bot/receipt/{order_id}")
-def bot_receipt(order_id: int, pw: str = "",
-                x_admin_password: str = Header(None)):
+def bot_receipt(order_id: int, x_admin_password: str = Header(None)):
     """
-    تصویر رسید.
+    تصویر رسید — فقط با هدر.
 
-    رمز از هدر یا از پارامتر می‌آید — چون تگ <img> در مرورگر
-    نمی‌تواند هدر بفرستد و بدون این، تصویر هرگز نمایش داده نمی‌شود.
+    پیش‌تر رمزِ مدیر در پارامترِ `?pw=` هم پذیرفته می‌شد، چون تگِ <img>
+    هدر نمی‌فرستد. یعنی رمز در لاگِ دسترسیِ nginx، تاریخچه‌ی مرورگر و
+    هدرِ Referer می‌نشست — برای هر رسیدی که صفحه نشان می‌داد. رابط حالا
+    تصویر را با هدر می‌گیرد و از blob نشان می‌دهد.
     """
     """
     تصویر رسید یک سفارش.
@@ -5833,7 +5839,7 @@ def bot_receipt(order_id: int, pw: str = "",
     موقت تبدیل می‌کنیم، محتوا را می‌گیریم و به‌صورت تصویر برمی‌گردانیم
     تا پنل بتواند نمایش و بزرگ‌نمایی کند.
     """
-    check_auth(x_admin_password or pw)
+    check_auth(x_admin_password)
     con = _bot_conn()
     if not con:
         raise HTTPException(status_code=404, detail="دیتابیس ربات موجود نیست")

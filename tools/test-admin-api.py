@@ -156,6 +156,15 @@ check("صفحه‌ها هم‌پوشانی ندارند",
       not ({u["tg_id"] for u in p1["users"]} & {u["tg_id"] for u in p2["users"]}))
 check("total مستقل از صفحه است", p2["total"] == 4, str(p2["total"]))
 
+head("سفارش‌ها: نامِ پلن، و «review» در صفِ انتظار")
+_ro = D_.create_order(u1["id"], pid, 100000, 100000)
+_roid = _ro["id"] if isinstance(_ro, dict) else int(_ro)
+D_.exec("UPDATE orders SET status='review' WHERE id=?", (_roid,))
+_aw = app.bot_orders(status="awaiting", x_admin_password=PW)
+_row = next((o for o in _aw.get("orders", []) if o["id"] == _roid), None)
+check("سفارشِ review در زبانه‌ی «در انتظار» هست", _row is not None, str([o["id"] for o in _aw.get("orders", [])]))
+check("نامِ پلن همراهِ سفارش می‌آید", (_row or {}).get("plan_name") == "پلن", str((_row or {}).get("plan_name")))
+
 head("پیام به کاربر")
 try:
     app.bot_message_user(1001, {"text": ""}, x_admin_password=PW)
@@ -4726,6 +4735,19 @@ if getattr(app, "INTRUSION", None) and getattr(app, "FIREWALL", None):
     check("شکستِ خواندن بی‌صدا نیست", "blockedError" in _ir2 and
           all(a["blocked"] is False for a in _ir2["ssh"]["attempts"]), str(_ir2.get("blockedError")))
     _IN.summary, _FWm.blackhole_list, _FWm.status, app.NETID = _saved
+
+
+head("رسید فقط با هدر")
+# پیش‌تر `?pw=` هم پذیرفته می‌شد و رابط رمز را در src تصویر می‌گذاشت
+import inspect as _insp  # noqa: E402
+check("مسیرِ رسید پارامترِ pw ندارد", "pw" not in _insp.signature(app.bot_receipt).parameters,
+      str(list(_insp.signature(app.bot_receipt).parameters)))
+try:
+    app.bot_receipt(1, x_admin_password=None)
+    _rc = 200
+except Exception as _e:
+    _rc = getattr(_e, "status_code", 0)
+check("بی‌هدر ← ۴۰۱", _rc == 401, str(_rc))
 
 
 # شمارنده نباید جای دیگری بازنویسی شده باشد.

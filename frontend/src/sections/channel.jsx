@@ -24,7 +24,7 @@ import { errText, faNum } from "../lib/format";
 import {
   EmptyState, Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, Toggle,
 } from "../ui/index";
-import { JalaliDate } from "../ui/jalali.jsx";
+import { JalaliDate, isoToJalaliStamp } from "../ui/jalali.jsx";
 import { shrinkImage } from "../lib/image.js";
 
 async function call(path, password, opt = {}) {
@@ -665,7 +665,7 @@ export function ChannelSection({ password }) {
                     </span>
                   )}
                   {p.photo && <span className="ch-tag">عکس دارد</span>}
-                  <span>{p.sent_at || p.scheduled_at || p.created_at || ""}</span>
+                  <span>{isoToJalaliStamp(p.sent_at || p.scheduled_at || p.created_at || "")}</span>
                 </div>
                 {p.error && <div className="ch-row-err">{p.error}</div>}
               </div>

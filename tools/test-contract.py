@@ -265,6 +265,9 @@ MUST_MATCH = {
     # فضای ۳ — فایروال
     "/api/admin/firewall", "/api/admin/firewall/blocked", "/api/admin/firewall/intrusion",
     "/api/admin/firewall/suggest", "/api/admin/firewall/preflight", "/api/admin/firewall/rollback-state",
+    # فضای ۴ — ربات
+    "/api/admin/bot/status", "/api/admin/bot/orders", "/api/admin/bot/users", "/api/admin/bot/plans",
+    "/api/admin/bot/affiliates", "/api/admin/bot/events", "/api/admin/bot/settings",
 }
 
 #: مسیرهای پارامتری با یک شناسه‌ی واقعی از فیکسچر — فهرستِ خودکار
@@ -304,6 +307,7 @@ def main():
 
     print(f"\n{D}── contract: harness vs backend, {len(routes)} admin GET routes ──{X}")
     drift = compared = skipped = 0
+    done = set()
     broken = []
     for p in routes:
         st, real = call(p)
@@ -320,6 +324,7 @@ def main():
                 print(f"  {D}- {p:44} harness has no specific mock{X}")
             continue
         compared += 1
+        done.add(p)
         kr, kf = keys(real), keys(fake, only=real)
         invented = sorted(kf - kr)
         missing = sorted(kr - kf)
@@ -337,8 +342,10 @@ def main():
 
     print(f"\n  compared {compared}, drift {drift}, skipped {skipped} (backend not ready on empty fixtures or no mock)")
     # مسیرِ «باید هم‌شکل» که مقایسه نشد هم خطاست — یعنی دروازه بی‌صدا کور شده
-    seen = set(routes)
-    lost = sorted(p for p in MUST_MATCH if p not in seen)
+    # «باید هم‌شکل» که *مقایسه نشد* هم خطاست، نه فقط آن‌که در فهرست نیست.
+    # یک‌بار جایگزینیِ داده در هارنس تابعِ fetch را پاک کرد: همه‌ی مسیرها
+    # «هارنس mock ندارد» شدند، رد شدند، و دروازه سبز ماند.
+    lost = sorted(p for p in MUST_MATCH if p not in done)
     if broken or lost:
         print(f"  {R}FAIL{X} must-match drifted: {', '.join(broken)}" + (f"  missing routes: {', '.join(lost)}" if lost else "") + "\n")
         sys.exit(1)

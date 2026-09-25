@@ -710,7 +710,7 @@ function BulkBlock({ password, onDone, setMsg }) {
                 a.href = URL.createObjectURL(blob);
                 a.download = "nexora-blocked-ips.txt";
                 a.click();
-                URL.revokeObjectURL(a.href);
+                setTimeout((h) => URL.revokeObjectURL(h), 2000, a.href);
               }).catch(() => setMsg({ t: "err", m: "خروجی گرفته نشد" }));
             }}
             className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">

@@ -8,12 +8,12 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useDebouncedChange } from "../../lib/hooks";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, Ban, ChevronLeft, Loader2, Package, RefreshCw, Send, Users, Wallet, X,
+  AlertTriangle, Ban, CheckCircle2, ChevronLeft, Loader2, Package, RefreshCw, Send, ShoppingBag, Users, Wallet, X,
 } from "lucide-react";
 import { adminSrc } from "../../lib/botsrc";
 import { isoToJalaliLabel } from "../../ui/jalali";
 import { daysLeft, faNum, fmtBytes, fmtDate } from "../../lib/format";
-import { Avatar, EmptyState, FilterBar, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile, StatusPill } from "../../ui/index";
+import { Avatar, EmptyState, FilterBar, InfoBox, Modal, Msg, PageSkeleton, Pager, SectionHead, StatTile, StatusPill } from "../../ui/index";
 
 // فیلترهای بخش کاربران — کلیدها باید عیناً با _USER_FILTERS در
 // backend/app.py بخوانند.
@@ -57,6 +57,7 @@ export function BotUsersSection({ password, src }) {
   // «در حال جستجو» با «هنوز چیزی نیامده» یکی نیست. اولی نباید
   // فهرست را پاک کند؛ اسکلت فقط برای دومی است.
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
   const seq = useRef(0);
 
   const load = async (opts = {}) => {
@@ -86,7 +87,12 @@ export function BotUsersSection({ password, src }) {
         users: r.users || [], total: r.total || 0,
         counts: r.counts || prev.counts || {},
       }));
-    } catch { /* بی‌صدا */ }
+      setErr(null);
+    } catch (e) {
+      // پیش‌تر «بی‌صدا» بود: خطای شبکه یا رمز همان «در این دسته کاربری
+      // نیست» را نشان می‌داد — فهرستِ خالی و فهرستِ خوانده‌نشده یکی بودند
+      if (mine === seq.current) setErr((e && e.message) || "خواندنِ کاربران ناموفق بود");
+    }
     finally {
       if (mine === seq.current) { setBusy(false); setLoading(false); }
     }
@@ -123,20 +129,26 @@ export function BotUsersSection({ password, src }) {
           </button>
         } />
 
-      {/* خلاصه، از همان داده‌ای که فهرست از آن ساخته شده */}
-      {!loading && (d.users || []).length > 0 && (
-        <div className="fx-g4 grid grid-cols-3 gap-3">
+      {/* شمارِ کلِ دسته‌ها، از `counts` بکند — نه جمعِ همین صفحه. کاشیِ
+          قبلی «کیف پول این صفحه» فقط چهل ردیفِ جاری را جمع می‌زد و با
+          رفتن به صفحه‌ی بعد عوض می‌شد؛ عددی که معنای ثابتی نداشت. */}
+      {err && <Msg msg={{ t: "err", m: err }} />}
+      {!loading && d.counts && d.counts.all > 0 && (
+        <div className="fx-g4 grid grid-cols-4 gap-3">
           <StatTile label="کاربران" icon={Users} tone="var(--accent-2)"
-            value={faNum(d.total || 0)}
-            hint={`${faNum((d.users || []).length)} مورد در این صفحه`} />
-          <StatTile label="کیف پول این صفحه" icon={Wallet} tone="var(--ok)"
-            value={faNum(walletSum)} unit="تومان" color="var(--ok)"
-            hint={`${faNum(withPhone)} نفر شماره ثبت کرده‌اند`} />
-          <StatTile label="بلاک‌شده" icon={Ban}
-            tone={blocked ? "var(--danger)" : "var(--muted)"}
-            value={faNum(blocked)}
-            color={blocked ? "var(--danger)" : "var(--text)"}
-            hint={blocked ? "به ربات دسترسی ندارند" : "کسی بلاک نیست"} />
+            value={faNum(d.counts.all)}
+            hint={d.counts.referred ? `${faNum(d.counts.referred)} نفر با دعوت آمده‌اند` : "همه‌ی کسانی که ربات را باز کرده‌اند"} />
+          <StatTile label="خریدار" icon={ShoppingBag} tone="var(--ok)"
+            value={faNum(d.counts.buyers || 0)} color="var(--ok)"
+            hint={`${faNum(Math.round(((d.counts.buyers || 0) * 100) / d.counts.all))}٪ از کاربران`} />
+          <StatTile label="اشتراکِ فعال" icon={CheckCircle2} tone="var(--accent-2)"
+            value={faNum(d.counts.active || 0)}
+            hint={d.counts.expired ? `${faNum(d.counts.expired)} منقضی‌شده` : "هیچ اشتراکی منقضی نشده"} />
+          <StatTile label="مسدود" icon={Ban}
+            tone={d.counts.blocked ? "var(--danger)" : "var(--muted)"}
+            value={faNum(d.counts.blocked || 0)}
+            color={d.counts.blocked ? "var(--danger)" : "var(--text)"}
+            hint={d.counts.withBalance ? `${faNum(d.counts.withBalance)} نفر موجودیِ کیف پول دارند` : "کسی بلاک نیست"} />
         </div>
       )}
 
@@ -164,7 +176,7 @@ export function BotUsersSection({ password, src }) {
           <div className="fx-card overflow-hidden mb-3">
             {users.map((u, i) => (
               <div key={u.id}
-                className="flex items-center justify-between gap-3 p-4 flex-wrap transition-colors hover:bg-white/[.02]"
+                className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap transition-colors fx-rowhover"
                 style={{ borderBottom: i < users.length - 1 ? "1px solid var(--border)" : "none" }}>
                 {/* پایه‌ی ۲۳۰ پیکسل: روی گوشی ستونِ کناری (سکه، موجودی، دکمه‌ها)
                     به خطِ بعد می‌رود، نه اینکه نام را تا «سارا م…» و شماره را
@@ -237,22 +249,10 @@ export function BotUsersSection({ password, src }) {
             ))}
           </div>
 
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <span className="text-[13px]" style={{ color: "var(--muted)" }}>
-              {faNum(offset + 1)}–{faNum(Math.min(offset + PAGE, d.total))} از {faNum(d.total)}
-            </span>
-            {pages > 1 && (
-              <div className="flex items-center gap-2">
-                <button onClick={() => go(Math.max(0, offset - PAGE))} disabled={offset === 0}
-                  className="fx-btn-g px-3 py-2 text-[13px]">قبلی</button>
-                <span className="text-[13px]" style={{ color: "var(--dim)" }}>
-                  {faNum(page)} از {faNum(pages)}
-                </span>
-                <button onClick={() => go(offset + PAGE)} disabled={offset + PAGE >= d.total}
-                  className="fx-btn-g px-3 py-2 text-[13px]">بعدی</button>
-              </div>
-            )}
-          </div>
+          {/* شماره‌دار، نه «قبلی/بعدی» — با ۲۵ هزار کاربر، رسیدن به صفحه‌ی
+              دهم ده کلیک بود (قاعده‌ی مخزن: صفحه‌بندیِ شماره‌دار) */}
+          <Pager page={page} pages={pages} total={d.total} perPage={PAGE}
+            onPage={(n) => go((n - 1) * PAGE)} />
         </>
       )}
 

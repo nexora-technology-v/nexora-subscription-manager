@@ -4690,3 +4690,21 @@ body::before {
   .fx-fw-hero > a { flex-basis: 100%; text-align: center; }
   .fx-fw-hero .fx-pill { white-space: normal; }
 }
+
+/* هاورِ ردیف از توکن — جای `hover:bg-white/[.02]` خام */
+.fx-rowhover:hover { background: var(--hair-1); }
+
+/* فهرستِ پلن‌ها — ردیفِ فشرده، ویرایشگرِ بازشونده */
+.fx-plan + .fx-plan { border-top: 1px solid var(--border); }
+.fx-plan-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; }
+.fx-plan.off .fx-plan-row { opacity: .62; }
+.fx-plan.open { background: var(--surface-2); }
+.fx-plan-edit { padding: 4px 16px 16px; border-top: 1px dashed var(--border); }
+@media (max-width: 600px) { .fx-plan-row { flex-wrap: wrap; } .fx-plan-row > button:first-child { flex-basis: 100%; } }
+
+/* کارتِ سفارش: ستونِ ضمنیِ grid به اندازه‌ی کمینه‌ی محتوا بود، پس روی ۳۲۰
+   پیکسل نام و پیل‌ها کارت را ۱۰ پیکسل بیرون می‌زدند */
+.fx-order { grid-template-columns: minmax(0, 1fr); }
+.fx-order > * { min-width: 0; }
+.fx-order .flex-1 { min-width: 0; }
+.fx-order-act { flex-wrap: wrap; }

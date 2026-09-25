@@ -24,6 +24,7 @@ import {
 
 import { adminSrc } from "../../lib/botsrc";
 import { faNum } from "../../lib/format";
+import { isoToJalaliStamp } from "../../ui/jalali";
 import {
   EmptyState, InfoBox, Msg, Pager, PageSkeleton, SectionHead, Toggle,
 } from "../../ui/index";
@@ -183,7 +184,7 @@ export function BotEventsSection({ password, src }) {
                         <div
                           className="flex items-center gap-3 flex-wrap text-[11px] mt-0.5"
                           style={{ color: "var(--muted)" }}>
-                          <span>{e.at || "—"}</span>
+                          <span>{e.at ? isoToJalaliStamp(e.at) : "—"}</span>
                           {e.name || e.tgId ? (
                             <span className="flex items-center gap-1">
                               <User size={11} />
