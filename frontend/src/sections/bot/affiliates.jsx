@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
 import { errText, faNum } from "../../lib/format";
-import { EmptyState, Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile } from "../../ui/index";
+import { ConfirmModal, EmptyState, Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile } from "../../ui/index";
 
 export function BotAffiliates({ password }) {
   const [data, setData] = useState(null);
@@ -37,20 +37,32 @@ export function BotAffiliates({ password }) {
     if (msg) { const t = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(t); }
   }, [msg]);
 
-  const remove = async (id) => {
-    await fetch(`${API_URL}/api/admin/bot/affiliate/${id}`, {
-      method: "DELETE", headers: { "X-Admin-Password": password } });
-    setMsg({ t: "ok", m: "همکار حذف شد — کاربرانش حفظ شدند" });
-    load();
+  /* پیش‌تر «همکار حذف شد» بی‌توجه به پاسخ نشان داده می‌شد، و روشن/خاموش
+     پاسخ را نمی‌خواند — شکست‌ها شبیهِ موفقیت بودند. حذف هم بی‌پرسش بود. */
+  const [delFor, setDelFor] = useState(null);
+  const remove = async (a) => {
+    setDelFor(null);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/bot/affiliate/${a.id}`, {
+        method: "DELETE", headers: { "X-Admin-Password": password } });
+      const j = await res.json().catch(() => ({}));
+      setMsg(res.ok ? { t: "ok", m: "همکار حذف شد — کاربرانش حفظ شدند" }
+        : { t: "err", m: errText(j.detail, "حذف نشد") });
+      if (res.ok) load();
+    } catch { setMsg({ t: "err", m: "حذف نشد — اتصال برقرار نشد" }); }
   };
 
   const toggle = async (a) => {
-    await fetch(`${API_URL}/api/admin/bot/affiliate/${a.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "X-Admin-Password": password },
-      body: JSON.stringify({ active: !a.active }),
-    });
-    load();
+    try {
+      const res = await fetch(`${API_URL}/api/admin/bot/affiliate/${a.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "X-Admin-Password": password },
+        body: JSON.stringify({ active: !a.active }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setMsg({ t: "err", m: errText(j.detail, "تغییرِ وضعیت ثبت نشد") });
+      load();
+    } catch { setMsg({ t: "err", m: "تغییرِ وضعیت ثبت نشد — اتصال برقرار نشد" }); }
   };
 
   if (loading) {
@@ -127,6 +139,12 @@ export function BotAffiliates({ password }) {
         </>
       )}
 
+      {delFor && (
+        <ConfirmModal title={`حذفِ «${delFor.name}»`} confirmLabel="حذف همکار"
+          desc={`کد ${delFor.code} دیگر کار نمی‌کند و پورسانتِ خریدهای بعدیِ کاربرانش به کسی نمی‌رسد. کاربران و سابقه‌ی پرداخت‌ها حفظ می‌شوند.`}
+          onCancel={() => setDelFor(null)} onConfirm={() => remove(delFor)} />
+      )}
+
       {list.length === 0 ? (
         <EmptyState icon={Coins} text="هنوز همکاری اضافه نشده"
           hint="هر همکار یک لینک اختصاصی می‌گیرد. هر کسی با آن لینک وارد ربات شود، از تمام خریدهایش — نه فقط خرید اول — به آن همکار پورسانت می‌رسد." />
@@ -183,7 +201,7 @@ export function BotAffiliates({ password }) {
                 title={a.active ? "غیرفعال کردن" : "فعال کردن"}>
                 {a.active ? <Eye size={13} /> : <EyeOff size={13} />}
               </button>
-              <button onClick={() => remove(a.id)} className="fx-ico-btn" title="حذف">
+              <button onClick={() => setDelFor(a)} className="fx-ico-btn fx-ico-danger" title="حذف" aria-label="حذف همکار">
                 <Trash2 size={13} />
               </button>
             </div>
@@ -361,16 +379,21 @@ export function AffiliatePayoutModal({ affiliate, password, onClose, onDone }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const [err, setErr] = useState(null);
   const submit = async () => {
     setBusy(true);
     try {
-      await fetch(`${API_URL}/api/admin/bot/affiliate/${affiliate.id}/payout`, {
+      // پرداخت پول است: شکستش پیش‌تر پنجره را می‌بست و مانده را دست‌نخورده می‌گذاشت
+      const res = await fetch(`${API_URL}/api/admin/bot/affiliate/${affiliate.id}/payout`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Admin-Password": password },
         body: JSON.stringify({ amount: +amount, note }),
       });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setErr(errText(j.detail, "پرداخت ثبت نشد")); return; }
       onDone();
-    } finally { setBusy(false); }
+    } catch { setErr("پرداخت ثبت نشد — اتصال برقرار نشد"); }
+    finally { setBusy(false); }
   };
 
   return (
@@ -383,6 +406,7 @@ export function AffiliatePayoutModal({ affiliate, password, onClose, onDone }) {
           ثبت پرداخت
         </button>
       }>
+      {err && <Msg msg={{ t: "err", m: err }} />}
       <div className="p-3.5 rounded-xl mb-4" style={{ background: "var(--surface-3)" }}>
         <div className="flex justify-between text-[13px]">
           <span style={{ color: "var(--muted)" }}>مانده‌ی فعلی</span>

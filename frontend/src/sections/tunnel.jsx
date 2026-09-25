@@ -1095,6 +1095,7 @@ export const QUALITY_COLOR = {
 export function TunnelMonitorModal({ tunnel, password, onClose }) {
   const [m, setM] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
 
   const load = async () => {
     try {
@@ -1114,11 +1115,18 @@ export function TunnelMonitorModal({ tunnel, password, onClose }) {
   const measure = async () => {
     setBusy(true);
     const before = m?.samples?.length || 0;
+    setErr(null);
     try {
-      await fetch(`${API_URL}/api/admin/tunnel/${tunnel.id}/monitor`, {
+      const res = await fetch(`${API_URL}/api/admin/tunnel/${tunnel.id}/monitor`, {
         method: "POST",
         headers: { "X-Admin-Password": password },
       });
+      // درخواستِ ردشده پیش‌تر ۴۸ ثانیه بی‌هدف منتظرِ نتیجه می‌ماند
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setErr(errText(j.detail, "سنجش در صف قرار نگرفت"));
+        return;
+      }
       // agent تا ۳۰ ثانیه بعد سر می‌زند، پس چند بار نتیجه را چک می‌کنیم
       for (let i = 0; i < 12; i++) {
         await new Promise((r) => setTimeout(r, 4000));
@@ -1157,6 +1165,7 @@ export function TunnelMonitorModal({ tunnel, password, onClose }) {
 
   return (
     <Modal title={`کیفیت — ${tunnel.name}`} onClose={onClose} width="540px">
+      {err && <Msg msg={{ t: "err", m: err }} />}
       {!m ? (
         <PageSkeleton />
       ) : (

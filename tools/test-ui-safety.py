@@ -478,7 +478,15 @@ for _f, _src in ALL.items():
     # و خودِ ستونِ تاریخ، بی‌بریدن: `{v.at}`، `{snap.at}`، `{r.created_at}`.
     # نسخه‌ی دومِ این دروازه فقط بریدن را می‌شناخت و چهار جا از زیرش رد شد.
     for _m in re.finditer(r"\{\s*[\w]+\??\.(at|created_at|updated_at|createdAt|updatedAt|paid_at"
-                          r"|expires_at|expiresAt|sent_at|last_seen)\s*\}", _src):
+                          r"|expires_at|expiresAt|sent_at|last_seen|spent_at|spentAt|done_at|taken_at)\s*\}", _src):
+        _ln = _src[_src.rfind(chr(10), 0, _m.start()) + 1:_src.find(chr(10), _m.end())]
+        if "JalaliDate" in _ln or "value={" in _ln:
+            continue      # مقدارِ انتخابگرِ تاریخ است، نه متنِ نمایش‌داده‌شده
+        _isoraw.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
+    # و داخلِ رشته‌ی قالبی: `همه‌ی اعداد از ${d.since} تا امروز` — دفترِ کل
+    # «از 06-08-2026» نشان می‌داد، وارونه و میلادی
+    for _m in re.finditer(r"\$\{\s*[\w]+\??\.(since|at|created_at|spent_at|paid_at|expires_at|until"
+                          r"|periodStart|settledUntil|last_seen)\s*\}", _src):
         _isoraw.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
     # و ستونی که فقط `T`ش عوض شود: `{m.nextRun.replace("T", " ساعت ")}` —
     # بی‌بریدن و با نامی که در فهرستِ بالا نبود، از هر دو شکل رد شد و
@@ -541,6 +549,27 @@ for _f, _src in ALL.items():
     for _m in re.finditer(r"\.click\(\);\s*\n\s*URL\.revokeObjectURL\(", _src):
         _revoke.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
 check("blob بلافاصله بعد از click لغو نمی‌شود", not _revoke, ", ".join(_revoke[:5]))
+
+# نوشتنی که پاسخش خوانده نمی‌شود — `await fetch(url, {method: "POST"})` بی‌آنکه
+# نتیجه در متغیری بنشیند. پرداختِ واسطه، پرداختِ همکار و نرخِ گروه همین‌طور
+# بودند: شکست پنجره را می‌بست و «ذخیره شد» به نظر می‌رسید.
+# تنها استثنا: به‌روزرسانی — سرویس وسطِ درخواست ری‌استارت می‌شود.
+_WRITE_OK = ("/api/admin/run-update",)
+_unread = []
+for _f, _src in ALL.items():
+    if not _f.endswith(".jsx"):
+        continue
+    for _m in re.finditer(r'method:\s*"(POST|PUT|DELETE|PATCH)"', _src):
+        _st = _src.rfind("fetch(", 0, _m.start())
+        if _st < 0 or _m.start() - _st > 400:
+            continue
+        _pre = _src[max(0, _st - 40):_st]
+        if not re.search(r"await\s*$", _pre) or re.search(r"=\s*await\s*$", _pre):
+            continue
+        if any(x in _src[_st:_m.start()] for x in _WRITE_OK):
+            continue
+        _unread.append(f"{_f}:{_src[:_st].count(chr(10)) + 1}")
+check("پاسخِ هر نوشتن (POST/PUT/DELETE) خوانده می‌شود", not _unread, ", ".join(_unread[:5]))
 
 # نویسه‌ی کنترلیِ نامرئی در کدِ تست — `\b` که در heredocِ گیت‌بش به
 # backspace تبدیل شد، همین دروازه‌ی بالا را بی‌صدا کور کرده بود: سبز

@@ -13,8 +13,8 @@ import {
 } from "lucide-react";
 import { JalaliDate, isoToJalaliLabel } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
-import { errText, faDate, faNum, monoIf } from "../lib/format";
-import { Donut, EmptyState, Field, InfoBox, Modal, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../ui/index";
+import { errText, faDate, faNum, monoIf, toFaDigits } from "../lib/format";
+import { ConfirmModal, Donut, EmptyState, Field, InfoBox, Modal, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../ui/index";
 
 export function BillingPeriod({ password }) {
   const { data, loading: loadingGroups } = useBilling(password);
@@ -151,7 +151,7 @@ export function BillingPeriod({ password }) {
                       کانفیگ همان گروه شروع می‌کند. */}
                   <button
                     onClick={() => { setCustom(true); load(0, "full"); }}
-                    className="px-2.5 py-1 rounded-lg text-[12px] font-semibold"
+                    className="px-3 min-h-9 rounded-lg text-[12px] font-semibold"
                     style={{ background: "var(--accent)", color: "#fff",
                              border: "1px solid var(--accent)" }}>
                     از ابتدا تا امروز
@@ -167,7 +167,7 @@ export function BillingPeriod({ password }) {
                                     end: e.toISOString().slice(0, 10) };
                         setRange(r); setCustom(true); load(0, r);
                       }}
-                      className="px-2.5 py-1 rounded-lg text-[12px]"
+                      className="px-3 min-h-9 rounded-lg text-[12px]"
                       style={{ background: "transparent",
                                border: "1px solid var(--border)",
                                color: "var(--muted)" }}>{l}</button>
@@ -349,6 +349,7 @@ export function BillingClients({ password }) {
   const [order, setOrder] = useState("desc");
   const [page, setPage] = useState(0);
   const [detail, setDetail] = useState(null);
+  const [xmsg, setXmsg] = useState(null);
   const PER = 60;
 
   const load = async () => {
@@ -359,10 +360,11 @@ export function BillingClients({ password }) {
         created_from: dates.from, created_to: dates.to,
         limit: String(PER), offset: String(page * PER),
       });
-      const d = await fetch(`${API_URL}/api/admin/billing/clients?${p}`, {
+      const r = await fetch(`${API_URL}/api/admin/billing/clients?${p}`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
-      setData(d);
+      });
+      const d = await r.json().catch(() => ({}));
+      setData(r.ok ? d : { ready: false, error: errText(d.detail, "خواندنِ کانفیگ‌ها ناموفق بود"), clients: [] });
     } catch {
       setData({ ready: false, error: "اتصال به سرور برقرار نشد", clients: [] });
     } finally { setLoading(false); }
@@ -399,6 +401,12 @@ export function BillingClients({ password }) {
       });
       const res = await fetch(`${API_URL}/api/admin/billing/clients/export?${p}`, {
         headers: { "X-Admin-Password": password } });
+      // بی‌این، پاسخِ خطا با پسوندِ .csv دانلود می‌شد و «بی‌صدا» تمام می‌شد
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setXmsg({ t: "err", m: errText(j.detail, "خروجی گرفته نشد") });
+        return;
+      }
       const blob = await res.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -406,7 +414,7 @@ export function BillingClients({ password }) {
       a.click();
       // لغوِ فوری، دانلود را در بعضی مرورگرها پیش از شروع می‌بُرد
       setTimeout((h) => URL.revokeObjectURL(h), 2000, a.href);
-    } catch { /* بی‌صدا */ }
+    } catch { setXmsg({ t: "err", m: "خروجی گرفته نشد — اتصال برقرار نشد" }); }
   };
 
   const th = (key, label, w) => {
@@ -460,6 +468,8 @@ export function BillingClients({ password }) {
             </button>
           </div>
         } />
+
+      <Msg msg={xmsg} />
 
       {/* آمار */}
       <div className="fx-g4 grid grid-cols-4 gap-3">
@@ -1049,7 +1059,7 @@ export function BillingSettings({ password }) {
         headers: { "Content-Type": "application/json", "X-Admin-Password": password },
         body: JSON.stringify({ data: parsed.data || parsed }),
       });
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       if (res.ok && d.warning) {
         setMsg({ t: "err", m: `بازیابی ناقص بود — ${d.warning}` });
       } else if (res.ok) {
@@ -1600,7 +1610,7 @@ export function BillingDash({ password }) {
                     <span className="fx-pill" style={{
                       background: rest > 0 ? "var(--warn-soft)" : "var(--ok-soft)",
                       color: rest > 0 ? "var(--warn)" : "var(--ok)" }}>
-                      {rest > 0 ? `${faNum(pct)}٪ تسویه` : "تسویه شده"}
+                      {rest > 0 ? `${faNum(pct)}٪ تسویه` : rest < 0 ? "پیش‌پرداخت" : "تسویه شده"}
                     </span>
                   </div>
                   {/* کلیدِ گروه در bdi می‌نشیند، نه در یک div با dir="ltr".
@@ -1617,10 +1627,12 @@ export function BillingDash({ password }) {
                 <div className="text-left">
                   <div className="text-[14px] font-extrabold"
                     style={{ color: rest > 0 ? "var(--warn)" : "var(--ok)", fontFamily: "var(--mono)" }}>
-                    {faNum(rest)}
+                    {/* مانده‌ی منفی اعتبار است، نه «تسویه‌شده» با علامتِ منفی —
+                        «−۵۸۳٬۲۰۰ تسویه شده» خوانده نمی‌شد */}
+                    {faNum(Math.abs(rest))}
                   </div>
                   <div className="text-[11.5px] mt-0.5" style={{ color: "var(--muted)" }}>
-                    {rest > 0 ? "مانده" : "تسویه شده"}
+                    {rest > 0 ? "مانده" : rest < 0 ? "اعتبار" : "تسویه شده"}
                   </div>
                 </div>
               </div>
@@ -1682,6 +1694,8 @@ export function BillingGroups({ password }) {
   const [open, setOpen] = useState(null);
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(null);
+  const [msg, setMsg] = useState(null);
+  useEffect(() => { if (msg && msg.t === "ok") { const x = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(x); } }, [msg]);
 
   if (loading) return <PageSkeleton />;
   if (!data?.ready) return (
@@ -1706,16 +1720,28 @@ export function BillingGroups({ password }) {
   const noRateCount = allGroups.filter((g) =>
     g.billed && !(g.rates || []).length && !g.perGb).length;
 
+  /* پاسخ پیش‌تر خوانده نمی‌شد: بکند ردیفِ نرخِ نامعتبر را صریحاً با ۴۰۰
+     رد می‌کند، ولی این‌جا پیش‌نویس پاک و صفحه تازه می‌شد — مالک فکر
+     می‌کرد نرخ ذخیره شده، و گروه بی‌نرخ بی‌صدا صفر حساب می‌شد. حالا
+     خطا می‌ماند و پیش‌نویس هم، تا دوباره بشود درستش کرد. */
   const save = async (g) => {
     setSaving(g.name);
     try {
-      await fetch(`${API_URL}/api/admin/billing/group/${encodeURIComponent(g.name)}`, {
+      const res = await fetch(`${API_URL}/api/admin/billing/group/${encodeURIComponent(g.name)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "X-Admin-Password": password },
         body: JSON.stringify(get(g)),
       });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMsg({ t: "err", m: `«${g.name}» ذخیره نشد — ${errText(j.detail, "خطای سرور")}` });
+        return;
+      }
       await reload();
       setDraft({ ...draft, [g.name]: undefined });
+      setMsg(j.warning ? { t: "err", m: j.warning } : { t: "ok", m: `نرخ‌های «${g.name}» ذخیره شد` });
+    } catch {
+      setMsg({ t: "err", m: `«${g.name}» ذخیره نشد — اتصال برقرار نشد` });
     } finally { setSaving(null); }
   };
 
@@ -1723,6 +1749,7 @@ export function BillingGroups({ password }) {
     <div className="fx-anim">
       <SectionHead title="واسطه‌ها و نرخ"
         desc="گروه‌ها از ۳x-ui خوانده می‌شوند. برای هرکدام تعیین کنید واسطه است یا مشتری مستقیم." />
+      <Msg msg={msg} />
 
       {/* «چند گروه واسطه است و چندتاشان هنوز نرخ ندارند» — سؤالی که
           جوابش تا امروز فقط با باز کردنِ تک‌تک گروه‌ها پیدا می‌شد.
@@ -1997,6 +2024,9 @@ export function BillingGroups({ password }) {
   );
 }
 
+/* همان قاعده‌ی بکند (`kind not in ("قطعی", "ثبت‌شده")` = تخمینی) */
+const CERTAIN = new Set(["قطعی", "ثبت‌شده"]);
+
 export function BillingInvoice({ password }) {
   const { data, loading } = useBilling(password);
   const [sel, setSel] = useState("");
@@ -2051,18 +2081,27 @@ export function BillingInvoice({ password }) {
   };
   useEffect(() => { if (!sel && billed.length) setSel(billed[0].name); }, [data]);
 
+  const [invErr, setInvErr] = useState(null);
+  /* پاسخِ خطا پیش‌تر خودش «صورتحساب» می‌شد و با عددهای خالی رندر می‌شد —
+     صورتحسابِ خراب شبیهِ صورتحسابِ صفر بود. */
   const gen = async () => {
     if (!sel) return;
     setBusy(true);
+    setInvErr(null);
     try {
       const url =
         `${API_URL}/api/admin/billing/invoice/${encodeURIComponent(sel)}`;
-      const d = await fetch(url + q, {
+      const r = await fetch(url + q, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setInv(null); setInvErr(errText(d.detail, "صورتحساب ساخته نشد")); return; }
       setInv(d);
-    } finally { setBusy(false); }
+    } catch { setInv(null); setInvErr("صورتحساب ساخته نشد — اتصال برقرار نشد"); }
+    finally { setBusy(false); }
   };
+  // با انتخابِ واسطه خودش ساخته می‌شود؛ پیش‌تر صفحه تا زدنِ «نمایش» خالی بود
+  useEffect(() => { if (sel) gen(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [sel]);
 
   if (loading) return <PageSkeleton />;
   if (!data?.ready) return (
@@ -2072,6 +2111,7 @@ export function BillingInvoice({ password }) {
   return (
     <div className="fx-anim">
       <SectionHead title="صورتحساب" desc="جزئیات کامل هر واسطه، آماده برای ارسال." />
+      {invErr && <Msg msg={{ t: "err", m: invErr }} />}
 
       {billed.length === 0 ? (
         <EmptyState icon={FileText} text="ابتدا حداقل یک گروه را واسطه علامت بزنید" />
@@ -2138,7 +2178,7 @@ export function BillingInvoice({ password }) {
               <div className="text-[14px] font-semibold text-white mb-1">{inv.label}</div>
               <div className="text-[12px] mb-4" style={{ color: "var(--muted)" }}>
                 {inv.sinceJalali
-                  ? `از ${inv.sinceJalali} تا امروز · ${inv.sinceWhy}`
+                  ? `از ${toFaDigits(inv.sinceJalali)} تا امروز · ${inv.sinceWhy}`
                   : "از ابتدای همکاری تا امروز"}
               </div>
 
@@ -2198,17 +2238,26 @@ export function BillingInvoice({ password }) {
                       <div className="text-[11.5px] mt-1" style={{ color: "var(--muted)" }}>
                         {it.gb ? `${faNum(it.gb)}GB` : "نامحدود"} · {faNum(it.months)} ماه
                         {it.renewals > 0 && ` · ${faNum(it.renewals)} تمدید`}
-                        {!it.certain && it.drift != null && ` · ±${it.drift} روز`}
+                        {!CERTAIN.has(it.kind) && it.drift != null && ` · ±${faNum(it.drift)} روز`}
                       </div>
                     </div>
-                    <span className="text-[13px] font-semibold shrink-0"
+                    {/* بکند مبلغِ هر ردیف را `amount` می‌فرستد و بی‌نرخ بودن را با
+                        `price: null`. این‌جا `lineTotal` خوانده می‌شد که هرگز
+                        وجود نداشت — روی سرور *همه‌ی* ردیف‌های صورتحساب «بدون نرخ»
+                        دیده می‌شدند، در حالی که جمعِ بالای همان صفحه درست بود. */}
+                    <span className="text-[13px] font-semibold shrink-0 text-left"
                       style={{
-                        color: it.lineTotal == null ? "var(--warn)" : "var(--dim)",
+                        color: it.price == null ? "var(--warn)" : "var(--dim)",
                         fontFamily: "var(--mono)",
                       }}>
-                      {it.lineTotal == null
-                        ? <span className="fx-fa-sub">بدون نرخ</span>
-                        : faNum(it.lineTotal)}
+                      {it.price == null
+                        ? <span className="fx-fa-sub" title={it.priceWhy || ""}>بدون نرخ</span>
+                        : faNum(it.amount || 0)}
+                      {it.price != null && it.deviceAmount > 0 && (
+                        <span className="block fx-fa-sub text-[11px]" style={{ color: "var(--muted)" }}>
+                          {faNum(it.deviceAmount)} بابتِ {faNum(it.extraDevices)} کاربرِ اضافه
+                        </span>
+                      )}
                     </span>
                   </div>
                 ))}
@@ -2333,14 +2382,22 @@ export function BillingPayments({ password }) {
   const [add, setAdd] = useState(false);
   const [form, setForm] = useState({ group: "", amount: "", date: "", note: "" });
   const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const [delFor, setDelFor] = useState(null);
+  useEffect(() => { if (msg && msg.t === "ok") { const x = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(x); } }, [msg]);
 
+  /* پرداخت پول است؛ هیچ مسیرش بی‌صدا نیست. پیش‌تر خواندن «بی‌صدا» بود،
+     ثبت و حذف پاسخ را نمی‌خواندند (پنجره بسته می‌شد حتی اگر ثبت نشده
+     بود)، و حذفِ یک پرداخت با یک کلیک انجام می‌شد. */
   const load = async () => {
     try {
-      const d = await fetch(`${API_URL}/api/admin/billing/payments`, {
+      const r = await fetch(`${API_URL}/api/admin/billing/payments`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setMsg({ t: "err", m: errText(d.detail, "خواندنِ پرداخت‌ها ناموفق بود") }); return; }
       setList(d.payments || []);
-    } catch { /* بی‌صدا */ }
+    } catch { setMsg({ t: "err", m: "خواندنِ پرداخت‌ها ناموفق بود — اتصال برقرار نشد" }); }
   };
   useEffect(() => { load(); }, [password]);
 
@@ -2350,22 +2407,34 @@ export function BillingPayments({ password }) {
     if (!form.group || !form.amount) return;
     setBusy(true);
     try {
-      await fetch(`${API_URL}/api/admin/billing/payment`, {
+      const res = await fetch(`${API_URL}/api/admin/billing/payment`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Admin-Password": password },
         body: JSON.stringify({ ...form, amount: Number(form.amount) }),
       });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setMsg({ t: "err", m: errText(j.detail, "پرداخت ثبت نشد") }); return; }
       setAdd(false);
       setForm({ group: "", amount: "", date: "", note: "" });
+      setMsg({ t: "ok", m: `${faNum(Number(form.amount))} تومان ثبت شد` });
       load();
-    } finally { setBusy(false); }
+      if (reload) reload();
+    } catch { setMsg({ t: "err", m: "پرداخت ثبت نشد — اتصال برقرار نشد" }); }
+    finally { setBusy(false); }
   };
 
-  const del = async (id) => {
-    await fetch(`${API_URL}/api/admin/billing/payment/${id}`, {
-      method: "DELETE", headers: { "X-Admin-Password": password },
-    });
-    load();
+  const del = async (p) => {
+    setDelFor(null);
+    try {
+      const res = await fetch(`${API_URL}/api/admin/billing/payment/${p.id}`, {
+        method: "DELETE", headers: { "X-Admin-Password": password },
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { setMsg({ t: "err", m: errText(j.detail, "حذف نشد") }); return; }
+      setMsg({ t: "ok", m: "پرداخت حذف شد" });
+      load();
+      if (reload) reload();
+    } catch { setMsg({ t: "err", m: "حذف نشد — اتصال برقرار نشد" }); }
   };
 
   return (
@@ -2377,6 +2446,8 @@ export function BillingPayments({ password }) {
             <PlusIcon size={14} /> ثبت پرداخت
           </button>
         } />
+
+      <Msg msg={msg} />
 
       <SettleBox password={password} groups={billed}
         onDone={() => { load(); reload && reload(); }} />
@@ -2401,7 +2472,8 @@ export function BillingPayments({ password }) {
                   <span className="text-[14px] font-bold" style={{ color: "var(--ok)", fontFamily: "var(--mono)" }}>
                     +{faNum(p.amount)}
                   </span>
-                  <button title="حذف این پرداخت" onClick={() => del(p.id)} className="fx-ico-btn" style={{ width: 28, height: 28 }}>
+                  <button title="حذف این پرداخت" aria-label="حذف این پرداخت" onClick={() => setDelFor(p)}
+                    className="fx-ico-btn fx-ico-danger" style={{ width: 30, height: 30 }}>
                     <Trash2 size={12} />
                   </button>
                 </div>
@@ -2409,6 +2481,12 @@ export function BillingPayments({ password }) {
             );
           })}
         </div>
+      )}
+
+      {delFor && (
+        <ConfirmModal title="حذفِ این پرداخت"
+          desc={`${faNum(delFor.amount)} تومانِ «${delFor.group_name}» از دریافتی‌ها برداشته می‌شود و مانده‌ی این واسطه همان‌قدر بالا می‌رود.`}
+          confirmLabel="حذف پرداخت" onCancel={() => setDelFor(null)} onConfirm={() => del(delFor)} />
       )}
 
       {add && createPortal(

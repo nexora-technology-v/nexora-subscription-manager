@@ -8001,6 +8001,8 @@ def _billing_overview_impl():
                 "skipped": 0, "skippedWhy": {},
                 # کلاینت‌هایی که ربات فروخته — مشتری مستقیم، نه واسطه
                 "botOwned": 0,
+                # همیشه باشد — پیش‌تر فقط گروهِ دارای نرخِ هر-کاربر این کلید را داشت
+                "deviceExtra": 0,
             }
 
         G = groups[g]
@@ -8105,6 +8107,8 @@ def _billing_overview_impl():
                 "unpriced": 0, "unpricedWhy": {},
                 "estimated": 0,
                 "botOwned": 0,
+                # همیشه باشد — پیش‌تر فقط گروهِ دارای نرخِ هر-کاربر این کلید را داشت
+                "deviceExtra": 0,
                 # ── این نه قلم از قلم افتاده بودند ──
                 #
                 # این شاخه برای گروهی است که در x-ui ساخته شده ولی
@@ -8327,12 +8331,16 @@ def billing_group_put(group_key: str, payload: dict, x_admin_password: str = Hea
         con.commit()
         # نرخ عوض شد → کفِ پلن‌های نماینده‌های این گروه هم. شکستش ذخیره‌ی
         # نرخ را برنمی‌گرداند، ولی بی‌صدا هم نمی‌ماند.
+        warn = None
         try:
             _refresh_plan_costs(group_key)
-        except Exception:
+        except Exception as e:
             log.warning("همگام‌سازیِ کفِ پلن‌های گروه %s ناموفق", group_key,
                         exc_info=True)
-        return {"ok": True, "rates": clean, "per_gb": per_gb, "perGb": per_gb,
+            # فقط لاگ کافی نبود: مالک «ذخیره شد» می‌دید و کفِ پلن‌های
+            # نماینده‌های این گروه با نرخِ قدیم می‌ماند
+            warn = f"نرخ ذخیره شد، ولی کفِ پلن‌های نماینده‌ها به‌روز نشد: {type(e).__name__}"
+        return {"ok": True, "warning": warn, "rates": clean, "per_gb": per_gb, "perGb": per_gb,
                 "periodDays": period_days, "periodStart": period_start,
                 "settledUntil": settled_until,
                 "billable": bool(billable), "billed": bool(billable),
@@ -10811,7 +10819,8 @@ def billing_diagnose(x_admin_password: str = Header(...)):
         import pwd
         me = pwd.getpwuid(os.geteuid()).pw_name
     except Exception:
-        me = str(os.geteuid())
+        # ویندوز geteuid ندارد؛ این‌جا خودِ تشخیص نباید بیفتد
+        me = str(os.geteuid()) if hasattr(os, "geteuid") else "نامشخص"
     step("کاربر پنل", True, me)
 
     con, err = _xui_conn()

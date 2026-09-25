@@ -17,7 +17,7 @@ import {
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
 import { ConfirmModal, EmptyState, Field, InfoBox, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile } from "../ui/index";
-import { JalaliDate, isoToJalaliStamp } from "../ui/jalali";
+import { JalaliDate, isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
 
 const KIND_META = {
   server_abroad: { label: "سرور خارج", icon: Server, color: "var(--accent-2)" },
@@ -283,7 +283,8 @@ export function BillingExpenses({ password }) {
       <div className="fx-g3 grid grid-cols-3 gap-3">
         <StatTile label="هزینه‌ی این بازه" icon={Wallet} tone="var(--danger)"
           value={faNum(d.total || 0)} unit="تومان" color="var(--danger)"
-          hint={d.count ? `${faNum(d.count)} قلم هزینه` : "چیزی ثبت نشده"} />
+          // بکند `count` نمی‌فرستد؛ «چیزی ثبت نشده» کنارِ ۸ میلیون تومان می‌نشست
+          hint={(d.expenses || []).length ? `${faNum((d.expenses || []).length)} قلم هزینه` : "چیزی ثبت نشده"} />
         <StatTile label="هزینه‌ی ثابت ماهانه" icon={RefreshCw} tone="var(--warn)"
           value={faNum(d.monthlyRecurring || 0)} unit="تومان" color="var(--warn)"
           hint={d.monthlyFromYearly > 0
@@ -291,7 +292,7 @@ export function BillingExpenses({ password }) {
                 : "این مبلغ را هر ماه باید دربیاورید"} />
         <StatTile label="حجم خریداری‌شده" icon={TrendingUp} tone="var(--accent-2)"
           value={faNum(d.trafficGB || 0)} unit="گیگ" color="var(--accent-2)"
-          hint={d.trafficCost ? `${faNum(d.trafficCost)} تومان` : "ترافیک خریداری‌شده"} />
+          hint={(d.byKind || {}).traffic ? `${faNum(d.byKind.traffic)} تومان هزینه‌ی حجم` : "ترافیک خریداری‌شده"} />
       </div>
 
       <div className="fx-card p-4 mb-4">
@@ -349,7 +350,7 @@ export function BillingExpenses({ password }) {
                       <td dir="ltr" style={{
                         fontFamily: "var(--mono)", color: "var(--muted)",
                         fontSize: 12,
-                      }}>{e.spent_at}</td>
+                      }}>{isoToJalaliLabel(e.spent_at)}</td>
                       <td style={{ color: m.color }}>{m.label}</td>
                       <td>
                         {e.label}
@@ -360,7 +361,9 @@ export function BillingExpenses({ password }) {
                         ) : null}
                       </td>
                       <td dir="ltr" style={{ fontFamily: "var(--mono)" }}>
-                        {e.amount} {e.currency}
+                        {e.currency === "IRT"
+                          ? <>{faNum(e.amount)} <span className="fx-fa-sub">تومان</span></>
+                          : `${e.amount} ${e.currency}`}
                         {e.fx_rate && e.currency !== "IRT" ? (
                           <div className="fx-fa-sub" style={{ fontSize: 11, color: "var(--muted)" }}>
                             نرخ {faNum(e.fx_rate)}
@@ -376,8 +379,8 @@ export function BillingExpenses({ password }) {
                           : e.recurring === "yearly" ? "سالانه" : "یک‌بار"}
                       </td>
                       <td>
-                        <button title="حذف این هزینه" onClick={() => setDel(e)}
-                          className="fx-btn-g px-2 py-1"
+                        <button title="حذف این هزینه" aria-label="حذف این هزینه" onClick={() => setDel(e)}
+                          className="fx-btn-g w-9 h-9 grid place-items-center"
                           style={{ color: "var(--danger)" }}>
                           <Trash2 size={13} />
                         </button>
@@ -431,7 +434,7 @@ export function BillingLedger({ password }) {
   return (
     <div className="fx-anim">
       <SectionHead title="دفتر کل"
-        desc={d.since ? `همه‌ی اعداد از ${d.since} تا امروز` : "جمع‌بندی از روز اول"}
+        desc={d.since ? `همه‌ی اعداد از ${isoToJalaliLabel(d.since)} تا امروز` : "جمع‌بندی از روز اول"}
         action={(
           <button onClick={load} disabled={busy}
             className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">

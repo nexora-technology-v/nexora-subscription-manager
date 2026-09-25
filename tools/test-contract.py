@@ -92,6 +92,9 @@ T.exec("UPDATE orders SET status='awaiting' WHERE id=?", (o2["id"],))
 T.exec("INSERT INTO subscriptions (tenant_id,user_id,plan_id,client_email,is_active,expires_at)"
        " VALUES (?,?,?,?,1,datetime('now','+10 day'))", (tid, u1["id"], pid, "ali_1"))
 T.create_user(1002, None, "رضا", referred_by=u1["id"])
+# یک همکارِ فروش — بی‌این فهرستِ همکارها خالی است و دروازه‌ی «فیلدِ خوانده‌شده» کور
+T.exec("INSERT INTO affiliates (tenant_id,name,code,percent,active,tg_id) VALUES (?,?,?,?,1,?)",
+       (tid, "همکار", "AF1", 10, 9001))
 # یک نماینده — بی‌این فهرستِ نماینده‌ها خالی است و کلیدهای هر ردیف سنجیده نمی‌شود
 _rc = sqlite3.connect(TMP / "bot.db")
 _rc.execute("INSERT INTO tenants (name, bot_token, owner_tg_id, parent_id, portal_slug, portal_group, credit) "
@@ -190,6 +193,10 @@ APP.ADMIN_PASSWORD = "testpw"
 APP.AUTH_PATH = TMP / "auth.json"
 APP.load_password = lambda: "testpw"
 
+# یک گروهِ صورتحساب‌دار — بی‌این صورتحسابی نیست و ردیف‌هایش سنجیده نمی‌شوند
+APP.billing_group_put("de-1", {"billable": True, "rates": [{"gb": 50, "price": 120000, "perDevice": 20000}]},
+                      x_admin_password="testpw")
+
 
 # ── صداکننده‌ی ASGI، بی‌وابستگی ──
 async def _asgi_get(path, headers):
@@ -276,6 +283,10 @@ MUST_MATCH = {
     "/api/admin/bot/affiliates", "/api/admin/bot/events", "/api/admin/bot/settings",
     # فضای ۵ — نمایندگی
     "/api/admin/tenant/portal-list",
+    # فضای ۶ — حسابداری
+    "/api/admin/billing/overview", "/api/admin/billing/groups", "/api/admin/billing/ledger",
+    "/api/admin/billing/payments", "/api/admin/billing/expenses", "/api/admin/billing/clients",
+    "/api/admin/billing/fx", "/api/admin/billing/xui-path",
 }
 
 #: مسیرهای پارامتری با یک شناسه‌ی واقعی از فیکسچر — فهرستِ خودکار
@@ -358,7 +369,88 @@ def main():
         print(f"  {R}FAIL{X} must-match drifted: {', '.join(broken)}" + (f"  missing routes: {', '.join(lost)}" if lost else "") + "\n")
         sys.exit(1)
     print(f"  {G}OK{X} all {len(MUST_MATCH)} must-match routes agree with the backend\n")
+    if not field_reads():
+        sys.exit(1)
     sys.exit(0)
+
+
+#: رابط فقط فیلدی را بخواند که بکند واقعاً می‌فرستد.
+#
+# شکلِ هارنس را بالا با بکند می‌سنجیم؛ ولی خودِ JSX هم می‌توانست فیلدِ
+# خیالی بخواند. ردیف‌های صورتحساب `it.lineTotal` می‌خواندند که بکند هرگز
+# نفرستاده بود (نامش amount است): روی سرور همه‌ی ردیف‌ها «بدون نرخ» بودند
+# و جمعِ بالای صفحه درست. همین نوع در «تلاش برای نفوذ» (a.tries،
+# a.blocked) و همکاری در فروش (totalPaid) هم پیدا شد.
+#
+# (فایل، آغازِ بلوکِ رندر، متغیرِ حلقه، مسیر، مسیرِ آرایه در JSON، کلیدهای
+#  شرطیِ مجاز — آن‌هایی که بکند فقط گاهی می‌گذارد)
+FIELD_READS = [
+    ("sections/billing.jsx", "(inv.items || []).map((it, i) =>", "it",
+     "/api/admin/billing/invoice/de-1", ["items"], set()),
+    ("sections/bot/orders.jsx", "orders.map((o) =>", "o",
+     "/api/admin/bot/orders?status=all", ["orders"], set()),
+    ("sections/bot/affiliates.jsx", "list.map((a) =>", "a",
+     "/api/admin/bot/affiliates", ["affiliates"], set()),
+    ("sections/intrusion.jsx", "pageRows.map((a) =>", "a",
+     "/api/admin/firewall/intrusion", ["ssh", "attempts"],
+     {"owner", "ownerKind", "ownerWhy", "ptr", "clients"}),
+    # سطحِ بالا: کلِ یک کامپوننت، `d` خودِ پاسخ است (path خالی)
+    # هزینه‌ها `d.count` و `d.trafficCost` می‌خواند که بکند نمی‌فرستاد
+    ("sections/expenses.jsx", "export function BillingExpenses(", "d",
+     "/api/admin/billing/expenses", [], set()),
+    ("sections/expenses.jsx", "export function BillingLedger(", "d",
+     "/api/admin/billing/ledger", [], set()),
+]
+
+
+def _block(src, anchor):
+    if anchor.startswith("export function"):
+        a = src.index(anchor)
+        b = src.find(chr(10) + "export function", a + 10)
+        return src[a:b if b > 0 else len(src)]
+    i = src.index(anchor) + len(anchor)
+    depth, j = 1, src.index("(", src.index(anchor))
+    # از پرانتزِ «map(» تا جفتش
+    j = src.index("map(", src.index(anchor)) + 3
+    depth = 0
+    for k in range(j, min(len(src), j + 12000)):
+        if src[k] == "(":
+            depth += 1
+        elif src[k] == ")":
+            depth -= 1
+            if depth == 0:
+                return src[j:k]
+    return src[i:i + 6000]
+
+
+def field_reads():
+    import re as _re
+    bad = []
+    for f, anchor, var, route, path, optional in FIELD_READS:
+        src = io.open(ROOT / "frontend" / "src" / f, encoding="utf-8").read()
+        if anchor not in src:
+            bad.append(f"{f}: anchor gone «{anchor}» — update FIELD_READS")
+            continue
+        reads = set(_re.findall(r"(?<![\w.])" + var + r"\.([A-Za-z_]\w*)", _block(src, anchor)))
+        st, body = call(route)
+        rows = body
+        for k in path:
+            rows = (rows or {}).get(k) if isinstance(rows, dict) else None
+        if isinstance(rows, dict):
+            rows = [rows]
+        if st != 200 or not rows:
+            bad.append(f"{f}: backend {route} gave no rows (status {st}) — gate would be blind")
+            continue
+        keys = set().union(*(r.keys() for r in rows if isinstance(r, dict))) | optional
+        ghost = sorted(reads - keys)
+        if ghost:
+            bad.append(f"{f}: reads {', '.join(var + '.' + g for g in ghost)} — not in {route}")
+    print(f"{D}── field reads: JSX vs backend rows ({len(FIELD_READS)} renderers) ──{X}")
+    for b in bad:
+        print(f"  {R}✗{X} {b}")
+    if not bad:
+        print(f"  {G}OK{X} every field these renderers read exists in the backend response\n")
+    return not bad
 
 
 if __name__ == "__main__" and os.environ.get("NX_CONTRACT_IMPORT_ONLY") != "1":
