@@ -15,8 +15,8 @@ import {
   Activity, AlertTriangle, CheckCircle2, Clock, Loader2, RefreshCw, Search, Server, ShieldCheck, Stethoscope,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { errText, faNum } from "../lib/format";
-import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, UsageBar } from "../ui/index";
+import { errMsg, errText, faNum, okJson } from "../lib/format";
+import { EmptyState, InfoBox, LoadError, Msg, PageSkeleton, SectionHead, UsageBar } from "../ui/index";
 import { MetricCard, PortsCard, ConnectionsCard, byLevel } from "./monitoring";
 import { isoToJalaliStamp } from "../ui/jalali";
 
@@ -43,9 +43,9 @@ function NodeDiagnose({ nodeId, password, onFix }) {
       const j = await fetch(
         `${API_URL}/api/admin/tunnel/node/${nodeId}/diagnose`,
         { headers: { "X-Admin-Password": password } },
-      ).then((r) => r.json());
+      ).then((r) => okJson(r));
       setD(j);
-    } catch { setD({ steps: [], error: "اتصال برقرار نشد" }); }
+    } catch (e) { setD({ steps: [], error: errMsg(e) }); }
     finally { setBusy(false); }
   }, [nodeId, password]);
 
@@ -176,18 +176,19 @@ export function NodesMonitor({ password }) {
   const [busy, setBusy] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [listErr, setListErr] = useState("");
   const timer = useRef(null);
 
   useEffect(() => {
     fetch(`${API_URL}/api/admin/tunnel/overview`, {
       headers: { "X-Admin-Password": password },
-    }).then((r) => r.json())
+    }).then((r) => okJson(r))
       .then((j) => {
         const list = j.nodes || [];
         setNodes(Array.isArray(list) ? list : []);
         if (Array.isArray(list) && list.length) setSel(list[0].id);
       })
-      .catch(() => setNodes([]));
+      .catch((e) => { setNodes([]); setListErr(errMsg(e)); });
   }, [password]);
 
   const read = useCallback(async (nodeId) => {
@@ -196,11 +197,11 @@ export function NodesMonitor({ password }) {
       const j = await fetch(
         `${API_URL}/api/admin/tunnel/node/${nodeId}/sysmon`,
         { headers: { "X-Admin-Password": password } },
-      ).then((r) => r.json());
+      ).then((r) => okJson(r));
       setSnap(j);
       return j;
-    } catch {
-      setSnap({ ready: false, note: "اتصال برقرار نشد" });
+    } catch (e) {
+      setSnap({ ready: false, note: errMsg(e) });
       return null;
     }
   }, [password]);
@@ -288,6 +289,16 @@ export function NodesMonitor({ password }) {
   if (nodes === null) {
     return (
       <PageSkeleton />
+    );
+  }
+
+  // خطا «هنوز سروری اضافه نشده» نیست
+  if (listErr && !nodes.length) {
+    return (
+      <div className="fx-anim">
+        <SectionHead title="مانیتورینگ سرورهای دیگر" />
+        <LoadError what="فهرستِ سرورها" err={listErr} />
+      </div>
     );
   }
 

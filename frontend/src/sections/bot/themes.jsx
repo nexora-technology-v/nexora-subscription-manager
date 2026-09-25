@@ -7,11 +7,11 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlertTriangle, Check, CheckCircle2, Loader2, Palette as PaletteIcon, Plus as PlusIcon, Trash2, X,
+  AlertTriangle, Check, Loader2, Palette as PaletteIcon, Plus as PlusIcon, Trash2, X,
 } from "lucide-react";
-import { errText } from "../../lib/format";
+import { errText, okJson } from "../../lib/format";
 import { API_URL } from "../../lib/constants";
-import { ConfirmModal, Field, InfoBox, PageSkeleton, SectionHead } from "../../ui/index";
+import { ConfirmModal, Field, InfoBox, LoadError, Msg, PageSkeleton, SectionHead } from "../../ui/index";
 
 // نمایش کوچک ساختار هر Template
 export function TemplateThumb({ id, vars, active }) {
@@ -125,18 +125,29 @@ export function ThemesSection({ config, setConfig, password }) {
   const [addOpen, setAddOpen] = useState(false);
   const [msg, setMsg] = useState(null);
   const [confirmDel, setConfirmDel] = useState(null);
+  const [err, setErr] = useState("");
 
   const load = async () => {
     try {
       const res = await fetch(`${API_URL}/api/admin/themes`, { headers: { "X-Admin-Password": password } });
-      if (res.ok) setData(await res.json());
-    } catch { /* بی‌صدا */ }
+      setData(await okJson(res, "خواندنِ قالب‌ها ناموفق بود"));
+      setErr("");
+    } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, [password]);
   useEffect(() => { if (msg) { const t = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(t); } }, [msg]);
 
   if (loading) return <PageSkeleton />;
+  // بی‌این، خطا «۰ ساختار × ۰ پالت» و دو گامِ خالی نشان می‌داد
+  if (err && !data) {
+    return (
+      <div className="fx-anim">
+        <SectionHead title="قالب صفحه اشتراک" />
+        <LoadError what="قالب‌ها و پالت‌ها" err={err} onRetry={load} />
+      </div>
+    );
+  }
 
   const templates = data?.templates || [];
   const palettes = [...(data?.palettes || []), ...(data?.customPalettes || [])];
@@ -152,7 +163,10 @@ export function ThemesSection({ config, setConfig, password }) {
         method: "DELETE", headers: { "X-Admin-Password": password },
       });
       if (res.ok) { setMsg({ t: "ok", m: "پالت حذف شد" }); load(); }
-      else setMsg({ t: "err", m: "حذف ناموفق بود" });
+      else {
+        const j = await res.json().catch(() => ({}));
+        setMsg({ t: "err", m: errText(j.detail, "حذف ناموفق بود") });
+      }
     } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
   };
 
@@ -166,16 +180,7 @@ export function ThemesSection({ config, setConfig, password }) {
           </button>
         } />
 
-      {msg && (
-        <div className="rounded-xl p-3 mb-5 flex items-center gap-2 text-[13px]"
-          style={{
-            background: msg.t === "err" ? "rgba(248,113,113,.1)" : "rgba(52,211,153,.1)",
-            border: `1px solid ${msg.t === "err" ? "rgba(248,113,113,.3)" : "rgba(52,211,153,.3)"}`,
-            color: msg.t === "err" ? "var(--danger)" : "var(--ok)",
-          }}>
-          {msg.t === "err" ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />} {msg.m}
-        </div>
-      )}
+      <Msg msg={msg} />
 
       {/* گام ۱ — ساختار */}
       <ThemeStep n="۱" title="ساختار قالب" desc="سبک بصری کارت‌ها و اجزای صفحه" accent={V.accent} bg={V.bg} />

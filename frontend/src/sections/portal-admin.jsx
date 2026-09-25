@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
-import { errText, faNum } from "../lib/format";
+import { errMsg, errText, faNum, okJson } from "../lib/format";
 import { Avatar, ConfirmModal, EmptyState, Field, InfoBox, Msg, MoneyInput, NumberInput, SectionHead, StatTile } from "../ui/index";
 import { BotInboundsSection } from "./bot/inbounds";
 import { isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
@@ -26,9 +26,9 @@ function useJson(path, password) {
     try {
       const j = await fetch(`${API_URL}${path}`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      }).then((r) => okJson(r));
       setD(j);
-    } catch { setD({ ready: false, error: "اتصال برقرار نشد" }); }
+    } catch (e) { setD({ ready: false, error: errMsg(e) }); }
     finally { setBusy(false); }
   }, [password, path]);
   useEffect(() => { load(); }, [load]);

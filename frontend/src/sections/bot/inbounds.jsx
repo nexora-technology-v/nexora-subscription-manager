@@ -9,7 +9,7 @@ import {
   AlertTriangle, Check, CheckCircle2, Circle, Layers, Loader2, Network, RefreshCw, Save, Star,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
-import { errText, faNum } from "../../lib/format";
+import { errMsg, errText, faNum, okJson } from "../../lib/format";
 import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead, StatTile, StatusChip } from "../../ui/index";
 
 // سه حالت انتخاب اینباند. متن‌ها عمداً توضیحی‌اند تا مدیر
@@ -87,12 +87,12 @@ export function BotInboundsSection({ password, tenant = null }) {
       const q = tenant ? `?tenant=${encodeURIComponent(tenant)}` : "";
       const r = await fetch(`${API_URL}/api/admin/bot/inbounds` + q, {
         headers: { "X-Admin-Password": password },
-      }).then((x) => x.json());
+      }).then((x) => okJson(x));
       setD(r);
       setMode(r.mode || "all");
       setSel(Array.isArray(r.selected) ? r.selected : []);
-    } catch {
-      setD({ ready: false, error: "اتصال به سرور برقرار نشد", inbounds: [] });
+    } catch (e) {
+      setD({ ready: false, error: errMsg(e), inbounds: [] });
     } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, [password, tenant]);

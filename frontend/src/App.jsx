@@ -200,7 +200,9 @@ export default function App() {
       catch { setCfgVersion(null); }
       setConfigRaw(loaded);
       setSavedConfig(JSON.parse(JSON.stringify(loaded)));
+      // آمار فرعی است و ورود را نمی‌شکند، ولی داشبوردِ بی‌عدد باید بگوید چرا
       if (sRes.ok) setStats(await sRes.json());
+      else setToast({ message: `آمارِ داشبورد خوانده نشد (${sRes.status})`, type: "error" });
       setAuthed(true);
     } catch { setAuthed(false); localStorage.removeItem("nexora_subpage_admin_pw"); }
     finally { setLoading(false); }
@@ -319,6 +321,7 @@ export default function App() {
         setToast({ message: "تغییرات با موفقیت ذخیره شد", type: "ok" });
         const sRes = await fetch(`${API_URL}/api/admin/stats`, { headers: { "X-Admin-Password": password } });
         if (sRes.ok) setStats(await sRes.json());
+        else setToast({ message: `ذخیره شد، ولی آمارِ داشبورد تازه نشد (${sRes.status})`, type: "error" });
       } else {
         /* دلیلِ سرور را نشان بده، نه یک «ناموفق بود» خشک.
            مهم‌ترین حالتش ۴۰۹ است: یعنی جای دیگری عوض شده و اگر

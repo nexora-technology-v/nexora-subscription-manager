@@ -15,7 +15,7 @@ import {
   Trash2, TrendingUp, Wallet,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { errText, faNum } from "../lib/format";
+import { errMsg, errText, faNum, okJson } from "../lib/format";
 import { ConfirmModal, EmptyState, Field, InfoBox, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile } from "../ui/index";
 import { JalaliDate, isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
 
@@ -57,9 +57,9 @@ function useJson(path, password, deps = []) {
     try {
       const j = await fetch(`${API_URL}${path}`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      }).then((r) => okJson(r));
       setD(j);
-    } catch { setD({ ready: false, error: "اتصال برقرار نشد" }); }
+    } catch (e) { setD({ ready: false, error: errMsg(e) }); }
     finally { setBusy(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [password, path, ...deps]);
@@ -83,8 +83,8 @@ function ExpenseForm({ password, onDone, setMsg }) {
     let alive = true;
     fetch(`${API_URL}/api/admin/billing/fx?currency=${f.currency}`, {
       headers: { "X-Admin-Password": password },
-    }).then((r) => r.json()).then((j) => { if (alive) setFx(j); })
-      .catch(() => { if (alive) setFx({ ok: false }); });
+    }).then((r) => okJson(r)).then((j) => { if (alive) setFx(j); })
+      .catch((e) => { if (alive) setFx({ ok: false, error: errMsg(e) }); });
     return () => { alive = false; };
   }, [f.currency, password]);
 
@@ -206,7 +206,7 @@ function ExpenseForm({ password, onDone, setMsg }) {
               </>
             ) : (
               <span style={{ color: "var(--warn)" }}>
-                نرخ خوانده نشد — نرخ را دستی وارد کنید
+                نرخ خوانده نشد{fx.error ? ` (${fx.error})` : ""} — نرخ را دستی وارد کنید
               </span>
             )}
           {preview !== null && (

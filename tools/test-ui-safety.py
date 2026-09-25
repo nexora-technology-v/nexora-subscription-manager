@@ -571,6 +571,34 @@ for _f, _src in ALL.items():
         _unread.append(f"{_f}:{_src[:_st].count(chr(10)) + 1}")
 check("پاسخِ هر نوشتن (POST/PUT/DELETE) خوانده می‌شود", not _unread, ", ".join(_unread[:5]))
 
+# خواندنی که خطایش بلعیده می‌شود. کارتِ بازگردانی وقتی فهرستِ نسخه‌ها
+# خوانده نمی‌شد می‌گفت «هنوز نسخه‌ای نیست»؛ قیف «هنوز داده‌ای نیست»؛ بررسیِ
+# نسخه دستورِ نصب نشان می‌داد. دو شکل:
+#   ۱) `catch { /* بی‌صدا */ }` یا catchِ خالی پشتِ یک fetch
+#   ۲) `if (res.ok) setX(await res.json());` بدونِ else
+# catchی که دلیلش را در کامنت می‌گوید («شبکه قطع بود — دفعه‌ی بعد»)
+# تصمیم است، نه بلعیدن، و رد نمی‌شود.
+_swallow = []
+for _f, _src in ALL.items():
+    if not _f.endswith(".jsx"):
+        continue
+    for _m in re.finditer(r"\bcatch\s*(?:\(\s*\w*\s*\))?\s*\{(\s*(?:/\*(.*?)\*/)?\s*)\}", _src):
+        _why = (_m.group(2) or "").strip()
+        if _why and _why not in ("بی‌صدا", ""):
+            continue
+        _try = _src.rfind("try", 0, _m.start())
+        if _try < 0 or _m.start() - _try > 900 or "fetch(" not in _src[_try:_m.start()]:
+            continue
+        _swallow.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1}")
+    for _m in re.finditer(r"if\s*\((\w+)\.ok\)\s*set\w+\(await \1\.json\(\)\);(?!\s*else)", _src):
+        _swallow.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1} (if ok بی‌else)")
+    # ۳) `.then((r) => r.json())` — وضعیت را نمی‌سنجد، پس `{detail}`ِ خطا
+    #    مثلِ داده در state می‌نشست. بیست‌وشش جا بود؛ جایش okJson است.
+    for _m in re.finditer(r"\.then\(\((\w+)\)\s*=>\s*\1\.json\(\)\)", _src):
+        _swallow.append(f"{_f}:{_src[:_m.start()].count(chr(10)) + 1} (r.json بی‌سنجش — okJson)")
+check("خطای خواندن بلعیده نمی‌شود (catchِ بی‌صدا، if-okِ بی‌else)",
+      not _swallow, ", ".join(_swallow[:6]))
+
 # نویسه‌ی کنترلیِ نامرئی در کدِ تست — `\b` که در heredocِ گیت‌بش به
 # backspace تبدیل شد، همین دروازه‌ی بالا را بی‌صدا کور کرده بود: سبز
 # می‌ماند در حالی که چهار تاریخِ میلادی از زیرش رد می‌شد.

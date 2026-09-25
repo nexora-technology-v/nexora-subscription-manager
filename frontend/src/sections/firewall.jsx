@@ -9,8 +9,8 @@ import {
   AlertTriangle, CheckCircle2, ChevronDown, Download, Layers, Loader2, Lock, Plus, Search, ShieldCheck, Sparkles, Trash2, Unlock, Upload, XCircle,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { errText, esc0, faNum } from "../lib/format";
-import { ConfirmModal, EmptyState, Field, InfoBox, LongList, Msg, NumberInput, PageSkeleton, SectionHead, StatTile } from "../ui/index";
+import { errMsg, errText, esc0, faNum, okJson } from "../lib/format";
+import { ConfirmModal, EmptyState, Field, InfoBox, LoadError, LongList, Msg, NumberInput, PageSkeleton, SectionHead, StatTile } from "../ui/index";
 
 export const FW_ACTIONS = [
   ["allow", "اجازه", "var(--ok)"],
@@ -27,9 +27,9 @@ export function useFirewall(password) {
     try {
       const r = await fetch(`${API_URL}/api/admin/firewall`, {
         headers: { "X-Admin-Password": password },
-      }).then((x) => x.json());
+      }).then((x) => okJson(x));
       setD(r);
-    } catch { setD({ ready: false, error: "اتصال به سرور برقرار نشد", rules: [] }); }
+    } catch (e) { setD({ ready: false, error: errMsg(e), rules: [] }); }
   }, [password]);
 
   useEffect(() => { load(); }, [load]);
@@ -79,7 +79,7 @@ export function FirewallSuggest({ password, onApplied }) {
     try {
       const j = await fetch(`${API_URL}/api/admin/firewall/suggest`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      }).then((r) => okJson(r));
       setD(j);
       // پیش‌فرض: همه‌ی پیشنهادهای «ببند» تیک می‌خورند، چون همان‌ها
       // دلیل وجود این بخش‌اند. «باز بماند» تیک نمی‌خورد تا کسی
@@ -89,7 +89,7 @@ export function FirewallSuggest({ password, onApplied }) {
       const p = {};
       (j.close || []).forEach((x) => { p[`${x.port}/${x.proto}`] = true; });
       setPicked(p);
-    } catch { setMsg({ t: "err", m: "اتصال برقرار نشد" }); }
+    } catch (e) { setMsg({ t: "err", m: errMsg(e) }); }
     finally { setBusy(false); }
   };
 
@@ -321,6 +321,19 @@ export function FirewallRules({ password }) {
   const [confirmDel, setConfirmDel] = useState(null);
 
   if (!d) return <PageSkeleton />;
+
+  // خطا پیش‌تر به شاخه‌ی «ufw نصب نیست» می‌افتاد (installed تعریف نشده
+  // بود) و دستورِ apt install ufw روی سروری نشان می‌داد که ufw دارد. و
+  // خطای خودِ بکند («خواندن وضعیت ناموفق»، installed: true) فهرستِ خالیِ
+  // قواعد می‌ساخت. «نصب نیست» فقط وقتی است که بکند صریحاً بگوید.
+  if (d.error && d.installed !== false) {
+    return (
+      <div className="fx-anim">
+        <SectionHead title="فایروال" />
+        <LoadError what="قواعدِ فایروال" err={d.error} onRetry={load} />
+      </div>
+    );
+  }
 
   if (!d.installed) {
     return (
@@ -802,9 +815,9 @@ function VerifyBlock({ ip, password }) {
         `${API_URL}/api/admin/firewall/blackhole/verify`
         + `?ip=${encodeURIComponent(ip)}`,
         { headers: { "X-Admin-Password": password } },
-      ).then((r) => r.json());
+      ).then((r) => okJson(r));
       setSt(j);
-    } catch { setSt({ blocked: false, why: "اتصال برقرار نشد" }); }
+    } catch (e) { setSt({ blocked: false, why: errMsg(e) }); }
     finally { setBusy(false); }
   };
 
@@ -840,9 +853,9 @@ export function FirewallBlocked({ password }) {
     try {
       const j = await fetch(`${API_URL}/api/admin/firewall/blocked`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      }).then((r) => okJson(r));
       setD(j);
-    } catch { setD({ blocked: [], error: "اتصال برقرار نشد" }); }
+    } catch (e) { setD({ blocked: [], error: errMsg(e) }); }
   }, [password]);
 
   useEffect(() => { load(); }, [load]);
@@ -879,6 +892,16 @@ export function FirewallBlocked({ password }) {
   if (!d) {
     return (
       <PageSkeleton />
+    );
+  }
+
+  // بی‌این، خطا «۰ بسته‌شده» نشان می‌داد — یعنی «هیچ‌کس بسته نیست»
+  if (d.error && !(d.blocked || []).length) {
+    return (
+      <div className="fx-anim">
+        <SectionHead title="آی‌پی‌های بسته‌شده" />
+        <LoadError what="فهرستِ آی‌پی‌های بسته‌شده" err={d.error} onRetry={load} />
+      </div>
     );
   }
 

@@ -8,7 +8,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   AlertTriangle, Check, CheckCircle2, Download, ExternalLink, Github, HardDrive, History, Loader2, Minus, Monitor, Plus, RefreshCw, Save, Server, Smartphone, Terminal, Users,
 } from "lucide-react";
-import { errText, faNum } from "../lib/format";
+import { errText, faNum, okJson } from "../lib/format";
 import { API_URL } from "../lib/constants";
 import { Collapse, ConfirmModal, Field, InfoBox, MiniMarkdown, Msg, PageSkeleton, SectionHead } from "../ui/index";
 import { isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
@@ -19,13 +19,16 @@ export function RollbackCard({ password }) {
   const [confirm, setConfirm] = useState(null);
   const [keepSettings, setKeepSettings] = useState(true);
   const [msg, setMsg] = useState(null);
+  const [loadErr, setLoadErr] = useState("");
 
   const load = async () => {
     try {
-      const d = await fetch(`${API_URL}/api/admin/snapshots`, {
-        headers: { "X-Admin-Password": password } }).then((r) => r.json());
+      const res = await fetch(`${API_URL}/api/admin/snapshots`, {
+        headers: { "X-Admin-Password": password } });
+      const d = await okJson(res, "خواندنِ نسخه‌های ذخیره‌شده ناموفق بود");
       setSnaps(d.snapshots || []);
-    } catch { /* بی‌صدا */ }
+      setLoadErr("");
+    } catch (e) { setLoadErr(e.message); }
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, [password]);
@@ -63,7 +66,12 @@ export function RollbackCard({ password }) {
 
       <Msg msg={msg} />
 
-      {snaps.length === 0 ? (
+      {/* خطای خواندن «هنوز نسخه‌ای نیست» نیست. درست وقتی کسی بعد از یک
+          به‌روزرسانیِ خراب دنبالِ راهِ برگشت است، این دروغ یعنی فکر کند
+          راهی نیست. */}
+      {loadErr ? (
+        <Msg msg={{ t: "err", m: `فهرستِ نسخه‌ها خوانده نشد: ${loadErr}` }} />
+      ) : snaps.length === 0 ? (
         <div className="text-center py-6 text-[13px]" style={{ color: "var(--muted)" }}>
           هنوز نسخه‌ی ذخیره‌شده‌ای نیست — با اولین به‌روزرسانی ساخته می‌شود
         </div>
@@ -119,12 +127,16 @@ export function GithubCard({ password }) {
 
   const load = async () => {
     try {
-      const d = await fetch(`${API_URL}/api/admin/github`, {
+      const res = await fetch(`${API_URL}/api/admin/github`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      });
+      const d = await okJson(res, "خواندنِ مخزن ناموفق بود");
       setRepo(d.repo || "");
       setSaved(d.repo || "");
-    } catch { /* بی‌صدا */ }
+    } catch (e) {
+      // خالی ماندنِ فیلد یعنی «تنظیم نشده»؛ خطا باید جدا گفته شود
+      setMsg({ t: "err", m: e.message });
+    }
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, [password]);
@@ -225,12 +237,14 @@ export function UpdateCard({ password }) {
   const [log, setLog] = useState([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  const [checkErr, setCheckErr] = useState("");
   const check = async () => {
     setChecking(true);
     try {
       const res = await fetch(`${API_URL}/api/admin/check-update`, { headers: { "X-Admin-Password": password } });
-      if (res.ok) setInfo(await res.json());
-    } catch { /* بی‌صدا */ }
+      setInfo(await okJson(res, "بررسیِ نسخه ناموفق بود"));
+      setCheckErr("");
+    } catch (e) { setCheckErr(e.message); }
     finally { setChecking(false); }
   };
 
@@ -350,6 +364,7 @@ export function UpdateCard({ password }) {
               <div className="text-[14px] font-semibold text-white">به‌روزرسانی</div>
               <div className="text-[13px] mt-0.5" style={{ color: "var(--muted)" }}>
                 {checking ? "در حال بررسی..." :
+                 checkErr ? "بررسیِ نسخه ناموفق بود" :
                  !info?.configured ? "به‌روزرسانی خودکار تنظیم نشده" :
                  info?.error ? "ارتباط با گیت‌هاب برقرار نشد" :
                  hasUpdate ? `نسخه ${info.latestVersion} در دسترس است` :
@@ -468,8 +483,14 @@ export function UpdateCard({ password }) {
           </div>
         )}
 
+        {/* خطای خودِ پنل — پیش‌تر به شاخه‌ی «تنظیم نشده» می‌افتاد و
+            دستورِ نصب نشان می‌داد، در حالی که تنظیم بود و فقط بررسی شکست */}
+        {!updating && checkErr && !checking && (
+          <Msg msg={{ t: "err", m: checkErr }} />
+        )}
+
         {/* تنظیم نشده */}
-        {!updating && !info?.configured && !checking && (
+        {!updating && !checkErr && !info?.configured && !checking && (
           <div className="rounded-xl p-4" style={{ background: "var(--surface-3)", border: "1px solid var(--border)" }}>
             <p className="text-[13px] mb-2.5" style={{ color: "var(--dim)" }}>
               برای فعال‌سازی به‌روزرسانی خودکار، این دستور را روی سرور اجرا کنید:
@@ -534,13 +555,14 @@ export function UpdateCard({ password }) {
 export function SystemSection({ password }) {
   const [sys, setSys] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sysErr, setSysErr] = useState("");
 
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch(`${API_URL}/api/admin/system`, { headers: { "X-Admin-Password": password } });
-        if (res.ok) setSys(await res.json());
-      } catch { /* بی‌صدا */ }
+        setSys(await okJson(res, "خواندنِ وضعیتِ سیستم ناموفق بود"));
+      } catch (e) { setSysErr(e.message); }
       finally { setLoading(false); }
     })();
   }, [password]);
@@ -560,6 +582,8 @@ export function SystemSection({ password }) {
   return (
     <div className="fx-anim">
       <SectionHead title="سیستم و به‌روزرسانی" desc="وضعیت نصب، نسخه‌ی فعلی و راهنمای به‌روزرسانی." />
+      {/* بی‌این، هر چهار کاشی «?» می‌گفتند و دلیلش هیچ‌جا نبود */}
+      {sysErr && <Msg msg={{ t: "err", m: sysErr }} />}
 
       {/* وضعیت */}
       <div className="fx-g4 grid grid-cols-4 gap-3 mb-4">

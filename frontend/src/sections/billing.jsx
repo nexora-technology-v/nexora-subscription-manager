@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { JalaliDate, isoToJalaliLabel } from "../ui/jalali";
 import { API_URL } from "../lib/constants";
-import { errText, faDate, faNum, monoIf, toFaDigits } from "../lib/format";
+import { errMsg, errText, faDate, faNum, monoIf, okJson, toFaDigits } from "../lib/format";
 import { ConfirmModal, Donut, EmptyState, Field, InfoBox, Modal, Msg, MoneyInput, NumberInput, PageSkeleton, SectionHead, StatTile, Toggle } from "../ui/index";
 
 export function BillingPeriod({ password }) {
@@ -51,9 +51,9 @@ export function BillingPeriod({ password }) {
       }
       const d = await fetch(
         `${API_URL}/api/admin/billing/period/${encodeURIComponent(sel)}${q}`,
-        { headers: { "X-Admin-Password": password } }).then((r) => r.json());
+        { headers: { "X-Admin-Password": password } }).then((r) => okJson(r));
       setInv(d);
-    } catch { setInv({ ready: false, error: "اتصال برقرار نشد" }); }
+    } catch (e) { setInv({ ready: false, error: errMsg(e) }); }
     finally { setLoading(false); }
   };
 
@@ -1324,10 +1324,10 @@ export function useBilling(password) {
     try {
       const d = await fetch(`${API_URL}/api/admin/billing/groups`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      }).then((r) => okJson(r));
       setData(d);
-    } catch {
-      setData({ ready: false, error: "اتصال به سرور برقرار نشد", groups: [] });
+    } catch (e) {
+      setData({ ready: false, error: errMsg(e), groups: [] });
     } finally { setLoading(false); }
   };
   useEffect(() => { load(); }, [password]);
@@ -1347,10 +1347,10 @@ export function BillingUnavailable({ info, password }) {
     try {
       const d = await fetch(`${API_URL}/api/admin/billing/diagnose`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      }).then((r) => okJson(r));
       setDiag(d);
-    } catch {
-      setDiag({ ok: false, steps: [{ title: "اتصال به سرور برقرار نشد", ok: false }] });
+    } catch (e) {
+      setDiag({ ok: false, steps: [{ title: errMsg(e), ok: false }] });
     } finally { setBusy(false); }
   };
 

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
 import { isoToJalaliStamp } from "../ui/jalali";
-import { errText, esc0, faNum, fmtSize, fmtUptime, toFaDigits } from "../lib/format";
+import { errMsg, errText, esc0, faNum, fmtSize, fmtUptime, okJson, toFaDigits } from "../lib/format";
 import { usePolling } from "../lib/hooks";
 import { ConfirmModal, CountChip, EmptyState, Field, InfoBox, LongList, Msg, NumberInput, PageSkeleton, SectionHead, Segmented, Toggle } from "../ui/index";
 
@@ -508,11 +508,19 @@ export function UsageHistoryCard({ password }) {
     let alive = true;
     fetch(`${API_URL}/api/admin/usage-history?hours=24`, {
       headers: { "X-Admin-Password": password },
-    }).then((r) => r.json()).then((j) => alive && setD(j)).catch(() => alive && setD({}));
+    }).then((r) => okJson(r)).then((j) => alive && setD(j)).catch((e) => alive && setD({ error: errMsg(e) }));
     return () => { alive = false; };
   }, [password]);
 
   if (!d) return null;
+  // بی‌این، خطا کارتِ «۰ نمونه» می‌ساخت — یعنی «هنوز جمع نشده»، که دروغ بود
+  if (d.error) {
+    return (
+      <div className="fx-card p-5 mb-4">
+        <Msg msg={{ t: "err", m: `تاریخچه‌ی مصرف خوانده نشد: ${d.error}` }} />
+      </div>
+    );
+  }
   const s = d.samples || [];
 
   return (
@@ -580,7 +588,7 @@ export function TopClientsCard({ password }) {
     let alive = true;
     fetch(`${API_URL}/api/admin/top-clients?limit=25`, {
       headers: { "X-Admin-Password": password },
-    }).then((r) => r.json()).then((j) => alive && setD(j)).catch(() => alive && setD({ ready: false }));
+    }).then((r) => okJson(r)).then((j) => alive && setD(j)).catch((e) => alive && setD({ ready: false, error: errMsg(e) }));
     return () => { alive = false; };
   }, [password]);
 
@@ -676,18 +684,33 @@ export function MaintenanceCard({ password }) {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
   const [confirmReboot, setConfirmReboot] = useState(false);
+  const [loadErr, setLoadErr] = useState("");
 
   const load = async () => {
     try {
       const d = await fetch(`${API_URL}/api/admin/maintenance`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      }).then((r) => okJson(r));
       setM(d);
-    } catch { setM({ error: true }); }
+      setLoadErr("");
+    } catch (e) {
+      // پیش‌تر `setM({ error: true })` بود: فرمِ کامل با مقدارهای خالی
+      // نشان داده می‌شد و «ذخیره» همان `{error: true}` را به‌جای
+      // زمان‌بندی روی سرور می‌نوشت. خطا جدا نگه داشته می‌شود.
+      setLoadErr(errMsg(e));
+    }
   };
   useEffect(() => { load(); }, [password]);
   useEffect(() => { if (msg) { const t = setTimeout(() => setMsg(null), 4000); return () => clearTimeout(t); } }, [msg]);
 
+  if (loadErr && !m) {
+    return (
+      <div className="fx-card p-5 mb-4">
+        <Msg msg={{ t: "err", m: `زمان‌بندیِ نگهداری خوانده نشد: ${loadErr}` }} />
+        <button type="button" onClick={load} className="fx-btn-g px-3 py-2 text-[13px]">دوباره</button>
+      </div>
+    );
+  }
   if (!m) return null;
 
   const up = (patch) => setM({ ...m, ...patch });
@@ -862,6 +885,7 @@ export function MonitorSection({ password }) {
   const [heavy, setHeavy] = useState(null);
   const [loading, setLoading] = useState(true);
   const [heavyBusy, setHeavyBusy] = useState(false);
+  const [heavyErr, setHeavyErr] = useState("");
   const [live, setLive] = useState(true);
   const [err, setErr] = useState("");
   // بستن آی‌پی یک عمل برگشت‌پذیر ولی مؤثر است — بدون تایید صریح
@@ -905,8 +929,10 @@ export function MonitorSection({ password }) {
 
   const loadHeavy = async () => {
     setHeavyBusy(true);
-    try { setHeavy(await get(HEAVY)); }
-    catch { /* بی‌صدا */ }
+    // پیش‌تر خطا بلعیده می‌شد: دکمه می‌چرخید و همان «بررسی کن» برمی‌گشت،
+    // انگار کلیک ثبت نشده بود
+    try { setHeavy(await get(HEAVY)); setHeavyErr(""); }
+    catch (e) { setHeavyErr(e.message); }
     finally { setHeavyBusy(false); }
   };
 
@@ -1111,11 +1137,12 @@ export function MonitorSection({ password }) {
         <p className="text-[13px] mb-3" style={{ color: "var(--muted)" }}>
           چند ثانیه طول می‌کشد، پس خودکار تازه نمی‌شود.
         </p>
+        {heavyErr && <Msg msg={{ t: "err", m: `بررسی ناموفق بود: ${heavyErr}` }} />}
         {heavy ? (
           <div className="fx-g3 grid grid-cols-2 gap-3">
             {heavy.metrics.map((m) => <MetricCard key={m.key} m={m} />)}
           </div>
-        ) : (
+        ) : heavyErr ? null : (
           <EmptyState icon={ShieldCheck} text="برای دیدن به‌روزرسانی‌های در انتظار و وضعیت امنیتی، «بررسی کن» را بزنید" />
         )}
       </div>

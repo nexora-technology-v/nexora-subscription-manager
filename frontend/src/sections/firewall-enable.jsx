@@ -18,7 +18,7 @@ import {
   AlertTriangle, CheckCircle2, Clock, Loader2, Power, ShieldCheck,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { errText, faNum } from "../lib/format";
+import { errMsg, errText, faNum, okJson } from "../lib/format";
 import { EmptyState, InfoBox, Msg, PageSkeleton, SectionHead } from "../ui/index";
 
 export function FirewallEnable({ password, onChanged }) {
@@ -35,19 +35,25 @@ export function FirewallEnable({ password, onChanged }) {
       const [j, rb] = await Promise.all([
         fetch(`${API_URL}/api/admin/firewall/preflight`, {
           headers: { "X-Admin-Password": password },
-        }).then((r) => r.json()),
+        }).then((r) => okJson(r)),
         // اگر صفحه رفرش شده باشد، ساعت‌شمار ممکن است هنوز فعال باشد.
         // بدون این، کاربر دکمه‌ی تایید را نمی‌بیند و فایروال بی‌دلیل
         // خاموش می‌شود.
         fetch(`${API_URL}/api/admin/firewall/rollback-state`, {
           headers: { "X-Admin-Password": password },
-        }).then((r) => r.json()).catch(() => null),
+        }).then((r) => okJson(r)).catch((e) => ({ readError: errMsg(e) })),
       ]);
       setPre(j);
       if (rb && rb.armed) {
         setArmedUntil((prev) => prev || Date.now() + minutes * 60000);
       }
-    } catch { setPre({ ready: false, error: "اتصال برقرار نشد" }); }
+      // نخواندنِ ساعت‌شمار نباید پیش‌بررسی را بیندازد، ولی بی‌صدا هم
+      // نمی‌ماند: اگر ساعت‌شمار فعال باشد و دیده نشود، دکمه‌ی تایید
+      // نمی‌آید و فایروال خودش برمی‌گردد
+      if (rb && rb.readError) {
+        setMsg({ t: "err", m: `وضعیتِ ساعت‌شمارِ برگشت خوانده نشد (${rb.readError}) — اگر تازه فایروال را روشن کرده‌اید، صفحه را تازه کنید` });
+      }
+    } catch (e) { setPre({ ready: false, error: errMsg(e) }); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [password]);
 

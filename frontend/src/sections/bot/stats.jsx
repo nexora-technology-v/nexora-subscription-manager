@@ -9,26 +9,38 @@ import {
   FileText, Download, RefreshCw, TrendingUp, Users,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
-import { errText, esc0, faNum } from "../../lib/format";
-import { AreaChart, Avatar, CountUp, EmptyState, PageSkeleton, SectionHead, Segmented, StatTile } from "../../ui/index";
+import { errMsg, errText, esc0, faNum, okJson } from "../../lib/format";
+import { AreaChart, Avatar, CountUp, EmptyState, LoadError, PageSkeleton, SectionHead, Segmented, StatTile } from "../../ui/index";
 import { isoToJalaliLabel } from "../../ui/jalali";
 
 export function BotStatsSection({ password }) {
   const [d, setD] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
 
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API_URL}/api/admin/bot/funnel`, {
-        headers: { "X-Admin-Password": password } }).then((x) => x.json());
-      setD(r);
-    } catch { /* بی‌صدا */ }
+      const res = await fetch(`${API_URL}/api/admin/bot/funnel`, {
+        headers: { "X-Admin-Password": password } });
+      setD(await okJson(res, "خواندنِ قیف ناموفق بود"));
+      setErr("");
+    } catch (e) { setErr(e.message); }
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, [password]);
 
   if (loading) return <PageSkeleton />;
+
+  // خطا «هنوز داده‌ای نیست» نیست؛ پیش‌تر همان شاخه را می‌گرفت
+  if (err) {
+    return (
+      <div className="fx-anim">
+        <SectionHead title="آمار و قیف تبدیل" />
+        <LoadError what="قیفِ تبدیل" err={err} onRetry={load} />
+      </div>
+    );
+  }
 
   if (!d?.ready) {
     return (
@@ -149,9 +161,9 @@ export function BotReportSection({ password }) {
     setLoading(true);
     fetch(`${API_URL}/api/admin/bot/users/report?days=${days}`, {
       headers: { "X-Admin-Password": password },
-    }).then((r) => r.json())
+    }).then((r) => okJson(r))
       .then((j) => { if (alive) { setD(j); setLoading(false); } })
-      .catch(() => { if (alive) { setD({ ready: false }); setLoading(false); } });
+      .catch((e) => { if (alive) { setD({ ready: false, error: errMsg(e) }); setLoading(false); } });
     return () => { alive = false; };
   }, [password, days]);
 

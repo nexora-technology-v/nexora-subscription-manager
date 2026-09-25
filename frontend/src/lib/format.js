@@ -95,6 +95,40 @@ export const faNum = (n, empty = "—") => {
  *
  * پس هیچ‌جا detail خام رندر نمی‌شود؛ همه از این رد می‌شوند.
  */
+/**
+ * پاسخِ خواندن را باز می‌کند، یا با دلیلِ خودِ بکند می‌ایستد.
+ *
+ * الگوی `if (res.ok) setX(await res.json())` بدون else، و
+ * `fetch(...).then(r => r.json())` بدون سنجیدنِ status، هر دو خطای
+ * سرور را به «فهرستِ خالی» تبدیل می‌کردند: کارتِ بازگردانی
+ * می‌گفت «نسخه‌ای نیست» وقتی خواندنش شکسته بود. این یک تابع جای
+ * هر دو است. پاسخِ غیرِJSON (صفحه‌ی خطای nginx) هم پیامِ خوانا
+ * می‌دهد، نه SyntaxError.
+ */
+/**
+ * پیامِ خوانا از یک خطای fetch.
+ *
+ * `fetch` روی شبکه‌ی قطع TypeError می‌دهد با متنِ انگلیسیِ مرورگر
+ * («Failed to fetch»)؛ آن را فارسی می‌کنیم. هر خطای دیگر — که از
+ * `okJson` با دلیلِ خودِ بکند می‌آید — همان‌طور می‌ماند. پیش‌تر هر
+ * catch فقط «اتصال برقرار نشد» می‌گفت، حتی وقتی سرور گفته بود چرا.
+ */
+export function errMsg(e, net = "اتصال به سرور برقرار نشد") {
+  if (!e || e instanceof TypeError || !e.message) return net;
+  return e.message;
+}
+
+export async function okJson(res, fallback = "خواندن از سرور ناموفق بود") {
+  let j = null;
+  try { j = await res.json(); } catch { j = null; }
+  if (!res.ok) {
+    throw new Error(errText(j && typeof j === "object" ? j.detail : null,
+                            `${fallback} (${res.status})`));
+  }
+  if (j === null) throw new Error(`${fallback} — پاسخ JSON نبود`);
+  return j;
+}
+
 export function errText(detail, fallback = "عملیات ناموفق بود") {
   if (!detail) return fallback;
   if (typeof detail === "string") return detail;

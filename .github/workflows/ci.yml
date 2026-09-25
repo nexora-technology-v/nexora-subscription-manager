@@ -124,6 +124,7 @@ jobs:
           node test-apps-runtime.js
           node test-subpage.js
           node tools/test-components.cjs
+          node tools/test-load-errors.cjs
           node tools/test-hooks.cjs
           node tools/test-jalali.cjs
           node tools/test-palette.cjs

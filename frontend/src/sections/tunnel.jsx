@@ -9,7 +9,7 @@ import {
   Activity, AlertTriangle, Check, CheckCircle2, Circle, Clock, Copy, FileText, Loader2, Network, Plus as PlusIcon, RefreshCw, Server, ShieldCheck, Trash2, UploadCloud, X, XCircle,
 } from "lucide-react";
 import { API_URL } from "../lib/constants";
-import { errText, faNum } from "../lib/format";
+import { errMsg, errText, faNum, okJson } from "../lib/format";
 import { usePolling } from "../lib/hooks";
 import { ConfirmModal, EmptyState, Field, InfoBox, Modal, Msg, PageSkeleton, Pager, SectionHead, Segmented, StatTile, UsageBar, usageColor } from "../ui/index";
 import { isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
@@ -40,10 +40,10 @@ export function useTunnel(password) {
     try {
       const d = await fetch(`${API_URL}/api/admin/tunnel/overview`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      }).then((r) => okJson(r));
       setData(d);
-    } catch {
-      setData({ ready: false, error: "اتصال برقرار نشد", nodes: [], tunnels: [] });
+    } catch (e) {
+      setData({ ready: false, error: errMsg(e), nodes: [], tunnels: [] });
     } finally { setLoading(false); }
   };
 
@@ -430,7 +430,7 @@ export function NodeDiagnoseModal({ nodeId, password, onClose }) {
   useEffect(() => {
     fetch(`${API_URL}/api/admin/tunnel/node/${nodeId}/check`, {
       headers: { "X-Admin-Password": password },
-    }).then((r) => r.json()).then(setD).catch(() => setD({ steps: [] }));
+    }).then((r) => okJson(r)).then(setD).catch((e) => setD({ steps: [{ title: "بررسی انجام نشد", ok: false, detail: errMsg(e) }] }));
   }, [nodeId]);
 
   const copy = (t) => navigator.clipboard?.writeText(t);
@@ -1101,11 +1101,13 @@ export function TunnelMonitorModal({ tunnel, password, onClose }) {
     try {
       const d = await fetch(`${API_URL}/api/admin/tunnel/${tunnel.id}/metrics`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      }).then((r) => okJson(r));
       setM(d);
       return d;
-    } catch {
+    } catch (e) {
+      // نمودارِ خالی یعنی «هنوز سنجیده نشده»؛ خطا باید جدا گفته شود
       setM({ samples: [], summary: null });
+      setErr(`خواندنِ کیفیت ناموفق بود: ${errMsg(e)}`);
       return null;
     }
   };
@@ -1278,7 +1280,7 @@ export function TunnelConfigModal({ tunnel, password, onClose }) {
   useEffect(() => {
     fetch(`${API_URL}/api/admin/tunnel/${tunnel.id}/config?side=foreign`, {
       headers: { "X-Admin-Password": password },
-    }).then((r) => r.json()).then(setCfg).catch(() => setCfg({ config: "" }));
+    }).then((r) => okJson(r)).then(setCfg).catch((e) => setCfg({ config: "", error: errMsg(e) }));
   }, [tunnel.id]);
 
   const copy = () => {
@@ -1296,6 +1298,10 @@ export function TunnelConfigModal({ tunnel, password, onClose }) {
 
       {!cfg ? (
         <PageSkeleton />
+      ) : cfg.error ? (
+        /* پیش‌تر جعبه‌ی خالی با دکمه‌ی «کپی کانفیگ» می‌آمد: کانفیگِ خالی
+           کپی می‌شد و روی سرورِ خارج می‌نشست */
+        <Msg msg={{ t: "err", m: `کانفیگ خوانده نشد: ${cfg.error}` }} />
       ) : (
         <>
           <div className="rounded-xl p-3.5 mb-3 overflow-auto" dir="ltr"

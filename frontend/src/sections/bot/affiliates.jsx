@@ -9,7 +9,7 @@ import {
   AlertTriangle, Check, CheckCircle2, Coins, DollarSign, Eye, EyeOff, Key, Loader2, Plus as PlusIcon, Sliders, Trash2, Users, Wallet,
 } from "lucide-react";
 import { API_URL } from "../../lib/constants";
-import { errText, faNum } from "../../lib/format";
+import { errMsg, errText, faNum, okJson } from "../../lib/format";
 import { ConfirmModal, EmptyState, Field, InfoBox, Modal, Msg, PageSkeleton, SectionHead, StatTile } from "../../ui/index";
 
 export function BotAffiliates({ password }) {
@@ -25,10 +25,10 @@ export function BotAffiliates({ password }) {
     try {
       const d = await fetch(`${API_URL}/api/admin/bot/affiliates`, {
         headers: { "X-Admin-Password": password },
-      }).then((r) => r.json());
+      }).then((r) => okJson(r));
       setData(d);
-    } catch {
-      setData({ ready: false, error: "اتصال برقرار نشد", affiliates: [] });
+    } catch (e) {
+      setData({ ready: false, error: errMsg(e), affiliates: [] });
     } finally { setLoading(false); }
   };
 

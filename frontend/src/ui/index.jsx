@@ -276,6 +276,25 @@ export function EmptyState({ icon: Icon, text, hint, action, tone }) {
   );
 }
 
+/**
+ * خواندن شکست خورد — نه «خالی است».
+ *
+ * پیش‌تر چند صفحه خطا را می‌بلعیدند و شاخه‌ی خالی را نشان می‌دادند:
+ * «هنوز داده‌ای نیست»، «نسخه‌ای ذخیره نشده». هر دو دروغ بودند.
+ * این می‌گوید *چه چیزی* خوانده نشد و *چرا*، و دکمه‌ی دوباره دارد.
+ */
+export function LoadError({ what, err, onRetry }) {
+  return (
+    <EmptyState icon={AlertTriangle} tone="var(--danger)"
+      text={`خواندنِ ${what} ناموفق بود`}
+      hint={err || "دلیلی از سرور نرسید"}
+      action={onRetry && (
+        <button type="button" onClick={onRetry}
+          className="fx-btn-g px-3 py-2 text-[13px]">دوباره</button>
+      )} />
+  );
+}
+
 export function StatusChip({ dirty }) {
   return dirty ? (
     <span className="fx-status fx-status-dirty">

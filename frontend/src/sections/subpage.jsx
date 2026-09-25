@@ -8,11 +8,11 @@ import React, { useState, useEffect } from "react";
 import {
   Activity, AlertTriangle, ArrowUpRight, ShoppingCart, TrendingUp, Wallet, Bell, Check, CheckCircle2, ChevronLeft, Clock, Copy, Download, ExternalLink, Eye, Gift, Globe, HelpCircle, Key, Layers, LayoutGrid, Loader2, MessageCircle, MessageSquare, Package, Palette, PlayCircle, Plus, Search, Settings, ShieldCheck, Sliders, Smartphone, Star, Trash2, Type, Upload, UserPlus, Users, Video,
 } from "lucide-react";
-import { errText, faNum } from "../lib/format";
+import { errMsg, errText, faNum, okJson } from "../lib/format";
 import { NexoraMark } from "../lib/mark.jsx";
 import { API_URL, LANG_TABS, OS_TABS, SCHEME_ICON, SCHEME_OPTIONS, WS_MODES } from "../lib/constants";
 import { WsModePreview } from "../shell/workspace";
-import { AreaChart, BarList, CountUp, Donut, EmptyState, Field, InfoBox, NumberStepper,
+import { AreaChart, BarList, CountUp, Donut, EmptyState, Field, InfoBox, Msg, NumberStepper,
   SectionHead, Segmented, Skeleton, SkeletonCards, Sparkline, StatTile, StatusChip,
   Tabs, Toggle } from "../ui/index";
 import { TemplateThumb } from "./bot/themes";
@@ -134,7 +134,7 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
     setErr("");
     fetch(`${API_URL}/api/admin/bot/users/report?days=${days}`,
       { headers: { "X-Admin-Password": password } })
-      .then((r) => r.json())
+      .then((r) => okJson(r))
       .then((j) => {
         if (!alive) return;
         // ربات ممکن است اصلاً وصل نباشد — آن حالت باید *گفته* شود،
@@ -142,7 +142,7 @@ export function OverviewSection({ config, stats, navigate, dirty, password }) {
         if (j && j.ready === false) setErr(errText(j.error, "دیتابیس ربات در دسترس نیست"));
         setRep(j || {});
       })
-      .catch(() => alive && setErr("اتصال به سرور برقرار نشد"));
+      .catch((e) => alive && setErr(errMsg(e)));
     return () => { alive = false; };
   }, [days, password]);
 
@@ -1173,18 +1173,22 @@ export function ResellersSection({ config, setConfig, requestDelete, password })
   const [expanded, setExpanded] = useState(null);
   const [tplOptions, setTplOptions] = useState([]);
   const [palOptions, setPalOptions] = useState([]);
+  const [optErr, setOptErr] = useState("");
 
   // ساختارها و پالت‌ها برای انتخاب قالب اختصاصی هر واسطه
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch(`${API_URL}/api/admin/themes`, { headers: { "X-Admin-Password": password } });
-        if (res.ok) {
-          const d = await res.json();
-          setTplOptions(d.templates || []);
-          setPalOptions([...(d.palettes || []), ...(d.customPalettes || [])]);
-        }
-      } catch { /* بی‌صدا */ }
+        const d = await okJson(res, "خواندنِ قالب‌ها ناموفق بود");
+        setTplOptions(d.templates || []);
+        setPalOptions([...(d.palettes || []), ...(d.customPalettes || [])]);
+        setOptErr("");
+      } catch (e) {
+        // بی‌این، دو منوی «ساختار» و «طیف رنگی» فقط گزینه‌ی «همان
+        // اصلی» را داشتند و کسی نمی‌فهمید چرا
+        setOptErr(e.message);
+      }
     })();
   }, [password]);
 
@@ -1334,6 +1338,7 @@ export function ResellersSection({ config, setConfig, requestDelete, password })
                     <div className="text-[13px] font-semibold text-white mt-4 mb-2.5 flex items-center gap-2">
                       <Layers size={13} style={{ color: "var(--accent-2)" }} /> قالب اختصاصی
                     </div>
+                    {optErr && <Msg msg={{ t: "err", m: `فهرستِ قالب‌ها خوانده نشد: ${optErr}` }} />}
                     <div className="fx-g3 grid grid-cols-2 gap-3">
                       <Field label="ساختار" hint="خالی = ساختار اصلی شما">
                         <select className="fx-input" value={r.overrides?.template || ""}

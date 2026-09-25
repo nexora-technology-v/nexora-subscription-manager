@@ -202,6 +202,9 @@ def frontend_checks(fast):
                      ("test-apps-runtime.js", "اجرای هر سه اپ"),
                      ("test-subpage.js", "صفحه‌ی اشتراک"),
                      ("tools/test-components.cjs", "رندر کامپوننت‌ها"),
+                     # خطای خواندن باید دیده شود، نه «خالی است» — رفتار،
+                     # نه متن: هر صفحه با ۵۰۰ واقعاً mount می‌شود
+                     ("tools/test-load-errors.cjs", "خطای خواندن روی صفحه"),
                      ("tools/test-hooks.cjs", "ترتیب هوک‌ها"),
                      ("tools/test-jalali.cjs", "تقویم شمسی"),
                      ("tools/test-palette.cjs", "پالتِ رنگِ فروشگاه")]:
