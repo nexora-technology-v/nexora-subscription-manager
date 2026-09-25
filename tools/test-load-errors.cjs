@@ -58,7 +58,10 @@ global.fetch = (url, opts) => {
   const u = String(url).split("?")[0];
   const get = !opts || !opts.method || opts.method === "GET";
   const bad = failRe && get && failRe.test(u);
-  const body = bad ? { detail: tag } : {};
+  // پوسته‌ی پرتال بی‌`me` به صفحه‌ی ورود برمی‌گردد؛ پاسخِ معقول می‌گیرد
+  const body = bad ? { detail: tag }
+    : /\/api\/portal\/me$/.test(u) ? { id: 1, name: "فروشگاه", slug: "shop", portalGroup: "g" }
+    : {};
   return Promise.resolve({
     ok: !bad, status: bad ? 500 : 200,
     json: () => Promise.resolve(body),
@@ -82,6 +85,8 @@ fs.writeFileSync(entry, [
   `export { TunnelOverview, NodeDiagnoseModal, TunnelMonitorModal, TunnelConfigModal } from ${S("tunnel.jsx")};`,
   `export { FirewallRules, FirewallBlocked } from ${S("firewall.jsx")};`,
   `export { BillingExpenses, BillingLedger } from ${S("expenses.jsx")};`,
+  `export { default as Mini } from ${JSON.stringify(path.join(ROOT, "frontend", "src", "mini", "index.jsx").split(path.sep).join("/"))};`,
+  `export { default as Portal } from ${JSON.stringify(path.join(ROOT, "frontend", "src", "portal", "index.jsx").split(path.sep).join("/"))};`,
   `export { BotOrdersSection } from ${S("bot/orders.jsx")};`,
   `export { BotUsersSection } from ${S("bot/users.jsx")};`,
   `export { BotPlansSection } from ${S("bot/plans.jsx")};`,
@@ -193,6 +198,65 @@ const CASES = [
     check(name, !r.err && r.shown,
           r.err ? `کرش: ${String(r.err.message).slice(0, 80)}` : r.shown ? "" : `دلیلِ سرور روی صفحه نیامد (${route})`);
   }
+  // ── پرتالِ نماینده: کلِ اپ با توکن، صفحه از آدرس (#) ──
+  //
+  // صفحه‌های پرتال export نشده‌اند و پشتِ ورودند؛ پس خودِ اپ mount می‌شود.
+  // مسیرِ هر صفحه جدا شکسته می‌شود، نه مسیرهای پوسته (me، summary، …) —
+  // وگرنه خطای پوسته «دلیل» را نشان می‌داد و صفحه‌ی خراب سبز می‌شد.
+  console.log(`
+${D}── پرتالِ نماینده ──${X}`);
+  const PORTAL = [
+    ["پرتال · سفارش‌ها", "orders", "/api/portal/orders$"],
+    ["پرتال · پلن‌ها", "plans", "/api/portal/bot-plans$"],
+    ["پرتال · ربات و پرداخت", "bot", "/api/portal/bot$"],
+    ["پرتال · پوسته‌ی مینی‌اپ", "theme", "/api/portal/theme$"],
+    ["پرتال · مشتری‌ها", "users", "/api/portal/users$"],
+    ["پرتال · چت", "chat", "/api/portal/inbox$"],
+    ["پرتال · متن‌ها و قفلِ کانال", "texts", "/api/portal/bot-settings$"],
+    ["پرتال · رویدادها", "events", "/api/portal/events$"],
+  ];
+  for (let i = 0; i < PORTAL.length; i++) {
+    const [name, page, route] = PORTAL[i];
+    localStorage.setItem("nexora_portal_token", "t");
+    dom.reconfigure({ url: `https://panel.test/r/shop#${page}` });
+    const r = await mountFailing(C.Portal, {}, route, 500 + i);
+    check(name, !r.err && r.shown,
+          r.err ? `کرش: ${String(r.err.message).slice(0, 80)}` : r.shown ? "" : `دلیلِ سرور روی صفحه نیامد (${route})`);
+  }
+  localStorage.removeItem("nexora_portal_token");
+
+  // ── مینی‌اپِ مشتری ──
+  //
+  // سفارش‌های باز مهم‌ترین مورد است: اگر بی‌صدا خالی شوند، مشتری فکر
+  // می‌کند رسیدش نرسیده و دوباره پول می‌دهد.
+  console.log(`
+${D}── مینی‌اپ ──${X}`);
+  const MINI = [
+    ["مینی‌اپ · حسابِ من", "/api/mini/me$"],
+    ["مینی‌اپ · اشتراک‌ها", "/api/mini/subs$"],
+    ["مینی‌اپ · پلن‌ها", "/api/mini/plans$"],
+    ["مینی‌اپ · سفارش‌های باز — نه «سفارشی ندارید»", "/api/mini/orders$"],
+  ];
+  // بیرون از تلگرام اپ فقط «از داخلِ تلگرام باز کنید» نشان می‌دهد. یک
+  // WebAppِ ساختگی: هر متدِ SDK یک هیچ‌کارِ بی‌خطر است.
+  const noop = new Proxy(function () {}, {
+    get: (t, k) => (k === "then" ? undefined : k === Symbol.toPrimitive ? () => "" : noop),
+    apply: () => undefined,
+  });
+  const WEBAPP = { initData: "query_id=test", initDataUnsafe: {}, colorScheme: "dark",
+                   themeParams: {}, platform: "tdesktop", version: "7.10",
+                   safeAreaInset: { top: 0, bottom: 0 }, contentSafeAreaInset: { top: 0, bottom: 0 } };
+  dom.window.Telegram = { WebApp: new Proxy(WEBAPP, { get: (t, k) => (k in t ? t[k] : noop) }) };
+  for (let i = 0; i < MINI.length; i++) {
+    const [name, route] = MINI[i];
+    dom.reconfigure({ url: "https://panel.test/app" });
+    const r = await mountFailing(C.Mini, {}, route, 700 + i);
+    check(name, !r.err && r.shown,
+          r.err ? `کرش: ${String(r.err.message).slice(0, 80)}` : r.shown ? "" : `دلیلِ سرور روی صفحه نیامد (${route})`);
+  }
+  delete dom.window.Telegram;
+  dom.reconfigure({ url: "https://panel.test/" });
+
   // نشانه‌ی اینکه آزمون کور نیست: بدونِ شکستن، همان برچسب نباید دیده شود
   const blind = await mountFailing(C.FirewallBlocked, pw, "^$never", 999);
   check("آزمون کور نیست — بدونِ خطا، برچسب دیده نمی‌شود", !blind.shown);

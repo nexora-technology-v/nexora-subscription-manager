@@ -1417,7 +1417,15 @@ function ThemeBox({ inline, token, onClose, onNote }) {
         )}
       </div>
 
-      {!d ? <SkeletonCards n={2} /> : (
+      {/* همان اشتباهِ پلن‌ها: خطا فقط داخلِ شاخه‌ی «رسید» نشان داده می‌شد */}
+      {!d && err ? (
+        <div className="text-[13px] py-3 flex items-start gap-1.5" style={{ color: "var(--danger)" }}>
+          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+          <span>پوسته خوانده نشد: {err}{" "}
+            <button type="button" className="underline" onClick={() => { setErr(""); load(); }}>دوباره</button>
+          </span>
+        </div>
+      ) : !d ? <SkeletonCards n={2} /> : (
         <div className="st-wrap">
           <div className="st-main">
             {/* سربرگ — فروشگاه با همان رنگی که انتخاب شده، و وضعیتِ اشتراک */}
@@ -1810,7 +1818,16 @@ function PlansBox({ inline, token, onClose, onNote }) {
           </div>
         )}
 
-        {!rows ? (
+        {/* خطای خواندن داخلِ شاخه‌ی «ردیف‌ها رسیدند» بود؛ خواندنِ ناموفق
+            هرگز به آن‌جا نمی‌رسید و اسکلت برای همیشه می‌ماند */}
+        {!rows && err ? (
+          <div className="text-[13px] py-3 flex items-start gap-1.5" style={{ color: "var(--danger)" }}>
+            <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+            <span>پلن‌ها خوانده نشد: {err}{" "}
+              <button type="button" className="underline" onClick={() => { setErr(""); load(); }}>دوباره</button>
+            </span>
+          </div>
+        ) : !rows ? (
           <SkeletonCards n={3} />
         ) : (
           <>

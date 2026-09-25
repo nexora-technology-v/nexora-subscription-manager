@@ -1421,6 +1421,10 @@ export default function Mini() {
   // سکه، نردبانِ تخفیف و کدِ دعوت — همه از سرور، هیچ‌کدام این‌جا
   // حساب نمی‌شوند
   const [rw, setRw] = useState(null);
+  // سفارش‌های باز جدا از خطای کلی: نیامدنشان اپ را نمی‌اندازد، ولی بی‌صدا
+  // هم نیست — کارتِ «رسیدتان در انتظار تایید است» غیب می‌شد و مشتری فکر
+  // می‌کرد پرداختش نرسیده و دوباره پول می‌داد.
+  const [ordersErr, setOrdersErr] = useState("");
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -1429,10 +1433,11 @@ export default function Mini() {
       const [m, s, p, o] = await Promise.all([
         api("/api/mini/me"), api("/api/mini/subs"), api("/api/mini/plans"),
         // سفارش‌های باز نباید کلِ صفحه را بیندازند اگر نیامدند
-        api("/api/mini/orders").catch(() => ({ orders: [] })),
+        api("/api/mini/orders").catch((e) => ({ orders: [], _err: e.message })),
       ]);
       setMe(m); setSubs(s.subs || []); setPlans(p.plans || []);
       setOrders(o.orders || []);
+      setOrdersErr(o._err || "");
       // صندوق جدا بارگذاری می‌شود: نیامدنش نباید بقیه را بیندازد
       api("/api/mini/inbox")
         .then((x) => { setMsgs(x.messages || []); setUnread(x.unread || 0); })
@@ -2029,6 +2034,13 @@ export default function Mini() {
             <b>{err}</b>
             <span>همه‌ی این کارها از خودِ ربات هم انجام می‌شوند — پیام را
               ببندید و از منوی ربات ادامه بدهید.</span>
+          </div>
+        )}
+        {!err && ordersErr && (
+          <div className="mn-err">
+            <b>وضعیتِ سفارش‌های قبلی‌تان خوانده نشد</b>
+            <span>{ordersErr} — اگر تازه پرداخت کرده‌اید، پیش از پرداختِ دوباره
+              کمی بعد برگردید یا از ربات بپرسید.</span>
           </div>
         )}
 
