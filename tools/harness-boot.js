@@ -4805,13 +4805,15 @@
 
 
   var PORTAL_LIST = {
-    ready: true,
+    // شکلِ tenant_portal_list؛ بی‌hasPass همه «رمز ندارد» دیده می‌شدند
+    ready: true, groupsError: null,
     groups: ["goroh-a", "goroh-b", "goroh-c"],
     tenants: mk(4, function (i) {
       return { id: i + 2, name: ["حسین", "مهدی", "سارا", "امیر"][i],
                portalSlug: ["hossein", "mehdi", "sara", "amir"][i],
                portalGroup: i === 3 ? "" : ["goroh-a", "goroh-b", "goroh-c"][i],
                portalEnabled: i !== 2,
+               hasPass: i !== 3, active: true, logo: "",
                credit: [1200000, 4500000, -1, 0][i] };
     }),
   };

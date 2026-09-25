@@ -92,6 +92,12 @@ T.exec("UPDATE orders SET status='awaiting' WHERE id=?", (o2["id"],))
 T.exec("INSERT INTO subscriptions (tenant_id,user_id,plan_id,client_email,is_active,expires_at)"
        " VALUES (?,?,?,?,1,datetime('now','+10 day'))", (tid, u1["id"], pid, "ali_1"))
 T.create_user(1002, None, "رضا", referred_by=u1["id"])
+# یک نماینده — بی‌این فهرستِ نماینده‌ها خالی است و کلیدهای هر ردیف سنجیده نمی‌شود
+_rc = sqlite3.connect(TMP / "bot.db")
+_rc.execute("INSERT INTO tenants (name, bot_token, owner_tg_id, parent_id, portal_slug, portal_group, credit) "
+            "VALUES (?,?,?,?,?,?,?)", ("نماینده", "456:TEST", 2, tid, "rep1", "ali", 1200000))
+_rc.commit()
+_rc.close()
 
 import app as APP                                               # noqa: E402
 
@@ -268,6 +274,8 @@ MUST_MATCH = {
     # فضای ۴ — ربات
     "/api/admin/bot/status", "/api/admin/bot/orders", "/api/admin/bot/users", "/api/admin/bot/plans",
     "/api/admin/bot/affiliates", "/api/admin/bot/events", "/api/admin/bot/settings",
+    # فضای ۵ — نمایندگی
+    "/api/admin/tenant/portal-list",
 }
 
 #: مسیرهای پارامتری با یک شناسه‌ی واقعی از فیکسچر — فهرستِ خودکار

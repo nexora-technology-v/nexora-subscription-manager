@@ -6,13 +6,13 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle, Camera, Check, Copy, History, Key, Link2, Loader2, Network,
+  AlertTriangle, Camera, Check, ChevronDown, Copy, History, Key, Link2, Loader2, Network,
   Plus, Power, RefreshCw, Users, Wallet, X,
 } from "lucide-react";
 
 import { API_URL } from "../lib/constants";
 import { errText, faNum } from "../lib/format";
-import { Avatar, EmptyState, Field, InfoBox, Msg, MoneyInput, NumberInput, SectionHead, StatTile } from "../ui/index";
+import { Avatar, ConfirmModal, EmptyState, Field, InfoBox, Msg, MoneyInput, NumberInput, SectionHead, StatTile } from "../ui/index";
 import { BotInboundsSection } from "./bot/inbounds";
 import { isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
 
@@ -121,6 +121,8 @@ function Row({ t, groups, password, onSaved, setMsg }) {
   const [copied, setCopied] = useState("");
   const [topup, setTopup] = useState("");
   const [log, setLog] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [ask, setAsk] = useState(null);      // "pw" | "close"
 
   // credit منفی یعنی بدون سقف: آخر ماه صورتحساب می‌گیرد.
   const prepaid = t.credit !== null && Number(t.credit) >= 0;
@@ -154,6 +156,12 @@ function Row({ t, groups, password, onSaved, setMsg }) {
   };
 
   const on = !!t.portalEnabled;
+  const newPass = () => {
+    const p = randomPass();
+    setPw(p);
+    setOpen(true);
+    save({ password: p }, "رمز تازه ساخته شد — همین حالا کپی کنید");
+  };
 
   const setCredit = async (body, what) => {
     setBusy(true);
@@ -190,33 +198,64 @@ function Row({ t, groups, password, onSaved, setMsg }) {
   const showLog = async () => {
     if (log) { setLog(null); return; }
     try {
-      const j = await fetch(
+      const r = await fetch(
         `${API_URL}/api/admin/tenant/${t.id}/credit-log`,
-        { headers: { "X-Admin-Password": password } }).then((r) => r.json());
+        { headers: { "X-Admin-Password": password } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { setMsg({ t: "err", m: errText(j.detail, "تاریخچه خوانده نشد") }); return; }
       setLog(j.rows || []);
     } catch {
       setMsg({ t: "err", m: "تاریخچه خوانده نشد" });
     }
   };
 
+  // «آماده‌ی ورود» — همان سه شرطی که پایین فهرست می‌شوند. پیش‌تر نبودِ
+  // نشانیِ لینک در شرطِ بیرونی نبود، پس نماینده‌ی بی‌نشانی هشدار نمی‌گرفت.
+  const ready = !!(t.portalSlug && t.portalGroup && t.hasPass && on);
+
+  /* ردیفِ فشرده، تنظیمات بازشونده. پیش‌تر هر نماینده یک کارتِ ۳۷۰ پیکسلیِ
+     همیشه‌باز بود — چهار نماینده، ۱۵۰۰ پیکسل فرم برای دیدنِ چهار عدد اعتبار. */
   return (
-    <div className="fx-card p-5 mb-3">
-      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <TenantLogo tid={t.id} name={t.name} logo={t.logo}
-            password={password} onDone={onSaved} />
-          <span className="text-[14px] font-semibold text-white">{t.name}</span>
-          <span className="fx-pill" style={{
-            background: on ? "var(--ok-soft)" : "var(--surface-3)",
-            color: on ? "var(--ok)" : "var(--muted)",
-          }}>
-            {on ? "پنل باز" : "پنل بسته"}
+    <div className={`fx-card fx-res mb-3 ${open ? "open" : ""}`}>
+      <div className="fx-res-row">
+        <TenantLogo tid={t.id} name={t.name} logo={t.logo}
+          password={password} onDone={onSaved} />
+        <button className="min-w-0 flex-1 text-right" onClick={() => setOpen(!open)} aria-expanded={open}>
+          <span className="flex items-center gap-2 flex-wrap">
+            <span className="text-[14px] font-semibold text-white">{t.name}</span>
+            <span className="fx-pill" style={{
+              background: on ? "var(--ok-soft)" : "var(--surface-3)",
+              color: on ? "var(--ok)" : "var(--muted)" }}>{on ? "پنل باز" : "پنل بسته"}</span>
+            {!ready && on && <span className="fx-pill" style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>آماده‌ی ورود نیست</span>}
           </span>
-        </div>
+          <span className="block text-[12px] mt-0.5 truncate" style={{ color: "var(--muted)" }}>
+            {t.portalGroup ? <span dir="ltr">{t.portalGroup}</span> : "بدون گروه"}
+            {t.portalSlug ? <> · <span dir="ltr">/r/{t.portalSlug}</span></> : ""}
+          </span>
+        </button>
+        <span className="text-[13px] font-bold shrink-0 text-left" style={{
+          color: prepaid ? (Number(t.credit) > 0 ? "var(--ok)" : "var(--danger)") : "var(--dim)",
+          fontFamily: "var(--num)" }}>
+          {prepaid ? <>{faNum(t.credit)} <span className="fx-fa-sub text-[11px]" style={{ color: "var(--muted)" }}>تومان</span></> : "بدون سقف"}
+        </span>
+        {link && (
+          <button className="fx-ico-btn" style={{ width: 32, height: 32 }}
+            title="کپی لینک پنل" aria-label="کپی لینک پنل" onClick={() => copy(link, "link")}>
+            {copied === "link" ? <Check size={13} style={{ color: "var(--ok)" }} /> : <Copy size={13} />}
+          </button>
+        )}
+        <button className="fx-ico-btn" style={{ width: 32, height: 32 }}
+          title={open ? "بستن" : "تنظیمات"} aria-label={open ? "بستن" : "تنظیمات"} onClick={() => setOpen(!open)}>
+          <ChevronDown size={14} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .2s" }} />
+        </button>
+      </div>
+
+      {open && <div className="fx-res-body">
+      <div className="flex items-center justify-end gap-3 mb-3 flex-wrap">
+        {/* بستنِ پنل نشست‌های بازِ نماینده را همان لحظه می‌اندازد — با یک
+            کلیکِ اشتباه نه */}
         <button title="باز یا بستن پنل نماینده" disabled={busy}
-          onClick={() => save({ enabled: !on },
-            on ? "پنل بسته شد — نشست‌های بازش همان لحظه افتادند"
-               : "پنل باز شد")}
+          onClick={() => (on ? setAsk("close") : save({ enabled: true }, "پنل باز شد"))}
           className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
           <Power size={13} style={{ color: on ? "var(--muted)" : "var(--ok)" }} />
           {on ? "بستن پنل" : "بازکردن پنل"}
@@ -258,8 +297,7 @@ function Row({ t, groups, password, onSaved, setMsg }) {
             : <Check size={13} />} ثبت
         </button>
         <button disabled={busy}
-          onClick={() => { const p = randomPass(); setPw(p); save({ password: p },
-            "رمز تازه ساخته شد — همین حالا کپی کنید"); }}
+          onClick={() => (t.hasPass ? setAsk("pw") : newPass())}
           className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
           <Key size={13} /> رمز تازه بساز
         </button>
@@ -384,7 +422,7 @@ function Row({ t, groups, password, onSaved, setMsg }) {
       {/* چه چیزی مانده تا این نماینده بتواند وارد شود.
           بدون این، تنها بازخوردی که مدیر می‌گرفت «رمز نادرست است»
           روی صفحه‌ی ورود بود — که هیچ ربطی به رمز نداشت. */}
-      {(!t.portalGroup || !t.hasPass || !on) && (
+      {!ready && (
         <div className="rounded-xl p-3 mt-3 text-[12px] leading-relaxed"
           style={{ background: "var(--warn-wash)",
                    border: "1px solid var(--warn-fill)",
@@ -397,6 +435,19 @@ function Row({ t, groups, password, onSaved, setMsg }) {
             <div>• پنلش بسته است — دکمه‌ی «بازکردن پنل» را بزنید</div>
           )}
         </div>
+      )}
+      </div>}
+
+      {ask === "pw" && (
+        <ConfirmModal title={`رمزِ تازه برای «${t.name}»`} confirmLabel="رمز تازه بساز"
+          desc="رمزِ فعلیِ نماینده همین حالا باطل می‌شود و تا رمزِ تازه را به او ندهید نمی‌تواند وارد شود."
+          onCancel={() => setAsk(null)} onConfirm={() => { setAsk(null); newPass(); }} />
+      )}
+      {ask === "close" && (
+        <ConfirmModal title={`بستنِ پنلِ «${t.name}»`} confirmLabel="ببند"
+          desc="نشست‌های بازِ نماینده همان لحظه می‌افتند و تا دوباره باز نکنید نمی‌تواند وارد شود. ربات و مشتری‌هایش کار می‌کنند."
+          onCancel={() => setAsk(null)}
+          onConfirm={() => { setAsk(null); save({ enabled: false }, "پنل بسته شد — نشست‌های بازش همان لحظه افتادند"); }} />
       )}
     </div>
   );
@@ -527,6 +578,11 @@ export function ResellerInbounds({ password }) {
     useJson("/api/admin/tenant/portal-list", password);
 
   const list = (data?.tenants || []);
+  // صفحه تا انتخابِ دستی خالی بود؛ اولی خودش انتخاب می‌شود
+  useEffect(() => {
+    if (!sel && list.length) setSel(String(list[0].id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.length]);
 
   return (
     <>
@@ -542,15 +598,21 @@ export function ResellerInbounds({ password }) {
         <span className="text-[13px]" style={{ color: "var(--dim)" }}>
           نماینده:
         </span>
-        <select value={sel} onChange={(e) => setSel(e.target.value)}
-          className="fx-input" style={{ minWidth: 200 }}>
-          <option value="">— انتخاب کنید —</option>
-          {list.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}{t.portalSlug ? ` (${t.portalSlug})` : ""}
-            </option>
-          ))}
-        </select>
+        {/* قرص به‌جای منوی کشویی: با چند نماینده، همه یک‌جا دیده می‌شوند */}
+        <div className="flex gap-1.5 flex-wrap flex-1" role="tablist" aria-label="نماینده">
+          {list.map((t) => {
+            const on = String(t.id) === String(sel);
+            return (
+              <button key={t.id} role="tab" aria-selected={on} onClick={() => setSel(String(t.id))}
+                className="fx-pill px-3 py-1.5 text-[13px]" style={{
+                  background: on ? "var(--accent-soft)" : "var(--surface-3)",
+                  color: on ? "var(--accent-2)" : "var(--dim)",
+                  border: `1px solid ${on ? "var(--accent-line)" : "var(--border)"}` }}>
+                {t.name}
+              </button>
+            );
+          })}
+        </div>
         <button onClick={reload} disabled={loading}
           className="fx-btn-g px-3 py-2 text-[13px] flex items-center gap-1.5">
           {loading ? <Loader2 size={13} className="animate-spin" />
