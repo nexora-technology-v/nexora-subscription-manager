@@ -2129,9 +2129,13 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 .mn-pend-ico.pending { background: var(--accent-soft); color: var(--accent-2); }
 .mn-pend-body { flex: 1; min-width: 0; }
+/* نامِ پلن را مالک می‌نویسد و می‌تواند بلند باشد («… ۱۰۰ گیگ — نامحدود
+   کاربر»). یک‌خطی روی گوشیِ ۳۲۰ پیکسلی درست همان «نامحدود» را می‌برید؛
+   حالا تا دو خط می‌پیچد و بعد بریده می‌شود. */
 .mn-pend-body > b {
-  display: block; font-size: 13.5px; color: var(--text);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  font-size: 13.5px; color: var(--text); line-height: 1.45;
+  overflow: hidden; overflow-wrap: anywhere;
 }
 .mn-pend-body > span {
   display: block; font-size: 11.5px; color: var(--muted); margin-top: 3px;
@@ -3886,7 +3890,10 @@ button.pd-kpi:active { transform: scale(.985); }
 .pd-kpi-value { font-size: 24px; font-weight: 800; color: var(--text); line-height: 1.25;
   font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pd-kpi-value em { font-style: normal; font-size: 12px; font-weight: 500; color: var(--muted); margin-inline-start: 5px; }
-.pd-kpi-sub { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* تا دو خط، نه یک خطِ بریده: «۱۱ تازه و ۱۹ تمدید در این ماه» روی ۳۲۰
+   پیکسل «در این ما…» می‌شد */
+.pd-kpi-sub { font-size: 12px; color: var(--dim); line-height: 1.5;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .pd-kpi.tone-accent .pd-kpi-ico { background: var(--accent-soft); color: var(--accent-2); }
 .pd-kpi.tone-ok .pd-kpi-ico { background: var(--ok-soft); color: var(--ok); }
 .pd-kpi.tone-warn .pd-kpi-ico { background: var(--warn-soft); color: var(--warn); }
