@@ -2638,10 +2638,10 @@ try:
     _rates_as({}, [{"gb": 30, "price": 90000}, {"gb": 100, "price": 250000}])
 
     # قیمت بالای بزرگ‌ترین کف است: این بلوک پله‌ها را می‌سنجد، نه قیمت
-    def _save(gb):
+    def _save(gb, price=300000):
         return app.portal_bot_plans_save(
             {"plans": [{"name": "پلن", "gb": gb, "days": 30,
-                        "ip_limit": 1, "price": 300000}]},
+                        "ip_limit": 1, "price": price}]},
             t={"id": tid, "portal_group": "g"})
 
     try:
@@ -2662,10 +2662,18 @@ try:
     except app.HTTPException as _e:
         check("پله‌ی مجاز پذیرفته می‌شود", False, str(_e.detail)[:80])
 
-    # در حالت حجمی هیچ حجمی رد نمی‌شود
+    # در حالت حجمی هیچ حجمی رد نمی‌شود — ولی قیمت از کفش (۷۷۷ × ۲٬۵۰۰) پایین‌تر
+    # نه. تا ۱.۱۱۴ همین‌جا ۳۰۰٬۰۰۰ تومان برای ۷۷۷ گیگ پذیرفته می‌شد: حالتِ حجمی
+    # اصلاً کف نداشت.
     _rates_as({"per_gb": 2500}, [])
     try:
-        _r = _save(777)
+        _save(777)
+        check("در حالت حجمی، زیرِ «حجم × نرخ» رد می‌شود", False, "پذیرفته شد")
+    except app.HTTPException as _e:
+        check("در حالت حجمی، زیرِ «حجم × نرخ» رد می‌شود",
+              _e.status_code == 400 and "۱٬۹۴۲٬۵۰۰" in str(_e.detail), str(_e.detail)[:80])
+    try:
+        _r = _save(777, price=1942500)
         check("در حالت حجمی، هر حجمی می‌گذرد", bool(_r), str(_r)[:60])
     except app.HTTPException as _e:
         check("در حالت حجمی، هر حجمی می‌گذرد", False, str(_e.detail)[:80])
@@ -4316,6 +4324,30 @@ _CLI = io.open(os.path.join(str(ROOT), "nexora-cli.sh"),
 check("و آن تعمیر در هر به‌روزرسانی اجرا می‌شود",
       "fix-nginx-cache.py" in _CLI,
       "تعمیری که صدا زده نشود، وجود ندارد")
+
+# فشرده‌سازی: nginx ِ پیش‌فرض فقط html را فشرده می‌کند. ~۷۰۰ کیلوبایت JS/CSS
+# روی اینترنتِ قطع‌ووصل وسطِ راه می‌ماند و مینی‌اپ پشتِ اسپلش می‌ایستاد —
+# مالک و نماینده هر دو دیدند. رفتار سنجیده می‌شود، نه متن: خودِ اسکریپت روی
+# یک پیکربندیِ قدیمیِ دوبلوکی اجرا می‌شود.
+import subprocess as _sp9                                    # noqa: E402
+_ngd = tempfile.mkdtemp(prefix="ng_")
+_ngf = os.path.join(_ngd, "nexora-panel.conf")
+_old_conf = ("server {\n    listen 80;\n    location / { try_files $uri /index.html; }\n"
+             "    location /api/ {\n        proxy_pass http://127.0.0.1:8100;\n"
+             "        proxy_set_header Host $host;\n    }\n}\n") * 2
+io.open(_ngf, "w", encoding="utf-8").write(_old_conf)
+_sp9.run([sys.executable, os.path.join(str(ROOT), "fix-nginx-cache.py"), _ngf],
+         capture_output=True, timeout=60)
+_new_conf = io.open(_ngf, encoding="utf-8").read()
+check("به‌روزرسانی JS/CSS را فشرده می‌کند — در هر دو بلوک",
+      _new_conf.count("gzip_types") == 2 and "application/javascript" in _new_conf,
+      "%d بلوک" % _new_conf.count("gzip_types"))
+_sp9.run([sys.executable, os.path.join(str(ROOT), "fix-nginx-cache.py"), _ngf],
+         capture_output=True, timeout=60)
+check("اجرای دوباره چیزی را تکرار نمی‌کند",
+      io.open(_ngf, encoding="utf-8").read().count("gzip_types") == 2)
+check("نصبِ تازه هم فشرده می‌فرستد (هر سه قالبِ install.sh)",
+      _INST.count("gzip_types") == 3, "%d" % _INST.count("gzip_types"))
 
 _clear_mini()
 AP._learn_panel_origin(_Req(host="evil.com/x?a=b",

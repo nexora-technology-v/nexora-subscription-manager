@@ -1022,6 +1022,12 @@ function PlanFloor({ row, cost }) {
 
       {/* چرا این‌قدر: نماینده باید بتواند عدد را بشکند، وگرنه
           «کف» یک ادعای بی‌پشتوانه است. */}
+      {cost.perGb ? (
+        // نرخِ حجمی: حجم × نرخِ هر گیگ — ماه و کاربر در آن نیستند
+        <div className="text-[10.5px] mt-1" style={{ color: "var(--muted)" }}>
+          {faNum(cost.gb)} گیگ × {faNum(cost.perGb)} تومانِ هر گیگ
+        </div>
+      ) : (
       <div className="text-[10.5px] mt-1" style={{ color: "var(--muted)" }}>
         {faNum(cost.base)} تومان پایه
         {cost.extraDevices > 0 && (
@@ -1035,6 +1041,7 @@ function PlanFloor({ row, cost }) {
           </span>
         )}
       </div>
+      )}
     </div>
   );
 }
@@ -1110,8 +1117,8 @@ function PlansBox({ inline, token, onClose, onNote }) {
     days: 30, ip_limit: 2, price: 0, is_active: true,
   }]);
   const drop = (i) => setRows(rows.filter((_, k) => k !== i));
-  // تستِ رایگان با اندازه‌ی تستِ مالک شروع می‌شود — بزرگ‌ترین چیزی که
-  // مجاز است. بزرگ‌ترش را بکند رد می‌کند و می‌گوید چرا.
+  // تستِ رایگان با عددهای مدیر — نماینده نمی‌تواند عوضشان کند؛ بکند هم
+  // موقعِ ذخیره و ربات موقعِ ساخت همان‌ها را می‌گذارند.
   const hasTrial = (rows || []).some((r) => r.is_trial);
   const addTrial = () => setRows([...(rows || []), {
     name: "تست رایگان", gb: trialCap?.gb || 1, days: trialCap?.days || 1,
@@ -1164,7 +1171,8 @@ function PlansBox({ inline, token, onClose, onNote }) {
           )}
           {policy.mode === "volume" && (
             <>نرخ شما حجمی است: هر گیگابایت <b>{faNum(policy.perGb)}</b> تومان.
-              {" "}پس هر حجمی می‌توانید تعریف کنید.</>
+              {" "}هر حجمی می‌توانید تعریف کنید، ولی قیمتش کمتر از «حجم × همین نرخ» ذخیره نمی‌شود
+              {" "}— کفِ هر پلن زیرِ همان پلن نوشته شده.</>
           )}
           {policy.mode === "open" && (
             <>هنوز نرخی برای گروه شما ثبت نشده، پس فعلاً حجم آزاد است.
@@ -1244,7 +1252,12 @@ function PlansBox({ inline, token, onClose, onNote }) {
                     {/* select بدون مونو: گزینه‌ها «نامحدود» و «خارج از
                         نرخ» هم دارند و JetBrains Mono حرف فارسی ندارد،
                         پس فقط به فونتِ دیگری می‌افتد. */}
-                    {policy.mode === "tiers" && !r.is_trial ? (
+                    {r.is_trial ? (
+                      // حجمِ تست را مدیر تعیین می‌کند؛ بکند هر عددِ دیگری را
+                      // نادیده می‌گیرد، پس فیلدِ قابلِ‌ویرایش فقط گول‌زننده بود
+                      <input disabled value={trialCap?.gb ? faNum(trialCap.gb) : "—"}
+                        className="fx-input text-[13px] text-center" title="مدیر تعیین می‌کند" />
+                    ) : policy.mode === "tiers" ? (
                       <select value={r.gb ?? 0}
                         onChange={(e) => patch(i, { gb: Number(e.target.value) || 0 })}
                         className="fx-input text-[13px] text-center w-full">
@@ -1278,6 +1291,9 @@ function PlansBox({ inline, token, onClose, onNote }) {
                         <input disabled value="رایگان"
                           className="fx-input text-[13px] text-center"
                           style={{ color: "var(--ok)" }} />
+                      ) : r.is_trial ? (
+                        <input disabled value={trialCap?.[k] ? faNum(trialCap[k]) : "—"}
+                          className="fx-input text-[13px] text-center" title="مدیر تعیین می‌کند" />
                       ) : k === "price" ? (
                         <MoneyInput min="0" value={r[k] ?? 0}
                           onChange={(e) => patch(i, { [k]: Number(e.target.value) || 0 })}
@@ -1291,10 +1307,12 @@ function PlansBox({ inline, token, onClose, onNote }) {
                     </div>
                   ))}
                 </div>
-                <div className="text-[11px] mt-1.5"
-                  style={{ color: "var(--muted)" }}>
-                  حجم ۰ یعنی نامحدود · کاربر ۰ یعنی بدون محدودیت
-                </div>
+                {!r.is_trial && (
+                  <div className="text-[11px] mt-1.5"
+                    style={{ color: "var(--muted)" }}>
+                    حجم ۰ یعنی نامحدود · کاربر ۰ یعنی بدون محدودیت
+                  </div>
+                )}
 
                 {/* کف، قیمت، و سود — سه عددِ جدا.
                     «برای شما X تومان» به‌تنهایی کافی نبود: نماینده
@@ -1303,12 +1321,21 @@ function PlansBox({ inline, token, onClose, onNote }) {
                 {r.is_trial ? (
                   <div className="text-[12px] mt-2 leading-relaxed"
                     style={{ color: "var(--dim)" }}>
-                    رایگان برای مشتری و برای شما — هزینه‌اش با مدیر است. حداکثر{" "}
-                    <b>{trialCap?.gb ? `${faNum(trialCap.gb)} گیگ` : "حجمِ نامحدود"}</b>
-                    {" · "}<b>{trialCap?.days ? `${faNum(trialCap.days)} روز` : "بی‌انقضا"}</b>
-                    {" · "}<b>{trialCap?.ip_limit ? `${faNum(trialCap.ip_limit)} کاربر` : "کاربرِ نامحدود"}</b>
-                    . هر مشتری یک بار. دکمه‌اش در ربات وقتی می‌آید که
-                    «اشتراک تست رایگان» را در تنظیماتِ ربات روشن کنید.
+                    {trialCap ? (
+                      <>
+                        رایگان برای مشتری و برای شما — هزینه‌اش با مدیر است. حجم و مدت را
+                        مدیر تعیین کرده:{" "}
+                        <b>{faNum(trialCap.gb)} گیگ</b>
+                        {" · "}<b>{faNum(trialCap.days)} روز</b>
+                        {" · "}<b>{trialCap.ip_limit ? `${faNum(trialCap.ip_limit)} کاربر` : "کاربرِ نامحدود"}</b>
+                        . هر مشتری یک بار. دکمه‌اش در ربات وقتی می‌آید که
+                        «اشتراک تست رایگان» را در تنظیماتِ ربات روشن کنید.
+                      </>
+                    ) : (
+                      <span style={{ color: "var(--warn)" }}>
+                        مدیر تستِ نماینده‌ها را خاموش کرده — این ردیف ذخیره نمی‌شود؛ حذفش کنید.
+                      </span>
+                    )}
                   </div>
                 ) : (
                   <PlanFloor row={r} cost={cost[i]} />
@@ -1331,7 +1358,7 @@ function PlansBox({ inline, token, onClose, onNote }) {
                 </button>
               ) : (
                 <p className="text-[12px] mb-2 text-center" style={{ color: "var(--muted)" }}>
-                  تستِ رایگان فعلاً ممکن نیست — مدیر هنوز تستی تعریف نکرده.
+                  تستِ رایگان فعلاً ممکن نیست — مدیر تستِ نماینده‌ها را روشن نکرده.
                 </p>
               )
             )}

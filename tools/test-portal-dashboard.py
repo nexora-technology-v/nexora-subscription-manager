@@ -12,7 +12,9 @@
   · مالک فقط کاربر و فروشِ خودش را می‌بیند
   · نماینده فقط مالِ خودش را — حتی وقتی یک نفر در هر دو ربات هست
   · تنظیماتِ ربات فهرستِ مجاز است
-  · تستِ رایگانِ نماینده زیرِ سقفِ تستِ مالک است
+  · تستِ رایگانِ نماینده عددهای مالک را می‌گیرد، نه عددهای خودش
+  · کفِ حجمی: حجم × نرخِ هر گیگ
+  · «ببند» مالک حتی با قیمتِ صفر می‌بندد
 
 اجرا:  python3 tools/test-portal-dashboard.py
 """
@@ -208,7 +210,7 @@ check("خواندن فقط کلیدهای مجاز را می‌دهد",
       "cards" not in _g["settings"] and _g["settings"]["brand"] == "فروشگاه الف")
 
 # ═══════════════════════════════════════════════════════════
-head("تستِ رایگانِ نماینده — زیرِ سقفِ مالک")
+head("تستِ رایگانِ نماینده — عددها را مالک تعیین می‌کند")
 # ═══════════════════════════════════════════════════════════
 
 
@@ -221,21 +223,125 @@ def save_trial(gb, days=1, ips=1, extra=()):
 check("مالک تست ندارد: تستِ نماینده ذخیره نمی‌شود",
       status_of(lambda: save_trial(1)) == 400)
 check("و پرتال همین را می‌گوید", AP.portal_bot_settings(t=TA)["trialCap"] is None
-      and "مالک" in AP.portal_bot_settings(t=TA)["trialWhy"])
+      and "مدیر" in AP.portal_bot_settings(t=TA)["trialWhy"])
 
 DO.exec("INSERT INTO plans (tenant_id,name,price,gb,days,ip_limit,is_trial,is_active) "
         "VALUES (?,?,?,?,?,?,1,1)", (OWNER, "تست مالک", 0, 2, 1, 1))
-check("زیرِ سقف ذخیره می‌شود", status_of(lambda: save_trial(1)) == 200)
+check("تست ذخیره می‌شود", status_of(lambda: save_trial(1)) == 200)
 _tp = DA.q("SELECT * FROM plans WHERE tenant_id=? AND is_trial=1", (A,), one=True)
 check("با قیمتِ صفر، هر چه فرستاده شده باشد", _tp and _tp["price"] == 0,
       _tp and _tp["price"])
-check("بزرگ‌تر از سقف ذخیره نمی‌شود", status_of(lambda: save_trial(5)) == 400)
-check("نامحدود وقتی سقف محدود است هم نه", status_of(lambda: save_trial(0)) == 400)
+check("و با حجمِ مالک (۲)، نه عددِ نماینده (۱)", _tp and _tp["gb"] == 2, _tp and _tp["gb"])
+check("۵۰ گیگ فرستاد: ۲ گیگ نشست (مالک: «ممکن است حجمِ زیاد بگذارد»)",
+      status_of(lambda: save_trial(50, days=30, ips=5)) == 200
+      and DA.q("SELECT gb, days, ip_limit FROM plans WHERE tenant_id=? AND is_trial=1",
+               (A,), one=True) == {"gb": 2, "days": 1, "ip_limit": 1})
+check("نامحدود فرستاد: باز هم ۲ گیگ",
+      status_of(lambda: save_trial(0)) == 200
+      and DA.q("SELECT gb FROM plans WHERE tenant_id=? AND is_trial=1", (A,), one=True)["gb"] == 2)
 check("دو تست نه",
       status_of(lambda: save_trial(1, extra=[{"name": "تست۲", "gb": 1, "days": 1,
                                              "ip_limit": 1, "is_trial": True}])) == 400)
 check("سقف در پاسخِ پلن‌ها هم هست",
       (AP.portal_bot_plans(t=TA).get("trialCap") or {}).get("gb") == 2)
+
+# تنظیمِ جدای مالک برای نماینده‌ها — بر تستِ خودش مقدم، و همان لحظه روی ردیف‌ها
+_g0 = AP.reseller_trial_get(x_admin_password=PW)
+check("پیش از تنظیم: تستِ خودِ مالک ملاک است (source=own)",
+      _g0["source"] == "own" and _g0["gb"] == 2, str(_g0))
+check("حجمِ صفر (نامحدود) برای تست رد می‌شود",
+      status_of(lambda: AP.reseller_trial_set(
+          {"enabled": True, "gb": 0, "days": 1, "ip_limit": 1}, x_admin_password=PW)) == 400)
+_s1 = AP.reseller_trial_set({"enabled": True, "gb": 3, "days": 2, "ip_limit": 1},
+                            x_admin_password=PW)
+check("ذخیره: روی ردیفِ تستِ نماینده‌ها نشست",
+      _s1["synced"] >= 1 and DA.q("SELECT gb, days FROM plans WHERE tenant_id=? AND is_trial=1",
+                                  (A,), one=True) == {"gb": 3, "days": 2}, str(_s1))
+check("ردیفِ تستِ خودِ مالک دست نخورد",
+      DO.q("SELECT gb FROM plans WHERE tenant_id=? AND is_trial=1", (OWNER,), one=True)["gb"] == 2)
+check("پرتال عددِ تازه را می‌بیند",
+      (AP.portal_bot_plans(t=AP._tenant_row(A)).get("trialCap") or {}).get("gb") == 3)
+AP.reseller_trial_set({"enabled": False, "gb": 3, "days": 2, "ip_limit": 1}, x_admin_password=PW)
+check("خاموش: پرتال «ممکن نیست» می‌گوید", AP.portal_bot_plans(t=AP._tenant_row(A))["trialCap"] is None)
+check("و ردیفِ تستِ نماینده غیرفعال شد، نه پاک",
+      DA.q("SELECT is_active FROM plans WHERE tenant_id=? AND is_trial=1", (A,), one=True)
+      == {"is_active": 0})
+check("و ذخیره‌ی تستِ تازه رد می‌شود", status_of(lambda: save_trial(1)) == 400)
+AP.reseller_trial_set({"enabled": True, "gb": 3, "days": 2, "ip_limit": 1}, x_admin_password=PW)
+check("روشنِ دوباره: همان ردیف برمی‌گردد",
+      DA.q("SELECT is_active, gb FROM plans WHERE tenant_id=? AND is_trial=1", (A,), one=True)
+      == {"is_active": 1, "gb": 3})
+
+# ═══════════════════════════════════════════════════════════
+head("کفِ قیمت با نرخِ حجمی — حجم × نرخِ هر گیگ")
+# ═══════════════════════════════════════════════════════════
+# مالک: «اگر گیگی ۳ هزار است، ۳۰ گیگ کفش می‌شود ۹۰». تا ۱.۱۱۴ گروهی که فقط
+# نرخِ حجمی داشت اصلاً کفی نداشت و هر قیمتی، حتی صفر، ذخیره می‌شد.
+_bc = AP._billing_conn()
+_bc.execute("INSERT OR REPLACE INTO group_config (group_key, label, billable, rates, per_gb) "
+            "VALUES ('ga','الف',1,'[]',3000)")
+_bc.commit()
+_bc.close()
+_TA3 = AP._tenant_row(A)
+_fl = AP.portal_plan_cost({"rows": [{"gb": 30, "days": 30, "ip_limit": 2},
+                                    {"gb": 30, "days": 90, "ip_limit": 4},
+                                    {"gb": 0, "days": 30, "ip_limit": 1}]}, t=_TA3)["rows"]
+check("۳۰ گیگ × ۳٬۰۰۰ = ۹۰٬۰۰۰", _fl[0].get("ready") and _fl[0]["cost"] == 90000, str(_fl[0]))
+check("ماه و کاربر ضرب نمی‌شوند — حجم سقفِ کلِ دوره است",
+      _fl[1].get("cost") == 90000, str(_fl[1]))
+check("نامحدود با نرخِ حجمی: «نامعلوم» با دلیل، نه صفر",
+      _fl[2].get("ready") is False and "نامحدود" in _fl[2].get("why", ""), str(_fl[2]))
+
+
+def _save_plan(price, gb=30):
+    return AP.portal_bot_plans_save({"plans": [
+        {"name": "سی", "gb": gb, "days": 30, "ip_limit": 2, "price": price}]}, t=_TA3)
+
+
+check("۸۹٬۰۰۰ ذخیره نمی‌شود", status_of(lambda: _save_plan(89000)) == 400)
+check("صفر هم نه", status_of(lambda: _save_plan(0)) == 400)
+check("۹۰٬۰۰۰ ذخیره می‌شود", status_of(lambda: _save_plan(90000)) == 200)
+check("و کف در plans.cost نشست (همان که از اعتبارِ پیش‌پرداخت کم می‌شود)",
+      DA.q("SELECT cost FROM plans WHERE tenant_id=? AND gb=30", (A,), one=True)["cost"] == 90000)
+_bc = AP._billing_conn()
+_bc.execute("UPDATE group_config SET per_gb=4000 WHERE group_key='ga'")
+_bc.commit()
+_bc.close()
+AP._refresh_plan_costs("ga")
+check("نرخ عوض شد: کفِ ذخیره‌شده هم (۱۲۰٬۰۰۰)",
+      DA.q("SELECT cost FROM plans WHERE tenant_id=? AND gb=30", (A,), one=True)["cost"] == 120000)
+_bc = AP._billing_conn()
+_bc.execute("DELETE FROM group_config WHERE group_key='ga'")
+_bc.commit()
+_bc.close()
+
+# ═══════════════════════════════════════════════════════════
+head("قابلیت‌ها: «ببند» مالک حتی با قیمتِ صفر")
+# ═══════════════════════════════════════════════════════════
+# مالک: «دکمه‌های باز و بسته‌اش اصلاً کار نمی‌کند». با قیمتِ صفر فقط تاریخ
+# پاک می‌شد و تاریخ آن‌جا خوانده نمی‌شد.
+_st0 = AP._tenant_settings(AP._tenant_row(OWNER))
+_st0["store_addon"] = {"price": 0, "days": 30}
+AP._save_tenant_settings(OWNER, _st0)
+check("قیمتِ صفر: باز", AP._addon_open(AP._tenant_row(A), "store"))
+AP.store_addon_grant({"tenant": A, "days": 0}, x_admin_password=PW)
+check("ببند: بسته شد، با وجودِ قیمتِ صفر", not AP._addon_open(AP._tenant_row(A), "store"))
+_rows = {r["id"]: r for r in AP.store_addon_get(x_admin_password=PW)["resellers"]}
+check("فهرست «بسته به‌دستِ مالک» را جدا می‌گوید", _rows[A]["blocked"] and not _rows[A]["open"])
+check("فروشگاهِ دیگر دست نخورد", _rows[B]["open"] and not _rows[B]["blocked"])
+check("ربات هم نمی‌فروشد (همان core.addon_open)",
+      _H.store_gate(type("C", (), {"tenant": AP._tenant_row(A),
+                                    "s": AP._tenant_settings(AP._tenant_row(A))})()) is not None)
+_st0["store_addon"] = {"price": 100000, "days": 30}
+AP._save_tenant_settings(OWNER, _st0)
+check("نماینده‌ی بسته با پولِ خودش بازش نمی‌کند (۴۰۳)",
+      status_of(lambda: AP.portal_store_buy(t=AP._tenant_row(A))) == 403)
+_st0["store_addon"] = {"price": 0, "days": 30}
+AP._save_tenant_settings(OWNER, _st0)
+AP.store_addon_grant({"tenant": A, "days": 30}, x_admin_password=PW)
+check("باز کن: دوباره باز", AP._addon_open(AP._tenant_row(A), "store")
+      and not AP._addon_blocked(AP._tenant_row(A), "store"))
+check("و با قیمتِ صفر تاریخِ گمراه‌کننده نمی‌گذارد", AP._addon_until(AP._tenant_row(A), "store") == "")
 
 # ═══════════════════════════════════════════════════════════
 head("استودیوی پوسته — قالب × پالت × سبکِ لوگو")

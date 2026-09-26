@@ -11,7 +11,7 @@ import {
   Activity, AlertTriangle, Bot, Camera, Check, Coins, Copy, CreditCard,
   Database, ExternalLink, Eye, FileText, Gift, Link2, Menu, MessageCircle, Moon, Play,
   Settings2, Sun,
-  LayoutGrid, Loader2, LogOut, Package, Palette, Plus, Power, QrCode, RefreshCw, RotateCcw, Search,
+  LayoutGrid, Loader2, Lock, LogOut, Package, Palette, Plus, Power, QrCode, RefreshCw, RotateCcw, Search,
   Sparkles,
   Trash2, Users, X, XCircle,
 } from "lucide-react";
@@ -510,6 +510,14 @@ export function ThemeBox({ inline, token, onClose, onNote, themeApi }) {
                         تمدید {faNum(d.days)} روزه
                       </button>
                     )}
+                  </>
+                ) : d.blocked ? (
+                  // مدیر بسته — خرید بازش نمی‌کند (بکند ۴۰۳)، پس دکمه‌ای هم نیست
+                  <>
+                    <span className="st-badge t-warn"><Lock size={12} /> مدیر این قابلیت را برای شما بسته است</span>
+                    <span className="st-until">
+                      پیش‌نمایش آزاد است، ولی مشتری‌ها پوسته‌ی پیش‌فرض را می‌بینند. برای بازشدن با مدیر هماهنگ کنید.
+                    </span>
                   </>
                 ) : (
                   <>

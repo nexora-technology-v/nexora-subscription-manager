@@ -1,7 +1,7 @@
 import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 import { isAff, isMini, portalSlug } from "./lib/route.js";
-import { Splash } from "./lib/mark.jsx";
+import { SLOW_MS, SLOW_NOTE, Splash } from "./lib/mark.jsx";
 import "./index.css";
 import { applyTheme, markScheme } from "./lib/mini-themes.js";
 import { readShop, writeShop } from "./lib/shopcache.js";
@@ -131,9 +131,9 @@ try {
  * «در حال بارگذاری» و اگر نرسید، «نیامد» با دکمه‌ی تلاش دوباره.
  * درصدِ ساختگی نشان نمی‌دهیم — دروغ است و کاربر هم می‌فهمد.
  */
-function Booting({ phase, note, onRetry }) {
+function Booting({ phase, note, onRetry, slow }) {
   return <Splash label={BOOT_LABEL} phase={phase} note={note}
-    onRetry={onRetry}
+    onRetry={onRetry} slow={slow}
     name={(SHOP && SHOP.brand) || ""}
     logo={(SHOP && SHOP.logo) || ""}
     logoStyle={SHOP_THEME && SHOP_THEME.logoStyle}
@@ -157,6 +157,8 @@ function Booting({ phase, note, onRetry }) {
 const SPLASH_MS = 1700;
 const EXIT_MS = 380;
 
+const reload = () => { try { window.location.reload(); } catch { /* */ } };
+
 function Gate({ children }) {
   // پیش‌نمایشِ پرتال: هر بار که قاب بار می‌شود ۱٫۷ ثانیه صفحه‌ی ورودِ
   // بی‌نام نشان می‌داد، پیش از آنکه پوسته برسد. پخشش با دکمه است.
@@ -166,29 +168,43 @@ function Gate({ children }) {
 
   const [phase, setPhase] = React.useState(skip ? "in" : "load");
   const [err, setErr] = React.useState("");
+  const [ready, setReady] = React.useState(false);
+  const [slow, setSlow] = React.useState(false);
+  const t0 = React.useRef(Date.now());
 
   // ۱. تکه واقعاً رسید؟
   React.useEffect(() => {
     let alive = true;
-    CHUNK.then(() => { if (alive) setErr(""); })
+    CHUNK.then(() => { if (alive) { setErr(""); setReady(true); } })
          .catch(() => { if (alive) setErr("برنامه بارگذاری نشد."); });
     return () => { alive = false; };
   }, []);
 
-  // ۲+۳. کف، بعد خروج
+  // ۲. دیده‌بان: دانلودی که نه می‌رسد نه شکست می‌خورد (اینترنتِ قطع‌ووصل)
+  // تا امروز اسپلشِ بی‌پایان بود — نه خطا، نه «دوباره». مالک و نماینده
+  // هر دو روی همان صفحه ماندند.
   React.useEffect(() => {
-    if (skip || err) return undefined;
-    const a = setTimeout(() => setPhase("done"), SPLASH_MS);
-    const b = setTimeout(() => setPhase("in"), SPLASH_MS + EXIT_MS);
+    if (ready || err) return undefined;
+    const id = setTimeout(() => setSlow(true), SLOW_MS);
+    return () => clearTimeout(id);
+  }, [ready, err]);
+
+  // ۳+۴. کف، بعد خروج — فقط وقتی تکه رسیده. خروجِ نرم پیش از رسیدن یعنی
+  // صفحه محو می‌شد و همان اسپلش دوباره از Suspense بالا می‌آمد.
+  React.useEffect(() => {
+    if (skip || err || !ready) return undefined;
+    const wait = Math.max(0, SPLASH_MS - (Date.now() - t0.current));
+    const a = setTimeout(() => setPhase("done"), wait);
+    const b = setTimeout(() => setPhase("in"), wait + EXIT_MS);
     return () => { clearTimeout(a); clearTimeout(b); };
-  }, [skip, err]);
+  }, [skip, err, ready]);
 
   if (err) {
-    return <Booting phase="error" note={err}
-      onRetry={() => window.location.reload()} />;
+    return <Booting phase="error" note={err} onRetry={reload} />;
   }
-  if (phase === "in") return children;
-  return <Booting phase={phase} note="در حال آماده‌سازی…" />;
+  if (phase === "in" && (ready || skip)) return children;
+  return <Booting phase={phase === "in" ? "load" : phase} note="در حال آماده‌سازی…"
+    slow={slow && !ready ? SLOW_NOTE : ""} onRetry={reload} />;
 }
 
 prefetchShop().finally(() => {

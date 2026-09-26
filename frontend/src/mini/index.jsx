@@ -38,7 +38,7 @@ import { errText, faDate, faNum, toFaDigits as faDigits } from "../lib/format";
 import { shrinkImage } from "../lib/image.js";
 import { applyTheme, markScheme } from "../lib/mini-themes.js";
 import { ShopLogo } from "../lib/shoplogo.jsx";
-import { Splash } from "../lib/mark.jsx";
+import { SLOW_MS, SLOW_NOTE, Splash } from "../lib/mark.jsx";
 import { demoApi, makeDemo, plansFromPortal } from "./demo.js";
 import { Avatar, EmptyState, Lightbox, MoneyInput, Skeleton } from "../ui/index";
 
@@ -158,7 +158,9 @@ async function api(path, opt = {}) {
   // روشن و دکمه‌ی تلاشِ دوباره می‌آید. ارسالِ رسید (عکس) بیشتر وقت دارد.
   const ctl = typeof AbortController === "function" ? new AbortController() : null;
   const timer = ctl && setTimeout(() => ctl.abort(), opt.method && opt.method !== "GET" ? 60000 : 20000);
-  let res;
+  // سقف تا آخرِ خواندنِ بدنه، نه فقط تا رسیدنِ سرآیندها: روی اینترنتِ
+  // قطع‌ووصل پاسخ وسطِ راه می‌ماند و `res.json()` برای همیشه منتظر بود.
+  let res, j;
   try {
     res = await fetch(`${API_URL}${path}`, {
       method: opt.method || "GET",
@@ -166,13 +168,19 @@ async function api(path, opt = {}) {
       body: opt.body ? JSON.stringify(opt.body) : undefined,
       signal: ctl ? ctl.signal : undefined,
     });
+    try { j = await res.json(); }
+    catch (e) {
+      // قطعِ وسطِ بدنه شکست است، نه «پاسخِ خالی» — وگرنه `{}` مثلِ کاربرِ
+      // واردشده پذیرفته می‌شد
+      if (e && e.name === "AbortError") throw e;
+      j = {};
+    }
   } catch (e) {
     if (e && e.name === "AbortError") throw new Error("سرور جواب نداد — دوباره تلاش کنید");
     throw e;
   } finally {
     if (timer) clearTimeout(timer);
   }
-  const j = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(errText(j.detail, "درخواست ناموفق بود"));
   return j;
 }
@@ -1423,6 +1431,8 @@ export default function Mini() {
   // پیش‌نمایش: پوسته‌ای که پرتال فرستاده، و پخشِ دوباره‌ی صفحه‌ی ورود
   const [pv, setPv] = useState(null);
   const [splash, setSplash] = useState(0);
+  // اسپلشِ ورود بیش از SLOW_MS: «کُند است» + «دوباره» (lib/mark.jsx)
+  const [bootSlow, setBootSlow] = useState(false);
   // سکه، نردبانِ تخفیف و کدِ دعوت — همه از سرور، هیچ‌کدام این‌جا
   // حساب نمی‌شوند
   const [rw, setRw] = useState(null);
@@ -1985,6 +1995,15 @@ export default function Mini() {
     return () => { try { w?.offEvent?.("themeChanged", paint); } catch { /* */ } };
   }, [themeKey, !!me]);   // eslint-disable-line react-hooks/exhaustive-deps
 
+  // دیده‌بانِ اسپلش: `api` سقفِ بیست‌ثانیه‌ای دارد، ولی بیست ثانیه
+  // صفحه‌ی بی‌حرف یعنی «گیر کرده». پیش از آن می‌گوییم چه خبر است. هر بار که
+  // `load` دوباره صدا زده شود (دکمه‌ی «دوباره»)، شمارش از نو شروع می‌شود.
+  useEffect(() => {
+    if (PREVIEW || me || err || bootSlow) return undefined;
+    const id = setTimeout(() => setBootSlow(true), SLOW_MS);
+    return () => clearTimeout(id);
+  }, [me, err, bootSlow]);
+
   const logoStyle = theme?.logoStyle;
 
   // تا فروشگاه معلوم نشده، اپ نشان داده نمی‌شود.
@@ -1996,7 +2015,8 @@ export default function Mini() {
   if (!PREVIEW && !me && !err) {
     const c = readShop();
     return <Splash neutral phase="load" label="اشتراک من" name={c?.brand || ""}
-      logo={c?.logo || ""} logoStyle={c?.theme?.logoStyle} variant={c?.theme?.splash} />;
+      logo={c?.logo || ""} logoStyle={c?.theme?.logoStyle} variant={c?.theme?.splash}
+      slow={bootSlow ? SLOW_NOTE : ""} onRetry={() => { setBootSlow(false); load(); }} />;
   }
 
   return (

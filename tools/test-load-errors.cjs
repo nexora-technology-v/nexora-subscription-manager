@@ -99,7 +99,7 @@ fs.writeFileSync(entry, [
   `export { ChannelSection } from ${S("channel.jsx")};`,
   `export { OverviewSection } from ${S("subpage.jsx")};`,
   `export { FirewallIntrusion } from ${S("intrusion.jsx")};`,
-  `export { PortalAdmin, PortalAddon, ResellerInbounds } from ${S("portal-admin.jsx")};`,
+  `export { PortalAdmin, ResellerFeatures, ResellerInbounds } from ${S("portal-admin.jsx")};`,
   `export { BillingClients, BillingPayments, BillingDash, BillingSettings, BillingInvoice, BillingPeriod, BillingGroups } from ${S("billing.jsx")};`,
 ].join("\n"));
 esbuild.buildSync({
@@ -182,7 +182,10 @@ const CASES = [
   ["تلاش برای نفوذ", C.FirewallIntrusion, pw, "/firewall/intrusion$"],
   ["نماینده‌ها و دسترسی", C.PortalAdmin, pw, "/tenant/portal-list$"],
   ["اینباندِ نماینده‌ها", C.ResellerInbounds, pw, "/tenant/portal-list$"],
-  ["افزونه‌ی پرتال", C.PortalAddon, pw, "/api/admin/portal-addon$"],
+  // سه منبعِ جدا در یک کارت: هر کدام که نیاید، دلیلش باید روی صفحه باشد
+  ["قابلیت‌های نماینده‌ها · پوسته", C.ResellerFeatures, pw, "/api/admin/portal-addon$"],
+  ["قابلیت‌های نماینده‌ها · فروشگاه", C.ResellerFeatures, pw, "/api/admin/store-addon$"],
+  ["قابلیت‌های نماینده‌ها · تست", C.ResellerFeatures, pw, "/api/admin/reseller-trial$"],
   // خواندنِ تنظیماتِ ربات که شکست بخورد، ذخیره‌ی بعدی (PUTِ جایگزین‌کننده)
   // همه‌چیز را پاک می‌کرد — خطا باید دیده شود، نه فرمی با پیش‌فرض‌ها
   ["پیگیریِ تست — نه فرمِ پیش‌فرض", C.BotDiscountsSection, pw, "/bot/settings$"],

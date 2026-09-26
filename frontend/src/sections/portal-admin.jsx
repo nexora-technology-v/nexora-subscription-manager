@@ -12,7 +12,7 @@ import {
 
 import { API_URL } from "../lib/constants";
 import { errMsg, errText, faNum, okJson } from "../lib/format";
-import { Avatar, ConfirmModal, EmptyState, Field, InfoBox, LoadError, Msg, MoneyInput, NumberInput, SectionHead, StatTile } from "../ui/index";
+import { Avatar, ConfirmModal, EmptyState, Field, InfoBox, LoadError, Msg, MoneyInput, NumberInput, SectionHead, StatTile, Toggle } from "../ui/index";
 import { BotInboundsSection } from "./bot/inbounds";
 import { isoToJalaliLabel, isoToJalaliStamp } from "../ui/jalali";
 
@@ -643,152 +643,247 @@ export function ResellerInbounds({ password }) {
 
 
 /**
- * قیمت و مدتِ «پوسته‌ی شخصیِ مینی‌اپ» برای نماینده‌ها.
+ * قابلیت‌های نماینده‌ها — فروشگاه، پوسته، و تستِ رایگان — در یک کارت.
  *
- * برگه: docs/specs/2026-09-22-reseller-and-ui.md
+ * برگه‌ها: docs/specs/2026-09-26-reseller-store-subscription.md،
+ * docs/specs/2026-09-26-reseller-floor-trial-addons.md
  *
- * **قیمت را مالک تعیین می‌کند، سیستم حدس نمی‌زند.** صفر یعنی
- * رایگان برای همه — نه «خاموش». این تفاوت صریح نوشته شده چون
- * «صفر» در این مخزن یک‌بار «رایگان» و یک‌بار «تعریف‌نشده» معنی
- * داده و همان ابهام باگ شده.
+ * پیش‌تر هر قابلیت کارتِ خودش را داشت و فهرستِ نماینده‌ها دو بار زیرِ هم
+ * می‌آمد، هر ردیف با دو دکمه — مالک: «شلوغ و نامنظم، و دکمه‌های باز و
+ * بسته‌اش اصلاً کار نمی‌کند». کار نمی‌کردند چون با قیمتِ صفر فقط تاریخ
+ * عوض می‌شد و تاریخ آن‌جا خوانده نمی‌شد. حالا «ببند» قفلِ دستی است
+ * (`core.addon_open`) و هر خانه‌ی جدول فقط **یک** دکمه دارد.
+ *
+ * **قیمت را مالک تعیین می‌کند.** صفر یعنی رایگان برای همه — نه «خاموش».
  */
 // مسیرها کامل و لفظی — test-seams صدازدن‌ها را از متن پیدا می‌کند
 const ADDON_KINDS = {
-  theme: {
-    get: "/api/admin/portal-addon", grant: "/api/admin/portal-addon/grant",
-    title: "پوسته‌ی شخصیِ نماینده‌ها",
-    desc: "نماینده می‌تواند رنگ و لوگوی خودش را روی مینی‌اپِ مشتریانش بگذارد. مبلغ از اعتبارِ خودش کم می‌شود.",
-    free: "قیمت صفر است — این قابلیت برای همه‌ی نماینده‌ها باز است.",
-  },
-  // برگه: docs/specs/2026-09-26-reseller-store-subscription.md
   store: {
     get: "/api/admin/store-addon", grant: "/api/admin/store-addon/grant",
-    title: "اشتراکِ ربات و مینی‌اپِ نماینده‌ها",
-    desc: "بی این اشتراک، ربات و مینی‌اپِ نماینده نمی‌فروشند — خرید، تمدید، شارژِ کیف پول و تستِ رایگان می‌ایستند. کانفیگ‌های فعلیِ مشتری‌ها دست نمی‌خورند. مبلغ از اعتبارِ خودِ نماینده کم می‌شود.",
-    free: "قیمت صفر است — ربات و مینی‌اپِ همه‌ی نماینده‌ها بی‌اشتراک می‌فروشند.",
+    title: "فروش از ربات و مینی‌اپ",
+    desc: "بی این، ربات و مینی‌اپِ نماینده نمی‌فروشند. کانفیگ‌های فعلیِ مشتری‌ها دست نمی‌خورند.",
+  },
+  theme: {
+    get: "/api/admin/portal-addon", grant: "/api/admin/portal-addon/grant",
+    title: "پوسته‌ی شخصی",
+    desc: "رنگ و لوگوی خودِ نماینده روی مینی‌اپِ مشتری‌هایش.",
   },
 };
 
-export function PortalAddon({ password, kind = "theme" }) {
-  const K = ADDON_KINDS[kind];
-  const [d, setD] = useState(null);
+async function adminJson(path, password, body) {
+  const r = await fetch(`${API_URL}${path}`, body === undefined
+    ? { headers: { "X-Admin-Password": password } }
+    : { method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Password": password },
+        body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(errText(j.detail, "انجام نشد"));
+  return j;
+}
+
+/** قیمت و مدتِ یک قابلیت — یک کاشیِ کوچک. */
+function PriceTile({ k, d, password, onSaved, setMsg }) {
+  const K = ADDON_KINDS[k];
   const [price, setPrice] = useState("");
   const [days, setDays] = useState("");
-  const [busy, setBusy] = useState("");
-  const [msg, setMsg] = useState(null);
-
-  const load = async () => {
-    try {
-      const r = await fetch(`${API_URL}${K.get}`,
-                            { headers: { "X-Admin-Password": password } });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(errText(j.detail, "خوانده نشد"));
-      setD(j); setPrice(String(j.price ?? 0)); setDays(String(j.days ?? 30));
-    } catch (e) { setMsg({ t: "err", m: e.message }); }
-  };
-
-  useEffect(() => { load(); },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [password, kind]);
-
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (d) { setPrice(String(d.price ?? 0)); setDays(String(d.days ?? 30)); }
+  }, [d?.price, d?.days]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = d && (Number(price) !== Number(d.price) || Number(days) !== Number(d.days));
   const save = async () => {
-    setBusy("save");
+    setBusy(true);
     try {
-      const r = await fetch(`${API_URL}${K.get}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json",
-                   "X-Admin-Password": password },
-        body: JSON.stringify({ price: Number(price) || 0,
-                               days: Number(days) || 30 }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(errText(j.detail, "ذخیره نشد"));
-      setMsg({ t: "ok", m: "ذخیره شد" });
-      load();
-    } catch (e) { setMsg({ t: "err", m: e.message }); } finally { setBusy(""); }
+      await adminJson(K.get, password, { price: Number(price) || 0, days: Number(days) || 30 });
+      setMsg({ t: "ok", m: `«${K.title}» ذخیره شد` });
+      onSaved();
+    } catch (e) { setMsg({ t: "err", m: e.message }); } finally { setBusy(false); }
   };
-
-  const grant = async (tenant, g) => {
-    setBusy(`g${tenant}`);
-    try {
-      const r = await fetch(`${API_URL}${K.grant}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json",
-                   "X-Admin-Password": password },
-        body: JSON.stringify({ tenant, days: g }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(errText(j.detail, "انجام نشد"));
-      setMsg({ t: "ok", m: g > 0 ? "باز شد" : "بسته شد" });
-      load();
-    } catch (e) { setMsg({ t: "err", m: e.message }); } finally { setBusy(""); }
-  };
-
   const free = Number(price) === 0;
+  return (
+    <div className="rf-tile">
+      <b>{K.title}</b>
+      <p>{K.desc}</p>
+      <div className="rf-fields">
+        <label>
+          <span>قیمت (تومان)</span>
+          <MoneyInput value={price} onChange={(e) => setPrice(e.target.value)} />
+        </label>
+        <label>
+          <span>مدت (روز)</span>
+          <NumberInput value={days} onChange={(e) => setDays(e.target.value)} />
+        </label>
+      </div>
+      <div className="rf-foot">
+        <span className={free ? "t-ok" : ""}>
+          {free ? "رایگان برای همه" : `${faNum(price)} تومان برای ${faNum(days)} روز، از اعتبارِ نماینده`}
+        </span>
+        {dirty && (
+          <button onClick={save} disabled={busy} className="fx-btn px-3 py-1.5 text-[12px]">
+            {busy ? <Loader2 size={12} className="animate-spin" /> : "ذخیره"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** تستِ رایگانِ نماینده‌ها — عددها را مالک می‌گذارد، نه نماینده. */
+function TrialTile({ password, setMsg }) {
+  const [d, setD] = useState(null);
+  const [f, setF] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    try {
+      const j = await adminJson("/api/admin/reseller-trial", password);
+      setD(j); setF({ enabled: j.enabled, gb: j.gb, days: j.days, ip_limit: j.ip_limit });
+    } catch (e) { setMsg({ t: "err", m: `تستِ نماینده‌ها خوانده نشد: ${e.message}` }); }
+  }, [password]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [load]);
+  if (!f) return <div className="rf-tile"><b>تستِ رایگان</b><p>در حال بارگذاری…</p></div>;
+  const dirty = d && (f.enabled !== d.enabled || (f.enabled && (
+    Number(f.gb) !== d.gb || Number(f.days) !== d.days || Number(f.ip_limit) !== d.ip_limit)))
+    || (d && d.source !== "set" && f.enabled);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const j = await adminJson("/api/admin/reseller-trial", password, {
+        enabled: f.enabled, gb: Number(f.gb) || 0, days: Number(f.days) || 0,
+        ip_limit: Number(f.ip_limit) || 0 });
+      setMsg({ t: "ok", m: j.enabled
+        ? `تستِ نماینده‌ها ذخیره شد${j.synced ? ` — روی ${faNum(j.synced)} فروشگاه نشست` : ""}`
+        : "تستِ نماینده‌ها خاموش شد" });
+      load();
+    } catch (e) { setMsg({ t: "err", m: e.message }); } finally { setBusy(false); }
+  };
+  const put = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  return (
+    <div className="rf-tile">
+      <div className="rf-tile-head">
+        <b>تستِ رایگان</b>
+        <Toggle checked={!!f.enabled} label="تستِ رایگانِ نماینده‌ها"
+          onChange={() => setF({ ...f, enabled: !f.enabled })} />
+      </div>
+      <p>
+        نماینده فقط روشن یا خاموشش می‌کند؛ حجم و مدت را شما تعیین می‌کنید. هزینه‌اش با شماست و
+        در صورتحسابِ نماینده نمی‌آید.
+      </p>
+      {f.enabled ? (
+        <div className="rf-fields rf-fields-3">
+          <label><span>حجم (گیگ)</span><NumberInput value={f.gb} onChange={put("gb")} /></label>
+          <label><span>مدت (روز)</span><NumberInput value={f.days} onChange={put("days")} /></label>
+          <label><span>کاربر</span><NumberInput value={f.ip_limit} onChange={put("ip_limit")} /></label>
+        </div>
+      ) : null}
+      <div className="rf-foot">
+        <span className={f.enabled ? "t-ok" : ""}>
+          {!f.enabled ? "خاموش — نماینده‌ها تست نمی‌دهند"
+            : d.source === "own" ? "هنوز ذخیره نشده — فعلاً تستِ خودتان ملاک است"
+              : `${faNum(d.resellersWithTrial)} فروشگاه تست دارد`}
+        </span>
+        {dirty && (
+          <button onClick={save} disabled={busy} className="fx-btn px-3 py-1.5 text-[12px]">
+            {busy ? <Loader2 size={12} className="animate-spin" /> : "ذخیره"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** یک خانه‌ی جدول: وضعیت + یک دکمه. */
+function AddonCell({ r, free, busy, onGrant }) {
+  const label = r.blocked ? "بسته به‌دستِ شما"
+    : r.open ? (free ? "باز" : r.until ? `تا ${isoToJalaliLabel(r.until)}` : "باز")
+      : "تمام شده";
+  const tone = r.open ? "t-ok" : r.blocked ? "t-danger" : "t-warn";
+  return (
+    <div className="rf-cell">
+      <span className={`rf-chip ${tone}`}>{label}</span>
+      <button onClick={() => onGrant(r.open ? 0 : 1)} disabled={busy}
+        className="fx-btn-g rf-act"
+        title={r.open ? "بستن برای این نماینده — حتی اگر رایگان باشد"
+          : free ? "بازکردن" : "بازکردن به مدتِ همان روزهای بالا، بی‌پول"}>
+        {busy ? <Loader2 size={12} className="animate-spin" /> : r.open ? "ببند" : "باز کن"}
+      </button>
+    </div>
+  );
+}
+
+export function ResellerFeatures({ password }) {
+  const [d, setD] = useState({ store: null, theme: null });
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const [st, th] = await Promise.all([
+        adminJson(ADDON_KINDS.store.get, password),
+        adminJson(ADDON_KINDS.theme.get, password),
+      ]);
+      setD({ store: st, theme: th }); setErr("");
+    } catch (e) { setErr(e.message); }
+  }, [password]);
+  useEffect(() => { load(); }, [load]);
+
+  const grant = async (k, r, open) => {
+    setBusy(`${k}${r.id}`);
+    try {
+      await adminJson(ADDON_KINDS[k].grant, password,
+        { tenant: r.id, days: open ? (Number(d[k]?.days) || 30) : 0 });
+      setMsg({ t: "ok", m: `«${ADDON_KINDS[k].title}» برای ${r.name || `#${r.id}`} ${open ? "باز" : "بسته"} شد` });
+      await load();
+    } catch (e) { setMsg({ t: "err", m: e.message }); } finally { setBusy(""); }
+  };
+
+  const rows = (d.store?.resellers || []).map((r) => ({
+    ...r, theme: (d.theme?.resellers || []).find((x) => x.id === r.id) || null,
+  }));
 
   return (
-    <div className="fx-card p-4 mb-4">
-      <div className="text-[13px] font-semibold text-white mb-1">{K.title}</div>
-      <p className="text-[12px] leading-relaxed mb-3"
-        style={{ color: "var(--muted)" }}>{K.desc}</p>
-
+    <section className="fx-card p-4 mb-4 rf-card">
+      <div className="text-[14px] font-semibold text-white mb-1">قابلیت‌های نماینده‌ها</div>
+      <p className="text-[12px] leading-relaxed mb-3" style={{ color: "var(--muted)" }}>
+        قیمت صفر یعنی رایگان برای همه. «ببند» برای یک نماینده حتی وقتی رایگان است هم می‌بندد.
+      </p>
       <Msg msg={msg} onClose={() => setMsg(null)} />
-
-      <div className="flex items-end gap-2 flex-wrap mb-3">
-        <div style={{ width: 170 }}>
-          <label className="text-[12px] block mb-1.5"
-            style={{ color: "var(--muted)" }}>قیمت (تومان)</label>
-          <MoneyInput value={price} onChange={(e) => setPrice(e.target.value)} />
-        </div>
-        <div style={{ width: 110 }}>
-          <label className="text-[12px] block mb-1.5"
-            style={{ color: "var(--muted)" }}>مدت (روز)</label>
-          <NumberInput value={days} onChange={(e) => setDays(e.target.value)} />
-        </div>
-        <button onClick={save} disabled={busy === "save"}
-          className="fx-btn px-4 py-2 text-[13px]">ذخیره</button>
-      </div>
-
-      <div className="text-[12px] mb-3 rounded-lg px-3 py-2"
-        style={{ background: free ? "var(--ok-wash)" : "var(--accent-wash)",
-                 border: `1px solid ${free ? "var(--ok-line)" : "var(--accent-fill)"}`,
-                 color: free ? "var(--ok)" : "var(--dim)" }}>
-        {free
-          ? K.free
-          : `هر نماینده ${faNum(price)} تومان می‌دهد و ${faNum(days)} روز باز می‌ماند.`}
-      </div>
-
-      {(d?.resellers || []).length > 0 && (
-        <div style={{ display: "grid", gap: 6 }}>
-          {d.resellers.map((r) => (
-            <div key={r.id}
-              className="flex items-center gap-2 flex-wrap rounded-lg px-3 py-2"
-              style={{ background: "var(--surface-3)",
-                       border: "1px solid var(--border)" }}>
-              <span className="text-[12.5px] flex-1"
-                style={{ color: "var(--dim)" }}>{r.name || `#${r.id}`}</span>
-              <span className="text-[11.5px]"
-                style={{ color: r.open ? "var(--ok)" : "var(--muted)" }}>
-                {r.open ? (r.until ? `تا ${isoToJalaliLabel(r.until)}` : "باز")
-                  : "بسته"}
-              </span>
-              <button onClick={() => grant(r.id, Number(days) || 30)}
-                disabled={busy === `g${r.id}`}
-                className="fx-btn-g px-2.5 py-1 text-[11.5px]">
-                باز کن
-              </button>
-              {r.open && (
-                <button onClick={() => grant(r.id, 0)}
-                  disabled={busy === `g${r.id}`}
-                  className="fx-btn-g px-2.5 py-1 text-[11.5px]">
-                  ببند
-                </button>
-              )}
+      {err && !d.store ? (
+        <LoadError what="قابلیت‌های نماینده‌ها" err={err} onRetry={load} />
+      ) : (
+        <>
+          <div className="rf-tiles">
+            <PriceTile k="store" d={d.store} password={password} onSaved={load} setMsg={setMsg} />
+            <PriceTile k="theme" d={d.theme} password={password} onSaved={load} setMsg={setMsg} />
+            <TrialTile password={password} setMsg={setMsg} />
+          </div>
+          {rows.length > 0 && (
+            <div className="rf-table" role="table" aria-label="وضعیتِ قابلیت‌ها برای هر نماینده">
+              <div className="rf-tr rf-th" role="row">
+                <span role="columnheader">نماینده</span>
+                <span role="columnheader">{ADDON_KINDS.store.title}</span>
+                <span role="columnheader">{ADDON_KINDS.theme.title}</span>
+              </div>
+              {rows.map((r) => (
+                <div key={r.id} className="rf-tr" role="row">
+                  <span className="rf-name" role="cell">{r.name || `#${r.id}`}</span>
+                  <span role="cell" data-label={ADDON_KINDS.store.title}>
+                    <AddonCell r={r} free={!(d.store?.price > 0)} busy={busy === `store${r.id}`}
+                      onGrant={(o) => grant("store", r, o)} />
+                  </span>
+                  <span role="cell" data-label={ADDON_KINDS.theme.title}>
+                    {r.theme && (
+                      <AddonCell r={r.theme} free={!(d.theme?.price > 0)} busy={busy === `theme${r.id}`}
+                        onGrant={(o) => grant("theme", r.theme, o)} />
+                    )}
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -895,11 +990,8 @@ export function PortalAdmin({ password }) {
 
       {/* قیمت‌گذاری بعد از فهرست: کاری است که یک‌بار انجام می‌شود، و
           بالای صفحه فهرستِ نماینده‌ها — کارِ هرروزه — را زیرِ تا می‌برد */}
-      <div className="text-[13px] font-semibold mt-6 mb-3" style={{ color: "var(--dim)" }}>
-        قابلیت‌های پولیِ نماینده‌ها
-      </div>
-      <PortalAddon password={password} kind="store" />
-      <PortalAddon password={password} />
+      <div className="mt-6" />
+      <ResellerFeatures password={password} />
     </>
   );
 }

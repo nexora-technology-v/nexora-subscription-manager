@@ -1838,6 +1838,13 @@ body.fx-calm *, body.fx-calm *::before, body.fx-calm *::after {
 }
 .nx-retry:active { transform: scale(.96); }
 
+/* ── کُند: هنوز منتظریم، با راهِ «دوباره» — lib/mark.jsx ── */
+.nx-slow { margin-top: 18px; text-align: center; max-width: 280px;
+  animation: nx-slow-in var(--m-slow, .4s) ease-out both; }
+.nx-slow p { font-size: 12.5px; color: var(--muted); line-height: 1.9; margin: 0; }
+.nx-slow .nx-retry { margin-top: 10px; padding: 8px 20px; font-size: 13px; }
+@keyframes nx-slow-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
 @media (prefers-reduced-motion: reduce) {
   .nx-amb-a, .nx-amb-b,
   .nx-orbit .nx-sweep, .nx-orbit .nx-node,
@@ -5115,3 +5122,45 @@ body::before {
   .ib-row-top { flex-basis: 100%; order: 5; white-space: normal; }
 }
 
+
+/* ═══════════════════════════════════════════════════════════
+   قابلیت‌های نماینده‌ها — sections/portal-admin.jsx: ResellerFeatures
+   سه کاشی (فروشگاه، پوسته، تست) و یک جدول؛ پیش‌تر دو کارت با فهرستِ
+   تکراری و دو دکمه در هر ردیف بود.
+   ═══════════════════════════════════════════════════════════ */
+.rf-tiles { display: grid; gap: 10px; margin-bottom: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+.rf-tile { display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  border-radius: 12px; background: var(--surface-3); border: 1px solid var(--border); min-width: 0; }
+.rf-tile > b, .rf-tile-head b { font-size: 13px; color: var(--text); }
+.rf-tile > p { margin: 0; font-size: 11.5px; line-height: 1.7; color: var(--muted); }
+.rf-tile-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rf-fields { display: grid; gap: 8px; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+.rf-fields-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rf-fields label { display: grid; gap: 4px; min-width: 0; }
+.rf-fields label > span { font-size: 11px; color: var(--muted); }
+.rf-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-top: auto; min-height: 30px; font-size: 11.5px; color: var(--dim); }
+.rf-foot .t-ok { color: var(--ok); }
+
+.rf-table { display: grid; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.rf-tr { display: grid; align-items: center; gap: 10px; padding: 8px 12px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr); }
+.rf-tr + .rf-tr { border-top: 1px solid var(--border); }
+.rf-th { font-size: 11.5px; color: var(--muted); background: var(--surface-3); }
+.rf-name { font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rf-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rf-chip { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 99px; white-space: nowrap;
+  color: var(--t); background: color-mix(in srgb, var(--t) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--t) 28%, transparent); overflow: hidden; text-overflow: ellipsis; }
+.rf-act { padding: 4px 11px; font-size: 11.5px; min-height: 30px;
+  display: inline-flex; align-items: center; gap: 4px; }
+
+/* گوشی: هر نماینده یک کارتِ کوچک، برچسبِ ستون کنارِ هر خانه */
+@media (max-width: 560px) {
+  .rf-th { display: none; }
+  .rf-tr { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .rf-tr > [data-label]::before { content: attr(data-label); display: block;
+    font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  .rf-name { font-weight: 600; }
+}

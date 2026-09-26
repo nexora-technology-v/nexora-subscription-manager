@@ -9901,6 +9901,9 @@
         ip_limit: 1, price: 180000, is_active: 1, is_trial: 0, sort_order: 0 },
       { id: 2, name: "سه‌ماهه", description: "پرفروش", gb: 100, days: 90,
         ip_limit: 2, price: 230000, is_active: 1, is_trial: 0, sort_order: 1 },
+      // تستِ رایگان — عددهایش مالِ مدیر است و در پرتال قفل‌اند
+      { id: 3, name: "تست رایگان", description: "", gb: 1, days: 1,
+        ip_limit: 1, price: 0, is_active: 1, is_trial: 1, sort_order: 2 },
     ],
   };
 
@@ -9923,13 +9926,29 @@
                     : new Date(Date.now() + (_stq === "soon" ? 3 : 20) * 864e5).toISOString().slice(0, 19),
                   credit: 1200000, postpaid: false };
   // افزونه‌ها از نگاهِ مالک — یک نماینده‌ی باز و یکی بسته، تا هر دو دکمه دیده شوند
-  function ADDON_ADMIN(price) {
-    return { price: price, days: 30, resellers: [
-      { id: 2, name: "حسین", until: "2026-10-18T12:00:00", open: true },
-      { id: 3, name: "مهدی", until: "2026-10-02T09:00:00", open: true },
-      { id: 4, name: "سارا", until: "", open: false },
-      { id: 5, name: "امیر", until: "2026-09-01T09:00:00", open: false } ] };
+  // باحالت، تا «باز کن / ببند» در هارنس هم واقعاً چیزی را عوض کند — نسخه‌ی
+  // ثابت همان باگ را پنهان می‌کرد که مالک دید: دکمه‌ای که هیچ اثری ندارد.
+  // ?addon=free همان وضعیتِ سرورِ مالک: هر دو قابلیت رایگان.
+  var _free = Q0.get("addon") === "free";
+  var ADDONS_ST = {};
+  ["store", "theme"].forEach(function (k) {
+    ADDONS_ST[k] = { price: _free ? 0 : (k === "store" ? 300000 : 250000), days: 30, resellers: [
+      { id: 2, name: "حسین دهلگی", until: _free ? "" : "2026-10-18T12:00:00", open: true, blocked: false },
+      { id: 3, name: "hoohoo", until: _free ? "" : "2026-10-02T09:00:00", open: true, blocked: false },
+      { id: 4, name: "سارا", until: "", open: _free, blocked: false },
+      { id: 5, name: "امیر", until: "", open: false, blocked: true } ] };
+  });
+  function ADDON_ADMIN(k) { return ADDONS_ST[k]; }
+  function ADDON_GRANT(k, b) {
+    var st = ADDONS_ST[k], r = st.resellers.filter(function (x) { return x.id === Number(b.tenant); })[0];
+    if (!r) { var e = new Error("نماینده پیدا نشد"); e.status = 404; throw e; }
+    if (Number(b.days) > 0) {
+      r.blocked = false; r.open = true;
+      r.until = st.price > 0 ? new Date(Date.now() + b.days * 864e5).toISOString().slice(0, 19) : "";
+    } else { r.blocked = true; r.open = false; r.until = ""; }
+    return { ok: true, until: r.until, open: r.open };
   }
+  var R_TRIAL = { enabled: true, source: "set", gb: 1, days: 1, ip_limit: 1, resellersWithTrial: 2 };
 
   // ── عیب‌یابیِ ارتباط و حجمِ ترافیک ──
   // واقع‌نما: ۲۸۸ سنجشِ پنج‌دقیقه‌ای، با یک بازه‌ی اختلالِ بین‌المللِ ایران
@@ -11186,8 +11205,23 @@ var D_CODES = { ready: true,
     if (u.indexOf("/admin/link/diag") >= 0) return LINK_DIAG;
     if (u.indexOf("/admin/traffic") >= 0) return TRAFFIC;
     if (u.indexOf("/admin/store-addon") >= 0 || u.indexOf("/admin/portal-addon") >= 0) {
-      if (u.indexOf("/grant") >= 0 || method === "POST") return { ok: true, until: "" };
-      return ADDON_ADMIN(u.indexOf("store") >= 0 ? 300000 : 250000);
+      var ak = u.indexOf("store") >= 0 ? "store" : "theme";
+      if (u.indexOf("/grant") >= 0) return ADDON_GRANT(ak, body || {});
+      if (method === "POST") {
+        ADDONS_ST[ak].price = Number((body || {}).price) || 0;
+        ADDONS_ST[ak].days = Number((body || {}).days) || 30;
+        return { ok: true, price: ADDONS_ST[ak].price, days: ADDONS_ST[ak].days };
+      }
+      return ADDON_ADMIN(ak);
+    }
+    if (u.indexOf("/admin/reseller-trial") >= 0) {
+      if (method === "POST") {
+        var tb = body || {};
+        R_TRIAL = { enabled: !!tb.enabled, source: "set", gb: tb.gb, days: tb.days,
+                    ip_limit: tb.ip_limit, resellersWithTrial: tb.enabled ? 2 : 0 };
+        return { ok: true, enabled: !!tb.enabled, synced: tb.enabled ? 2 : 2 };
+      }
+      return R_TRIAL;
     }
     if (u.indexOf("/admin/bot/mini-theme") >= 0) {
       if (method === "POST") {

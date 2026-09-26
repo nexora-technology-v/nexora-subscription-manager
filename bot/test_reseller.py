@@ -104,7 +104,8 @@ class FakeXUI:
         if FakeXUI.BREAK:
             raise H.XUIError("panel said no")
         CREATED.append({"inbound": inbound_id, "email": email, "group": group,
-                        "sub_base": sub_base_url})
+                        "sub_base": sub_base_url, "gb": gb, "days": days,
+                        "ip_limit": ip_limit})
         return {"email": email, "uuid": f"u{len(CREATED)}", "sub_id": email,
                 "sub_url": f"{(sub_base_url or 'https://p.test/sub')}/{email}",
                 "configs": [], "expiry_ms": 1800000000000, "gb": gb}
@@ -362,7 +363,7 @@ check("دو Start هم‌زمان: فقط اولی وصل می‌شود",
 check("و دومی می‌فهمد لینک استفاده شد", "همین حالا استفاده شد" in SENT[-1]["text"])
 
 # ═══════════════════════════════════════════════════════════
-section("تستِ رایگانِ نماینده — رایگان، بی‌گروه، زیرِ سقفِ مالک")
+section("تستِ رایگانِ نماینده — رایگان، بی‌گروه، با عددهای مالک")
 # ═══════════════════════════════════════════════════════════
 # تصمیمِ مالک: تستِ نماینده مجاز و رایگان است، هزینه با مالک. پس
 # نباید در صورتحسابِ نماینده بیاید (بی‌گروه) و نباید از اعتبارش کم
@@ -395,14 +396,36 @@ check("بی‌گروه — در صورتحسابِ نماینده نمی‌آی�
 check("و از اعتبارش چیزی کم نشد", credit_of(R6) == 300000, credit_of(R6))
 check("شناسه همچنان مالِ فروشگاه است", CREATED[-1]["email"].startswith("trialshop_"))
 
-# مالک تستش را کوچک می‌کند → تستِ قدیمیِ نماینده دیگر ساخته نمی‌شود
-D6.exec("UPDATE plans SET gb=5 WHERE tenant_id=? AND id=?", (R6, tplan["id"]))
+check("حجمِ تست همانِ مالک است، نه ردیفِ نماینده (۱ گیگ)", CREATED[-1]["gb"] == 2,
+      CREATED[-1]["gb"])
+
+# نماینده ردیفش را بزرگ کرده (مستقیم در دیتابیس) → باز هم عددِ مالک ساخته می‌شود.
+# مالک: «حجمش را خودم مشخص می‌کنم، وگرنه ممکن است حجمِ زیاد بگذارد».
+D6.exec("UPDATE plans SET gb=50, days=30, ip_limit=5 WHERE tenant_id=? AND id=?",
+        (R6, tplan["id"]))
 tplan = D6.trial_plan()
-n0 = len(CREATED)
 ok, res = H.provision(ctx_for(R6), trial_order(8003))
-check("بزرگ‌تر از سقف: ساخته نمی‌شود، حتی اگر قبلاً ذخیره شده",
-      not ok and len(CREATED) == n0, str(res)[:70])
-check("و دلیل را می‌گوید", "حداکثر" in str(res))
+check("ردیفِ ۵۰ گیگی: با ۲ گیگ/۱ روز/۱ کاربرِ مالک ساخته می‌شود",
+      ok and (CREATED[-1]["gb"], CREATED[-1]["days"], CREATED[-1]["ip_limit"]) == (2, 1, 1),
+      str(CREATED[-1]))
+
+# تنظیمِ جدای مالک برای نماینده‌ها بر تستِ خودش مقدم است
+_rs = db.tenant_settings(ROOT)
+_rs["reseller_trial"] = {"enabled": True, "gb": 3, "days": 2, "ip_limit": 1}
+db.save_tenant_settings(ROOT, _rs)
+ok, res = H.provision(ctx_for(R6), trial_order(8004))
+check("تنظیمِ «تستِ نماینده‌ها»: ۳ گیگ/۲ روز",
+      ok and (CREATED[-1]["gb"], CREATED[-1]["days"]) == (3, 2), str(CREATED[-1]))
+
+# مالک خاموشش کرد → ساخته نمی‌شود، با دلیل
+_rs["reseller_trial"] = {"enabled": False, "gb": 3, "days": 2, "ip_limit": 1}
+db.save_tenant_settings(ROOT, _rs)
+n0 = len(CREATED)
+ok, res = H.provision(ctx_for(R6), trial_order(8005))
+check("تستِ نماینده‌ها خاموش: ساخته نمی‌شود", not ok and len(CREATED) == n0, str(res)[:70])
+check("و دلیل را می‌گوید", "خاموش" in str(res))
+_rs.pop("reseller_trial")
+db.save_tenant_settings(ROOT, _rs)
 
 # دکمه‌ی تست فقط وقتی پلنی هست
 st6 = db.tenant_settings(R4)

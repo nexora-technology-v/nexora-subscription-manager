@@ -49,6 +49,19 @@ export function StoreBar({ token, page, onNote }) {
       </div>
     ) : null;
   }
+  // بسته به‌دستِ مدیر: حتی با قیمتِ صفر فروش ایستاده و نماینده باید بداند —
+  // و دکمه‌ی خرید ندارد، چون خرید بازش نمی‌کند (بکند ۴۰۳ می‌دهد)
+  if (d.blocked) {
+    return (
+      <div className="px-store t-danger" role="alert">
+        <AlertTriangle size={16} />
+        <div className="px-store-body">
+          <b>مدیر فروشِ ربات و مینی‌اپِ شما را بسته است</b>
+          <span>مشتری‌ها «فروش موقتاً متوقف است» می‌بینند — کانفیگ‌های فعلی‌شان کار می‌کند. برای بازشدن با مدیر هماهنگ کنید.</span>
+        </div>
+      </div>
+    );
+  }
   if (!(d.price > 0)) return null;
 
   const left = d.until ? Math.ceil((Date.parse(d.until) - Date.now()) / 864e5) : null;

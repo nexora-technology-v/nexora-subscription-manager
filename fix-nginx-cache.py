@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Repair the panel's nginx config. Two fixes, both idempotent.
+Repair the panel's nginx config. Three fixes, all idempotent.
 
 1. Cache-control headers.
    index.html points to hashed asset files. If the browser caches
@@ -18,6 +18,12 @@ Repair the panel's nginx config. Two fixes, both idempotent.
    install.sh has had this since the fix, but installs created before it
    still carry the old file and update never rewrote it. This script
    runs on every update, so the repair reaches them.
+
+3. Compression for JS/CSS.
+   Stock nginx compresses only text/html. The panel and the mini-app ship
+   ~700 KB of JS/CSS that compresses to ~200 KB. On the flaky Iranian
+   mobile links the owner and resellers use, the uncompressed download
+   stalled mid-way and the mini-app sat on its splash screen.
 
 Usage:
     python3 fix-nginx-cache.py [path to conf]
@@ -46,6 +52,15 @@ BLOCK = """
 
 
 PROTO = "proxy_set_header X-Forwarded-Proto $scheme;"
+
+GZIP = """
+    # Compress JS/CSS/JSON (stock nginx only compresses text/html)
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+"""
 
 
 def add_proto(text):
@@ -84,10 +99,11 @@ def main():
     original = text
 
     need_cache = "no-store, no-cache" not in text
+    need_gzip = "gzip_types" not in text
     text, n_proto = add_proto(text)
 
-    if not need_cache and not n_proto:
-        print("OK Cache headers and X-Forwarded-Proto already configured")
+    if not need_cache and not n_proto and not need_gzip:
+        print("OK Cache headers, X-Forwarded-Proto and compression already configured")
         return 0
 
     backup = path.with_suffix(path.suffix + ".bak")
@@ -100,6 +116,11 @@ def main():
         if n == 0 and not n_proto:
             print("!  No 'location /' block found — nothing changed")
             return 1
+
+    n_gzip = 0
+    if need_gzip:
+        # Same anchor as the cache block: once per server block
+        text, n_gzip = re.subn(r"(\n\s*location / \{)", GZIP + r"\1", text)
 
     if text == original:
         print("OK Nothing to change")
@@ -116,6 +137,8 @@ def main():
         done.append(f"cache headers in {n} block(s)")
     if n_proto:
         done.append(f"X-Forwarded-Proto in {n_proto} block(s)")
+    if n_gzip:
+        done.append(f"compression in {n_gzip} block(s)")
     summary = ", ".join(done) or "nothing"
 
     # Validate; roll back if broken

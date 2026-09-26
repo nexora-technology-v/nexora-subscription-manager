@@ -389,6 +389,13 @@ server {
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
+    # JS/CSS فشرده — nginx پیش‌فرض فقط html را فشرده می‌کند و روی
+    # اینترنتِ کُند مینی‌اپ پشتِ اسپلش می‌ماند
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types text/css application/javascript application/json image/svg+xml;
     location / { try_files \$uri /index.html; }
     location /api/ {
         proxy_pass http://127.0.0.1:8100;
@@ -464,6 +471,11 @@ server {
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types text/css application/javascript application/json image/svg+xml;
     location / {
 $IP_RULE
         try_files \$uri /index.html;
@@ -496,6 +508,11 @@ server {
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 5;
+    gzip_min_length 1024;
+    gzip_types text/css application/javascript application/json image/svg+xml;
     location / {
 $IP_RULE
         try_files \$uri /index.html;

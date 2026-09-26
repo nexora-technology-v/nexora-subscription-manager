@@ -1701,10 +1701,37 @@ def root_tenant():
 
 
 def trial_cap():
-    """تستِ فعالِ مالک — سقفِ تستِ نماینده‌ها. None یعنی مالک تست ندارد."""
+    """
+    تستِ رایگانِ نماینده‌ها — {gb, days, ip_limit}، یا None یعنی «ممکن نیست».
+
+    **عددها را مالک تعیین می‌کند، نه نماینده.** مالک: «حجمش را خودم
+    مشخص می‌کنم، وگرنه ممکن است حجمِ زیاد بگذارد». تا ۱.۱۱۴ این فقط سقف
+    بود و نماینده زیرِ آن هر عددی می‌گذاشت؛ حالا همین عددها عیناً روی تستِ
+    هر نماینده می‌نشینند (بکند موقعِ ذخیره، ربات موقعِ ساخت).
+
+    منبع: تنظیمِ `reseller_trial` مالک (پنل ← قابلیت‌های نماینده‌ها).
+    اگر هرگز تنظیم نشده، تستِ خودِ مالک — رفتارِ پیش از این نسخه، تا
+    به‌روزرسانی تستِ هیچ نماینده‌ای را بی‌خبر خاموش نکند.
+    """
     root = root_tenant()
     if not root:
         return None
+    try:
+        rs = json.loads(root.get("settings") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        rs = {}
+    spec = rs.get("reseller_trial") if isinstance(rs, dict) else None
+    if isinstance(spec, dict):
+        if not spec.get("enabled"):
+            return None
+        try:
+            return {"gb": max(0, int(spec.get("gb") or 0)),
+                    "days": max(1, int(spec.get("days") or 1)),
+                    "ip_limit": max(0, int(spec.get("ip_limit") or 0))}
+        except (TypeError, ValueError):
+            # تنظیمِ خراب یعنی عددِ نامعلوم — تستِ بی‌سقف نمی‌دهیم
+            log.warning("reseller_trial unreadable: %r — reseller trials off", spec)
+            return None
     with conn() as c:
         r = c.execute("SELECT gb, days, ip_limit FROM plans WHERE tenant_id=? "
                       "AND is_trial=1 AND is_active=1 ORDER BY id LIMIT 1",

@@ -187,7 +187,13 @@ function OrbitRing({ size = 168, state = "load" }) {
 // (تکه‌ی ورودی)، پس هر شناسه‌ی ناشناس همان «نوار» است.
 const SPLASH_IDS = ["bar", "ring", "pulse", "dots", "logo"];
 
-function ShopSplash({ logo, name, logoStyle, phase, note, onRetry, label, variant }) {
+//: بعد از این‌قدر، اسپلش می‌گوید «کُند است» و «دوباره» می‌دهد — ولی هنوز
+//: منتظر می‌ماند. یک‌جا، چون دو اسپلش دارد: main.jsx (دریافتِ برنامه) و
+//: مینی‌اپ (دریافتِ اطلاعاتِ حساب).
+export const SLOW_MS = 10000;
+export const SLOW_NOTE = "اتصال کُند است — هنوز در حال دریافت…";
+
+function ShopSplash({ logo, name, logoStyle, phase, note, onRetry, label, variant, slow }) {
   const known = !!(logo || name);
   const v = SPLASH_IDS.includes(variant) ? variant : "bar";
   const big = v === "logo" ? 128 : 96;
@@ -228,6 +234,15 @@ function ShopSplash({ logo, name, logoStyle, phase, note, onRetry, label, varian
           // برای صفحه‌خوان
           <span className="sr-only">{busy}</span>
         )}
+        {/* کُند: هنوز منتظریم، ولی کاربر باید بداند و راهِ «دوباره» داشته
+            باشد. بی این، دانلودی که روی اینترنتِ قطع‌ووصل وسطِ راه ماند
+            اسپلشِ بی‌پایان بود — مالک و نماینده هر دو دیدند. */}
+        {slow && phase !== "error" && (
+          <div className="nx-slow">
+            <p>{slow}</p>
+            {onRetry && <button className="nx-retry" onClick={onRetry}>دوباره</button>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -235,11 +250,11 @@ function ShopSplash({ logo, name, logoStyle, phase, note, onRetry, label, varian
 
 export function Splash({ label = "", logo = "", name = "",
                         phase = "load", note = "", onRetry,
-                        neutral = false, logoStyle = null, variant = "" }) {
+                        neutral = false, logoStyle = null, variant = "", slow = "" }) {
   // مینی‌اپِ فروشگاه صفحه‌ی ورودِ خودش را دارد
   if (neutral) {
     return <ShopSplash logo={logo} name={name} logoStyle={logoStyle} phase={phase}
-      note={note} onRetry={onRetry} label={label} variant={variant} />;
+      note={note} onRetry={onRetry} label={label} variant={variant} slow={slow} />;
   }
   return (
     <div className={`nx-splash ${phase}`} dir="rtl" role="status" aria-live="polite">
@@ -273,6 +288,12 @@ export function Splash({ label = "", logo = "", name = "",
         </div>
       ) : (
         note ? <div className="nx-note">{note}</div> : null
+      )}
+      {slow && phase !== "error" && (
+        <div className="nx-slow">
+          <p>{slow}</p>
+          {onRetry && <button className="nx-retry" onClick={onRetry}>دوباره</button>}
+        </div>
       )}
     </div>
   );

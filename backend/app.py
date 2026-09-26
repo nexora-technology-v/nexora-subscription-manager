@@ -14347,6 +14347,9 @@ def _addon_admin_get(kind):
                     "name": t.get("name") or "",
                     "until": _addon_until(t, kind),
                     "open": _addon_open(t, kind),
+                    # «بسته به‌دستِ مالک» با «تمام‌شده» فرق دارد: اولی را
+                    # نماینده با خرید باز نمی‌کند
+                    "blocked": _addon_blocked(t, kind),
                 })
         except Exception:
             # فهرستِ خالی بی‌توضیح یعنی «هیچ نماینده‌ای نیست» — که دروغ است
@@ -14399,14 +14402,117 @@ def _addon_admin_grant(kind, payload):
     if row.get("parent_id") is None:
         raise HTTPException(status_code=400,
                             detail="این ردیفِ خودِ مالک است، نه نماینده")
+    core = _bot_core()
+    st = _tenant_settings(row)
     if days <= 0:
-        # بستن: تاریخ پاک می‌شود ولی تنظیماتِ دیگر (رنگ، …) می‌مانند — اگر
-        # دوباره باز شد، همان قبلی برمی‌گردد
-        st = _tenant_settings(row)
-        st.pop(_bot_core().ADDONS[kind][1], None)
+        # بستن: قفلِ دستی + پاک‌شدنِ تاریخ. تنظیماتِ دیگر (رنگ، …) می‌مانند
+        # — اگر دوباره باز شد، همان قبلی برمی‌گردد.
+        #
+        # فقط پاک‌کردنِ تاریخ کافی نبود: با قیمتِ صفر تاریخ خوانده نمی‌شود
+        # و «ببند» هیچ اثری نداشت.
+        st[core.addon_blocked_key(kind)] = True
+        st.pop(core.ADDONS[kind][1], None)
         _save_tenant_settings(tid, st)
-        return {"ok": True, "until": ""}
-    return {"ok": True, "until": _addon_extend(row, kind, days)}
+        return {"ok": True, "until": "", "open": False}
+    # بازکردن: قفلِ دستی برداشته می‌شود. با قیمتِ صفر همین کافی است —
+    # تاریخ آن‌جا معنا ندارد و فقط «تا فلان روز» گمراه‌کننده نشان می‌داد.
+    st.pop(core.addon_blocked_key(kind), None)
+    _save_tenant_settings(tid, st)
+    row = _tenant_row(tid) or row
+    until = _addon_extend(row, kind, days) if _addon_config(kind)["price"] > 0 else ""
+    return {"ok": True, "until": until, "open": _addon_open(_tenant_row(tid) or row, kind)}
+
+
+def _sync_reseller_trials(spec):
+    """
+    ردیفِ تستِ همه‌ی نماینده‌ها را با عددهای مالک یکی می‌کند.
+
+    ربات موقعِ ساخت به‌هرحال عددِ مالک را می‌گذارد؛ این برای آن است که
+    مینی‌اپ و ربات هم همان را **نشان** بدهند — وگرنه مشتری «۵ گیگ» می‌دید
+    و ۱ گیگ می‌گرفت. تست خاموش شد: ردیف‌ها غیرفعال می‌شوند، نه پاک، تا
+    روشن‌شدنِ دوباره چیزی از نماینده نگیرد.
+
+    برمی‌گرداند: چند ردیف عوض شد.
+    """
+    con = _bot_rw()
+    try:
+        ids = "SELECT id FROM tenants WHERE parent_id IS NOT NULL"
+        if spec:
+            cur = con.execute(
+                f"UPDATE plans SET gb=?, days=?, ip_limit=?, price=0, is_active=1 "
+                f"WHERE is_trial=1 AND tenant_id IN ({ids})",
+                (spec["gb"], spec["days"], spec["ip_limit"]))
+        else:
+            cur = con.execute(
+                f"UPDATE plans SET is_active=0 WHERE is_trial=1 AND tenant_id IN ({ids})")
+        con.commit()
+        return cur.rowcount or 0
+    finally:
+        con.close()
+
+
+@app.get("/api/admin/reseller-trial")
+def reseller_trial_get(x_admin_password: str = Header(...)):
+    """
+    تستِ رایگانِ نماینده‌ها: روشن؟ چند گیگ، چند روز، چند کاربر؟
+
+    `source` می‌گوید عددها از کجا آمده‌اند: «set» (همین تنظیم) یا «own»
+    (هنوز تنظیم نشده و تستِ خودِ مالک ملاک است) یا «none».
+    """
+    check_auth(x_admin_password)
+    st = _tenant_settings(_root_tenant_row())
+    spec = _bot_trial_cap()
+    raw = st.get("reseller_trial")
+    src = "set" if isinstance(raw, dict) else ("own" if spec else "none")
+    con = _bot_conn()
+    n = 0
+    if con:
+        try:
+            n = con.execute(
+                "SELECT COUNT(*) n FROM plans WHERE is_trial=1 AND is_active=1 AND tenant_id IN "
+                "(SELECT id FROM tenants WHERE parent_id IS NOT NULL)").fetchone()["n"]
+        finally:
+            con.close()
+    return {"enabled": bool(spec), "source": src,
+            "gb": (spec or {}).get("gb", 1), "days": (spec or {}).get("days", 1),
+            "ip_limit": (spec or {}).get("ip_limit", 1), "resellersWithTrial": int(n or 0)}
+
+
+@app.post("/api/admin/reseller-trial")
+def reseller_trial_set(payload: dict, x_admin_password: str = Header(...)):
+    """
+    مالک عددهای تستِ نماینده‌ها را می‌گذارد. همان لحظه روی ردیفِ تستِ هر
+    نماینده می‌نشیند (`_sync_reseller_trials`).
+
+    حجمِ صفر یعنی نامحدود — برای تستِ رایگان تقریباً همیشه اشتباهِ تایپی
+    است، پس رد می‌شود.
+    """
+    check_auth(x_admin_password)
+    p = payload or {}
+    enabled = bool(p.get("enabled"))
+    try:
+        gb = int(p.get("gb") or 0)
+        days = int(p.get("days") or 0)
+        ips = int(p.get("ip_limit") or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="عدد نامعتبر")
+    if enabled:
+        if not 1 <= gb <= 100:
+            raise HTTPException(status_code=400,
+                                detail="حجمِ تست باید بین ۱ تا ۱۰۰ گیگ باشد")
+        if not 1 <= days <= 30:
+            raise HTTPException(status_code=400,
+                                detail="مدتِ تست باید بین ۱ تا ۳۰ روز باشد")
+        if not 1 <= ips <= 10:
+            raise HTTPException(status_code=400,
+                                detail="تعدادِ کاربرِ تست باید بین ۱ تا ۱۰ باشد")
+    root = _root_tenant_row()
+    st = _tenant_settings(root)
+    st["reseller_trial"] = {"enabled": enabled, "gb": gb, "days": days, "ip_limit": ips}
+    _save_tenant_settings(root["id"], st)
+    spec = _bot_trial_cap()
+    changed = _sync_reseller_trials(spec)
+    return {"ok": True, "enabled": bool(spec), "synced": changed}
 
 
 @app.get("/api/admin/portal-addon")
@@ -16177,7 +16283,7 @@ def portal_bot_settings(t: dict = Depends(portal_tenant)):
     cap = _bot_trial_cap()
     return {"settings": out, "trialCap": cap,
             "trialWhy": "" if cap else
-            "مالک هنوز تست رایگانِ فعالی ندارد، پس تستِ شما هم ممکن نیست"}
+            "مدیر تستِ رایگانِ نماینده‌ها را روشن نکرده، پس تستِ شما هم ممکن نیست"}
 
 
 @app.put("/api/portal/bot-settings")
@@ -16339,6 +16445,12 @@ def _addon_open(t, kind="theme"):
                                   _addon_config(kind)["price"], kind)
 
 
+def _addon_blocked(t, kind="theme"):
+    """آیا مالک این افزونه را برای این نماینده دستی بسته؟"""
+    return bool(t.get("parent_id")) and bool(
+        _tenant_settings(t).get(_bot_core().addon_blocked_key(kind)))
+
+
 def _addon_extend(t, kind, days):
     """
     تاریخِ افزونه را `days` روز جلو می‌برد و تاریخِ تازه را برمی‌گرداند.
@@ -16379,6 +16491,11 @@ def _addon_buy(t, kind):
     برمی‌گردد — همان قاعده‌ی `close_order` در ربات.
     """
     cfg = _addon_config(kind)
+    # قفلِ دستیِ مالک پیش از هر چیز: وگرنه نماینده پول می‌داد و تاریخ جلو
+    # می‌رفت، ولی قابلیت بسته می‌ماند — پولِ گرفته‌شده بی‌خدمت
+    if _addon_blocked(t, kind):
+        raise HTTPException(status_code=403,
+                            detail="مدیر این قابلیت را برای شما بسته است — با او هماهنگ کنید")
     if cfg["price"] <= 0:
         raise HTTPException(status_code=400,
                             detail="این قابلیت رایگان است و نیازی به تهیه ندارد")
@@ -16401,6 +16518,7 @@ def _addon_status(t, kind):
     cfg = _addon_config(kind)
     credit = int(t.get("credit") or 0)
     return {"open": _addon_open(t, kind), "until": _addon_until(t, kind),
+            "blocked": _addon_blocked(t, kind),
             "price": cfg["price"], "days": cfg["days"],
             "credit": credit, "postpaid": credit < 0}
 
@@ -16432,6 +16550,7 @@ def _theme_get(t):
         "logo": _logo_url(t["id"]),
         "open": _addon_open(t),
         "until": _addon_until(t),
+        "blocked": _addon_blocked(t),
         "price": cfg["price"],
         "days": cfg["days"],
         "credit": int(t.get("credit") or 0),
@@ -16631,7 +16750,7 @@ def portal_plan_cost(payload: dict, t: dict = Depends(portal_tenant)):
     if len(rows) > 40:
         raise HTTPException(status_code=400, detail="حداکثر ۴۰ پلن")
 
-    _conf, rates = _portal_rates(t)
+    conf, rates = _portal_rates(t)
 
     # بدونِ گروه، نرخی وجود ندارد — ولی این دلیل نمی‌شود ویرایشگر
     # نباز شود. فقط کف معلوم نیست، و همین گفته می‌شود.
@@ -16654,12 +16773,12 @@ def portal_plan_cost(payload: dict, t: dict = Depends(portal_tenant)):
             out.append({"ready": False, "why": "عدد نامعتبر"})
             continue
 
-        out.append(_plan_floor(rates, gb, days, ips))
+        out.append(_plan_floor(conf, rates, gb, days, ips))
 
     return {"rows": out}
 
 
-def _plan_floor(rates, gb, days, ips):
+def _plan_floor(conf, rates, gb, days, ips):
     """
     کفِ یک پلن — همان عددی که پیش‌نمایش نشان می‌دهد و همان که
     موقعِ ذخیره در `plans.cost` می‌نشیند.
@@ -16667,7 +16786,32 @@ def _plan_floor(rates, gb, days, ips):
     یک تابع، چون دو مصرف‌کننده دارد: اگر پیش‌نمایش و ذخیره هر کدام
     جدا حساب کنند، نماینده یک کف می‌بیند و از اعتبارش کفِ دیگری کم
     می‌شود.
+
+    **نرخِ حجمی:** وقتی مالک با نماینده روی «هر گیگ» توافق کرده، کف
+    حجمِ پلن × نرخِ هر گیگ است — مالک: «گیگی ۳ هزار، ۳۰ گیگ می‌شود ۹۰».
+    تا ۱.۱۱۴ این حالت فقط پله‌ها (`rates`) را می‌دید؛ گروهی که فقط نرخِ
+    حجمی داشت اصلاً کفی نداشت و هر قیمتی، حتی صفر، ذخیره می‌شد. ماه ضرب
+    نمی‌شود: حجمِ پلن سقفِ کلِ دوره است، نه ماهانه. کاربرِ اضافه هم
+    چیزی اضافه نمی‌کند — نرخِ حجمی به مصرف است، نه به تعدادِ دستگاه.
     """
+    per_gb = _price_per_gb(conf or {})
+    if per_gb:
+        if gb <= 0:
+            # نامحدود با نرخِ حجمی: مصرف سقف ندارد، پس هیچ کفی قابلِ دفاع
+            # نیست. صفر نمی‌گوییم («رایگان است»)؛ می‌گوییم «نامعلوم» و چرا.
+            return {"ready": False, "perGb": per_gb,
+                    "why": f"نرخِ شما حجمی است (هر گیگ {_fnum(per_gb)} تومان) و "
+                           "پلنِ نامحدود سقفِ مصرف ندارد — کفش معلوم نیست"}
+        return {
+            "ready": True,
+            "cost": int(gb) * per_gb,
+            "base": per_gb,
+            "perGb": per_gb,
+            "gb": int(gb),
+            "perDevice": 0, "extraDevices": 0, "months": 1,
+            "estimated": False,
+        }
+
     base, why = _price_with_reason(gb, rates)
     if base is None:
         # صفر برنمی‌گردانیم: صفر یعنی «رایگان است» و این یعنی
@@ -16715,12 +16859,14 @@ def _refresh_plan_costs(group_key=None):
             args = (group_key,)
         for r in con.execute(sql, args).fetchall():
             t = dict(r)
-            _conf, rates = _portal_rates(t)
+            conf, rates = _portal_rates(t)
             for p in con.execute(
                     "SELECT id, gb, days, ip_limit, cost FROM plans "
-                    "WHERE tenant_id=?", (t["id"],)).fetchall():
-                fl = _plan_floor(rates, int(p["gb"] or 0), int(p["days"] or 0),
-                                 int(p["ip_limit"] or 0)) if rates else {}
+                    "WHERE tenant_id=? AND COALESCE(is_trial,0)=0",
+                    (t["id"],)).fetchall():
+                fl = (_plan_floor(conf, rates, int(p["gb"] or 0), int(p["days"] or 0),
+                                  int(p["ip_limit"] or 0))
+                      if rates or _price_per_gb(conf) else {})
                 new = int(fl.get("cost") or 0) if fl.get("ready") else 0
                 if new != int(p["cost"] or 0):
                     con.execute("UPDATE plans SET cost=? WHERE id=? AND tenant_id=?",
@@ -16755,8 +16901,8 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
     # این اعتبارسنجی **در بکند** است، نه فقط در رابط: رابط فقط
     # راحتی است و کسی می‌تواند درخواست را مستقیم بفرستد.
     mode, allowed, _per_gb = _portal_gb_policy(t)
-    _conf, rates = _portal_rates(t)
-    trial_cap = None
+    conf, rates = _portal_rates(t)
+    trial_spec = None
     trials = 0
 
     clean = []
@@ -16777,21 +16923,25 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
                                 detail=f"عددهای پلن «{name}» نامعتبرند")
 
         # تستِ رایگان (تصمیمِ مالک: مجاز و رایگان، هزینه با مالک).
-        # سقف از تستِ خودِ مالک؛ قیمت صفر؛ کف ندارد؛ و فقط یکی —
-        # ربات «تستِ فعال» را یکی برمی‌دارد و دومی هیچ‌وقت دیده نمی‌شد.
+        # حجم و مدت و کاربر را مالک تعیین می‌کند و هر چه نماینده فرستاده
+        # نادیده گرفته می‌شود — مالک: «ممکن است حجمِ زیاد بگذارد». قیمت
+        # صفر؛ کف ندارد؛ و فقط یکی — ربات «تستِ فعال» را یکی برمی‌دارد و
+        # دومی هیچ‌وقت دیده نمی‌شد.
         is_trial = bool(p.get("is_trial"))
         if is_trial:
             trials += 1
             if trials > 1:
                 raise HTTPException(status_code=400,
                                     detail="فقط یک پلنِ تست می‌شود داشت")
-            if trial_cap is None:
-                trial_cap = _bot_trial_cap() or {}
-            _okc, _why = _bot_handlers().core.trial_within_cap(
-                {"gb": gb, "days": days, "ip_limit": ip_limit}, trial_cap)
-            if not _okc:
-                raise HTTPException(status_code=400,
-                                    detail=f"تستِ «{name}» ذخیره نشد: {_why}")
+            if trial_spec is None:
+                trial_spec = _bot_trial_cap() or {}
+            if not trial_spec:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"تستِ «{name}» ذخیره نشد: مدیر تستِ رایگانِ نماینده‌ها را "
+                           "خاموش کرده — آن ردیف را بردارید")
+            gb, days, ip_limit = (trial_spec["gb"], trial_spec["days"],
+                                  trial_spec["ip_limit"])
             price = 0
 
         if mode == "tiers" and gb not in allowed and not is_trial:
@@ -16813,8 +16963,8 @@ def portal_bot_plans_save(payload: dict, t: dict = Depends(portal_tenant)):
         # کفِ نامعلوم (بدونِ گروه یا حجمِ بی‌نرخ) جلوی ذخیره را نمی‌گیرد
         # — پیش‌نمایش همان‌جا گفته که معلوم نیست — ولی `cost` صفر
         # می‌ماند و ربات این را در لاگ می‌گوید.
-        floor = (_plan_floor(rates, gb, days, ip_limit)
-                 if rates and not is_trial else {"ready": False})
+        floor = (_plan_floor(conf, rates, gb, days, ip_limit)
+                 if (rates or _per_gb) and not is_trial else {"ready": False})
         cost = int(floor.get("cost") or 0) if floor.get("ready") else 0
         if cost and price < cost:
             raise HTTPException(
