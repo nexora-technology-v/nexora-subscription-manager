@@ -4336,14 +4336,18 @@ _old_conf = ("server {\n    listen 80;\n    location / { try_files $uri /index.h
              "    location /api/ {\n        proxy_pass http://127.0.0.1:8100;\n"
              "        proxy_set_header Host $host;\n    }\n}\n") * 2
 io.open(_ngf, "w", encoding="utf-8").write(_old_conf)
+# PATH ِ بی‌nginx: ماشینِ CI (اوبونتوی گیت‌هاب) nginx دارد و `nginx -t` ِ
+# بی‌روت آن‌جا شکست می‌خورد، پس اسکریپت درست رفتار می‌کرد و پیکربندی را
+# برمی‌گرداند — و این تست «۰ بلوک» می‌دید. روی سرور با روت اجرا می‌شود.
+_ngenv = dict(os.environ, PATH=os.path.dirname(sys.executable))
 _sp9.run([sys.executable, os.path.join(str(ROOT), "fix-nginx-cache.py"), _ngf],
-         capture_output=True, timeout=60)
+         capture_output=True, timeout=60, env=_ngenv)
 _new_conf = io.open(_ngf, encoding="utf-8").read()
 check("به‌روزرسانی JS/CSS را فشرده می‌کند — در هر دو بلوک",
       _new_conf.count("gzip_types") == 2 and "application/javascript" in _new_conf,
       "%d بلوک" % _new_conf.count("gzip_types"))
 _sp9.run([sys.executable, os.path.join(str(ROOT), "fix-nginx-cache.py"), _ngf],
-         capture_output=True, timeout=60)
+         capture_output=True, timeout=60, env=_ngenv)
 check("اجرای دوباره چیزی را تکرار نمی‌کند",
       io.open(_ngf, encoding="utf-8").read().count("gzip_types") == 2)
 check("نصبِ تازه هم فشرده می‌فرستد (هر سه قالبِ install.sh)",
