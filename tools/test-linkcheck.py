@@ -106,8 +106,9 @@ for name, i, f, want in CASES:
     v = LINK.diagnose(i, f)
     check(name, v["side"] == want, f"{v['side']} · {v['title']}")
 v = LINK.diagnose(iran(), None)
-check("سمتِ خارج هنوز نسنجیده → «هنوز داده نیست»، نه «سالم»",
-      v["side"] == "unknown" and "خارج ← ایران" in v["reason"], v["reason"])
+check("سمتِ خارج نسنجیده → «آنچه سنجیده می‌شود سالم است» و می‌گوید چه چیزی سنجیده نشده",
+      v["side"] == "partial" and "خارج ← ایران" in v["reason"], v["reason"])
+check("هیچ داده‌ای → «هنوز سنجشی نرسیده»", LINK.diagnose(None, None)["side"] == "unknown")
 check("سرورِ ایرانِ قطع بر «آی‌پیِ خارج محدود شده» مقدم است",
       LINK.diagnose(iran(domestic=DEAD, intl=DEAD, foreign=DEAD), foreign(iran_=DEAD))["side"] == "iran")
 
@@ -170,6 +171,8 @@ check("شمارنده‌ی ناقص چیزی ثبت نمی‌کند", TUN.record
 head("نتیجه‌ی ایجنت — فقط برای نودِ خودش")
 # ═══════════════════════════════════════════════════════════
 import app as APP              # noqa: E402
+_PW = "test-pass-123"
+APP.check_auth = lambda pw: None      # مسیرها مستقیم صدا زده می‌شوند؛ احراز جای دیگری سنجیده می‌شود
 
 A = TUN.create_node("iran-a", role="iran")["id"]
 B = TUN.create_node("iran-b", role="iran")["id"]
@@ -222,6 +225,28 @@ c2 = TUN.conn()
 c2.execute("UPDATE jobs SET status = 'done' WHERE action = 'pathcheck'")
 c2.commit()
 c2.close()
+
+# سمتِ خارج حالا همین‌جا اجرا می‌شود — در تست بی شبکه‌ی واقعی: یک تانلِ
+# دستی (backpack) که ما به پورتِ 8443 ایران زنگ می‌زنیم
+MANUAL = "203.0.113.50"
+_PROBED = []
+
+
+def _fake_probe(targets):
+    _PROBED[:] = targets
+    return [{"host": t["host"], "port": t.get("port"),
+             "tcp": {"loss": 0, "avg": 90}} for t in targets]
+
+
+def _fake_conns(peers=None, conns=None, listening=None):
+    return {"ok": True, "peers": {MANUAL: {
+        "engine": "backpack", "conns": 3, "in": 0, "out": 3, "listen": [8443],
+        "rtt": 120.0, "minrtt": 95.0, "retrans": 1, "segs": 400, "retransPct": 0.25,
+        "sent": 10_000, "recv": 50_000, "idle": 10}}}
+
+
+APP.LINK.probe_all, APP.LINK.tunnel_conns = _fake_probe, _fake_conns
+APP._manual_peers = lambda max_age=30: {MANUAL: "تانل (backpack)"}
 APP._linkcheck_tick()
 _ja = open_jobs(A)
 check("ایجنتِ ۱.۶.۰ سنجش می‌گیرد، با پورتِ تانل",
@@ -238,6 +263,115 @@ APP._linkcheck_tick(force=True)
 check("«همین حالا بسنج» یکی تازه می‌گذارد", len(open_jobs(A)) == 2)
 check("شمارنده‌ی خودِ سرورِ پنل هم ثبت شد (شناسه‌ی صفر)",
       TUN.traffic_summary(0)["lastSample"] is not None or LINK.net_counters() is None)
+
+# ═══════════════════════════════════════════════════════════
+head("تانلِ دستی — بی‌ایجنت، بیرون از پنل")
+# ═══════════════════════════════════════════════════════════
+_local = TUN.linkchecks(0, "foreign")
+check("سمتِ خارج همین‌جا سنجیده و ذخیره شد (شناسه‌ی صفر)", len(_local) >= 1)
+check("تانلِ دستی با پورتِ شنونده‌اش سنجیده شد (ما به 8443 زنگ می‌زنیم)",
+      {"host": MANUAL, "port": 8443} in [{"host": t["host"], "port": t.get("port")} for t in _PROBED],
+      str(_PROBED[:3]))
+check("تانلی که ایجنتِ خارج دارد، این‌جا دوباره سنجیده نمی‌شود",
+      not any(t["host"] == "198.51.100.7" for t in _PROBED))
+_d = APP._link_diag_data()
+_m = next((n for n in _d["nodes"] if n["kind"] == "manual"), None)
+check("تانلِ دستی یک «ارتباط» در صفحه است", _m is not None and _m["ip"] == MANUAL, str(_m and _m["name"]))
+check("با سلامتِ خودِ تانل از کرنل",
+      _m and _m["tunnel"]["now"]["conns"] == 3 and _m["tunnel"]["state"] == "ok"
+      and _m["engine"] == "backpack")
+check("و حکمِ ناقص، نه «هنوز داده نیست»",
+      _m and _m["verdict"]["side"] == "partial" and "ایجنت" in _m["verdict"]["fix"],
+      _m and _m["verdict"]["title"])
+check("مسیرِ «خارج ← ایران» تاریخچه دارد", _m and len(next(
+    p for p in _m["paths"] if p["key"] == "foreign_iran")["history"]) >= 1)
+
+# ایجنت روی همان آی‌پی نصب می‌شود → همان ارتباط، نه دو تا
+M = TUN.create_node("iran-manual", role="iran")["id"]
+TUN.touch_node(M, {"version": "1.6.0", "ip": MANUAL})
+_d = APP._link_diag_data()
+check("ایجنت روی آی‌پیِ تانلِ دستی → یک ارتباط، به نامِ نود",
+      sum(1 for n in _d["nodes"] if n["ip"] == MANUAL) == 1
+      and any(n["kind"] == "agent" and n["name"] == "iran-manual" for n in _d["nodes"]))
+
+# ═══════════════════════════════════════════════════════════
+head("سلامتِ اتصالِ تانل از کرنل (ss -ti)")
+# ═══════════════════════════════════════════════════════════
+SSI = ("0 0 198.51.100.2:443 203.0.113.9:51514 users:((\"backhaul\",pid=12,fd=7))\n"
+       "\t cubic rtt:120.5/30.2 bytes_sent:1000 bytes_received:5000 segs_out:200 "
+       "lastsnd:40 lastrcv:20 retrans:0/6 minrtt:98.1\n"
+       "0 0 198.51.100.2:40000 203.0.113.9:3080\n"
+       "\t cubic rtt:140.1/10 bytes_sent:300 bytes_received:700 segs_out:100 retrans:0/0\n"
+       "0 0 127.0.0.1:2000 127.0.0.1:443\n")
+_c = LINK.parse_ss_info(SSI)
+check("هر اتصال با جزئیاتِ کرنلش", len(_c) == 3 and _c[0]["rtt"] == 120.5
+      and _c[0]["retrans"] == 6 and _c[0]["proc"] == "backhaul", str(_c[0]))
+_t = LINK.tunnel_conns(peers=["203.0.113.9", "192.0.2.5"], conns=_c, listening={443})["peers"]
+_g = _t.get("203.0.113.9") or {}
+check("جهت: یکی او به ما، یکی ما به پورتِ 3080 او",
+      _g.get("in") == 1 and _g.get("out") == 1 and _g.get("listen") == [3080], str(_g))
+check("درصدِ ارسالِ دوباره از کلِ بسته‌ها", _g.get("retransPct") == 2.0)
+check("localhost تانل نیست", "127.0.0.1" not in _t)
+check("تانلی که پنل می‌شناسد ولی اتصالی ندارد → صفر اتصال، نه غایب",
+      _t.get("192.0.2.5", {}).get("conns") == 0)
+check("بی اتصال → قطع", LINK.tunnel_state({"conns": 0}) == "down")
+check("ارسالِ دوباره‌ی زیاد → ناپایدار", LINK.tunnel_state({"conns": 2, "retransPct": 5}) == "lossy")
+check("بی داده → نامشخص", LINK.tunnel_state(None) == "unknown")
+
+v = LINK.diagnose(None, foreign(), tunnel={"conns": 0})
+check("تانلِ بی‌اتصال با مسیرِ سالم → «تانل وصل نیست» و «مشکل از سرویسِ تانل»",
+      v["side"] == "tunnel" and "سرویسِ تانل" in v["reason"], v["reason"])
+v = LINK.diagnose(None, foreign(iran_=DEAD), tunnel={"conns": 3, "retransPct": 9, "rtt": 400})
+check("بی ایجنتِ ایران و مسیرِ بد → «بینِ دو سرور یا خودِ سرورِ ایران» با پیشنهادِ ایجنت",
+      v["side"] == "between-or-iran" and "ایجنت" in v["fix"] and "ارسالِ دوباره" in v["reason"],
+      v["title"])
+
+# ═══════════════════════════════════════════════════════════
+head("فهرستِ موتورهای تانل با netid یکی است")
+# ═══════════════════════════════════════════════════════════
+NET = load("netid_t", "backend/netid.py")
+check("نسخه‌ی پشتیبانِ ایجنت همان netid.TUNNEL_PROCS است",
+      tuple(LINK._TUNNEL_PROCS_FALLBACK) == tuple(NET.TUNNEL_PROCS))
+
+# ═══════════════════════════════════════════════════════════
+head("آی‌پیِ واقعی پشتِ nginx")
+# ═══════════════════════════════════════════════════════════
+
+
+class _Req:
+    def __init__(self, peer, headers):
+        self.client = type("C", (), {"host": peer})()
+        self.headers = headers
+
+
+check("nginx فقط X-Real-IP می‌فرستد — همان خوانده می‌شود",
+      APP._client_ip(_Req("127.0.0.1", {"x-real-ip": "203.0.113.77"})) == "203.0.113.77")
+check("ولی از اینترنت باور نمی‌شود",
+      APP._client_ip(_Req("100.64.0.9", {"x-real-ip": "203.0.113.77"})) == "100.64.0.9")
+
+# ═══════════════════════════════════════════════════════════
+head("نرخِ زنده")
+# ═══════════════════════════════════════════════════════════
+_seq = iter([{"rx": 1000, "tx": 2000}, {"rx": 4000, "tx": 2600}])
+APP.LINK.net_counters = lambda text=None: next(_seq)
+_calls = iter([10_000, 40_000])
+
+
+def _live_conns(peers=None, conns=None, listening=None):
+    r = _fake_conns()
+    r["peers"][MANUAL]["recv"] = next(_calls)
+    return r
+
+
+APP.LINK.tunnel_conns = _live_conns
+APP._LIVE.update(t=None, net=None, peers={})
+APP.link_live(x_admin_password=_PW)
+import time as _time           # noqa: E402
+APP._LIVE["t"] -= 2.0          # دو ثانیه گذشت
+_l = APP.link_live(x_admin_password=_PW)
+check("نرخِ کارتِ شبکه از تفاضل با فراخوانیِ قبلی",
+      _l["net"] and 1400 <= _l["net"]["rx"] <= 1600, str(_l["net"]))
+check("نرخِ هر تانل هم", _l["peers"][MANUAL]["rate"]["rx"] >= 14000, str(_l["peers"][MANUAL]))
 
 # ═══════════════════════════════════════════════════════════
 head("یک دورِ کامل — سرهم‌کردنِ نتیجه")

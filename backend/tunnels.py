@@ -1460,8 +1460,8 @@ def recent_events(limit=60):
 #  عیب‌یابیِ ارتباط — docs/specs/2026-09-26-link-diagnosis-and-traffic.md
 # ═══════════════════════════════════════════════════════════
 
-#: هر پنج دقیقه یک سنجش → ۴۸ ساعت حدودِ ۵۸۰ ردیف برای هر سمتِ هر نود
-LINKCHECK_KEEP = 600
+#: هر دقیقه یک سنجش → حدودِ ۲۵ ساعت برای هر سمتِ هر نود
+LINKCHECK_KEEP = 1500
 
 
 def save_linkcheck(node_id, side, data, at=None):

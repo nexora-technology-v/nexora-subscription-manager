@@ -221,13 +221,195 @@ def peer_ips(ports):
 
 
 # ═══════════════════════════════════════════════════════════
+#  سلامتِ خودِ اتصال‌های تانل — از کرنل، نه سنجشِ مصنوعی
+# ═══════════════════════════════════════════════════════════
+
+#: موتورهای تانل. منبع netid.TUNNEL_PROCS است؛ روی ایجنت netid ممکن است
+#: نباشد، پس نسخه‌ی پشتیبان این‌جاست و test-linkcheck برابری‌شان را می‌سنجد.
+_TUNNEL_PROCS_FALLBACK = (
+    "backhaul", "backpack", "chisel", "rathole", "gost", "frpc", "frps",
+    "wireguard", "wg-quick", "wstunnel", "hysteria", "tuic", "udp2raw",
+    "iodine", "socat", "haproxy", "stunnel", "openvpn",
+)
+try:
+    from netid import TUNNEL_PROCS
+except Exception:
+    TUNNEL_PROCS = _TUNNEL_PROCS_FALLBACK
+
+
+def _ss(args, timeout=8):
+    try:
+        p = subprocess.run(["ss"] + args, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return p.stdout if p.returncode == 0 else None
+
+
+def _split_addr(a):
+    host, _, port = a.rpartition(":")
+    host = host.strip("[]")
+    if host.startswith("::ffff:"):
+        host = host[7:]
+    return host, int(port) if port.isdigit() else None
+
+
+def parse_ss_info(text):
+    """
+    خروجیِ `ss -tinpH state established`: هر اتصال یک خط، و خطِ تورفته‌ی
+    بعدی جزئیاتِ TCP کرنل (rtt، ارسالِ دوباره، بایت‌ها).
+    """
+    conns = []
+    for line in (text or "").splitlines():
+        if not line.strip():
+            continue
+        if line[:1] in (" ", "\t") and conns:
+            c = conns[-1]
+            for m in re.finditer(r"(\w+):([\d./]+)", line):
+                k, v = m.group(1), m.group(2)
+                try:
+                    if k == "rtt":
+                        c["rtt"] = float(v.split("/")[0])
+                    elif k == "minrtt":
+                        c["minrtt"] = float(v)
+                    elif k == "retrans":
+                        c["retrans"] = int(v.split("/")[-1])
+                    elif k in ("segs_out", "bytes_sent", "bytes_received", "bytes_acked",
+                               "lastrcv", "lastsnd"):
+                        c[k] = int(float(v))
+                except ValueError:
+                    continue
+            continue
+        f = line.split()
+        if len(f) < 4:
+            continue
+        lh, lp = _split_addr(f[2])
+        ph, pp = _split_addr(f[3])
+        m = re.search(r'users:\(\("([^"]+)"', line)
+        conns.append({"local": lh, "lport": lp, "peer": ph, "pport": pp,
+                      "proc": m.group(1).lower() if m else ""})
+    return conns
+
+
+def _is_local(ip):
+    return (not ip or ip.startswith(("127.", "10.", "192.168.", "169.254."))
+            or ip in ("::1", "0.0.0.0", "*")
+            or (ip.startswith("172.") and ip.split(".")[1].isdigit()
+                and 16 <= int(ip.split(".")[1]) <= 31))
+
+
+def tunnel_conns(peers=None, conns=None, listening=None):
+    """
+    اتصال‌های تانلِ این سرور، به تفکیکِ آی‌پیِ طرفِ مقابل.
+
+    اتصالِ تانل = پردازه‌اش یکی از موتورهای تانل است، یا طرفِ مقابلش در
+    `peers` (آی‌پی‌هایی که پنل تانل می‌داند — `ss` بی‌دسترسیِ root نامِ
+    پردازه را نمی‌دهد).
+
+    برای هر آی‌پی: تعدادِ اتصال، RTTِ کرنل (میانه)، درصدِ ارسالِ دوباره
+    (نشانه‌ی پرتِ واقعی روی همان مسیرِ تانل)، بایت‌ها، و جهت: «in» یعنی
+    طرفِ مقابل به ما زنگ زده، «out» یعنی ما به پورتِ شنونده‌ی او — که
+    همان پورت برای سنجش از این سمت برگردانده می‌شود.
+    """
+    if conns is None:
+        text = _ss(["-tinpH", "state", "established"], timeout=10)
+        if text is None:
+            return {"ok": False, "peers": {}}
+        conns = parse_ss_info(text)
+    if listening is None:
+        text = _ss(["-tlnH"]) or ""
+        listening = set()
+        for line in text.splitlines():
+            f = line.split()
+            if len(f) >= 4:
+                _h, lp = _split_addr(f[3])
+                if lp:
+                    listening.add(lp)
+    want = set(peers or [])
+    out = {}
+    for c in conns:
+        ip = c["peer"]
+        if _is_local(ip):
+            continue
+        eng = next((e for e in TUNNEL_PROCS if e in c["proc"]), None) if c["proc"] else None
+        if not eng and ip not in want:
+            continue
+        g = out.setdefault(ip, {"engine": eng, "conns": 0, "in": 0, "out": 0,
+                                "listen": [], "rtts": [], "minrtt": None,
+                                "retrans": 0, "segs": 0, "sent": 0, "recv": 0,
+                                "idle": None})
+        g["engine"] = g["engine"] or eng
+        g["conns"] += 1
+        if c.get("lport") in listening:
+            g["in"] += 1
+        else:
+            g["out"] += 1
+            if c.get("pport") and c["pport"] not in g["listen"]:
+                g["listen"].append(c["pport"])
+        if c.get("rtt") is not None:
+            g["rtts"].append(c["rtt"])
+        if c.get("minrtt") is not None:
+            g["minrtt"] = c["minrtt"] if g["minrtt"] is None else min(g["minrtt"], c["minrtt"])
+        g["retrans"] += c.get("retrans", 0)
+        g["segs"] += c.get("segs_out", 0)
+        g["sent"] += c.get("bytes_sent", 0)
+        g["recv"] += c.get("bytes_received", 0)
+        last = min(c.get("lastrcv", 10 ** 9), c.get("lastsnd", 10 ** 9))
+        g["idle"] = last if g["idle"] is None else min(g["idle"], last)
+    for ip, g in out.items():
+        r = sorted(g.pop("rtts"))
+        g["rtt"] = round(r[len(r) // 2], 1) if r else None
+        g["retransPct"] = round(g["retrans"] * 100 / g["segs"], 2) if g["segs"] else 0.0
+        g["listen"] = g["listen"][:4]
+    for ip in want:
+        # تانلی که پنل می‌شناسد ولی هیچ اتصالی ندارد — خودش خبر است
+        out.setdefault(ip, {"engine": None, "conns": 0, "in": 0, "out": 0, "listen": [],
+                            "minrtt": None, "retrans": 0, "segs": 0, "sent": 0,
+                            "recv": 0, "idle": None, "rtt": None, "retransPct": 0.0})
+    return {"ok": True, "peers": out}
+
+
+def tunnel_state(t):
+    """وضعیتِ اتصالِ تانل به یک آی‌پی: ok | slow | lossy | down | unknown."""
+    if not t:
+        return "unknown"
+    if not t.get("conns"):
+        return "down"
+    if (t.get("retransPct") or 0) >= LOSSY / 3:
+        return "lossy"
+    if t.get("rtt") is not None and t["rtt"] > SLOW_MS["between"]:
+        return "slow"
+    return "ok"
+
+
+# ═══════════════════════════════════════════════════════════
 #  یک دورِ کامل — همان تابعی که ایجنت و پنل صدا می‌زنند
 # ═══════════════════════════════════════════════════════════
 
-def run(side="iran", bridge_ports=None, iran_hosts=None, **_):
+#: وقتی پورتِ شنونده‌ی طرفِ ایران را نمی‌دانیم (تانلی که او به ما زنگ
+#: می‌زند)، این‌ها امتحان می‌شوند و بهترینش می‌ماند
+PROBE_FALLBACK_PORTS = (22, 443, 80)
+
+
+def _best_per_host(results):
+    """برای هر آی‌پی بهترین پورت: پورتِ بسته «قطع» نیست."""
+    best = {}
+    for r in results:
+        m = _metric(r)
+        cur = best.get(r["host"])
+        if cur is None or (m and m["loss"] < (_metric(cur) or {"loss": 101})["loss"]):
+            best[r["host"]] = r
+    return list(best.values())
+
+
+def run(side="iran", bridge_ports=None, iran_hosts=None, peers=None, **_):
     """
     side="iran":    از سرورِ ایران — داخل، بین‌الملل، و سرورِ خارج
-    side="foreign": از سرورِ خارج — ایران (پورتِ تانل)، و بین‌الملل
+    side="foreign": از سرورِ خارج — ایران، و بین‌الملل
+
+    `iran_hosts`: [{host, port?}] — بی‌پورت یعنی تانلی که ایران به ما زنگ
+    می‌زند؛ آن‌وقت پینگ و چند پورتِ رایج، بهترینش.
+    `peers`: آی‌پی‌هایی که تانل‌اند، برای سلامتِ اتصال‌ها وقتی `ss` نامِ
+    پردازه را نمی‌دهد.
 
     `**_` تا ایجنت هر پارامترِ اضافه‌ای (panelVersion، …) را بی‌خطا رد کند.
     """
@@ -236,20 +418,33 @@ def run(side="iran", bridge_ports=None, iran_hosts=None, **_):
            "counters": net_counters()}
 
     if side == "iran":
-        peers = peer_ips(bridge_ports)
+        found = peer_ips(bridge_ports)
+        if not found:
+            # تانلِ دستی: پنل پورتش را نمی‌داند؛ پردازه‌ی تانل خودش می‌گوید
+            # به کدام آی‌پی وصل است
+            try:
+                found = [ip for ip, g in (tunnel_conns(peers=peers).get("peers") or {}).items()
+                         if g.get("conns")][:3]
+            except Exception:
+                found = []
+        peers_found = found
         groups = {
             "domestic": [{"host": h, "port": p} for h, p in DOMESTIC],
             "intl": [{"host": h, "port": p} for h, p in INTL],
             "foreign": [{"host": ip, "port": port, "icmp": port == FOREIGN_PORTS[0]}
-                        for ip in peers for port in FOREIGN_PORTS],
+                        for ip in peers_found for port in FOREIGN_PORTS],
         }
-        out["peers"] = peers
+        out["peers"] = peers_found
     else:
-        hosts = [h for h in iran_hosts or [] if h.get("host") and h.get("port")][:6]
-        groups = {
-            "iran": [{"host": h["host"], "port": int(h["port"])} for h in hosts],
-            "intl": [{"host": h, "port": p} for h, p in INTL],
-        }
+        hosts = [h for h in iran_hosts or [] if h.get("host")][:12]
+        iran_t = []
+        for h in hosts:
+            if h.get("port"):
+                iran_t.append({"host": h["host"], "port": int(h["port"])})
+            else:
+                iran_t += [{"host": h["host"], "port": pt, "icmp": pt == PROBE_FALLBACK_PORTS[0]}
+                           for pt in PROBE_FALLBACK_PORTS]
+        groups = {"iran": iran_t, "intl": [{"host": h, "port": p} for h, p in INTL]}
 
     flat = [(g, t) for g, ts in groups.items() for t in ts]
     results = probe_all([t for _g, t in flat])
@@ -257,18 +452,17 @@ def run(side="iran", bridge_ports=None, iran_hosts=None, **_):
     for (g, _t), r in zip(flat, results):
         paths[g].append(r)
 
+    # سرورِ مقابل لازم نیست همه‌ی پورت‌های امتحانی را باز داشته باشد
     if side == "iran" and paths.get("foreign"):
-        # برای هر آی‌پی بهترین پورت: سرورِ خارج لازم نیست ۲۲ و ۴۴۳ را
-        # هر دو باز داشته باشد، و پورتِ بسته «قطع» نیست
-        best = {}
-        for r in paths["foreign"]:
-            m = _metric(r)
-            cur = best.get(r["host"])
-            if cur is None or (m and m["loss"] < (_metric(cur) or {"loss": 101})["loss"]):
-                best[r["host"]] = r
-        paths["foreign"] = list(best.values())
+        paths["foreign"] = _best_per_host(paths["foreign"])
+    if side != "iran" and paths.get("iran"):
+        paths["iran"] = _best_per_host(paths["iran"])
 
     out["paths"] = paths
+    try:
+        out["tunnel"] = tunnel_conns(peers=peers)
+    except Exception as e:          # سلامتِ اتصال‌ها تزئینِ حکم است، نه شرطِ آن
+        out["tunnel"] = {"ok": False, "peers": {}, "error": f"{type(e).__name__}: {e}"[:160]}
     out["took"] = round(time.time() - t0, 1)
     return out
 
@@ -307,15 +501,35 @@ def _worst(*xs):
     return min(known, key=order.index) if known else "unknown"
 
 
-def diagnose(iran, foreign):
+def _tunnel_phrase(t):
+    if not t:
+        return ""
+    if not t.get("conns"):
+        return " هیچ اتصالِ تانلی به این آی‌پی برقرار نیست."
+    bits = [f"{t['conns']} اتصالِ تانل"]
+    if t.get("rtt") is not None:
+        bits.append(f"RTTِ کرنل {round(t['rtt'])} ms")
+    if t.get("retransPct"):
+        bits.append(f"{t['retransPct']}٪ ارسالِ دوباره")
+    return " روی خودِ تانل: " + "، ".join(bits) + "."
+
+
+def diagnose(iran, foreign, tunnel=None):
     """
     یک حکم به زبانِ ساده: اختلال از کدام سمت است و چه باید کرد.
 
     ترتیبِ بررسی مهم است: اگر خودِ سرورِ ایران به داخل هم نمی‌رسد، بقیه‌ی
     مسیرها طبیعتاً بدند و گفتنِ «آی‌پیِ خارج محدود شده» گمراه‌کننده است.
+
+    `tunnel`: سلامتِ اتصال‌های تانل به همین سرورِ ایران (`tunnel_conns`)،
+    دیده‌شده از سمتِ خارج. داده‌ی ناقص حکم را «نامشخص» نمی‌کند: تانلِ دستیِ
+    بی‌ایجنت هرگز سمتِ ایران ندارد، و «هنوز داده نیست»ِ همیشگی بی‌فایده بود.
     """
     s = path_states(iran, foreign)
-    between = _worst(s["iran_foreign"], s["foreign_iran"])
+    s["tunnel"] = tunnel_state(tunnel)
+    iran_known = s["iran_intl"] != "unknown" or s["iran_domestic"] != "unknown"
+    between = _worst(s["iran_foreign"], s["foreign_iran"], s["tunnel"])
+    tp = _tunnel_phrase(tunnel)
 
     def verdict(side, st, title, detail, fix):
         return {"side": side, "level": "bad" if st in _BAD else "warn",
@@ -340,20 +554,42 @@ def diagnose(iran, foreign):
             "مشکل از سرورِ خارج است",
             f"سرورِ خارج به اینترنتِ بین‌المللی {_STATE_FA[s['foreign_intl']]} وصل می‌شود.",
             "وضعیتِ دیتاسنترِ خارج و مصرفِ همان سرور را ببینید.")
-    if between in _BAD + _WARN:
+    if s["tunnel"] == "down" and tunnel is not None:
         return verdict(
-            "between", between,
-            "مسیرِ بینِ این دو سرور مشکل دارد",
-            "هر دو سرور به اینترنت سالم وصل‌اند، ولی بینِ خودشان "
-            f"{_STATE_FA[between]}. معمولاً یعنی آی‌پیِ یکی از دو سرور محدود شده.",
-            "آی‌پیِ سرورِ خارج (یا ایران) را عوض کنید، یا دیتاسنترِ دیگری امتحان کنید.")
-    if "unknown" in s.values():
-        missing = [k for k, v in s.items() if v == "unknown"]
+            "tunnel", "down",
+            "تانل وصل نیست",
+            "هیچ اتصالی بینِ این سرور و سرورِ ایران برقرار نیست — ترافیکی رد نمی‌شود."
+            + ("" if s["foreign_iran"] in _BAD else " خودِ مسیر جواب می‌دهد، پس مشکل از سرویسِ تانل است."),
+            "سرویسِ تانل را روی هر دو سرور ری‌استارت کنید و لاگش را ببینید؛ "
+            "پورت و توکنِ دو طرف یکی باشد.")
+    if between in _BAD + _WARN:
+        if iran_known:
+            return verdict(
+                "between", between,
+                "مسیرِ بینِ این دو سرور مشکل دارد",
+                "هر دو سرور به اینترنت سالم وصل‌اند، ولی بینِ خودشان "
+                f"{_STATE_FA[between]}. معمولاً یعنی آی‌پیِ یکی از دو سرور محدود شده." + tp,
+                "آی‌پیِ سرورِ خارج (یا ایران) را عوض کنید، یا دیتاسنترِ دیگری امتحان کنید.")
+        return verdict(
+            "between-or-iran", between,
+            "مشکل بینِ این سرور و سرورِ ایران است — یا خودِ سرورِ ایران",
+            f"سرورِ خارج به اینترنت سالم وصل است، ولی تا سرورِ ایران {_STATE_FA[between]}." + tp,
+            "برای جداکردنِ «مسیر» از «سرورِ ایران»، ایجنت را روی سرورِ ایران نصب کنید "
+            "(تانل ← سرورها). تا آن موقع: ترنسپورتِ تانل یا آی‌پیِ یکی از دو سرور را عوض کنید.")
+
+    missing = [k for k in _PATH_FA if s[k] == "unknown"]
+    if len(missing) == len(_PATH_FA) and s["tunnel"] == "unknown":
         return {"side": "unknown", "level": "unknown", "paths": s,
-                "title": "هنوز برای همه‌ی مسیرها داده نیست",
-                "reason": "مسیرهای بی‌داده: " + "، ".join(_PATH_FA[k] for k in missing),
-                "fix": "اگر ایجنت قدیمی است به‌روزش کنید؛ وگرنه چند دقیقه صبر کنید."}
+                "title": "هنوز سنجشی نرسیده",
+                "reason": "هیچ مسیری سنجیده نشده.",
+                "fix": "«همین حالا بسنج» را بزنید؛ اگر ایجنت قدیمی است به‌روزش کنید."}
+    if missing:
+        return {"side": "partial", "level": "ok", "paths": s,
+                "title": "آنچه سنجیده می‌شود سالم است",
+                "reason": "سنجیده نشده: " + "، ".join(_PATH_FA[k] for k in missing) + "." + tp,
+                "fix": ("اگر مشتری‌ها هنوز کندی دارند، ایجنت را روی سرورِ ایران نصب کنید تا "
+                        "سمتِ ایران هم دیده شود؛ و «اینباندها» را ببینید.")}
     return {"side": "none", "level": "ok", "paths": s,
             "title": "همه‌ی مسیرها سالم‌اند",
-            "reason": "اگر مشتری‌ها هنوز کندی دارند، مشکل از خودِ تانل یا موتور است، نه شبکه.",
-            "fix": "لاگِ تانل را ببینید، یا ترنسپورتِ دیگری امتحان کنید."}
+            "reason": "اگر مشتری‌ها هنوز کندی دارند، مشکل از خودِ تانل یا اینباند است، نه شبکه." + tp,
+            "fix": "«تانل ← اینباندها» را ببینید، یا ترنسپورتِ تانل را عوض کنید."}

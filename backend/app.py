@@ -738,14 +738,18 @@ def _client_ip(request):
         trusted = False
 
     if trusted:
-        fwd = request.headers.get("x-forwarded-for") or ""
-        first = fwd.split(",")[0].strip()
-        if first:
-            try:
-                _ipaddress.ip_address(first)
-                return first
-            except ValueError:
-                pass
+        # nginx نصب فقط X-Real-IP می‌فرستد (install.sh). تا ۱.۱۱۱ فقط
+        # X-Forwarded-For خوانده می‌شد، پس پشتِ nginx آی‌پیِ همه
+        # 127.0.0.1 بود: قفلِ ورودِ همه در یک سطل، و آی‌پیِ نودها هرگز
+        # ثبت نمی‌شد.
+        for h in ("x-forwarded-for", "x-real-ip"):
+            first = (request.headers.get(h) or "").split(",")[0].strip()
+            if first:
+                try:
+                    _ipaddress.ip_address(first)
+                    return first
+                except ValueError:
+                    pass
     return peer or "?"
 
 
@@ -5431,12 +5435,6 @@ def _start_health_loop():
             except Exception as e:
                 _loop_fail("history", e)
 
-            # عیب‌یابیِ ارتباط و حجمِ ترافیک — همان پنج دقیقه
-            try:
-                _linkcheck_tick()
-                _loop_ok("linkcheck")
-            except Exception as e:
-                _loop_fail("linkcheck", e)
 
             try:
                 _maint_tick()
@@ -5478,6 +5476,7 @@ def _selfheal():
     و سرویس در هر حالت بالا می‌آید. اینها بهبودند، نه ضرورت.
     """
     _start_health_loop()
+    _start_link_loop()
 
     steps = [
         ("cli", _selfheal_cli),
@@ -11152,7 +11151,17 @@ async def agent_checkin(request: Request, payload: dict = None,
     raw = await request.body()
     node = _agent_node(x_agent_token, body=raw,
                        ts=x_agent_time or "", sign=x_agent_sign or "")
-    TUN.touch_node(node["id"], (payload or {}).get("metrics"))
+    _m = dict((payload or {}).get("metrics") or {})
+    # آی‌پیِ عمومیِ نود از خودِ درخواست — تا تانلی که مانیتورینگ به این آی‌پی
+    # می‌بیند به همین نود وصل شود. ایجنت آی‌پی نمی‌فرستد و ستون خالی می‌ماند.
+    _ip = _client_ip(request)
+    try:
+        _glob = bool(_ip) and _ipaddress.ip_address(_ip).is_global
+    except ValueError:
+        _glob = False       # «?» یا نامعتبر: آی‌پیِ ثبت‌شده‌ی نود دست نمی‌خورد
+    if _glob:
+        _m["ip"] = _ip
+    TUN.touch_node(node["id"], _m)
     jobs = TUN.take_jobs(node["id"])
 
     # نسخه‌ی پنل را می‌فرستیم تا ایجنت بفهمد ماژول‌های کش‌شده‌اش
@@ -11564,7 +11573,7 @@ def _agent_can_pathcheck(node):
 
 def _pathcheck_result(node, jid, result):
     """
-    نتیجه‌ی pathcheck ِ یک ایجنت: سنجش و شمارنده‌ی ترافیک.
+    نتیجه‌ی pathcheck یک ایجنت: سنجش و شمارنده‌ی ترافیک.
 
     «برای کدام نودِ ایران» از payloadِ ذخیره‌شده‌ی کار خوانده می‌شود، نه
     از پاسخ — و برای سمتِ خارج سنجیده می‌شود که این ایجنت واقعاً سرورِ
@@ -11628,42 +11637,92 @@ def _iran_links():
     return out, nodes
 
 
+#: شناسه‌ی «سرورِ پنل» در linkchecks و traffic — سنجش‌های سمتِ خارج از همین سرور
+LOCAL_NODE = 0
+
+#: هر چند ثانیه سنجشِ خودکار. پیش‌تر پنج دقیقه بود: اختلالی که ده دقیقه
+#: طول می‌کشید دو نقطه روی نمودار بود و «همین حالا بسنج» فقط در صف می‌گذاشت.
+LINK_EVERY = 60
+
+import threading as _threading          # noqa: E402
+_LINK_LOCK = _threading.Lock()
+_PEERS_CACHE = {"at": 0.0, "data": {}}
+
+
+def _manual_peers(max_age=30):
+    """
+    {آی‌پی: برچسب} هر تانلی که مانیتورینگ روی این سرور می‌بیند — از جمله
+    تانل‌هایی که بیرون از پنل ساخته شده‌اند. کش کوتاه: ps و ss ارزان نیستند
+    و مسیرِ زنده هر سه ثانیه صدا می‌زند.
+    """
+    now = time.time()
+    if now - _PEERS_CACHE["at"] < max_age:
+        return _PEERS_CACHE["data"]
+    peers = {}
+    if NETID:
+        try:
+            peers = dict(NETID.tunnel_peers() or {})
+            _loop_ok("tunnel-peers")
+        except Exception as e:
+            _loop_fail("tunnel-peers", e)
+    _PEERS_CACHE.update(at=now, data=peers)
+    return peers
+
+
+def _local_hosts(links):
+    """
+    مقصدهای سنجشِ سمتِ خارج: تانل‌های پنل (`remote_host:bridge_port`) و هر
+    تانلِ دستی. برای تانلِ دستی پورتِ شنونده‌ی طرفِ ایران را فقط وقتی داریم
+    که ما به او زنگ می‌زنیم (اتصالِ «out»)؛ وگرنه linkcheck چند پورتِ رایج
+    را امتحان می‌کند.
+    """
+    hosts, known = [], set()
+    for L in links:
+        for t in L["tunnels"]:
+            if t.get("foreign_node") or not t.get("remote_host"):
+                continue            # سمتِ خارجش را ایجنتِ خودش می‌سنجد
+            hosts.append({"host": t["remote_host"], "port": int(t["bridge_port"])})
+            known.add(t["remote_host"])
+    peers = _manual_peers()
+    tc = LINK.tunnel_conns(peers=set(peers) | known)
+    for ip in peers:
+        if ip in known:
+            continue
+        g = (tc.get("peers") or {}).get(ip) or {}
+        hosts.append({"host": ip, "port": (g.get("listen") or [None])[0]})
+        known.add(ip)
+    return hosts, known, peers
+
+
 def _linkcheck_tick(force=False):
     """
-    یک دورِ عیب‌یابی: سمتِ ایران در صفِ ایجنت‌ها، سمتِ خارج همین‌جا
-    (یا روی ایجنتِ سرورِ خارج اگر تانل آن را دارد)، و شمارنده‌ی ترافیکِ
-    خودِ سرورِ پنل.
+    یک دورِ عیب‌یابی: سمتِ ایران در صفِ ایجنت‌ها، سمتِ خارج همین‌جا (هم‌زمان
+    برای همه‌ی تانل‌ها، چند ثانیه)، و شمارنده‌ی ترافیکِ خودِ سرورِ پنل.
     """
     if not (TUNNELS_OK and LINK):
-        return
+        return None
     try:
-        TUN.record_traffic(0, LINK.net_counters())
+        TUN.record_traffic(LOCAL_NODE, LINK.net_counters())
     except Exception as e:
         _loop_fail("traffic-local", e)
 
     links, nodes = _iran_links()
     by_id = {n["id"]: n for n in nodes}
-    local = []
     for L in links:
         n, tuns = L["node"], L["tunnels"]
-        if _agent_can_pathcheck(n) and (force or not TUN.has_open_job(n["id"], "pathcheck")):
+        if n.get("role") != "foreign" and _agent_can_pathcheck(n) \
+                and (force or not TUN.has_open_job(n["id"], "pathcheck")):
             TUN.queue_job(n["id"], "pathcheck", {
                 "side": "iran",
                 "bridge_ports": sorted({int(t["bridge_port"]) for t in tuns})})
         hosts = [{"host": t["remote_host"], "port": int(t["bridge_port"])}
-                 for t in tuns if t.get("remote_host")]
-        if not hosts:
-            continue
+                 for t in tuns if t.get("remote_host") and t.get("foreign_node")]
         fid = next((t["foreign_node"] for t in tuns if t.get("foreign_node")), None)
         fnode = by_id.get(fid) if fid else None
-        if fnode and _agent_can_pathcheck(fnode):
-            if force or not TUN.has_open_job(fnode["id"], "pathcheck"):
-                TUN.queue_job(fnode["id"], "pathcheck", {
-                    "side": "foreign", "for_node": n["id"], "iran_hosts": hosts})
-        else:
-            # سرورِ خارج همین سرورِ پنل است (حالتِ معمول)، یا ایجنتِ خارج
-            # قدیمی است — از این‌جا می‌سنجیم، که از هیچ بهتر است
-            local.append((n["id"], hosts))
+        if hosts and fnode and _agent_can_pathcheck(fnode) \
+                and (force or not TUN.has_open_job(fnode["id"], "pathcheck")):
+            TUN.queue_job(fnode["id"], "pathcheck", {
+                "side": "foreign", "for_node": n["id"], "iran_hosts": hosts})
 
     # نودهای خارجیِ بی‌تانل هم ترافیک دارند
     for n in nodes:
@@ -11673,71 +11732,138 @@ def _linkcheck_tick(force=False):
                 and (force or not TUN.has_open_job(n["id"], "pathcheck"))):
             TUN.queue_job(n["id"], "pathcheck", {"side": "foreign", "iran_hosts": []})
 
-    if local:
-        import threading
+    hosts, known, peers = _local_hosts(links)
+    data = LINK.run("foreign", iran_hosts=hosts, peers=sorted(known))
+    data["manual"] = peers
+    TUN.save_linkcheck(LOCAL_NODE, "foreign", data)
+    return data
 
-        def work():
-            for nid, hosts in local:
+
+def _start_link_loop():
+    """نخِ جدا: سنجشِ ۶۰ ثانیه‌ای نباید پشتِ نگهداریِ پنج‌دقیقه‌ای منتظر بماند."""
+    def loop():
+        time.sleep(20)
+        while True:
+            if _LINK_LOCK.acquire(blocking=False):
                 try:
-                    TUN.save_linkcheck(nid, "foreign", LINK.run("foreign", iran_hosts=hosts))
-                    _loop_ok("linkcheck-local")
+                    _linkcheck_tick()
+                    _loop_ok("linkcheck")
                 except Exception as e:
-                    _loop_fail("linkcheck-local", e)
-        # نخِ جدا: سنجشِ مسیرِ قطع تا بیست ثانیه طول می‌کشد و نگهداری منتظرش نمی‌ماند
-        threading.Thread(target=work, daemon=True).start()
+                    _loop_fail("linkcheck", e)
+                finally:
+                    _LINK_LOCK.release()
+            time.sleep(LINK_EVERY)
+    try:
+        _threading.Thread(target=loop, daemon=True).start()
+    except Exception as _exc:
+        log.error("link-check thread did not start: %s", _exc, exc_info=True)
 
 
-def _path_series(samples, keys, kind_of):
-    """برای هر مسیر: سنجش‌های ۲۴ ساعت، هر کدام {at, loss, avg, state}."""
+def _view(data, ips):
+    """سنجشِ سمتِ خارج، فقط برای آی‌پی‌های یک ارتباط."""
+    if not data:
+        return None
+    p = data.get("paths") or {}
+    return {"paths": {"iran": [r for r in p.get("iran") or [] if r.get("host") in ips],
+                      "intl": p.get("intl") or []}}
+
+
+def _tunnel_of(data, ips):
+    peers = ((data or {}).get("tunnel") or {}).get("peers") or {}
+    for ip in ips:
+        if ip in peers:
+            return peers[ip]
+    return None
+
+
+def _path_series(samples, keys, kind_of, ips=None):
+    """برای هر مسیر: سنجش‌ها، هر کدام {at, loss, avg, state}."""
     out = {k: [] for k in keys}
     for smp in samples:
         paths = (smp.get("data") or {}).get("paths") or {}
         for k in keys:
-            sm = LINK.summarize(paths.get(k))
+            rows = paths.get(k)
+            if ips is not None and k == "iran":
+                rows = [r for r in rows or [] if r.get("host") in ips]
+            sm = LINK.summarize(rows)
             if sm:
                 out[k].append({"at": smp["at"], "loss": sm["loss"], "avg": sm["avg"],
                                "state": LINK.state(sm, kind_of[k])})
     return out
 
 
-#: نامِ مسیرها در پاسخ ← (کلید در سنجشِ سمتِ ایران یا خارج، نوعِ مرزِ کندی)
+def _tunnel_series(samples, ips):
+    out = []
+    for smp in samples:
+        t = _tunnel_of(smp.get("data"), ips)
+        if t is not None:
+            out.append({"at": smp["at"], "state": LINK.tunnel_state(t),
+                        "loss": t.get("retransPct") or 0, "avg": t.get("rtt"),
+                        "conns": t.get("conns") or 0})
+    return out
+
+
+#: نامِ مسیرها در پاسخ ← (سمت، کلید در سنجش، نوعِ مرزِ کندی، برچسب)
 LINK_PATHS = (
     ("iran_domestic", "iran", "domestic", "domestic", "ایران ← داخل"),
     ("iran_intl", "iran", "intl", "intl", "ایران ← بین‌الملل"),
     ("iran_foreign", "iran", "foreign", "between", "ایران ← خارج"),
-    ("foreign_iran", "foreign", "iran", "between", "خارج ← ایران (پورتِ تانل)"),
+    ("foreign_iran", "foreign", "iran", "between", "خارج ← ایران"),
     ("foreign_intl", "foreign", "intl", "intl", "خارج ← بین‌الملل"),
 )
 
 
-@app.get("/api/admin/link/diag")
-def link_diag(x_admin_password: str = Header(...)):
-    """
-    برای هر سرورِ ایران: حکم («اختلال از کدام سمت است»)، وضعیتِ پنج مسیر،
-    و روندِ ۲۴ ساعتِ هر مسیر.
-    """
-    check_auth(x_admin_password)
-    _need_tunnels()
-    if not LINK:
-        raise HTTPException(status_code=500,
-                            detail="ماژول عیب‌یابی بارگذاری نشد — nexora update را اجرا کنید")
+def _link_diag_data():
     since = (datetime.now() - timedelta(hours=24)).isoformat(timespec="seconds")
     links, _nodes = _iran_links()
-    out = []
+    local = TUN.linkchecks(LOCAL_NODE, "foreign", since=since)
+    last_local = local[-1]["data"] if local else None
+    manual = dict((last_local or {}).get("manual") or {})
+    for ip in ((last_local or {}).get("tunnel") or {}).get("peers") or {}:
+        manual.setdefault(ip, "تانل")
+
+    items = []
+    claimed = set()
     for L in links:
         n = L["node"]
         if n.get("role") == "foreign":
             continue
-        iran = TUN.linkchecks(n["id"], "iran", since=since)
-        foreign = TUN.linkchecks(n["id"], "foreign", since=since)
-        last_i = iran[-1]["data"] if iran else None
-        last_f = foreign[-1]["data"] if foreign else None
-        verdict = LINK.diagnose(last_i, last_f)
+        ips = {t["remote_host"] for t in L["tunnels"] if t.get("remote_host")}
+        if n.get("public_ip"):
+            ips.add(n["public_ip"])
+        claimed |= ips
+        items.append({"node": n, "tunnels": L["tunnels"], "ips": ips,
+                      "kind": "panel" if L["tunnels"] else "agent"})
+    for ip, label in manual.items():
+        if ip in claimed:
+            continue
+        items.append({"node": None, "tunnels": [], "ips": {ip}, "kind": "manual",
+                      "label": label})
 
-        series_i = _path_series(iran, ["domestic", "intl", "foreign"],
-                                {"domestic": "domestic", "intl": "intl", "foreign": "between"})
-        series_f = _path_series(foreign, ["iran", "intl"],
-                                {"iran": "between", "intl": "intl"})
+    kind_i = {"domestic": "domestic", "intl": "intl", "foreign": "between"}
+    kind_f = {"iran": "between", "intl": "intl"}
+    out = []
+    for it in items:
+        n, ips = it["node"], it["ips"]
+        iran = TUN.linkchecks(n["id"], "iran", since=since) if n else []
+        own_f = bool(n) and any(t.get("foreign_node") for t in it["tunnels"])
+        if own_f:
+            fsamp = TUN.linkchecks(n["id"], "foreign", since=since)
+            last_f = fsamp[-1]["data"] if fsamp else None
+            series_f = _path_series(fsamp, ["iran", "intl"], kind_f)
+            tun_now = _tunnel_of(last_f, ips)
+            tun_series = _tunnel_series(fsamp, ips)
+            f_at = fsamp[-1]["at"] if fsamp else None
+        else:
+            last_f = _view(last_local, ips)
+            series_f = _path_series(local, ["iran", "intl"], kind_f, ips=ips)
+            tun_now = _tunnel_of(last_local, ips)
+            tun_series = _tunnel_series(local, ips)
+            f_at = local[-1]["at"] if local else None
+        last_i = iran[-1]["data"] if iran else None
+        verdict = LINK.diagnose(last_i, last_f, tunnel=tun_now if tun_series or tun_now else None)
+        series_i = _path_series(iran, ["domestic", "intl", "foreign"], kind_i)
+
         paths = []
         for key, side, src, _kind, label in LINK_PATHS:
             ser = (series_i if side == "iran" else series_f).get(src) or []
@@ -11746,49 +11872,131 @@ def link_diag(x_admin_password: str = Header(...)):
                 "key": key, "label": label, "side": side,
                 "state": verdict["paths"][key],
                 "latest": ser[-1] if ser else None,
-                "history": ser,
+                "history": ser[-288:],
                 "targets": [{"host": r.get("host"), "port": r.get("port"),
                              "tcp": r.get("tcp"), "icmp": r.get("icmp")}
                             for r in ((last.get("paths") or {}).get(src) or [])],
             })
 
-        ver = (n.get("agent_version") or "").strip()
         err = None
-        con = TUN.conn()
-        try:
-            bad = con.execute(
-                "SELECT result FROM jobs WHERE node_id = ? AND action = 'pathcheck' "
-                "AND status = 'failed' ORDER BY id DESC LIMIT 1", (n["id"],)).fetchone()
-            if bad and bad["result"]:
-                err = str(bad["result"])[:200]
-        finally:
-            con.close()
+        ver = None
+        if n:
+            ver = (n.get("agent_version") or "").strip() or None
+            con = TUN.conn()
+            try:
+                bad = con.execute(
+                    "SELECT result FROM jobs WHERE node_id = ? AND action = 'pathcheck' "
+                    "AND status = 'failed' ORDER BY id DESC LIMIT 1", (n["id"],)).fetchone()
+                if bad and bad["result"]:
+                    err = str(bad["result"])[:200]
+            finally:
+                con.close()
+        ip0 = sorted(ips)[0] if ips else ""
         out.append({
-            "id": n["id"], "name": n.get("name") or f"#{n['id']}",
-            "online": TUN._is_online(n.get("last_seen")),
-            "agentVersion": ver or None,
-            "agentStale": not _agent_can_pathcheck(n),
+            "id": n["id"] if n else f"ip:{ip0}",
+            "kind": it["kind"],
+            "name": (n.get("name") if n else None) or f"تانلِ {it.get('label') or ''}".strip(),
+            "ip": n.get("public_ip") if n else ip0,
+            "online": TUN._is_online(n.get("last_seen")) if n else None,
+            "agentVersion": ver,
+            "agentStale": bool(n) and not _agent_can_pathcheck(n),
+            "hasAgent": bool(n),
             "agentNeed": AGENT_PATHCHECK,
-            "tunnels": len(L["tunnels"]),
+            "tunnels": len(it["tunnels"]),
+            "engine": (tun_now or {}).get("engine"),
             "peers": (last_i or {}).get("peers") or [],
             "iranAt": iran[-1]["at"] if iran else None,
-            "foreignAt": foreign[-1]["at"] if foreign else None,
+            "foreignAt": f_at,
             "lastError": err,
             "verdict": {k: verdict[k] for k in ("side", "level", "title", "reason", "fix")},
+            "tunnel": {"state": verdict["paths"]["tunnel"], "now": tun_now,
+                       "history": tun_series[-288:]},
             "paths": paths,
         })
-    return {"nodes": out, "loopError": (_LOOP_ERR.get("linkcheck") or {}).get("error")}
+    return {"nodes": out, "every": LINK_EVERY,
+            "loopError": (_LOOP_ERR.get("linkcheck") or {}).get("error")}
+
+
+@app.get("/api/admin/link/diag")
+def link_diag(x_admin_password: str = Header(...)):
+    """
+    برای هر ارتباطِ ایران↔خارج — تانل‌های پنل، و هر تانلِ دستی که
+    مانیتورینگ می‌بیند: حکم، وضعیتِ مسیرها، سلامتِ خودِ تانل، و روندِ ۲۴ ساعت.
+    """
+    check_auth(x_admin_password)
+    _need_tunnels()
+    if not LINK:
+        raise HTTPException(status_code=500,
+                            detail="ماژول عیب‌یابی بارگذاری نشد — nexora update را اجرا کنید")
+    return _link_diag_data()
 
 
 @app.post("/api/admin/link/check")
 def link_check_now(x_admin_password: str = Header(...)):
-    """یک دورِ سنجش همین حالا — نتیجه ظرفِ یکی دو دقیقه می‌رسد."""
+    """
+    یک دورِ سنجش همین حالا. سمتِ خارج همین‌جا اجرا می‌شود و نتیجه‌اش در همین
+    پاسخ است (چند ثانیه)؛ سمتِ ایران با چک‌اینِ بعدیِ ایجنت (≤ ۳۰ ثانیه) می‌رسد.
+    """
     check_auth(x_admin_password)
     _need_tunnels()
     if not LINK:
         raise HTTPException(status_code=500, detail="ماژول عیب‌یابی بارگذاری نشد")
-    _linkcheck_tick(force=True)
-    return {"ok": True}
+    if not _LINK_LOCK.acquire(timeout=30):
+        raise HTTPException(status_code=409, detail="سنجشِ دیگری در جریان است — چند ثانیه بعد")
+    try:
+        _PEERS_CACHE["at"] = 0.0
+        _linkcheck_tick(force=True)
+    finally:
+        _LINK_LOCK.release()
+    return _link_diag_data()
+
+
+_LIVE = {"t": None, "net": None, "peers": {}, "inb": None}
+
+
+@app.get("/api/admin/link/live")
+def link_live(x_admin_password: str = Header(...)):
+    """
+    نرخِ لحظه‌ای: کارتِ شبکه‌ی همین سرور و هر اتصالِ تانل، از تفاضل با
+    فراخوانیِ قبلی. صفحه هر سه ثانیه می‌پرسد؛ سنجشِ مصنوعی ندارد —
+    شمارنده‌ی کرنل روی همان ترافیکِ واقعی.
+    """
+    check_auth(x_admin_password)
+    if not LINK:
+        raise HTTPException(status_code=500, detail="ماژول عیب‌یابی بارگذاری نشد")
+    now = time.monotonic()
+    peers = _manual_peers()
+    known = set(peers)
+    if TUNNELS_OK:
+        try:
+            links, _n = _iran_links()
+            known |= {t["remote_host"] for L in links for t in L["tunnels"] if t.get("remote_host")}
+        except Exception as e:
+            _loop_fail("link-live", e)
+    tc = LINK.tunnel_conns(peers=known)
+    net = LINK.net_counters()
+    prev_t = _LIVE["t"]
+    dt = (now - prev_t) if prev_t else None
+    out_net = None
+    if net and _LIVE["net"] and dt and dt > 0.5:
+        out_net = {"rx": max(0, int((net["rx"] - _LIVE["net"]["rx"]) / dt)),
+                   "tx": max(0, int((net["tx"] - _LIVE["net"]["tx"]) / dt))}
+    out_peers = {}
+    for ip, g in (tc.get("peers") or {}).items():
+        pv = _LIVE["peers"].get(ip)
+        rate = None
+        if pv and dt and dt > 0.5:
+            # اتصال‌ها عوض می‌شوند؛ تفاضلِ منفی یعنی اتصالِ تازه، نه بایتِ منفی
+            rate = {"rx": max(0, int((g["recv"] - pv["recv"]) / dt)),
+                    "tx": max(0, int((g["sent"] - pv["sent"]) / dt))}
+        out_peers[ip] = {"engine": g.get("engine"), "conns": g.get("conns"),
+                         "rtt": g.get("rtt"), "retransPct": g.get("retransPct"),
+                         "idle": g.get("idle"), "rate": rate,
+                         "label": peers.get(ip)}
+    _LIVE.update(t=now, net=net, peers={ip: {"recv": g["recv"], "sent": g["sent"]}
+                                        for ip, g in (tc.get("peers") or {}).items()})
+    return {"ok": bool(tc.get("ok")), "net": out_net, "peers": out_peers,
+            "dt": round(dt, 1) if dt else None}
 
 
 @app.get("/api/admin/traffic")
@@ -11796,8 +12004,14 @@ def traffic_overview(x_admin_password: str = Header(...)):
     """حجمِ ترافیکِ هر سرور: سرورِ پنل (شناسه‌ی صفر) و هر نود."""
     check_auth(x_admin_password)
     _need_tunnels()
+    # نمونه‌ی تازه همین حالا، تا صفحه منتظرِ دورِ بعد نماند
+    if LINK:
+        try:
+            TUN.record_traffic(LOCAL_NODE, LINK.net_counters())
+        except Exception as e:
+            _loop_fail("traffic-local", e)
     servers = [{"id": 0, "name": "سرورِ پنل", "role": "panel",
-                "agentStale": False, **TUN.traffic_summary(0)}]
+                "agentStale": False, **TUN.traffic_summary(LOCAL_NODE)}]
     con = TUN.conn()
     try:
         nodes = [dict(r) for r in con.execute(
@@ -11813,6 +12027,183 @@ def traffic_overview(x_admin_password: str = Header(...)):
                         "agentNeed": AGENT_PATHCHECK,
                         **TUN.traffic_summary(n["id"])})
     return {"servers": servers}
+
+
+# ═══════════════════════════════════════════════════════════
+#  تحلیلِ اینباندهای 3x-ui — docs/specs/2026-09-26-live-tunnel-and-inbound-doctor.md
+# ═══════════════════════════════════════════════════════════
+
+try:
+    import inbounddoc as INBDOC
+except Exception:
+    try:
+        import importlib.util as _iid
+        _ids = _iid.spec_from_file_location(
+            "inbounddoc", Path(__file__).resolve().parent / "inbounddoc.py")
+        INBDOC = _iid.module_from_spec(_ids)
+        _ids.loader.exec_module(INBDOC)
+    except Exception as _ib_err:
+        log.warning("inbounddoc module not loaded: %s", _ib_err)
+        INBDOC = None
+
+#: نتیجه‌ی سنجشِ dest Reality — ده دقیقه، تا هر تازه‌سازیِ صفحه به سایتِ
+#: بیرونی زنگ نزند
+_REALITY_CACHE = {}
+_REALITY_TTL = 600
+
+
+def _listen_ports(udp=False):
+    """پورت‌هایی که الان روی این سرور کسی رویشان گوش می‌دهد، یا None اگر ss نبود."""
+    import subprocess as _sp
+    try:
+        p = _sp.run(["ss", "-ulnH" if udp else "-tlnH"], capture_output=True,
+                    text=True, timeout=8)
+    except (OSError, _sp.SubprocessError):
+        return None
+    if p.returncode != 0:
+        return None
+    ports = set()
+    for line in (p.stdout or "").splitlines():
+        f = line.split()
+        if len(f) >= 4:
+            port = f[3].rsplit(":", 1)[-1]
+            if port.isdigit():
+                ports.add(int(port))
+    return ports
+
+
+def _inbound_conns(ports, tunnel_ips):
+    """{پورت: {"tunnel": n, "direct": n}} — اتصال‌های برقرار به هر اینباند."""
+    import subprocess as _sp
+    out = {p: {"tunnel": 0, "direct": 0} for p in ports}
+    try:
+        r = _sp.run(["ss", "-tnH", "state", "established"], capture_output=True,
+                    text=True, timeout=8)
+    except (OSError, _sp.SubprocessError):
+        return None
+    for line in (r.stdout or "").splitlines():
+        f = line.split()
+        if len(f) < 4:
+            continue
+        lh, _, lp = f[2].rpartition(":")
+        ph, _, _pp = f[3].rpartition(":")
+        if not lp.isdigit() or int(lp) not in out:
+            continue
+        ph = ph.strip("[]").replace("::ffff:", "")
+        # از روی همین سرور (موتورِ تانلی که این‌جا باز می‌کند) یا از آی‌پیِ تانل
+        via = ph.startswith("127.") or ph == "::1" or ph in tunnel_ips
+        out[int(lp)]["tunnel" if via else "direct"] += 1
+    return out
+
+
+@app.get("/api/admin/inbounds/doctor")
+def inbounds_doctor(fresh: int = 0, x_admin_password: str = Header(...)):
+    """
+    هر اینباندِ 3x-ui: مصرفِ لحظه‌ای، اتصال‌ها (از تانل / مستقیم)، و یافته‌ها
+    با «چرا» و «چه کنم». فقط خواندن — هیچ چیزی در x-ui.db نوشته نمی‌شود.
+    """
+    check_auth(x_admin_password)
+    if not INBDOC:
+        raise HTTPException(status_code=500,
+                            detail="ماژول تحلیلِ اینباند بارگذاری نشد — nexora update را اجرا کنید")
+    con, err = _xui_conn()
+    if not con:
+        raise HTTPException(status_code=503, detail=f"دیتابیسِ 3x-ui خوانده نشد: {err}")
+    try:
+        inbs = [dict(r) for r in con.execute("SELECT * FROM inbounds ORDER BY id")]
+        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        traffic = ([dict(r) for r in con.execute("SELECT * FROM client_traffics")]
+                   if "client_traffics" in tables else [])
+    finally:
+        con.close()
+
+    now_ms = int(time.time() * 1000)
+    listen_tcp, listen_udp = _listen_ports(), _listen_ports(udp=True)
+    tports = set()
+    if NETID:
+        try:
+            tports = set(NETID.tunnel_ports() or ())
+        except Exception as e:
+            _loop_fail("tunnel-ports", e)
+    peers = _manual_peers()
+    has_tunnels = bool(peers)
+    if TUNNELS_OK and not has_tunnels:
+        try:
+            has_tunnels = any(L["tunnels"] for L in _iran_links()[0])
+        except Exception as e:
+            _loop_fail("inbound-doctor", e)
+
+    seen, dup = {}, set()
+    for i in inbs:
+        if i.get("enable"):
+            key = (str(i.get("listen") or ""), int(i.get("port") or 0))
+            if key in seen:
+                dup.add(key[1])
+            seen[key] = True
+
+    # Reality: dest ها، با کش
+    targets = {}
+    for i in inbs:
+        st = INBDOC.stream_of(i)
+        if i.get("enable") and st["security"] == "reality":
+            host, dport = INBDOC.reality_target(st["reality"])
+            names = tuple(st["reality"].get("serverNames") or [])
+            if host:
+                k = (host, dport, names)
+                c = _REALITY_CACHE.get(k)
+                if fresh or not c or time.time() - c["at"] > _REALITY_TTL:
+                    targets[k] = (host, dport, list(names))
+    if targets:
+        for k, v in INBDOC.probe_all_reality(targets).items():
+            _REALITY_CACHE[k] = {"at": time.time(), "data": v}
+
+    conns = _inbound_conns({int(i.get("port") or 0) for i in inbs}, set(peers)) or {}
+    prev = _LIVE.get("inb")
+    t_now = time.monotonic()
+    rates = {}
+    if prev and t_now - prev["t"] > 0.5:
+        dt = t_now - prev["t"]
+        for i in inbs:
+            p0 = prev["v"].get(i["id"])
+            if p0:
+                rates[i["id"]] = {"rx": max(0, int((int(i.get("up") or 0) - p0[0]) / dt)),
+                                  "tx": max(0, int((int(i.get("down") or 0) - p0[1]) / dt))}
+    _LIVE["inb"] = {"t": t_now, "v": {i["id"]: (int(i.get("up") or 0), int(i.get("down") or 0))
+                                      for i in inbs}}
+
+    rows = []
+    for i in inbs:
+        st = INBDOC.stream_of(i)
+        rk = None
+        if st["security"] == "reality":
+            host, dport = INBDOC.reality_target(st["reality"])
+            rk = (host, dport, tuple(st["reality"].get("serverNames") or []))
+        certs = {}
+        if st["security"] == "tls":
+            for c in st["tls"].get("certificates") or []:
+                if c.get("certificateFile"):
+                    certs[c["certificateFile"]] = INBDOC.cert_expiry(c["certificateFile"])
+        env = {"now_ms": now_ms, "listen_tcp": listen_tcp, "listen_udp": listen_udp,
+               "tunnel_ports": tports, "tunnels": has_tunnels, "dup_ports": dup,
+               "traffic": [t for t in traffic if t.get("inbound_id") == i["id"]],
+               "reality": (_REALITY_CACHE.get(rk) or {}).get("data") if rk else None,
+               "cert_exp": {k: v for k, v in certs.items() if v}}
+        found = INBDOC.analyze(i, env)
+        found.sort(key=lambda f: INBDOC.LEVEL_ORDER.get(f["level"], 9))
+        n_all, n_act = INBDOC.client_state(i, env["traffic"], now_ms)
+        rows.append({
+            "id": i["id"], "remark": i.get("remark") or f"#{i['id']}",
+            "enable": bool(i.get("enable")), "port": i.get("port"),
+            "protocol": i.get("protocol"), "network": st["network"],
+            "security": st["security"], "listen": i.get("listen") or "",
+            "up": int(i.get("up") or 0), "down": int(i.get("down") or 0),
+            "clients": n_all, "active": n_act,
+            "conns": conns.get(int(i.get("port") or 0)),
+            "rate": rates.get(i["id"]),
+            "level": INBDOC.summary(found), "findings": found,
+        })
+    return {"inbounds": rows, "tunnels": has_tunnels,
+            "listenKnown": listen_tcp is not None}
 
 
 @app.post("/api/admin/tunnel/{tid}/monitor")

@@ -32,7 +32,15 @@ function useAdminJson(path, password, every) {
   }, [path, password]);
   useEffect(() => { load(); }, [load]);
   usePolling(load, every, [path, password]);
-  return { d, err, load };
+  return { d, err, load, setD };
+}
+
+/* نرخ: بایت بر ثانیه → «۱٫۲ MB/s» */
+function rateOf(b) {
+  const n = Number(b || 0);
+  if (n >= 1048576) return `${(n / 1048576).toFixed(1)} MB/s`;
+  if (n >= 1024) return `${Math.round(n / 1024)} KB/s`;
+  return `${n} B/s`;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -93,16 +101,17 @@ function Strip({ history, label }) {
   );
 }
 
-function PathRow({ p }) {
+function PathRow({ p, lossLabel = "پرت", extra }) {
   const l = p.latest;
   return (
     <div className="ld-path">
       <div className="ld-path-head">
         <span className="ld-path-name">{p.label}</span>
         <span className={`ld-chip t-${p.state}`}>{STATE_FA[p.state]}</span>
+        {extra}
         {l && (
           <span className="ld-path-num">
-            پرت <b>{faNum(l.loss)}٪</b>
+            {lossLabel} <b>{faNum(l.loss)}٪</b>
             {l.avg != null && <> · <b dir="ltr">{faNum(Math.round(l.avg))} ms</b></>}
           </span>
         )}
@@ -125,7 +134,35 @@ function PathRow({ p }) {
   );
 }
 
-function NodeDiag({ n, password, onNote }) {
+/*
+ * خودِ تانل، از کرنلِ سرورِ خارج: اتصال‌ها، RTT و ارسالِ دوباره روی همان
+ * ترافیکِ واقعی — و نرخِ لحظه‌ای که هر سه ثانیه تازه می‌شود. «اتصالِ صفر»
+ * یعنی تانل وصل نیست، هر چه مسیرها بگویند.
+ */
+function TunnelRow({ n, live }) {
+  const t = n.tunnel || {};
+  const now = live || t.now;
+  const row = {
+    label: "خودِ تانل (کرنل)", state: t.state || "unknown",
+    latest: now ? { loss: now.retransPct || 0, avg: now.rtt } : null,
+    history: t.history || [],
+  };
+  return (
+    <PathRow p={row} lossLabel="ارسالِ دوباره" extra={now && (
+      <span className="ld-live">
+        {faNum(now.conns || 0)} اتصال
+        {live?.rate && (
+          <>
+            {" · "}<span title="دریافت از ایران"><ArrowDown size={11} /> <bdi dir="ltr">{rateOf(live.rate.rx)}</bdi></span>
+            {" "}<span title="ارسال به ایران"><ArrowUp size={11} /> <bdi dir="ltr">{rateOf(live.rate.tx)}</bdi></span>
+          </>
+        )}
+      </span>
+    )} />
+  );
+}
+
+function NodeDiag({ n, live, password, onNote }) {
   const [busy, setBusy] = useState(false);
   const update = async () => {
     setBusy(true);
@@ -144,14 +181,18 @@ function NodeDiag({ n, password, onNote }) {
       <header className="ld-node-head">
         <Server size={16} />
         <b>{n.name}</b>
-        <span className={`ld-chip ${n.online ? "t-ok" : "t-down"}`}>{n.online ? "آنلاین" : "آفلاین"}</span>
+        {n.kind === "manual"
+          ? <span className="ld-chip t-neutral">تانلِ دستی{n.engine ? ` · ${n.engine}` : ""}</span>
+          : n.online != null && (
+            <span className={`ld-chip ${n.online ? "t-ok" : "t-down"}`}>{n.online ? "آنلاین" : "آفلاین"}</span>)}
         <span className="ld-node-meta">
-          {faNum(n.tunnels)} تانل
+          {n.ip && <>سرورِ ایران: <span dir="ltr">{n.ip}</span></>}
+          {n.tunnels > 0 && <> · {faNum(n.tunnels)} تانل</>}
           {n.peers?.length > 0 && <> · سرورِ خارج: <span dir="ltr">{n.peers.join("، ")}</span></>}
         </span>
       </header>
 
-      {n.agentStale && (
+      {n.agentStale && n.hasAgent && (
         <div className="ld-stale">
           <AlertTriangle size={14} />
           <span>
@@ -170,14 +211,26 @@ function NodeDiag({ n, password, onNote }) {
       )}
 
       <Verdict v={n.verdict} />
+      <TunnelRow n={n} live={live} />
 
-      <div className="ld-cols">
+      <div className="ld-cols mt-2">
         <div>
           <div className="ld-col-head">
             از سرورِ ایران
             <span>{n.iranAt ? isoToJalaliStamp(n.iranAt) : "هنوز نسنجیده"}</span>
           </div>
-          {iranPaths.map((p) => <PathRow key={p.key} p={p} />)}
+          {n.hasAgent ? iranPaths.map((p) => <PathRow key={p.key} p={p} />) : (
+            // بی ایجنت، سه ردیفِ «بی‌داده» چیزی نمی‌گفت؛ این می‌گوید چرا و چه کنید
+            <div className="ld-noagent">
+              <p>
+                روی این سرورِ ایران ایجنت نصب نیست، پس سه مسیرِ سمتِ ایران (داخل، بین‌الملل،
+                تا سرورِ خارج) سنجیده نمی‌شوند — و حکم نمی‌تواند «مسیر» را از «خودِ سرورِ ایران» جدا کند.
+              </p>
+              <a href="#/tun-nodes" className="fx-btn-g px-3 py-1.5 text-[12px] inline-flex items-center gap-1.5">
+                <Server size={12} /> افزودنِ این سرور و نصبِ ایجنت
+              </a>
+            </div>
+          )}
         </div>
         <div>
           <div className="ld-col-head">
@@ -192,7 +245,10 @@ function NodeDiag({ n, password, onNote }) {
 }
 
 export function LinkDiag({ password }) {
-  const { d, err, load } = useAdminJson("/api/admin/link/diag", password, 60000);
+  // خودش تازه می‌شود: سنجش هر دقیقه در بکند، صفحه هر ده ثانیه؛ آمارِ
+  // خودِ تانل هر سه ثانیه
+  const { d, err, load, setD } = useAdminJson("/api/admin/link/diag", password, 10000);
+  const { d: live } = useAdminJson("/api/admin/link/live", password, 3000);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null);
 
@@ -202,25 +258,27 @@ export function LinkDiag({ password }) {
       const r = await fetch(`${API_URL}/api/admin/link/check`,
         { method: "POST", headers: { "X-Admin-Password": password } });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(errText(j.detail, "سنجش شروع نشد"));
-      setNote({ t: "ok", m: "سنجش شروع شد — نتیجه ظرفِ یکی دو دقیقه این‌جا می‌آید" });
-      setTimeout(load, 45000);
+      if (!r.ok) throw new Error(errText(j.detail, "سنجش انجام نشد"));
+      setD(j);
+      setNote({ t: "ok", m: "سمتِ خارج همین حالا سنجیده شد؛ سمتِ ایران (اگر ایجنت دارد) ظرفِ ۳۰ ثانیه می‌رسد" });
     } catch (e) { setNote({ t: "err", m: e.message }); } finally { setBusy(false); }
   };
 
   const head = (
     <SectionHead title="عیب‌یابیِ ارتباط"
-      desc="اختلال از کدام سمت است؟ هر پنج دقیقه، پنج مسیر از دو سرور سنجیده می‌شود."
+      desc="اختلال از کدام سمت است؟ هر دقیقه خودکار سنجیده می‌شود و این صفحه خودش تازه می‌شود."
       action={
         <button type="button" onClick={checkNow} disabled={busy}
           className="fx-btn px-3.5 py-2.5 text-[13px] flex items-center gap-1.5">
-          {busy ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />} همین حالا بسنج
+          {busy ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
+          {busy ? "در حال سنجش…" : "همین حالا بسنج"}
         </button>} />
   );
 
   if (!d && !err) return <PageSkeleton />;
   if (!d) return <div className="fx-anim">{head}<LoadError what="عیب‌یابیِ ارتباط" err={err} onRetry={load} /></div>;
 
+  const livePeers = live?.peers || {};
   return (
     <div className="fx-anim">
       {head}
@@ -229,19 +287,20 @@ export function LinkDiag({ password }) {
         <p className="ld-err mb-3">سنجشِ خودکار آخرین بار شکست خورد: <span dir="ltr">{d.loopError}</span></p>
       )}
       {!(d.nodes || []).length ? (
-        <EmptyState icon={Server} text="هنوز سرورِ ایرانی با تانل نیست"
-          hint="از «سرورها» یک سرورِ ایران اضافه کنید و ایجنت را رویش نصب کنید." />
+        <EmptyState icon={Server} text="هیچ تانلی روی این سرور دیده نمی‌شود"
+          hint="نه تانلی در پنل ساخته شده، نه پردازه‌ی تانلی (backhaul، backpack، gost، rathole، …) روی این سرور اتصالِ برقراری دارد." />
       ) : (
-        d.nodes.map((n) => <NodeDiag key={n.id} n={n} password={password} onNote={setNote} />)
+        d.nodes.map((n) => <NodeDiag key={n.id} n={n} password={password} onNote={setNote}
+          live={livePeers[n.ip] || null} />)
       )}
       <InfoBox>
-        «خارج ← ایران» دقیقاً همان مسیری است که تانل از آن رد می‌شود: اتصال به پورتِ تانل روی سرورِ ایران.
+        «خودِ تانل» از کرنلِ همین سرور خوانده می‌شود — RTT و ارسالِ دوباره روی همان ترافیکِ واقعیِ تانل، نه
+        سنجشِ مصنوعی. ارسالِ دوباره‌ی بالا یعنی بسته‌ها بینِ دو سرور گم می‌شوند.
         مرجع‌های بین‌المللی سه شبکه‌ی جدا‌اند (1.1.1.1، 8.8.8.8، 9.9.9.9) تا خرابیِ یکی حکم را عوض نکند.
       </InfoBox>
     </div>
   );
 }
-
 // ═══════════════════════════════════════════════════════════
 //  حجمِ ترافیک
 // ═══════════════════════════════════════════════════════════
@@ -342,20 +401,64 @@ function ServerTraffic({ s }) {
   );
 }
 
+/*
+ * همین حالا: نرخِ کارتِ شبکه‌ی سرورِ پنل و هر تانل، هر سه ثانیه. این همان
+ * جوابِ «داده‌ای رد و بدل می‌شود؟» است — تانلی که اتصال دارد ولی صفر بایت
+ * بر ثانیه رد می‌کند، در حالی که مشتری‌ها وصل‌اند، خودش نشانه است.
+ */
+function LiveNow({ live }) {
+  if (!live) return null;
+  const peers = Object.entries(live.peers || {});
+  return (
+    <section className="fx-card p-4 mb-4 tr-live">
+      <div className="tr-live-head">
+        <span className="tr-dot" aria-hidden="true" /> همین حالا
+        <small>هر سه ثانیه</small>
+      </div>
+      <div className="tr-live-rows">
+        <div className="tr-live-row">
+          <span>کارتِ شبکه‌ی سرورِ پنل</span>
+          {live.net ? (
+            <b>
+              <span title="دریافت"><ArrowDown size={12} /> <bdi dir="ltr">{rateOf(live.net.rx)}</bdi></span>
+              <span title="ارسال"><ArrowUp size={12} /> <bdi dir="ltr">{rateOf(live.net.tx)}</bdi></span>
+            </b>
+          ) : <small>در حال اندازه‌گیری…</small>}
+        </div>
+        {peers.map(([ip, g]) => (
+          <div key={ip} className="tr-live-row">
+            {/* نامِ لاتینِ موتور کنارِ عدد بی bdi جابه‌جا می‌شد */}
+            <span>
+              تانلِ <bdi dir="ltr">{ip}</bdi>
+              {g.engine && <> · <bdi dir="ltr">{g.engine}</bdi></>}
+              {" · "}{faNum(g.conns || 0)} اتصال
+            </span>
+            {g.rate ? (
+              <b className={!g.conns ? "t-down" : ""}>
+                <span title="از ایران"><ArrowDown size={12} /> <bdi dir="ltr">{rateOf(g.rate.rx)}</bdi></span>
+                <span title="به ایران"><ArrowUp size={12} /> <bdi dir="ltr">{rateOf(g.rate.tx)}</bdi></span>
+              </b>
+            ) : <small>{g.conns ? "در حال اندازه‌گیری…" : "وصل نیست"}</small>}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function TrafficSection({ password }) {
-  const { d, err, load } = useAdminJson("/api/admin/traffic", password, 120000);
+  const { d, err, load } = useAdminJson("/api/admin/traffic", password, 30000);
+  const { d: live } = useAdminJson("/api/admin/link/live", password, 3000);
   const head = (
     <SectionHead title="حجمِ ترافیک"
-      desc="هر سرور امروز، این هفته و این ماه چقدر ترافیک رد کرده — از شمارنده‌های کارتِ شبکه."
-      action={<button type="button" onClick={load}
-        className="fx-btn-g px-3 py-2.5 text-[13px] flex items-center gap-1.5">
-        <RefreshCw size={13} /> تازه‌سازی</button>} />
+      desc="هر سرور امروز، این هفته و این ماه چقدر ترافیک رد کرده، و همین حالا با چه سرعتی — خودکار تازه می‌شود." />
   );
   if (!d && !err) return <PageSkeleton />;
   if (!d) return <div className="fx-anim">{head}<LoadError what="حجمِ ترافیک" err={err} onRetry={load} /></div>;
   return (
     <div className="fx-anim">
       {head}
+      <LiveNow live={live} />
       <InfoBox>
         روی سرورِ ایران هر بایتِ مشتری دو بار از کارتِ شبکه رد می‌شود — یک‌بار از مشتری به سرور و یک‌بار
         از سرور به خارج. پس «دریافت» تقریباً برابرِ مصرفِ مشتری‌هاست و جمعِ دریافت و ارسال حدودِ دو برابرِ آن.

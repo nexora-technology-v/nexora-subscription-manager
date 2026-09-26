@@ -415,6 +415,11 @@ case "$1" in
         rm -rf dist && mv dist.prev dist
         warn "Previous panel restored — you can still use it"
       fi
+      # کدِ تازه (و VERSION ِ تازه) از قبل جایگزین شده بود. بی این خط،
+      # «nexora update» ِ بعدی می‌گفت «آخرین نسخه‌اید» و دیگر امتحان
+      # نمی‌کرد — پنل با بیلدِ قدیمی می‌ماند و مالک «چیز جدیدی نیامد» می‌دید.
+      [ -n "$VER" ] && [ "$VER" != "unknown" ] && echo "$VER" > "$INSTALL_DIR/VERSION"
+      warn "Version marker reset to $VER — run  nexora update  again after fixing the cause"
       warn "Full log:  $BUILD_LOG"
       warn "Roll back with:  nexora rollback"
       exit 1

@@ -9949,8 +9949,13 @@
   }
   function _bad(i) { return _lq !== "ok" && i >= 230 && i < 254; }
   var LINK_DIAG = { loopError: null, nodes: [
-    { id: 1, name: "تهران-۱", online: true, agentVersion: "1.6.0", agentStale: false,
+    { id: 1, name: "تهران-۱", kind: "panel", ip: "198.51.100.7", hasAgent: true, engine: "backhaul",
+      online: true, agentVersion: "1.6.0", agentStale: false,
       agentNeed: "1.6.0", tunnels: 2, peers: ["203.0.113.9"],
+      tunnel: { state: _lq === "ok" ? "ok" : "lossy",
+                now: { engine: "backhaul", conns: 8, rtt: 104.2, retransPct: _lq === "ok" ? 0.2 : 4.1 },
+                history: _series(function (i) {
+                  return _bad(i) ? [6.5, 380, "lossy"] : [0.2, 102 + (i % 5), "ok"]; }) },
       iranAt: new Date(Date.now() - 180e3).toISOString().slice(0, 19),
       foreignAt: new Date(Date.now() - 120e3).toISOString().slice(0, 19), lastError: null,
       verdict: _lq === "ok"
@@ -9996,12 +10001,15 @@
           targets: [{ host: "1.1.1.1", port: 443, tcp: { loss: 0, avg: 2.1 } },
                     { host: "8.8.8.8", port: 443, tcp: { loss: 0, avg: 3.4 } },
                     { host: "9.9.9.9", port: 443, tcp: { loss: 0, avg: 4.8 } }] } ] },
-    { id: 2, name: "مشهد", online: true, agentVersion: "1.5.2", agentStale: true, agentNeed: "1.6.0",
+    { id: 2, name: "مشهد", kind: "panel", ip: "198.51.100.23", hasAgent: true, engine: "rathole",
+      online: true, agentVersion: "1.5.2", agentStale: true, agentNeed: "1.6.0",
+      tunnel: { state: "ok", now: { engine: "rathole", conns: 3, rtt: 89.5, retransPct: 0.1 },
+                history: _series(function (i) { return [0.1, 88 + (i % 4), "ok"]; }) },
       tunnels: 1, peers: [], iranAt: null,
       foreignAt: new Date(Date.now() - 140e3).toISOString().slice(0, 19), lastError: null,
-      verdict: { side: "unknown", level: "unknown", title: "هنوز برای همه‌ی مسیرها داده نیست",
-                 reason: "مسیرهای بی‌داده: ایران ← داخل، ایران ← بین‌الملل، ایران ← خارج",
-                 fix: "اگر ایجنت قدیمی است به‌روزش کنید؛ وگرنه چند دقیقه صبر کنید." },
+      verdict: { side: "partial", level: "ok", title: "آنچه سنجیده می‌شود سالم است",
+                 reason: "سنجیده نشده: ایران ← داخل، ایران ← بین‌الملل، ایران ← خارج. روی خودِ تانل: 3 اتصالِ تانل، RTTِ کرنل 90 ms.",
+                 fix: "اگر مشتری‌ها هنوز کندی دارند، ایجنت را روی سرورِ ایران نصب کنید تا سمتِ ایران هم دیده شود؛ و «اینباندها» را ببینید." },
       paths: [
         { key: "iran_domestic", label: "ایران ← داخل", side: "iran", state: "unknown", history: [], targets: [] },
         { key: "iran_intl", label: "ایران ← بین‌الملل", side: "iran", state: "unknown", history: [], targets: [] },
@@ -10011,6 +10019,79 @@
           targets: [{ host: "198.51.100.23", port: 3090, tcp: { loss: 0, avg: 90.2 } }] },
         { key: "foreign_intl", label: "خارج ← بین‌الملل", side: "foreign", state: "ok",
           history: _series(function (i) { return [0, 3, "ok"]; }), targets: [] } ] } ] };
+
+  // تانلِ دستی (بیرون از پنل)، بی‌ایجنت روی سرورِ ایران — همان چیدمانِ مالک.
+  // ?link=down یعنی تانل هیچ اتصالی ندارد
+  var _mdown = _lq === "down";
+  LINK_DIAG.nodes.push({
+    id: "ip:203.0.113.50", kind: "manual", name: "تانلِ backpack", ip: "203.0.113.50",
+    hasAgent: false, online: null, agentVersion: null, agentStale: false, agentNeed: "1.6.0",
+    tunnels: 0, engine: "backpack", peers: [], iranAt: null,
+    foreignAt: new Date(Date.now() - 40e3).toISOString().slice(0, 19), lastError: null,
+    verdict: _mdown
+      ? { side: "tunnel", level: "bad", title: "تانل وصل نیست",
+          reason: "هیچ اتصالی بینِ این سرور و سرورِ ایران برقرار نیست — ترافیکی رد نمی‌شود. خودِ مسیر جواب می‌دهد، پس مشکل از سرویسِ تانل است.",
+          fix: "سرویسِ تانل را روی هر دو سرور ری‌استارت کنید و لاگش را ببینید؛ پورت و توکنِ دو طرف یکی باشد." }
+      : { side: "between-or-iran", level: "warn", title: "مشکل بینِ این سرور و سرورِ ایران است — یا خودِ سرورِ ایران",
+          reason: "سرورِ خارج به اینترنت سالم وصل است، ولی تا سرورِ ایران ناپایدار. روی خودِ تانل: 6 اتصالِ تانل، RTTِ کرنل 212 ms، 5.3٪ ارسالِ دوباره.",
+          fix: "برای جداکردنِ «مسیر» از «سرورِ ایران»، ایجنت را روی سرورِ ایران نصب کنید (تانل ← سرورها). تا آن موقع: ترنسپورتِ تانل یا آی‌پیِ یکی از دو سرور را عوض کنید." },
+    tunnel: { state: _mdown ? "down" : "lossy",
+              now: { engine: "backpack", conns: _mdown ? 0 : 6, rtt: _mdown ? null : 212.4, retransPct: _mdown ? 0 : 5.3 },
+              history: _series(function (i) {
+                return _mdown && i > 270 ? [0, null, "down"]
+                  : i > 200 && i < 260 ? [7.2, 260, "lossy"] : [0.4, 118 + (i % 6), "ok"]; }) },
+    paths: [
+      { key: "iran_domestic", label: "ایران ← داخل", side: "iran", state: "unknown", history: [], targets: [] },
+      { key: "iran_intl", label: "ایران ← بین‌الملل", side: "iran", state: "unknown", history: [], targets: [] },
+      { key: "iran_foreign", label: "ایران ← خارج", side: "iran", state: "unknown", history: [], targets: [] },
+      { key: "foreign_iran", label: "خارج ← ایران", side: "foreign", state: "lossy",
+        history: _series(function (i) { return i > 200 && i < 260 ? [30, 290, "lossy"] : [0, 120 + (i % 7), "ok"]; }),
+        targets: [{ host: "203.0.113.50", port: 8443, tcp: { loss: 25, avg: 214 }, icmp: { loss: 20, avg: 208 } }] },
+      { key: "foreign_intl", label: "خارج ← بین‌الملل", side: "foreign", state: "ok",
+        history: _series(function (i) { return [0, 3, "ok"]; }),
+        targets: [{ host: "1.1.1.1", port: 443, tcp: { loss: 0, avg: 2.2 } }] } ] });
+
+  // نرخِ زنده — هر بار کمی فرق می‌کند، تا «زنده» بودن دیده شود
+  function LINK_LIVE() {
+    var j = function (b) { return Math.round(b * (0.8 + Math.random() * 0.4)); };
+    return { ok: true, dt: 3.0, net: { rx: j(6.2e6), tx: j(5.9e6) }, peers: {
+      "198.51.100.7": { engine: "backhaul", conns: 8, rtt: 104.2, retransPct: 0.3, rate: { rx: j(2.4e6), tx: j(2.2e6) } },
+      "198.51.100.23": { engine: "rathole", conns: 3, rtt: 89.5, retransPct: 0.1, rate: { rx: j(4.1e5), tx: j(3.9e5) } },
+      "203.0.113.50": { engine: "backpack", conns: _mdown ? 0 : 6, rtt: _mdown ? null : 212.4,
+                        retransPct: _mdown ? 0 : 5.3, rate: _mdown ? { rx: 0, tx: 0 } : { rx: j(3.1e6), tx: j(2.8e6) } } } };
+  }
+
+  // اینباندهای 3x-ui — واقع‌نما: یکی سالم پشتِ تانل، یکی Reality با dest بسته،
+  // یکی ws با vision (کار نمی‌کند)، و یکی خاموش
+  function _ibrate(b) { return { rx: Math.round(b * (0.8 + Math.random() * 0.4)), tx: Math.round(b * 7 * (0.8 + Math.random() * 0.4)) }; }
+  function INB_DOC() { return { tunnels: true, listenKnown: true, inbounds: [
+    { id: 3, remark: "reality-de", enable: true, port: 443, protocol: "vless", network: "tcp", security: "reality",
+      listen: "", up: 91e9, down: 640e9, clients: 58, active: 51, conns: { tunnel: 0, direct: 12 }, rate: _ibrate(4e4),
+      level: "bad", findings: [
+        { level: "bad", id: "reality-dest", title: "dest Reality از این سرور در دسترس نیست",
+          why: "www.speedtest.net:443 از همین سرور جواب نمی‌دهد (TimeoutError: timed out). Reality دست‌دادن را از dest قرض می‌گیرد؛ بدونِ آن مشتری وصل نمی‌شود.",
+          fix: "dest را به سایتی عوض کنید که از این سرور باز است و TLS 1.3 دارد (مثلاً www.microsoft.com:443 یا www.cloudflare.com:443).", sub: true },
+        { level: "tip", id: "vision-missing", title: "برای VLESS + Reality، flow vision پیشنهاد می‌شود",
+          why: "vision بسته‌های TLS داخلی را بی‌رمزگذاریِ دوباره رد می‌کند: CPU کمتر، و الگوی ترافیک طبیعی‌تر.",
+          fix: "flow کلاینت‌ها را xtls-rprx-vision بگذارید.", sub: true } ] },
+    { id: 5, remark: "ws-cdn", enable: true, port: 2053, protocol: "vless", network: "ws", security: "none",
+      listen: "", up: 12e9, down: 88e9, clients: 20, active: 20, conns: { tunnel: 0, direct: 0 }, rate: { rx: 0, tx: 0 },
+      level: "bad", findings: [
+        { level: "bad", id: "vision-transport", title: "flow vision روی ترانسپورتِ غیر TCP",
+          why: "xtls-rprx-vision فقط با TCP خام کار می‌کند؛ روی ws کلاینت وصل نمی‌شود.",
+          fix: "flow کلاینت‌ها را خالی کنید، یا ترانسپورت را TCP کنید.", sub: true } ] },
+    { id: 1, remark: "tunnel-tcp", enable: true, port: 8080, protocol: "vless", network: "tcp", security: "none",
+      listen: "", up: 210e9, down: 1.9e12, clients: 143, active: 128, conns: { tunnel: 64, direct: 0 }, rate: _ibrate(9e5),
+      level: "tip", findings: [
+        { level: "tip", id: "sniffing-routeonly", title: "routeOnly sniffing خاموش است",
+          why: "بی routeOnly، Xray مقصد را با دامنه‌ی تشخیص‌داده‌شده جایگزین و دوباره resolve می‌کند — تاخیرِ بیشتر، و گاهی اتصال به آی‌پیِ اشتباه.",
+          fix: "routeOnly را روشن کنید؛ مسیریابی همچنان از دامنه استفاده می‌کند.", sub: false } ] },
+    { id: 7, remark: "old-vmess", enable: false, port: 8880, protocol: "vmess", network: "tcp", security: "none",
+      listen: "", up: 3e9, down: 21e9, clients: 6, active: 0, conns: { tunnel: 0, direct: 0 }, rate: { rx: 0, tx: 0 },
+      level: "bad", findings: [
+        { level: "bad", id: "disabled", title: "این اینباند خاموش است",
+          why: "Xray روی این پورت گوش نمی‌دهد؛ هیچ ترافیکی — از تانل یا مستقیم — نمی‌رسد.",
+          fix: "در 3x-ui روشنش کنید.", sub: false } ] } ] }; }
 
   // حجم: منحنیِ روزانه‌ی واقعی — شب کم، عصر اوج. سرورِ ایران دریافت ≈ ارسال
   function _traffic(scale, symmetric) {
@@ -11040,7 +11121,9 @@ var D_CODES = { ready: true,
         return o.status === st || (st === "awaiting" && o.status === "review"); });
       return { orders: rows, dbReady: true };
     }
-    if (u.indexOf("/admin/link/check") >= 0) return { ok: true };
+    if (u.indexOf("/admin/link/check") >= 0) return LINK_DIAG;
+    if (u.indexOf("/admin/link/live") >= 0) return LINK_LIVE();
+    if (u.indexOf("/admin/inbounds/doctor") >= 0) return INB_DOC();
     if (u.indexOf("/admin/link/diag") >= 0) return LINK_DIAG;
     if (u.indexOf("/admin/traffic") >= 0) return TRAFFIC;
     if (u.indexOf("/admin/store-addon") >= 0 || u.indexOf("/admin/portal-addon") >= 0) {
