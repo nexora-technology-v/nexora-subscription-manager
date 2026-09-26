@@ -109,6 +109,8 @@ export const WORKSPACES = {
           { key: "tun-overview", label: "داشبورد", icon: LayoutGrid },
           { key: "tun-nodes", label: "سرورها", icon: Server },
           { key: "tun-list", label: "تانل‌ها", icon: Network },
+          { key: "tun-diag", label: "عیب‌یابیِ ارتباط", icon: Zap },
+          { key: "tun-traffic", label: "حجمِ ترافیک", icon: TrendingUp },
           { key: "monitor", label: "مانیتورینگ سرور", icon: Activity },
           { key: "nodes-monitor", label: "مانیتورینگ سرورهای دیگر", icon: Server },
           { key: "tun-health", label: "سلامت سرورها", icon: ShieldCheck },

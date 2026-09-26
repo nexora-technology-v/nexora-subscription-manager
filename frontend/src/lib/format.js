@@ -8,6 +8,8 @@ export const fmtBytes = (n) => {
   const b = Number(n || 0);
   if (b <= 0) return "۰";
   const gb = b / 1073741824;
+  // حجمِ ماهانه‌ی یک سرور به ترابایت می‌رسد؛ «۲۴۵۰٫۳ GB» خوانا نیست
+  if (gb >= 1024) return `${(gb / 1024).toFixed(2)} TB`;
   if (gb >= 1) return `${gb.toFixed(1)} GB`;
   return `${(b / 1048576).toFixed(0)} MB`;
 };

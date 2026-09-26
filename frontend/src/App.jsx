@@ -40,6 +40,7 @@ import { MonitorSection } from "./sections/monitoring";
 import { AppsSection, BannersSection, FaqSection, LinksSection, OverviewSection, PopupSection, ReferralSection, ResellersSection, SettingsSection, VideosSection } from "./sections/subpage";
 import { LivePreview, SystemSection } from "./sections/system";
 import { SystemHealth, TunnelEvents, TunnelList, TunnelNodes, TunnelOverview } from "./sections/tunnel";
+import { LinkDiag, TrafficSection } from "./sections/linkdiag";
 import { WorkspaceSwitch } from "./shell/workspace";
 import { CommandPalette, ConfirmModal, ErrorBoundary, LoginScreen, NavAlert, NavIndicator, StatusChip, Toast } from "./ui/index";
 import { AlertBell } from "./shell/alertbell";
@@ -517,6 +518,8 @@ export default function App() {
           {active === "tun-overview" && <TunnelOverview password={password} />}
           {active === "tun-nodes" && <TunnelNodes password={password} />}
           {active === "tun-list" && <TunnelList password={password} />}
+          {active === "tun-diag" && <LinkDiag password={password} />}
+          {active === "tun-traffic" && <TrafficSection password={password} />}
           {active === "monitor" && <MonitorSection password={password} />}
           {active === "fw-enable" && <FirewallEnable password={password} />}
           {active === "fw-rules" && <FirewallRules password={password} />}

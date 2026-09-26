@@ -195,6 +195,34 @@ def conn():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_met_tun ON metrics(tunnel_id, id DESC);
+
+        -- عیب‌یابیِ ارتباط (linkcheck.py). node_id همیشه نودِ ایران است؛
+        -- side می‌گوید سنجش از کدام سمت بوده: iran از ایجنتِ همان نود،
+        -- foreign از سرورِ خارج به سوی همان نود.
+        CREATE TABLE IF NOT EXISTS linkchecks (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            node_id    INTEGER NOT NULL,
+            side       TEXT NOT NULL,
+            data       TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_lc_node ON linkchecks(node_id, side, id DESC);
+
+        -- حجمِ ترافیک، سطلِ ساعتی. server_id صفر یعنی خودِ سرورِ پنل.
+        CREATE TABLE IF NOT EXISTS traffic (
+            server_id  INTEGER NOT NULL,
+            hour       TEXT NOT NULL,          -- YYYY-MM-DDTHH
+            rx         INTEGER NOT NULL DEFAULT 0,
+            tx         INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (server_id, hour)
+        );
+        -- آخرین شمارنده‌ی خوانده‌شده، تا تفاضل حساب شود
+        CREATE TABLE IF NOT EXISTS traffic_state (
+            server_id  INTEGER PRIMARY KEY,
+            rx         INTEGER NOT NULL,
+            tx         INTEGER NOT NULL,
+            at         TEXT NOT NULL
+        );
         CREATE INDEX IF NOT EXISTS idx_jobs_node ON jobs(node_id, status);
         CREATE INDEX IF NOT EXISTS idx_tun_node ON tunnels(node_id);
         CREATE INDEX IF NOT EXISTS idx_ev_time  ON events(created_at DESC);
@@ -912,6 +940,7 @@ ALLOWED_ACTIONS = {
     "health",       # بررسی سلامت سیستم
     "sysmon",       # مانیتورینگ کامل سرور: CPU، رم، دیسک، پورت، اتصال
     "firewall",     # خواندن وضعیت فایروال آن سرور
+    "pathcheck",    # عیب‌یابیِ ارتباط و شمارنده‌ی ترافیک (linkcheck.py، ایجنت ۱.۶.۰)
     "update_agent",
 }
 
@@ -1423,5 +1452,188 @@ def recent_events(limit=60):
             LEFT JOIN tunnels t ON t.id = e.tunnel_id
             ORDER BY e.id DESC LIMIT ?""", (limit,)).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        c.close()
+
+
+# ═══════════════════════════════════════════════════════════
+#  عیب‌یابیِ ارتباط — docs/specs/2026-09-26-link-diagnosis-and-traffic.md
+# ═══════════════════════════════════════════════════════════
+
+#: هر پنج دقیقه یک سنجش → ۴۸ ساعت حدودِ ۵۸۰ ردیف برای هر سمتِ هر نود
+LINKCHECK_KEEP = 600
+
+
+def save_linkcheck(node_id, side, data, at=None):
+    """ثبتِ یک سنجش (نتیجه‌ی `linkcheck.run`) برای یک نودِ ایران."""
+    if side not in ("iran", "foreign"):
+        raise ValueError("side باید iran یا foreign باشد")
+    c = conn()
+    try:
+        c.execute("INSERT INTO linkchecks (node_id, side, data, created_at) "
+                  "VALUES (?,?,?,?)",
+                  (int(node_id), side, json.dumps(data, ensure_ascii=False)[:60000],
+                   at or now()))
+        c.execute("""DELETE FROM linkchecks WHERE node_id = ? AND side = ? AND id NOT IN
+                     (SELECT id FROM linkchecks WHERE node_id = ? AND side = ?
+                      ORDER BY id DESC LIMIT ?)""",
+                  (int(node_id), side, int(node_id), side, LINKCHECK_KEEP))
+        c.commit()
+    finally:
+        c.close()
+
+
+def linkchecks(node_id, side, since=None, limit=LINKCHECK_KEEP):
+    """سنجش‌های یک سمت، قدیمی به جدید. داده‌ی خراب کنار گذاشته و لاگ می‌شود."""
+    c = conn()
+    try:
+        q = "SELECT data, created_at FROM linkchecks WHERE node_id = ? AND side = ?"
+        args = [int(node_id), side]
+        if since:
+            q += " AND created_at >= ?"
+            args.append(since)
+        q += " ORDER BY id DESC LIMIT ?"
+        args.append(int(limit))
+        rows = c.execute(q, args).fetchall()
+    finally:
+        c.close()
+    out = []
+    for r in reversed(rows):
+        try:
+            out.append({"at": r["created_at"], "data": json.loads(r["data"])})
+        except (json.JSONDecodeError, TypeError):
+            _log.warning("linkcheck row for node %s unreadable — skipped", node_id)
+    return out
+
+
+# ═══════════════════════════════════════════════════════════
+#  حجمِ ترافیک
+# ═══════════════════════════════════════════════════════════
+
+#: سطل‌های ساعتیِ قدیمی‌تر از این پاک می‌شوند
+TRAFFIC_KEEP_DAYS = 90
+
+
+def traffic_delta(prev, cur):
+    """
+    چند بایت از سنجشِ قبلی رد شده؟
+
+    شمارنده‌های `/proc/net/dev` از روشن‌شدنِ سرور می‌شمارند. اگر عددِ
+    تازه از قبلی کوچک‌تر باشد، سرور ری‌استارت شده و شمارنده از صفر
+    شروع کرده — پس کلِ عددِ تازه بعد از ری‌استارت رد شده. تفاضلِ منفی
+    یا صفرکردنش هر دو حجمِ واقعی را گم می‌کنند.
+
+    سنجشِ اول فقط مبدأ است (صفر): نمی‌دانیم عددِ فعلی مالِ چه بازه‌ای است.
+    """
+    if not prev:
+        return 0
+    return cur if cur < prev else cur - prev
+
+
+def record_traffic(server_id, counters, at=None):
+    """
+    شمارنده‌های یک سرور را ثبت کن و تفاضل را در سطلِ ساعتِ جاری بریز.
+
+    برمی‌گرداند (rx, tx) ِ اضافه‌شده. اگر سرور مدتی خبر نداده بود، کلِ
+    فاصله در همین ساعت می‌نشیند — عددِ کل درست است، فقط توزیعش نه.
+    """
+    if not counters or "rx" not in counters or "tx" not in counters:
+        return 0, 0
+    at = at or now()
+    rx, tx = int(counters["rx"]), int(counters["tx"])
+    c = conn()
+    try:
+        prev = c.execute("SELECT rx, tx FROM traffic_state WHERE server_id = ?",
+                         (int(server_id),)).fetchone()
+        drx = traffic_delta(prev["rx"] if prev else None, rx)
+        dtx = traffic_delta(prev["tx"] if prev else None, tx)
+        c.execute("INSERT OR REPLACE INTO traffic_state (server_id, rx, tx, at) "
+                  "VALUES (?,?,?,?)", (int(server_id), rx, tx, at))
+        if drx or dtx:
+            c.execute("""INSERT INTO traffic (server_id, hour, rx, tx) VALUES (?,?,?,?)
+                         ON CONFLICT(server_id, hour)
+                         DO UPDATE SET rx = rx + excluded.rx, tx = tx + excluded.tx""",
+                      (int(server_id), at[:13], drx, dtx))
+        c.execute("DELETE FROM traffic WHERE hour < ?",
+                  ((datetime.fromisoformat(at[:19]) - timedelta(days=TRAFFIC_KEEP_DAYS))
+                   .isoformat()[:13],))
+        c.commit()
+        return drx, dtx
+    finally:
+        c.close()
+
+
+def traffic_summary(server_id, at=None):
+    """
+    امروز، ۷ روز و ۳۰ روزِ اخیر، به‌علاوه‌ی ۲۴ ساعتِ اخیر (ساعتی) و ۳۰
+    روز (روزانه). روزها بر اساسِ ساعتِ سرور‌اند؛ برچسبِ شمسی کارِ رابط است.
+    """
+    ref = datetime.fromisoformat((at or now())[:19])
+    c = conn()
+    try:
+        rows = c.execute(
+            "SELECT hour, rx, tx FROM traffic WHERE server_id = ? AND hour >= ? "
+            "ORDER BY hour",
+            (int(server_id), (ref - timedelta(days=30)).isoformat()[:13])).fetchall()
+        st = c.execute("SELECT at FROM traffic_state WHERE server_id = ?",
+                       (int(server_id),)).fetchone()
+    finally:
+        c.close()
+
+    today = ref.date().isoformat()
+    week0 = (ref - timedelta(days=6)).date().isoformat()
+
+    def tot(pred):
+        rx = sum(r["rx"] for r in rows if pred(r["hour"]))
+        tx = sum(r["tx"] for r in rows if pred(r["hour"]))
+        return {"rx": rx, "tx": tx}
+
+    hours = []
+    for i in range(23, -1, -1):
+        h = (ref - timedelta(hours=i)).isoformat()[:13]
+        hit = next((r for r in rows if r["hour"] == h), None)
+        hours.append({"hour": h, "rx": hit["rx"] if hit else 0,
+                      "tx": hit["tx"] if hit else 0})
+    days = []
+    for i in range(29, -1, -1):
+        d = (ref - timedelta(days=i)).date().isoformat()
+        days.append(dict(day=d, **tot(lambda h, d=d: h[:10] == d)))
+
+    return {
+        "today": tot(lambda h: h[:10] == today),
+        "week": tot(lambda h: h[:10] >= week0),
+        "month": tot(lambda h: True),
+        "hours": hours,
+        "days": days,
+        "lastSample": st["at"] if st else None,
+    }
+
+
+def job_payload(job_id):
+    """payloadِ ذخیره‌شده‌ی یک کار — تصمیم‌ها روی همین، نه روی حرفِ ایجنت."""
+    c = conn()
+    try:
+        r = c.execute("SELECT payload FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    finally:
+        c.close()
+    try:
+        return json.loads(r["payload"] or "{}") if r else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def has_open_job(node_id, action):
+    """
+    کارِ باز (در صف یا گرفته‌شده) از همین نوع برای این نود هست؟
+
+    سنجشِ دوره‌ای هر پنج دقیقه در صف می‌رود؛ نودی که قطع است کارها را
+    برنمی‌دارد، و بی این، وقتی برگردد ده‌ها سنجشِ کهنه پشتِ هم اجرا می‌کند.
+    """
+    c = conn()
+    try:
+        r = c.execute("SELECT 1 FROM jobs WHERE node_id = ? AND action = ? "
+                      "AND status IN ('queued','taken') LIMIT 1",
+                      (int(node_id), action)).fetchone()
+        return bool(r)
     finally:
         c.close()

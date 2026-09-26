@@ -9931,6 +9931,117 @@
       { id: 5, name: "امیر", until: "2026-09-01T09:00:00", open: false } ] };
   }
 
+  // ── عیب‌یابیِ ارتباط و حجمِ ترافیک ──
+  // واقع‌نما: ۲۸۸ سنجشِ پنج‌دقیقه‌ای، با یک بازه‌ی اختلالِ بین‌المللِ ایران
+  // (عصر، دو ساعت) — همان وضعیتی که صفحه برایش ساخته شد. با داده‌ی صاف،
+  // نوارها یک‌رنگ و حکم همیشه «سالم» بود و هیچ شاخه‌ای دیده نمی‌شد.
+  // ?link=ok همه سالم، ?link=between آی‌پیِ خارج محدود
+  var _lq = Q0.get("link") || "intl";
+  function _series(fn) {
+    var out = [], t0 = Date.now() - 24 * 3600e3;
+    for (var i = 0; i < 288; i++) {
+      var d = new Date(t0 + i * 300e3);
+      var at = new Date(d.getTime() - d.getTimezoneOffset() * 60e3).toISOString().slice(0, 19);
+      var v = fn(i);
+      out.push({ at: at, loss: v[0], avg: v[1], state: v[2] });
+    }
+    return out;
+  }
+  function _bad(i) { return _lq !== "ok" && i >= 230 && i < 254; }
+  var LINK_DIAG = { loopError: null, nodes: [
+    { id: 1, name: "تهران-۱", online: true, agentVersion: "1.6.0", agentStale: false,
+      agentNeed: "1.6.0", tunnels: 2, peers: ["203.0.113.9"],
+      iranAt: new Date(Date.now() - 180e3).toISOString().slice(0, 19),
+      foreignAt: new Date(Date.now() - 120e3).toISOString().slice(0, 19), lastError: null,
+      verdict: _lq === "ok"
+        ? { side: "none", level: "ok", title: "همه‌ی مسیرها سالم‌اند",
+            reason: "اگر مشتری‌ها هنوز کندی دارند، مشکل از خودِ تانل یا موتور است، نه شبکه.",
+            fix: "لاگِ تانل را ببینید، یا ترنسپورتِ دیگری امتحان کنید." }
+        : _lq === "between"
+        ? { side: "between", level: "bad", title: "مسیرِ بینِ این دو سرور مشکل دارد",
+            reason: "هر دو سرور به اینترنت سالم وصل‌اند، ولی بینِ خودشان قطع. معمولاً یعنی آی‌پیِ یکی از دو سرور محدود شده.",
+            fix: "آی‌پیِ سرورِ خارج (یا ایران) را عوض کنید، یا دیتاسنترِ دیگری امتحان کنید." }
+        : { side: "iran-intl", level: "warn", title: "اختلالِ خروجیِ بین‌المللِ ایران",
+            reason: "سرورِ ایران به داخل سالم وصل است ولی به اینترنتِ بین‌المللی ناپایدار. این معمولاً سراسری است و از دستِ ما خارج.",
+            fix: "صبر، یا امتحانِ ترنسپورتِ دیگر برای تانل. عوض‌کردنِ سرورِ خارج کمکی نمی‌کند." },
+      paths: [
+        { key: "iran_domestic", label: "ایران ← داخل", side: "iran", state: "ok",
+          history: _series(function (i) { return [0, 18 + (i % 7), "ok"]; }),
+          targets: [{ host: "www.aparat.com", port: 443, tcp: { loss: 0, avg: 16.2 } },
+                    { host: "www.digikala.com", port: 443, tcp: { loss: 0, avg: 21.4 } },
+                    { host: "divar.ir", port: 443, tcp: { loss: 0, avg: 19.9 } }] },
+        { key: "iran_intl", label: "ایران ← بین‌الملل", side: "iran",
+          state: _lq === "intl" ? "lossy" : "ok",
+          history: _series(function (i) {
+            return _bad(i) && _lq === "intl" ? [i % 5 ? 35 : 100, 610, i % 5 ? "lossy" : "down"]
+              : [0, 160 + (i % 11) * 4, "ok"]; }),
+          targets: [{ host: "1.1.1.1", port: 443, tcp: { loss: _lq === "intl" ? 25 : 0, avg: 188.3 } },
+                    { host: "8.8.8.8", port: 443, tcp: { loss: _lq === "intl" ? 50 : 0, avg: 201.7 } },
+                    { host: "9.9.9.9", port: 443, tcp: { loss: 0, avg: 176 } }] },
+        { key: "iran_foreign", label: "ایران ← خارج", side: "iran",
+          state: _lq === "ok" ? "ok" : _lq === "between" ? "down" : "lossy",
+          history: _series(function (i) {
+            return _bad(i) ? [_lq === "between" ? 100 : 40, 720, _lq === "between" ? "down" : "lossy"]
+              : [0, 95 + (i % 9) * 3, "ok"]; }),
+          targets: [{ host: "203.0.113.9", port: 443, tcp: { loss: _lq === "between" ? 100 : 0, avg: 98.1 },
+                      icmp: { loss: 0, avg: 94.6 } }] },
+        { key: "foreign_iran", label: "خارج ← ایران (پورتِ تانل)", side: "foreign",
+          state: _lq === "between" ? "down" : "ok",
+          history: _series(function (i) {
+            return _bad(i) && _lq === "between" ? [100, null, "down"] : [0, 101 + (i % 6) * 2, "ok"]; }),
+          targets: [{ host: "198.51.100.7", port: 3080, tcp: { loss: _lq === "between" ? 100 : 0, avg: 102.4 },
+                      icmp: { loss: 0, avg: 99.8 } }] },
+        { key: "foreign_intl", label: "خارج ← بین‌الملل", side: "foreign", state: "ok",
+          history: _series(function (i) { return [0, 3 + (i % 3), "ok"]; }),
+          targets: [{ host: "1.1.1.1", port: 443, tcp: { loss: 0, avg: 2.1 } },
+                    { host: "8.8.8.8", port: 443, tcp: { loss: 0, avg: 3.4 } },
+                    { host: "9.9.9.9", port: 443, tcp: { loss: 0, avg: 4.8 } }] } ] },
+    { id: 2, name: "مشهد", online: true, agentVersion: "1.5.2", agentStale: true, agentNeed: "1.6.0",
+      tunnels: 1, peers: [], iranAt: null,
+      foreignAt: new Date(Date.now() - 140e3).toISOString().slice(0, 19), lastError: null,
+      verdict: { side: "unknown", level: "unknown", title: "هنوز برای همه‌ی مسیرها داده نیست",
+                 reason: "مسیرهای بی‌داده: ایران ← داخل، ایران ← بین‌الملل، ایران ← خارج",
+                 fix: "اگر ایجنت قدیمی است به‌روزش کنید؛ وگرنه چند دقیقه صبر کنید." },
+      paths: [
+        { key: "iran_domestic", label: "ایران ← داخل", side: "iran", state: "unknown", history: [], targets: [] },
+        { key: "iran_intl", label: "ایران ← بین‌الملل", side: "iran", state: "unknown", history: [], targets: [] },
+        { key: "iran_foreign", label: "ایران ← خارج", side: "iran", state: "unknown", history: [], targets: [] },
+        { key: "foreign_iran", label: "خارج ← ایران (پورتِ تانل)", side: "foreign", state: "ok",
+          history: _series(function (i) { return [0, 88 + (i % 5), "ok"]; }),
+          targets: [{ host: "198.51.100.23", port: 3090, tcp: { loss: 0, avg: 90.2 } }] },
+        { key: "foreign_intl", label: "خارج ← بین‌الملل", side: "foreign", state: "ok",
+          history: _series(function (i) { return [0, 3, "ok"]; }), targets: [] } ] } ] };
+
+  // حجم: منحنیِ روزانه‌ی واقعی — شب کم، عصر اوج. سرورِ ایران دریافت ≈ ارسال
+  function _traffic(scale, symmetric) {
+    var hours = [], days = [], now = new Date();
+    for (var h = 23; h >= 0; h--) {
+      var d = new Date(now.getTime() - h * 3600e3);
+      var hr = d.getHours();
+      var w = 0.25 + 0.75 * Math.max(0, Math.sin((hr - 6) / 24 * Math.PI * 2 - 0.6) * 0.5 + 0.5);
+      var rx = Math.round(scale * w * (0.9 + (h % 3) * 0.07));
+      var loc = new Date(d.getTime() - d.getTimezoneOffset() * 60e3).toISOString();
+      hours.push({ hour: loc.slice(0, 13), rx: rx, tx: Math.round(rx * (symmetric ? 0.97 : 0.12)) });
+    }
+    for (var k = 29; k >= 0; k--) {
+      var dd = new Date(now.getTime() - k * 86400e3);
+      var drx = Math.round(scale * 16 * (0.8 + ((k * 7) % 5) * 0.08));
+      var dl = new Date(dd.getTime() - dd.getTimezoneOffset() * 60e3).toISOString();
+      days.push({ day: dl.slice(0, 10), rx: drx, tx: Math.round(drx * (symmetric ? 0.97 : 0.12)) });
+    }
+    function sum(arr) { return arr.reduce(function (a, r) { return { rx: a.rx + r.rx, tx: a.tx + r.tx }; }, { rx: 0, tx: 0 }); }
+    return { today: sum(hours.slice(-Math.max(1, now.getHours() + 1))), week: sum(days.slice(-7)),
+             month: sum(days), hours: hours, days: days,
+             lastSample: new Date(now.getTime() - 200e3).toISOString().slice(0, 19) };
+  }
+  var TRAFFIC = { servers: [
+    Object.assign({ id: 0, name: "سرورِ پنل", role: "panel", agentStale: false }, _traffic(9.5e9, false)),
+    Object.assign({ id: 1, name: "تهران-۱", role: "iran", agentVersion: "1.6.0", agentStale: false,
+                    agentNeed: "1.6.0" }, _traffic(8.2e9, true)),
+    { id: 2, name: "مشهد", role: "iran", agentVersion: "1.5.2", agentStale: true, agentNeed: "1.6.0",
+      today: { rx: 0, tx: 0 }, week: { rx: 0, tx: 0 }, month: { rx: 0, tx: 0 }, hours: [], days: [],
+      lastSample: null } ] };
+
   // پوسته‌ی مینی‌اپِ خودِ مالک — همیشه باز (بکند: `_addon_open` ریشه را
   // قفل نمی‌کند)، با یک انتخابِ غیرپیش‌فرض تا ذخیره‌شده دیده شود
   var O_THEME = { accent: "", brand: "نکسورا", logo: "",
@@ -10929,6 +11040,9 @@ var D_CODES = { ready: true,
         return o.status === st || (st === "awaiting" && o.status === "review"); });
       return { orders: rows, dbReady: true };
     }
+    if (u.indexOf("/admin/link/check") >= 0) return { ok: true };
+    if (u.indexOf("/admin/link/diag") >= 0) return LINK_DIAG;
+    if (u.indexOf("/admin/traffic") >= 0) return TRAFFIC;
     if (u.indexOf("/admin/store-addon") >= 0 || u.indexOf("/admin/portal-addon") >= 0) {
       if (u.indexOf("/grant") >= 0 || method === "POST") return { ok: true, until: "" };
       return ADDON_ADMIN(u.indexOf("store") >= 0 ? 300000 : 250000);

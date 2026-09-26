@@ -168,7 +168,10 @@ except ValueError:
 check("همه‌ی دستورهای مجاز idempotent‌اند",
       T.ALLOWED_ACTIONS <= {"install", "apply", "start", "stop", "restart",
                             "remove", "status", "logs", "ping", "monitor",
-                            "health", "sysmon", "firewall", "update_agent"},
+                            "health", "sysmon", "firewall", "update_agent",
+                            # فقط می‌سنجد؛ شمارنده‌ی ترافیک تجمعی است و تفاضل از
+                            # آخرین مقدار گرفته می‌شود، پس اجرای دوباره دوبار نمی‌شمارد
+                            "pathcheck"},
       "تلاش دوباره فقط وقتی امن است که اجرای دوباره ضرری نداشته باشد")
 
 

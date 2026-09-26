@@ -5431,6 +5431,13 @@ def _start_health_loop():
             except Exception as e:
                 _loop_fail("history", e)
 
+            # عیب‌یابیِ ارتباط و حجمِ ترافیک — همان پنج دقیقه
+            try:
+                _linkcheck_tick()
+                _loop_ok("linkcheck")
+            except Exception as e:
+                _loop_fail("linkcheck", e)
+
             try:
                 _maint_tick()
                 _loop_ok("maint")
@@ -11064,6 +11071,24 @@ except Exception as _tun_err:
     TUN = None
 
 
+try:
+    import linkcheck as LINK
+except Exception:
+    try:
+        import importlib.util as _ilk
+        _lks = _ilk.spec_from_file_location(
+            "linkcheck", Path(__file__).resolve().parent / "linkcheck.py")
+        LINK = _ilk.module_from_spec(_lks)
+        _lks.loader.exec_module(LINK)
+    except Exception as _lk_err:
+        # بی این ماژول صفحه‌ی عیب‌یابی خالی می‌ماند؛ دست‌کم دلیلش در لاگ باشد
+        log.warning("linkcheck module not loaded: %s", _lk_err)
+        LINK = None
+
+#: نسخه‌ی ایجنتی که دستورِ pathcheck (عیب‌یابیِ ارتباط و ترافیک) را می‌شناسد
+AGENT_PATHCHECK = "1.6.0"
+
+
 def _need_tunnels():
     if not TUNNELS_OK:
         raise HTTPException(status_code=500,
@@ -11234,6 +11259,9 @@ def agent_job_result(payload: dict, x_agent_token: str = Header(None)):
         elif _tid is not None:
             TUN.log(node_id=node["id"], level="warn",
                     message=f"سنجشِ تانل {_tid} رد شد — روی این نود نیست")
+
+    if ok and action == "pathcheck":
+        _pathcheck_result(node, jid, result)
 
     if ok and action == "health":
         try:
@@ -11434,6 +11462,16 @@ def agent_firewall_module():
                     media_type="text/x-python")
 
 
+@app.get("/api/agent/linkcheck.py")
+def agent_linkcheck_module():
+    """ماژولِ عیب‌یابیِ ارتباط — همان که پنل برای سمتِ خودش اجرا می‌کند."""
+    p = _root_dir() / "backend" / "linkcheck.py"
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="ماژول عیب‌یابی پیدا نشد")
+    return Response(content=p.read_text(encoding="utf-8"),
+                    media_type="text/x-python")
+
+
 @app.get("/api/agent/agent.py")
 def agent_source():
     """کد agent — از خود پنل سرو می‌شود تا نسخه‌ها همگام بمانند."""
@@ -11512,6 +11550,269 @@ def tunnel_node_check(node_id: int, x_admin_password: str = Header(...)):
             {"label": "ری‌استارت", "cmd": "systemctl restart nexora-agent"},
         ],
     }
+
+
+# ═══════════════════════════════════════════════════════════
+#  عیب‌یابیِ ارتباطِ ایران↔خارج، و حجمِ ترافیک
+#  برگه: docs/specs/2026-09-26-link-diagnosis-and-traffic.md
+# ═══════════════════════════════════════════════════════════
+
+def _agent_can_pathcheck(node):
+    ver = (node.get("agent_version") or "").strip()
+    return bool(ver) and not _older_than(ver, AGENT_PATHCHECK)
+
+
+def _pathcheck_result(node, jid, result):
+    """
+    نتیجه‌ی pathcheck ِ یک ایجنت: سنجش و شمارنده‌ی ترافیک.
+
+    «برای کدام نودِ ایران» از payloadِ ذخیره‌شده‌ی کار خوانده می‌شود، نه
+    از پاسخ — و برای سمتِ خارج سنجیده می‌شود که این ایجنت واقعاً سرورِ
+    خارجِ تانلی روی همان نود باشد؛ وگرنه هر نودی می‌توانست تاریخچه‌ی
+    نودِ دیگری را جعل کند.
+    """
+    try:
+        data = json.loads(result)
+    except Exception as e:
+        _result_lost(node, "عیب‌یابیِ ارتباط", e)
+        return
+    try:
+        TUN.record_traffic(node["id"], data.get("counters"))
+    except Exception as e:
+        _result_lost(node, "شمارنده‌ی ترافیک", e)
+
+    pl = TUN.job_payload(jid)
+    side = pl.get("side") or "iran"
+    target = node["id"] if side == "iran" else pl.get("for_node")
+    if side == "foreign":
+        if not target:
+            return          # فقط ترافیک؛ این ایجنت سمتِ خارجِ هیچ تانلی نیست
+        con = TUN.conn()
+        try:
+            owns = con.execute(
+                "SELECT 1 FROM tunnels WHERE node_id = ? AND foreign_node = ? LIMIT 1",
+                (int(target), node["id"])).fetchone()
+        finally:
+            con.close()
+        if not owns:
+            TUN.log(node_id=node["id"], level="warn",
+                    message=f"سنجشِ سمتِ خارج برای نودِ {target} رد شد — "
+                            "این سرور خارجِ هیچ تانلی روی آن نیست")
+            return
+    try:
+        TUN.save_linkcheck(int(target), side, data)
+    except Exception as e:
+        _result_lost(node, "عیب‌یابیِ ارتباط", e)
+
+
+def _iran_links():
+    """
+    هر نودِ ایران با تانل‌هایش: پورت‌های تانل (برای یافتنِ آی‌پیِ خارج
+    از سمتِ ایران) و `remote_host:bridge_port` (برای سنجش از سمتِ خارج).
+    """
+    con = TUN.conn()
+    try:
+        nodes = [dict(r) for r in con.execute(
+            "SELECT * FROM nodes WHERE enabled = 1 ORDER BY id")]
+        tuns = [dict(r) for r in con.execute(
+            "SELECT id, node_id, foreign_node, remote_host, bridge_port, enabled "
+            "FROM tunnels WHERE enabled = 1")]
+    finally:
+        con.close()
+    out = []
+    for n in nodes:
+        mine = [t for t in tuns if t["node_id"] == n["id"]]
+        if n.get("role") == "foreign" and not mine:
+            continue
+        out.append({"node": n, "tunnels": mine})
+    return out, nodes
+
+
+def _linkcheck_tick(force=False):
+    """
+    یک دورِ عیب‌یابی: سمتِ ایران در صفِ ایجنت‌ها، سمتِ خارج همین‌جا
+    (یا روی ایجنتِ سرورِ خارج اگر تانل آن را دارد)، و شمارنده‌ی ترافیکِ
+    خودِ سرورِ پنل.
+    """
+    if not (TUNNELS_OK and LINK):
+        return
+    try:
+        TUN.record_traffic(0, LINK.net_counters())
+    except Exception as e:
+        _loop_fail("traffic-local", e)
+
+    links, nodes = _iran_links()
+    by_id = {n["id"]: n for n in nodes}
+    local = []
+    for L in links:
+        n, tuns = L["node"], L["tunnels"]
+        if _agent_can_pathcheck(n) and (force or not TUN.has_open_job(n["id"], "pathcheck")):
+            TUN.queue_job(n["id"], "pathcheck", {
+                "side": "iran",
+                "bridge_ports": sorted({int(t["bridge_port"]) for t in tuns})})
+        hosts = [{"host": t["remote_host"], "port": int(t["bridge_port"])}
+                 for t in tuns if t.get("remote_host")]
+        if not hosts:
+            continue
+        fid = next((t["foreign_node"] for t in tuns if t.get("foreign_node")), None)
+        fnode = by_id.get(fid) if fid else None
+        if fnode and _agent_can_pathcheck(fnode):
+            if force or not TUN.has_open_job(fnode["id"], "pathcheck"):
+                TUN.queue_job(fnode["id"], "pathcheck", {
+                    "side": "foreign", "for_node": n["id"], "iran_hosts": hosts})
+        else:
+            # سرورِ خارج همین سرورِ پنل است (حالتِ معمول)، یا ایجنتِ خارج
+            # قدیمی است — از این‌جا می‌سنجیم، که از هیچ بهتر است
+            local.append((n["id"], hosts))
+
+    # نودهای خارجیِ بی‌تانل هم ترافیک دارند
+    for n in nodes:
+        if (n.get("role") == "foreign" and _agent_can_pathcheck(n)
+                and not any(t.get("foreign_node") == n["id"]
+                            for L in links for t in L["tunnels"])
+                and (force or not TUN.has_open_job(n["id"], "pathcheck"))):
+            TUN.queue_job(n["id"], "pathcheck", {"side": "foreign", "iran_hosts": []})
+
+    if local:
+        import threading
+
+        def work():
+            for nid, hosts in local:
+                try:
+                    TUN.save_linkcheck(nid, "foreign", LINK.run("foreign", iran_hosts=hosts))
+                    _loop_ok("linkcheck-local")
+                except Exception as e:
+                    _loop_fail("linkcheck-local", e)
+        # نخِ جدا: سنجشِ مسیرِ قطع تا بیست ثانیه طول می‌کشد و نگهداری منتظرش نمی‌ماند
+        threading.Thread(target=work, daemon=True).start()
+
+
+def _path_series(samples, keys, kind_of):
+    """برای هر مسیر: سنجش‌های ۲۴ ساعت، هر کدام {at, loss, avg, state}."""
+    out = {k: [] for k in keys}
+    for smp in samples:
+        paths = (smp.get("data") or {}).get("paths") or {}
+        for k in keys:
+            sm = LINK.summarize(paths.get(k))
+            if sm:
+                out[k].append({"at": smp["at"], "loss": sm["loss"], "avg": sm["avg"],
+                               "state": LINK.state(sm, kind_of[k])})
+    return out
+
+
+#: نامِ مسیرها در پاسخ ← (کلید در سنجشِ سمتِ ایران یا خارج، نوعِ مرزِ کندی)
+LINK_PATHS = (
+    ("iran_domestic", "iran", "domestic", "domestic", "ایران ← داخل"),
+    ("iran_intl", "iran", "intl", "intl", "ایران ← بین‌الملل"),
+    ("iran_foreign", "iran", "foreign", "between", "ایران ← خارج"),
+    ("foreign_iran", "foreign", "iran", "between", "خارج ← ایران (پورتِ تانل)"),
+    ("foreign_intl", "foreign", "intl", "intl", "خارج ← بین‌الملل"),
+)
+
+
+@app.get("/api/admin/link/diag")
+def link_diag(x_admin_password: str = Header(...)):
+    """
+    برای هر سرورِ ایران: حکم («اختلال از کدام سمت است»)، وضعیتِ پنج مسیر،
+    و روندِ ۲۴ ساعتِ هر مسیر.
+    """
+    check_auth(x_admin_password)
+    _need_tunnels()
+    if not LINK:
+        raise HTTPException(status_code=500,
+                            detail="ماژول عیب‌یابی بارگذاری نشد — nexora update را اجرا کنید")
+    since = (datetime.now() - timedelta(hours=24)).isoformat(timespec="seconds")
+    links, _nodes = _iran_links()
+    out = []
+    for L in links:
+        n = L["node"]
+        if n.get("role") == "foreign":
+            continue
+        iran = TUN.linkchecks(n["id"], "iran", since=since)
+        foreign = TUN.linkchecks(n["id"], "foreign", since=since)
+        last_i = iran[-1]["data"] if iran else None
+        last_f = foreign[-1]["data"] if foreign else None
+        verdict = LINK.diagnose(last_i, last_f)
+
+        series_i = _path_series(iran, ["domestic", "intl", "foreign"],
+                                {"domestic": "domestic", "intl": "intl", "foreign": "between"})
+        series_f = _path_series(foreign, ["iran", "intl"],
+                                {"iran": "between", "intl": "intl"})
+        paths = []
+        for key, side, src, _kind, label in LINK_PATHS:
+            ser = (series_i if side == "iran" else series_f).get(src) or []
+            last = (last_i if side == "iran" else last_f) or {}
+            paths.append({
+                "key": key, "label": label, "side": side,
+                "state": verdict["paths"][key],
+                "latest": ser[-1] if ser else None,
+                "history": ser,
+                "targets": [{"host": r.get("host"), "port": r.get("port"),
+                             "tcp": r.get("tcp"), "icmp": r.get("icmp")}
+                            for r in ((last.get("paths") or {}).get(src) or [])],
+            })
+
+        ver = (n.get("agent_version") or "").strip()
+        err = None
+        con = TUN.conn()
+        try:
+            bad = con.execute(
+                "SELECT result FROM jobs WHERE node_id = ? AND action = 'pathcheck' "
+                "AND status = 'failed' ORDER BY id DESC LIMIT 1", (n["id"],)).fetchone()
+            if bad and bad["result"]:
+                err = str(bad["result"])[:200]
+        finally:
+            con.close()
+        out.append({
+            "id": n["id"], "name": n.get("name") or f"#{n['id']}",
+            "online": TUN._is_online(n.get("last_seen")),
+            "agentVersion": ver or None,
+            "agentStale": not _agent_can_pathcheck(n),
+            "agentNeed": AGENT_PATHCHECK,
+            "tunnels": len(L["tunnels"]),
+            "peers": (last_i or {}).get("peers") or [],
+            "iranAt": iran[-1]["at"] if iran else None,
+            "foreignAt": foreign[-1]["at"] if foreign else None,
+            "lastError": err,
+            "verdict": {k: verdict[k] for k in ("side", "level", "title", "reason", "fix")},
+            "paths": paths,
+        })
+    return {"nodes": out, "loopError": (_LOOP_ERR.get("linkcheck") or {}).get("error")}
+
+
+@app.post("/api/admin/link/check")
+def link_check_now(x_admin_password: str = Header(...)):
+    """یک دورِ سنجش همین حالا — نتیجه ظرفِ یکی دو دقیقه می‌رسد."""
+    check_auth(x_admin_password)
+    _need_tunnels()
+    if not LINK:
+        raise HTTPException(status_code=500, detail="ماژول عیب‌یابی بارگذاری نشد")
+    _linkcheck_tick(force=True)
+    return {"ok": True}
+
+
+@app.get("/api/admin/traffic")
+def traffic_overview(x_admin_password: str = Header(...)):
+    """حجمِ ترافیکِ هر سرور: سرورِ پنل (شناسه‌ی صفر) و هر نود."""
+    check_auth(x_admin_password)
+    _need_tunnels()
+    servers = [{"id": 0, "name": "سرورِ پنل", "role": "panel",
+                "agentStale": False, **TUN.traffic_summary(0)}]
+    con = TUN.conn()
+    try:
+        nodes = [dict(r) for r in con.execute(
+            "SELECT id, name, role, agent_version, last_seen FROM nodes "
+            "WHERE enabled = 1 ORDER BY id")]
+    finally:
+        con.close()
+    for n in nodes:
+        servers.append({"id": n["id"], "name": n.get("name") or f"#{n['id']}",
+                        "role": n.get("role") or "iran",
+                        "agentVersion": n.get("agent_version") or None,
+                        "agentStale": not _agent_can_pathcheck(n),
+                        "agentNeed": AGENT_PATHCHECK,
+                        **TUN.traffic_summary(n["id"])})
+    return {"servers": servers}
 
 
 @app.post("/api/admin/tunnel/{tid}/monitor")

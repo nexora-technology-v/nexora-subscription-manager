@@ -497,6 +497,8 @@ OPEN_AGENT_ROUTES = {
     "/api/agent/agent.py", "/api/agent/monitor.py",
     "/api/agent/firewall.py", "/api/agent/health.py",
     "/api/agent/netid.py",
+    # عیب‌یابیِ ارتباط (۱.۱۱۱) — همان دلیل: فقط کد، و ایجنت بی‌توکن می‌گیردش
+    "/api/agent/linkcheck.py",
 }
 
 _unsigned = [(p, n.name) for p, n in _agent

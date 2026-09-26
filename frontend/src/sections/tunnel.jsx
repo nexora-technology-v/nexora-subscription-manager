@@ -1168,6 +1168,14 @@ export function TunnelMonitorModal({ tunnel, password, onClose }) {
   return (
     <Modal title={`کیفیت — ${tunnel.name}`} onClose={onClose} width="540px">
       {err && <Msg msg={{ t: "err", m: err }} />}
+      {/* این سنجش از خودِ سرورِ ایران به پورتِ محلیِ تانل زده می‌شود. آن
+          اتصال را موتورِ تانل همان‌جا جواب می‌دهد، پس عددش تاخیرِ ایران↔خارج
+          نیست — تا ۱.۱۱۰ برچسبش همین ادعا را می‌کرد و تانلِ کند «عالی»
+          دیده می‌شد. مسیرِ واقعی در «عیب‌یابیِ ارتباط» است. */}
+      <InfoBox>
+        این عدد می‌گوید سرویسِ تانل روی سرورِ ایران جواب می‌دهد یا نه — نه سرعتِ مسیرِ ایران تا خارج.
+        برای اینکه ببینید اختلال از کدام سمت است، «تانل ← عیب‌یابیِ ارتباط» را باز کنید.
+      </InfoBox>
       {!m ? (
         <PageSkeleton />
       ) : (
@@ -1208,7 +1216,7 @@ export function TunnelMonitorModal({ tunnel, password, onClose }) {
                 </div>
               )}
 
-              <Bar label="تاخیر TCP — همان چیزی که ترافیک واقعی حس می‌کند"
+              <Bar label="پاسخِ پورتِ تانل روی سرورِ ایران"
                 value={s.latest} max={200}
                 color={latencyColor(s.latest)} />
 

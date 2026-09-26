@@ -32,7 +32,7 @@ from pathlib import Path
 #: نسخه‌ی ایجنت. پنل از روی همین می‌فهمد که آیا این ایجنت دستورهای
 #: تازه را می‌شناسد یا نه — پس با هر قابلیت جدید باید بالا برود،
 #: وگرنه پنل فکر می‌کند ایجنت قدیمی است و بی‌دلیل به‌روزرسانی می‌خواهد.
-VERSION = "1.5.2"
+VERSION = "1.6.0"
 
 PANEL_URL = os.getenv("NEXORA_PANEL", "").rstrip("/")
 TOKEN = os.getenv("NEXORA_TOKEN", "")
@@ -773,6 +773,14 @@ def handle(job, panel_version=""):
 
     if action == "firewall":
         return remote_module("firewall", "status", p)
+
+    if action == "pathcheck":
+        # عیب‌یابیِ ارتباط و شمارنده‌های ترافیک — از ۱.۶.۰. منطق در
+        # linkcheck.py ِ پنل است، همان که پنل برای سمتِ خودش اجرا می‌کند.
+        return remote_module(
+            "linkcheck", "run", p, side=p.get("side", "iran"),
+            bridge_ports=p.get("bridge_ports") or [],
+            iran_hosts=p.get("iran_hosts") or [])
 
     if action == "update_agent":
         return update_self(p.get("url", ""))

@@ -336,7 +336,8 @@ check("ولی آدرس بیرونی را هم قبول نمی‌کند",
       'own = f"{PANEL_URL}/api/agent/agent.py"' in AGSRC,
       "نگهبان سر جایش می‌ماند — فایل اجرایی فقط از پنل خودش")
 check("نسخه‌ی ایجنت بالا رفت",
-      'VERSION = "1.5.2"' in AGSRC)
+      'VERSION = "1.6.0"' in AGSRC and 'action == "pathcheck"' in AGSRC,
+      "۱.۶.۰: عیب‌یابیِ ارتباط — پنل نسخه‌ی کمتر را قدیمی می‌داند")
 
 
 def _update_url(given, panel):
