@@ -14453,7 +14453,7 @@ def _sync_reseller_trials(spec):
 
 @app.get("/api/admin/reseller-unlimited")
 def reseller_unlimited_get(x_admin_password: str = Header(...)):
-    """«نامحدود» ِ نماینده‌ها برای کفِ نرخِ حجمی چند گیگ حساب می‌شود."""
+    """«نامحدود» نماینده‌ها برای کفِ نرخِ حجمی چند گیگ حساب می‌شود."""
     check_auth(x_admin_password)
     return {"gb": _unlimited_gb(), "default": UNLIMITED_GB_DEFAULT}
 
@@ -16836,7 +16836,7 @@ def _plan_floor(conf, rates, gb, days, ips):
     """
     per_gb = _price_per_gb(conf or {})
     if per_gb:
-        # «نامحدود» ِ این فروشگاه در عمل سقفِ منصفانه دارد — مالک: «نامحدودی
+        # «نامحدود» این فروشگاه در عمل سقفِ منصفانه دارد — مالک: «نامحدودی
         # که ما تعریف می‌کنیم ۲۰۰ گیگ است». پس کفِ پلنِ نامحدود همان حجم ×
         # نرخ است، نه «نامعلوم». عدد را مالک در «قابلیت‌های نماینده‌ها» عوض
         # می‌کند (`_unlimited_gb`).
