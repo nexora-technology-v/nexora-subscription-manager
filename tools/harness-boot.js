@@ -10008,7 +10008,7 @@
       tunnels: 1, peers: [], iranAt: null,
       foreignAt: new Date(Date.now() - 140e3).toISOString().slice(0, 19), lastError: null,
       verdict: { side: "partial", level: "ok", title: "آنچه سنجیده می‌شود سالم است",
-                 reason: "سنجیده نشده: ایران ← داخل، ایران ← بین‌الملل، ایران ← خارج. روی خودِ تانل: 3 اتصالِ تانل، RTTِ کرنل 90 ms.",
+                 reason: "سنجیده نشده: ایران ← داخل، ایران ← بین‌الملل، ایران ← خارج.",
                  fix: "اگر مشتری‌ها هنوز کندی دارند، ایجنت را روی سرورِ ایران نصب کنید تا سمتِ ایران هم دیده شود؛ و «اینباندها» را ببینید." },
       paths: [
         { key: "iran_domestic", label: "ایران ← داخل", side: "iran", state: "unknown", history: [], targets: [] },
@@ -10033,7 +10033,7 @@
           reason: "هیچ اتصالی بینِ این سرور و سرورِ ایران برقرار نیست — ترافیکی رد نمی‌شود. خودِ مسیر جواب می‌دهد، پس مشکل از سرویسِ تانل است.",
           fix: "سرویسِ تانل را روی هر دو سرور ری‌استارت کنید و لاگش را ببینید؛ پورت و توکنِ دو طرف یکی باشد." }
       : { side: "between-or-iran", level: "warn", title: "مشکل بینِ این سرور و سرورِ ایران است — یا خودِ سرورِ ایران",
-          reason: "سرورِ خارج به اینترنت سالم وصل است، ولی تا سرورِ ایران ناپایدار. روی خودِ تانل: 6 اتصالِ تانل، RTTِ کرنل 212 ms، 5.3٪ ارسالِ دوباره.",
+          reason: "سرورِ خارج به اینترنت سالم وصل است، ولی تا سرورِ ایران ناپایدار.",
           fix: "برای جداکردنِ «مسیر» از «سرورِ ایران»، ایجنت را روی سرورِ ایران نصب کنید (تانل ← سرورها). تا آن موقع: ترنسپورتِ تانل یا آی‌پیِ یکی از دو سرور را عوض کنید." },
     tunnel: { state: _mdown ? "down" : "lossy",
               now: { engine: "backpack", conns: _mdown ? 0 : 6, rtt: _mdown ? null : 212.4, retransPct: _mdown ? 0 : 5.3 },
@@ -10103,7 +10103,22 @@
   // اینباندهای 3x-ui — واقع‌نما: یکی سالم پشتِ تانل، یکی Reality با dest بسته،
   // یکی ws با vision (کار نمی‌کند)، و یکی خاموش
   function _ibrate(b) { return { rx: Math.round(b * (0.8 + Math.random() * 0.4)), tx: Math.round(b * 7 * (0.8 + Math.random() * 0.4)) }; }
-  function INB_DOC() { return { tunnels: true, listenKnown: true, inbounds: [
+  var INB_REC = [
+    { id: "reality-dest", title: "دامنه‌های مناسب برای Reality، سنجیده‌شده از همین سرور",
+      why: "dest Reality باید از سرورِ خارج سریع و سالم باشد (TLS 1.3 و h2). این‌ها از همین سرور همین حالا سنجیده شده‌اند، سریع‌ترین اول.",
+      domains: [{ host: "www.apple.com", ms: 38.2, h2: true }, { host: "dl.google.com", ms: 44.9, h2: true },
+                { host: "www.cloudflare.com", ms: 51.3, h2: true }, { host: "www.microsoft.com", ms: 96.4, h2: true }],
+      have: null, "new": false },
+    { id: "tunnel-inbound", title: "اینباند برای مشتری‌های پشتِ تانل",
+      why: "مشتری به سرورِ ایران وصل می‌شود و تانل ترافیک را تا این‌جا می‌آورد. رایج‌ترین و سبک‌ترین اینباند پشتِ تانل VLESS روی TCP است.",
+      settings: [], have: "tunnel-tcp", "new": false },
+    { id: "direct-inbound", title: "اینباند برای اتصالِ مستقیم (بی تانل)",
+      why: "برای مشتری‌ای که مستقیم به سرورِ خارج وصل می‌شود، VLESS + Reality + vision امروز مقاوم‌ترین ترکیب است: بی دامنه و گواهی، و ترافیک شبیهِ سایتِ واقعی.",
+      settings: [["پروتکل", "VLESS"], ["ترانسپورت", "TCP"], ["امنیت", "Reality"], ["dest", "www.apple.com:443"],
+                 ["serverNames", "www.apple.com"], ["flow کلاینت‌ها", "xtls-rprx-vision"],
+                 ["uTLS (fingerprint)", "chrome"], ["پورت", "443"]],
+      have: null, "new": true } ];
+  function INB_DOC() { return { tunnels: true, listenKnown: true, recommend: INB_REC, inbounds: [
     { id: 3, remark: "reality-de", enable: true, port: 443, protocol: "vless", network: "tcp", security: "reality",
       listen: "", up: 91e9, down: 640e9, clients: 58, active: 51, conns: { tunnel: 0, direct: 12 }, rate: _ibrate(4e4),
       level: "bad", findings: [

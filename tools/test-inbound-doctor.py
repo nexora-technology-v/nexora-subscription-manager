@@ -171,6 +171,20 @@ _before = hashlib.sha256(open(XDB, "rb").read()).hexdigest()
 
 import app as APP              # noqa: E402
 APP.check_auth = lambda pw: None
+
+
+def _fake_reality(targets, timeout=4.0):
+    # بی شبکه: apple سریع، microsoft کند، github بی h2، yahoo گواهیِ نامعتبر
+    ms = {"www.apple.com": 40, "www.microsoft.com": 180, "github.com": 30, "www.yahoo.com": 20}
+    out = {}
+    for k, (h, _p, names) in targets.items():
+        ok = h in ms
+        out[k] = {"reachable": ok, "ms": ms.get(h), "names": {h: {
+            "ok": ok and h != "www.yahoo.com", "h2": h != "github.com", "ms": ms.get(h)}}}
+    return out
+
+
+APP.INBDOC.probe_all_reality = _fake_reality
 APP._listen_ports = lambda udp=False: None if udp else {443}
 APP._inbound_conns = lambda ports, ips: {443: {"tunnel": 4, "direct": 1}}
 r = APP.inbounds_doctor(fresh=0, x_admin_password="x")
@@ -192,6 +206,30 @@ _before2 = hashlib.sha256(open(XDB, "rb").read()).hexdigest()
 APP.inbounds_doctor(fresh=0, x_admin_password="x")
 check("پنل هیچ چیزی در x-ui.db نمی‌نویسد",
       hashlib.sha256(open(XDB, "rb").read()).hexdigest() == _before2)
+
+# ═══════════════════════════════════════════════════════════
+head("پیشنهادها — «این را بسازید»، نه فقط «این خراب است»")
+# ═══════════════════════════════════════════════════════════
+_rk = D.rank_candidates(_fake_reality({h: (h, 443, [h]) for h in D.REALITY_CANDIDATES}))
+check("دامنه‌های Reality: فقط سالم‌ها (TLS 1.3، گواهیِ درست، h2)، سریع‌ترین اول",
+      [x["host"] for x in _rk] == ["www.apple.com", "www.microsoft.com"], str(_rk))
+_rec = {x["id"]: x for x in r["recommend"]}
+check("پنل پیشنهادِ دامنه را برمی‌گرداند",
+      (_rec.get("reality-dest") or {}).get("domains", [{}])[0].get("host") == "www.apple.com",
+      str(r["recommend"])[:120])
+check("اینباندِ مستقیم با dest سریع‌ترین دامنه",
+      ["dest", "www.apple.com:443"] in (_rec.get("direct-inbound") or {}).get("settings", []))
+_i = [inb(id=1, remark="t", stream_settings={"network": "tcp", "security": "none"})]
+_r2 = {x["id"]: x for x in D.recommend(_i, True, _rk)}
+check("پشتِ تانل: اگر اینباندِ VLESS+TCP هست، همان را نام می‌برد نه «بسازید»",
+      _r2["tunnel-inbound"]["have"] == "t" and _r2["tunnel-inbound"]["new"] is False)
+check("بی تانل، پیشنهادِ اینباندِ پشتِ تانل نمی‌آید",
+      "tunnel-inbound" not in {x["id"] for x in D.recommend(_i, False, _rk)})
+_ir = [inb(id=2, stream_settings=REAL)]
+check("Reality سالم هست → پیشنهادِ اینباندِ مستقیم نمی‌آید",
+      "direct-inbound" not in {x["id"] for x in D.recommend(_ir, False, _rk, reality_ok=True)})
+check("Reality خراب هست → پیشنهادِ اینباندِ مستقیم می‌آید",
+      "direct-inbound" in {x["id"] for x in D.recommend(_ir, False, _rk, reality_ok=False)})
 
 print(f"\n  {PASS} پاس · {FAIL} شکست")
 sys.exit(1 if FAIL else 0)

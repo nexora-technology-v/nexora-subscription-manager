@@ -326,7 +326,7 @@ check("تانلِ بی‌اتصال با مسیرِ سالم → «تانل وص
       v["side"] == "tunnel" and "سرویسِ تانل" in v["reason"], v["reason"])
 v = LINK.diagnose(None, foreign(iran_=DEAD), tunnel={"conns": 3, "retransPct": 9, "rtt": 400})
 check("بی ایجنتِ ایران و مسیرِ بد → «بینِ دو سرور یا خودِ سرورِ ایران» با پیشنهادِ ایجنت",
-      v["side"] == "between-or-iran" and "ایجنت" in v["fix"] and "ارسالِ دوباره" in v["reason"],
+      v["side"] == "between-or-iran" and "ایجنت" in v["fix"],
       v["title"])
 
 # ═══════════════════════════════════════════════════════════

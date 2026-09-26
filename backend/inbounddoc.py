@@ -92,9 +92,16 @@ def probe_reality(host, port, names, timeout=4.0):
         except (AttributeError, ValueError):
             pass
         try:
+            ctx.set_alpn_protocols(["h2", "http/1.1"])
+        except (AttributeError, NotImplementedError):
+            pass
+        t1 = time.perf_counter()
+        try:
             with socket.create_connection((host, port), timeout=timeout) as s:
                 with ctx.wrap_socket(s, server_hostname=name) as t:
-                    out["names"][name] = {"ok": True, "tls": t.version()}
+                    out["names"][name] = {"ok": True, "tls": t.version(),
+                                          "h2": t.selected_alpn_protocol() == "h2",
+                                          "ms": round((time.perf_counter() - t1) * 1000, 1)}
         except ssl.SSLCertVerificationError as e:
             out["names"][name] = {"ok": False, "why": "cert",
                                   "error": str(getattr(e, "verify_message", e))[:120]}
@@ -124,6 +131,87 @@ def cert_expiry(path):
         return ssl.cert_time_to_seconds(info["notAfter"])
     except Exception:
         return None
+
+
+#: دامنه‌هایی که معمولاً dest خوبی برای Reality‌اند: TLS 1.3، h2، CDN ِ
+#: بزرگ، و در ایران باز. کدام‌یک از **همین سرور** سریع‌تر است را فقط
+#: سنجش می‌گوید — هر دیتاسنتر نزدیکِ یکی‌شان است.
+REALITY_CANDIDATES = (
+    "www.microsoft.com", "www.apple.com", "www.cloudflare.com", "www.speedtest.net",
+    "dl.google.com", "www.samsung.com", "www.nvidia.com", "www.amazon.com",
+    "github.com", "www.yahoo.com", "www.mozilla.org", "www.intel.com",
+)
+
+
+def rank_candidates(results):
+    """
+    از نتیجه‌ی `probe_reality` روی کاندیدها، سالم‌ها به ترتیبِ سرعت:
+    [{host, ms, h2}]. سالم یعنی در دسترس، TLS 1.3 با گواهیِ معتبر، و h2.
+    """
+    out = []
+    for host, r in (results or {}).items():
+        n = (r or {}).get("names", {}).get(host) or {}
+        if r and r.get("reachable") and n.get("ok") and n.get("h2"):
+            out.append({"host": host, "ms": n.get("ms") or r.get("ms"), "h2": True})
+    out.sort(key=lambda x: x["ms"] if x["ms"] is not None else 9e9)
+    return out
+
+
+def _has(inbs, **want):
+    for i in inbs:
+        if not i.get("enable"):
+            continue
+        st = stream_of(i)
+        if all((i.get("protocol") or "").lower() == v if k == "protocol" else st.get(k) == v
+               for k, v in want.items()):
+            return i
+    return None
+
+
+def recommend(inbs, tunnels, ranked, reality_ok=None):
+    """
+    پیشنهادهای مثبت: «این را بسازید»، نه فقط «این خراب است».
+
+    هر پیشنهاد: {id, title, why, settings: [[برچسب, مقدار], …], have (remark
+    اینباندِ موجودی که همین است، اگر هست), new (ساختنش لینکِ تازه
+    می‌دهد)}. پنل چیزی نمی‌سازد؛ مالک در 3x-ui می‌سازد.
+    """
+    out = []
+    best = ranked[0]["host"] if ranked else None
+    if ranked:
+        out.append({
+            "id": "reality-dest", "title": "دامنه‌های مناسب برای Reality، سنجیده‌شده از همین سرور",
+            "why": "dest Reality باید از سرورِ خارج سریع و سالم باشد (TLS 1.3 و h2). این‌ها از همین سرور "
+                   "همین حالا سنجیده شده‌اند، سریع‌ترین اول.",
+            "domains": ranked[:5], "have": None, "new": False})
+
+    if tunnels:
+        have = _has(inbs, protocol="vless", network="tcp", security="none")
+        out.append({
+            "id": "tunnel-inbound", "title": "اینباند برای مشتری‌های پشتِ تانل",
+            "why": "مشتری به سرورِ ایران وصل می‌شود و تانل ترافیک را تا این‌جا می‌آورد. رایج‌ترین و "
+                   "سبک‌ترین اینباند پشتِ تانل VLESS روی TCP است. TLS یا Reality روی این اینباند مسیرِ "
+                   "ایران↔خارج را امن‌تر نمی‌کند (آن را تانل می‌برد) ولی CPU و تاخیر اضافه می‌کند — فقط "
+                   "وقتی لازم است که ترافیکِ مشتری تا سرورِ ایران هم باید پنهان بماند.",
+            "settings": [["پروتکل", "VLESS"], ["ترانسپورت", "TCP (header: none)"],
+                         ["امنیت", "none"], ["Sniffing", "روشن — http، tls، quic — و routeOnly"],
+                         ["listen", "خالی (یا 127.0.0.1 اگر موتورِ تانل روی همین سرور به آن وصل می‌شود)"],
+                         ["پورت", "همان پورتی که تانل به آن می‌فرستد"]],
+            "have": have.get("remark") if have else None, "new": not have})
+
+    have = _has(inbs, protocol="vless", network="tcp", security="reality")
+    if have is None or reality_ok is False:
+        out.append({
+            "id": "direct-inbound", "title": "اینباند برای اتصالِ مستقیم (بی تانل)",
+            "why": "برای مشتری‌ای که مستقیم به سرورِ خارج وصل می‌شود، VLESS + Reality + vision امروز "
+                   "مقاوم‌ترین ترکیب است: بی دامنه و گواهی، و ترافیک شبیهِ سایتِ واقعی.",
+            "settings": [["پروتکل", "VLESS"], ["ترانسپورت", "TCP"], ["امنیت", "Reality"],
+                         ["dest", f"{best}:443" if best else "یکی از دامنه‌های بالا، :443"],
+                         ["serverNames", best or "همان دامنه‌ی dest"],
+                         ["flow کلاینت‌ها", "xtls-rprx-vision"],
+                         ["uTLS (fingerprint)", "chrome"], ["پورت", "443"]],
+            "have": have.get("remark") if have else None, "new": have is None})
+    return out
 
 
 # ═══════════════════════════════════════════════════════════

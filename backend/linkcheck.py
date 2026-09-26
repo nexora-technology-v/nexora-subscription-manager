@@ -754,19 +754,6 @@ def _worst(*xs):
     return min(known, key=order.index) if known else "unknown"
 
 
-def _tunnel_phrase(t):
-    if not t:
-        return ""
-    if not t.get("conns"):
-        return " هیچ اتصالِ تانلی به این آی‌پی برقرار نیست."
-    bits = [f"{t['conns']} اتصالِ تانل"]
-    if t.get("rtt") is not None:
-        bits.append(f"RTTِ کرنل {round(t['rtt'])} ms")
-    if t.get("retransPct"):
-        bits.append(f"{t['retransPct']}٪ ارسالِ دوباره")
-    return " روی خودِ تانل: " + "، ".join(bits) + "."
-
-
 def diagnose(iran, foreign, tunnel=None, tcp=None, tunnel_ports=()):
     """
     یک حکم به زبانِ ساده: اختلال از کدام سمت است و چه باید کرد.
@@ -783,7 +770,8 @@ def diagnose(iran, foreign, tunnel=None, tcp=None, tunnel_ports=()):
     tf = tcp_findings(tcp, tunnel, tunnel_ports) if tcp else []
     iran_known = s["iran_intl"] != "unknown" or s["iran_domestic"] != "unknown"
     between = _worst(s["iran_foreign"], s["foreign_iran"], s["tunnel"])
-    tp = _tunnel_phrase(tunnel)
+    # آمارِ تانل (اتصال، RTT، ارسالِ دوباره) در متنِ حکم نمی‌آید: رابط کنارِ
+    # حکم جدا نشانش می‌دهد، و تکرارش جمله را فنی و بلند می‌کرد
 
     def verdict(side, st, title, detail, fix):
         return {"side": side, "level": "bad" if st in _BAD else "warn",
@@ -806,7 +794,7 @@ def diagnose(iran, foreign, tunnel=None, tcp=None, tunnel_ports=()):
     bad_tcp = next((x for x in tf if x["level"] == "bad"), None)
     if bad_tcp and s["foreign_intl"] not in _BAD:
         return {"side": "tcp", "level": "bad", "title": bad_tcp["title"], "id": bad_tcp["id"],
-                "reason": bad_tcp["why"] + tp, "fix": bad_tcp["fix"], "paths": s, "tcp": tf}
+                "reason": bad_tcp["why"], "fix": bad_tcp["fix"], "paths": s, "tcp": tf}
     if s["foreign_intl"] in _BAD + _WARN:
         return verdict(
             "foreign", s["foreign_intl"],
@@ -827,12 +815,12 @@ def diagnose(iran, foreign, tunnel=None, tcp=None, tunnel_ports=()):
                 "between", between,
                 "مسیرِ بینِ این دو سرور مشکل دارد",
                 "هر دو سرور به اینترنت سالم وصل‌اند، ولی بینِ خودشان "
-                f"{_STATE_FA[between]}. معمولاً یعنی آی‌پیِ یکی از دو سرور محدود شده." + tp,
+                f"{_STATE_FA[between]}. معمولاً یعنی آی‌پیِ یکی از دو سرور محدود شده.",
                 "آی‌پیِ سرورِ خارج (یا ایران) را عوض کنید، یا دیتاسنترِ دیگری امتحان کنید.")
         return verdict(
             "between-or-iran", between,
             "مشکل بینِ این سرور و سرورِ ایران است — یا خودِ سرورِ ایران",
-            f"سرورِ خارج به اینترنت سالم وصل است، ولی تا سرورِ ایران {_STATE_FA[between]}." + tp,
+            f"سرورِ خارج به اینترنت سالم وصل است، ولی تا سرورِ ایران {_STATE_FA[between]}.",
             "برای جداکردنِ «مسیر» از «سرورِ ایران»، ایجنت را روی سرورِ ایران نصب کنید "
             "(تانل ← سرورها). تا آن موقع: ترنسپورتِ تانل یا آی‌پیِ یکی از دو سرور را عوض کنید.")
 
@@ -845,10 +833,10 @@ def diagnose(iran, foreign, tunnel=None, tcp=None, tunnel_ports=()):
     if missing:
         return {"side": "partial", "level": "ok", "paths": s,
                 "title": "آنچه سنجیده می‌شود سالم است",
-                "reason": "سنجیده نشده: " + "، ".join(_PATH_FA[k] for k in missing) + "." + tp,
+                "reason": "سنجیده نشده: " + "، ".join(_PATH_FA[k] for k in missing) + ".",
                 "fix": ("اگر مشتری‌ها هنوز کندی دارند، ایجنت را روی سرورِ ایران نصب کنید تا "
                         "سمتِ ایران هم دیده شود؛ و «اینباندها» را ببینید.")}
     return {"side": "none", "level": "ok", "paths": s,
             "title": "همه‌ی مسیرها سالم‌اند",
-            "reason": "اگر مشتری‌ها هنوز کندی دارند، مشکل از خودِ تانل یا اینباند است، نه شبکه." + tp,
+            "reason": "اگر مشتری‌ها هنوز کندی دارند، مشکل از خودِ تانل یا اینباند است، نه شبکه.",
             "fix": "«تانل ← اینباندها» را ببینید، یا ترنسپورتِ تانل را عوض کنید."}

@@ -12204,6 +12204,18 @@ def inbounds_doctor(fresh: int = 0, x_admin_password: str = Header(...)):
         for k, v in INBDOC.probe_all_reality(targets).items():
             _REALITY_CACHE[k] = {"at": time.time(), "data": v}
 
+    # دامنه‌های کاندیدِ Reality — یک ساعت کش: سایت‌های بیرونی هر پنج ثانیه سنجیده نمی‌شوند
+    cand = _REALITY_CACHE.get("__candidates__")
+    if fresh or not cand or time.time() - cand["at"] > 3600:
+        try:
+            res = INBDOC.probe_all_reality({h: (h, 443, [h]) for h in INBDOC.REALITY_CANDIDATES},
+                                           timeout=3.0)
+            cand = {"at": time.time(), "data": INBDOC.rank_candidates(res)}
+            _REALITY_CACHE["__candidates__"] = cand
+        except Exception as e:
+            _loop_fail("reality-candidates", e)
+            cand = cand or {"at": 0, "data": []}
+
     conns = _inbound_conns({int(i.get("port") or 0) for i in inbs}, set(peers)) or {}
     prev = _LIVE.get("inb")
     t_now = time.monotonic()
@@ -12249,8 +12261,14 @@ def inbounds_doctor(fresh: int = 0, x_admin_password: str = Header(...)):
             "rate": rates.get(i["id"]),
             "level": INBDOC.summary(found), "findings": found,
         })
+    reality_ok = None
+    for r in rows:
+        if r["enable"] and r["security"] == "reality":
+            bad = any(f["id"].startswith("reality-") and f["level"] == "bad" for f in r["findings"])
+            reality_ok = (reality_ok is not False) and not bad
     return {"inbounds": rows, "tunnels": has_tunnels,
-            "listenKnown": listen_tcp is not None}
+            "listenKnown": listen_tcp is not None,
+            "recommend": INBDOC.recommend(inbs, has_tunnels, cand["data"], reality_ok)}
 
 
 @app.post("/api/admin/tunnel/{tid}/monitor")

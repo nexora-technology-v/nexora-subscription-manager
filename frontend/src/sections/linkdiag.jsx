@@ -261,7 +261,47 @@ function TcpBlock({ n, password }) {
   );
 }
 
+const KIND_FA = { panel: "تانلِ پنل", agent: "سرورِ ایران", manual: "تانلِ دستی" };
+
+/*
+ * سه عددی که مدیر اول می‌خواهد: تانل وصل است؟ چقدر رد می‌کند؟ چقدر کند است؟
+ * بقیه — پنج مسیر، نوارها، پورت‌ها — پشتِ «جزئیات». پیش‌تر همه با هم روی
+ * کارت بودند و مالک گفت «ادمین گیج می‌شود؛ معلوم نیست الان مورد چیست».
+ */
+function Kpis({ n, live }) {
+  const now = live || n.tunnel?.now || {};
+  const st = n.tunnel?.state || "unknown";
+  const conns = now.conns ?? null;
+  return (
+    <div className="ld-kpis">
+      <div className={`ld-kpi t-${st}`}>
+        <span>تانل</span>
+        <b>{conns == null ? "—" : conns ? `${faNum(conns)} اتصال` : "وصل نیست"}</b>
+      </div>
+      <div className="ld-kpi">
+        <span>همین حالا</span>
+        <b>
+          {live?.rate ? (
+            <>
+              <span title="دریافت از ایران"><ArrowDown size={11} /> <bdi dir="ltr">{rateOf(live.rate.rx)}</bdi></span>
+              <span title="ارسال به ایران"><ArrowUp size={11} /> <bdi dir="ltr">{rateOf(live.rate.tx)}</bdi></span>
+            </>
+          ) : "—"}
+        </b>
+      </div>
+      <div className="ld-kpi">
+        <span>تاخیرِ تانل</span>
+        <b>
+          {now.rtt != null ? <bdi dir="ltr">{Math.round(now.rtt)} ms</bdi> : "—"}
+          {now.retransPct ? <small> · {faNum(now.retransPct)}٪ ارسالِ دوباره</small> : null}
+        </b>
+      </div>
+    </div>
+  );
+}
+
 function NodeDiag({ n, live, password, onNote }) {
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const update = async () => {
     setBusy(true);
@@ -273,73 +313,90 @@ function NodeDiag({ n, live, password, onNote }) {
       onNote({ t: "ok", m: `به‌روزرسانیِ ایجنتِ «${n.name}» در صف رفت — دقیقه‌ی بعد انجام می‌شود` });
     } catch (e) { onNote({ t: "err", m: e.message }); } finally { setBusy(false); }
   };
+  const v = n.verdict || {};
+  const Icon = VERDICT_ICON[v.level] || HelpCircle;
+  // دستوری که با حکم آمده (مثلاً محدودکردنِ MSS)، تا «چه کنم» کامل باشد
+  const cmd = ((n.tcp?.findings || []).find((f) => f.id === v.id) || {}).cmd;
   const iranPaths = n.paths.filter((p) => p.side === "iran");
   const foreignPaths = n.paths.filter((p) => p.side === "foreign");
   return (
-    <section className="fx-card p-5 mb-4 ld-node">
-      <header className="ld-node-head">
-        <Server size={16} />
-        <b>{n.name}</b>
-        {n.kind === "manual"
-          ? <span className="ld-chip t-neutral">تانلِ دستی{n.engine ? ` · ${n.engine}` : ""}</span>
-          : n.online != null && (
-            <span className={`ld-chip ${n.online ? "t-ok" : "t-down"}`}>{n.online ? "آنلاین" : "آفلاین"}</span>)}
-        <span className="ld-node-meta">
-          {n.ip && <>سرورِ ایران: <span dir="ltr">{n.ip}</span></>}
-          {n.tunnels > 0 && <> · {faNum(n.tunnels)} تانل</>}
-          {n.peers?.length > 0 && <> · سرورِ خارج: <span dir="ltr">{n.peers.join("، ")}</span></>}
-        </span>
+    <section className={`fx-card ld-card l-${v.level}`}>
+      <header className="ld-card-head">
+        <Icon size={20} />
+        <div className="min-w-0">
+          <b>{n.name}</b>
+          <small>
+            {KIND_FA[n.kind] || ""}
+            {n.engine && <> · <bdi dir="ltr">{n.engine}</bdi></>}
+            {n.ip && <> · <bdi dir="ltr">{n.ip}</bdi></>}
+          </small>
+        </div>
       </header>
+
+      <h3 className="ld-say">{v.title}</h3>
+      {v.reason && <p className="ld-why">{v.reason}</p>}
+      {v.fix && v.level !== "ok" && (
+        <div className="ld-do">
+          <b><Wrench size={13} /> چه کنم</b>
+          <p>{v.fix}</p>
+          {cmd && <code className="ld-cmd" dir="ltr">{cmd}</code>}
+        </div>
+      )}
+
+      <Kpis n={n} live={live} />
 
       {n.agentStale && n.hasAgent && (
         <div className="ld-stale">
           <AlertTriangle size={14} />
-          <span>
-            ایجنتِ این سرور نسخه‌ی {n.agentVersion || "نامشخص"} است و سنجشِ سمتِ ایران را نمی‌شناسد
-            (نسخه‌ی {n.agentNeed} لازم است). تا به‌روز نشود، فقط مسیرهای سمتِ خارج دیده می‌شوند.
-          </span>
+          <span>ایجنتِ این سرور قدیمی است ({n.agentVersion || "نامشخص"})؛ سمتِ ایران سنجیده نمی‌شود.</span>
           <button type="button" onClick={update} disabled={busy}
             className="fx-btn px-3 py-1.5 text-[12px] flex items-center gap-1.5 shrink-0">
             {busy ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-            به‌روزرسانیِ ایجنت
+            به‌روزرسانی
           </button>
         </div>
       )}
-      {n.lastError && (
-        <p className="ld-err">آخرین سنجشِ سمتِ ایران ناموفق بود: <span dir="ltr">{n.lastError}</span></p>
-      )}
 
-      <Verdict v={n.verdict} />
-      <TunnelRow n={n} live={live} />
-      <TcpBlock n={n} password={password} />
+      <button type="button" className="ld-more-btn" onClick={() => setOpen((x) => !x)}
+        aria-expanded={open}>
+        {open ? "بستنِ جزئیات" : "جزئیاتِ فنی — مسیرها، TCP، تاریخچه"}
+      </button>
 
-      <div className="ld-cols mt-2">
-        <div>
-          <div className="ld-col-head">
-            از سرورِ ایران
-            <span>{n.iranAt ? isoToJalaliStamp(n.iranAt) : "هنوز نسنجیده"}</span>
-          </div>
-          {n.hasAgent ? iranPaths.map((p) => <PathRow key={p.key} p={p} />) : (
-            // بی ایجنت، سه ردیفِ «بی‌داده» چیزی نمی‌گفت؛ این می‌گوید چرا و چه کنید
-            <div className="ld-noagent">
-              <p>
-                روی این سرورِ ایران ایجنت نصب نیست، پس سه مسیرِ سمتِ ایران (داخل، بین‌الملل،
-                تا سرورِ خارج) سنجیده نمی‌شوند — و حکم نمی‌تواند «مسیر» را از «خودِ سرورِ ایران» جدا کند.
-              </p>
-              <a href="#/tun-nodes" className="fx-btn-g px-3 py-1.5 text-[12px] inline-flex items-center gap-1.5">
-                <Server size={12} /> افزودنِ این سرور و نصبِ ایجنت
-              </a>
-            </div>
+      {open && (
+        <div className="ld-more">
+          {n.lastError && (
+            <p className="ld-err">آخرین سنجشِ سمتِ ایران ناموفق بود: <span dir="ltr">{n.lastError}</span></p>
           )}
-        </div>
-        <div>
-          <div className="ld-col-head">
-            از سرورِ خارج
-            <span>{n.foreignAt ? isoToJalaliStamp(n.foreignAt) : "هنوز نسنجیده"}</span>
+          <TunnelRow n={n} live={live} />
+          <TcpBlock n={n} password={password} />
+          <div className="ld-cols mt-2">
+            <div>
+              <div className="ld-col-head">
+                از سرورِ ایران
+                <span>{n.iranAt ? isoToJalaliStamp(n.iranAt) : "هنوز نسنجیده"}</span>
+              </div>
+              {n.hasAgent ? iranPaths.map((p) => <PathRow key={p.key} p={p} />) : (
+                <div className="ld-noagent">
+                  <p>
+                    روی این سرورِ ایران ایجنت نصب نیست، پس سمتِ ایران سنجیده نمی‌شود و نمی‌شود «مسیر» را از
+                    «خودِ سرورِ ایران» جدا کرد.
+                  </p>
+                  <a href="#/tun-nodes" className="fx-btn-g px-3 py-1.5 text-[12px] inline-flex items-center gap-1.5">
+                    <Server size={12} /> افزودنِ این سرور و نصبِ ایجنت
+                  </a>
+                </div>
+              )}
+            </div>
+            <div>
+              <div className="ld-col-head">
+                از سرورِ خارج
+                <span>{n.foreignAt ? isoToJalaliStamp(n.foreignAt) : "هنوز نسنجیده"}</span>
+              </div>
+              {foreignPaths.map((p) => <PathRow key={p.key} p={p} />)}
+            </div>
           </div>
-          {foreignPaths.map((p) => <PathRow key={p.key} p={p} />)}
         </div>
-      </div>
+      )}
     </section>
   );
 }
@@ -360,13 +417,13 @@ export function LinkDiag({ password }) {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(errText(j.detail, "سنجش انجام نشد"));
       setD(j);
-      setNote({ t: "ok", m: "سمتِ خارج همین حالا سنجیده شد؛ سمتِ ایران (اگر ایجنت دارد) ظرفِ ۳۰ ثانیه می‌رسد" });
+      setNote({ t: "ok", m: "همین حالا سنجیده شد" });
     } catch (e) { setNote({ t: "err", m: e.message }); } finally { setBusy(false); }
   };
 
   const head = (
     <SectionHead title="عیب‌یابیِ ارتباط"
-      desc="اختلال از کدام سمت است؟ هر دقیقه خودکار سنجیده می‌شود و این صفحه خودش تازه می‌شود."
+      desc="هر تانل: مشکل چیست و چه باید کرد. هر دقیقه خودکار سنجیده می‌شود."
       action={
         <button type="button" onClick={checkNow} disabled={busy}
           className="fx-btn px-3.5 py-2.5 text-[13px] flex items-center gap-1.5">
@@ -378,6 +435,10 @@ export function LinkDiag({ password }) {
   if (!d && !err) return <PageSkeleton />;
   if (!d) return <div className="fx-anim">{head}<LoadError what="عیب‌یابیِ ارتباط" err={err} onRetry={load} /></div>;
 
+  const nodes = [...(d.nodes || [])];
+  const rank = { bad: 0, warn: 1, unknown: 2, ok: 3 };
+  nodes.sort((a, b) => (rank[a.verdict?.level] ?? 9) - (rank[b.verdict?.level] ?? 9));
+  const bad = nodes.filter((x) => x.verdict?.level === "bad" || x.verdict?.level === "warn").length;
   const livePeers = live?.peers || {};
   return (
     <div className="fx-anim">
@@ -386,21 +447,25 @@ export function LinkDiag({ password }) {
       {d.loopError && (
         <p className="ld-err mb-3">سنجشِ خودکار آخرین بار شکست خورد: <span dir="ltr">{d.loopError}</span></p>
       )}
-      {!(d.nodes || []).length ? (
+      {!nodes.length ? (
         <EmptyState icon={Server} text="هیچ تانلی روی این سرور دیده نمی‌شود"
           hint="نه تانلی در پنل ساخته شده، نه پردازه‌ی تانلی (backhaul، backpack، gost، rathole، …) روی این سرور اتصالِ برقراری دارد." />
       ) : (
-        d.nodes.map((n) => <NodeDiag key={n.id} n={n} password={password} onNote={setNote}
-          live={livePeers[n.ip] || null} />)
+        <>
+          <p className={`ld-summary ${bad ? "t-bad" : "t-ok"}`}>
+            {bad ? `${faNum(bad)} تانل از ${faNum(nodes.length)} مشکل دارد — بالای فهرست‌اند.`
+              : `هر ${faNum(nodes.length)} تانل سالم‌اند.`}
+          </p>
+          <div className="ld-list">
+            {nodes.map((n) => <NodeDiag key={n.id} n={n} password={password} onNote={setNote}
+              live={livePeers[n.ip] || null} />)}
+          </div>
+        </>
       )}
-      <InfoBox>
-        «خودِ تانل» از کرنلِ همین سرور خوانده می‌شود — RTT و ارسالِ دوباره روی همان ترافیکِ واقعیِ تانل، نه
-        سنجشِ مصنوعی. ارسالِ دوباره‌ی بالا یعنی بسته‌ها بینِ دو سرور گم می‌شوند.
-        مرجع‌های بین‌المللی سه شبکه‌ی جدا‌اند (1.1.1.1، 8.8.8.8، 9.9.9.9) تا خرابیِ یکی حکم را عوض نکند.
-      </InfoBox>
     </div>
   );
 }
+
 // ═══════════════════════════════════════════════════════════
 //  حجمِ ترافیک
 // ═══════════════════════════════════════════════════════════
