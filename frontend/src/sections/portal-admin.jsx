@@ -791,6 +791,49 @@ function TrialTile({ password, setMsg }) {
   );
 }
 
+/**
+ * «نامحدود» چند گیگ است — برای کفِ پلن‌های نامحدودِ نماینده‌های حجمی.
+ * مالک: «نامحدودی که ما تعریف می‌کنیم ۲۰۰ گیگ است».
+ */
+function UnlimitedTile({ password, setMsg }) {
+  const [d, setD] = useState(null);
+  const [gb, setGb] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    try {
+      const j = await adminJson("/api/admin/reseller-unlimited", password);
+      setD(j); setGb(String(j.gb));
+    } catch (e) { setMsg({ t: "err", m: `«نامحدود» خوانده نشد: ${e.message}` }); }
+  }, [password]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [load]);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const j = await adminJson("/api/admin/reseller-unlimited", password, { gb: Number(gb) || 0 });
+      setMsg({ t: "ok", m: `نامحدود = ${faNum(j.gb)} گیگ${j.plansUpdated ? ` — کفِ ${faNum(j.plansUpdated)} پلن به‌روز شد` : ""}` });
+      load();
+    } catch (e) { setMsg({ t: "err", m: e.message }); } finally { setBusy(false); }
+  };
+  return (
+    <div className="rf-tile">
+      <b>نامحدود یعنی چند گیگ؟</b>
+      <p>کفِ پلنِ «نامحدود» نماینده‌هایی که نرخشان حجمی است: این حجم × نرخِ هر گیگ.</p>
+      <div className="rf-fields rf-fields-1">
+        <label><span>حجم (گیگ)</span>
+          <NumberInput value={gb} onChange={(e) => setGb(e.target.value)} /></label>
+      </div>
+      <div className="rf-foot">
+        <span>{d ? `الان ${faNum(d.gb)} گیگ` : "…"}</span>
+        {d && Number(gb) !== d.gb && (
+          <button onClick={save} disabled={busy} className="fx-btn px-3 py-1.5 text-[12px]">
+            {busy ? <Loader2 size={12} className="animate-spin" /> : "ذخیره"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** یک خانه‌ی جدول: وضعیت + یک دکمه. */
 function AddonCell({ r, free, busy, onGrant }) {
   const label = r.blocked ? "بسته به‌دستِ شما"
@@ -856,6 +899,7 @@ export function ResellerFeatures({ password }) {
             <PriceTile k="store" d={d.store} password={password} onSaved={load} setMsg={setMsg} />
             <PriceTile k="theme" d={d.theme} password={password} onSaved={load} setMsg={setMsg} />
             <TrialTile password={password} setMsg={setMsg} />
+            <UnlimitedTile password={password} setMsg={setMsg} />
           </div>
           {rows.length > 0 && (
             <div className="rf-table" role="table" aria-label="وضعیتِ قابلیت‌ها برای هر نماینده">

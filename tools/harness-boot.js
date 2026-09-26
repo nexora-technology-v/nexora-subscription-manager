@@ -9948,6 +9948,7 @@
     } else { r.blocked = true; r.open = false; r.until = ""; }
     return { ok: true, until: r.until, open: r.open };
   }
+  var R_UNL = 200;
   var R_TRIAL = { enabled: true, source: "set", gb: 1, days: 1, ip_limit: 1, resellersWithTrial: 2 };
 
   // ── عیب‌یابیِ ارتباط و حجمِ ترافیک ──
@@ -11213,6 +11214,10 @@ var D_CODES = { ready: true,
         return { ok: true, price: ADDONS_ST[ak].price, days: ADDONS_ST[ak].days };
       }
       return ADDON_ADMIN(ak);
+    }
+    if (u.indexOf("/admin/reseller-unlimited") >= 0) {
+      if (method === "POST") { R_UNL = Number((body || {}).gb) || 200; return { ok: true, gb: R_UNL, plansUpdated: 3 }; }
+      return { gb: R_UNL, default: 200 };
     }
     if (u.indexOf("/admin/reseller-trial") >= 0) {
       if (method === "POST") {

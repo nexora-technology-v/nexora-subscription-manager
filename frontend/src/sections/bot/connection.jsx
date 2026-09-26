@@ -425,6 +425,9 @@ export function BotSection({ password, dirty }) {
       <BotStatusBar status={status} password={password} onChange={load} dirty={dirty} />
       <Msg msg={msg} />
 
+      {/* دو ستون روی صفحه‌ی پهن: فیلدهای کوتاه (یوزرنیم، آیدی گروه) در یک
+          ستونِ ۹۹۰ پیکسلی کش می‌آمدند و صفحه ۲۳۰۰ پیکسل پیمایش داشت */}
+      <div className="fx-cols2">
       {/* توکن ربات */}
       <div className="fx-card p-5 mb-4">
         <div className="text-[14px] font-semibold text-white mb-1 flex items-center gap-2">
@@ -618,6 +621,8 @@ export function BotSection({ password, dirty }) {
             چون قفل‌شدن کل فروش بدتر از رد نشدن یک نفر است.
           </InfoBox>
         </div>
+      </div>
+
       </div>
 
       {/* راه‌اندازی */}

@@ -1025,7 +1025,8 @@ function PlanFloor({ row, cost }) {
       {cost.perGb ? (
         // نرخِ حجمی: حجم × نرخِ هر گیگ — ماه و کاربر در آن نیستند
         <div className="text-[10.5px] mt-1" style={{ color: "var(--muted)" }}>
-          {faNum(cost.gb)} گیگ × {faNum(cost.perGb)} تومانِ هر گیگ
+          {cost.unlimited ? `نامحدود (= ${faNum(cost.gb)} گیگ)` : `${faNum(cost.gb)} گیگ`}
+          {" × "}{faNum(cost.perGb)} تومانِ هر گیگ
         </div>
       ) : (
       <div className="text-[10.5px] mt-1" style={{ color: "var(--muted)" }}>

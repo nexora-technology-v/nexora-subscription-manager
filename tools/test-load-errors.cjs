@@ -186,6 +186,7 @@ const CASES = [
   ["قابلیت‌های نماینده‌ها · پوسته", C.ResellerFeatures, pw, "/api/admin/portal-addon$"],
   ["قابلیت‌های نماینده‌ها · فروشگاه", C.ResellerFeatures, pw, "/api/admin/store-addon$"],
   ["قابلیت‌های نماینده‌ها · تست", C.ResellerFeatures, pw, "/api/admin/reseller-trial$"],
+  ["قابلیت‌های نماینده‌ها · نامحدود", C.ResellerFeatures, pw, "/api/admin/reseller-unlimited$"],
   // خواندنِ تنظیماتِ ربات که شکست بخورد، ذخیره‌ی بعدی (PUTِ جایگزین‌کننده)
   // همه‌چیز را پاک می‌کرد — خطا باید دیده شود، نه فرمی با پیش‌فرض‌ها
   ["پیگیریِ تست — نه فرمِ پیش‌فرض", C.BotDiscountsSection, pw, "/bot/settings$"],

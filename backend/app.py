@@ -14451,6 +14451,33 @@ def _sync_reseller_trials(spec):
         con.close()
 
 
+@app.get("/api/admin/reseller-unlimited")
+def reseller_unlimited_get(x_admin_password: str = Header(...)):
+    """«نامحدود» ِ نماینده‌ها برای کفِ نرخِ حجمی چند گیگ حساب می‌شود."""
+    check_auth(x_admin_password)
+    return {"gb": _unlimited_gb(), "default": UNLIMITED_GB_DEFAULT}
+
+
+@app.post("/api/admin/reseller-unlimited")
+def reseller_unlimited_set(payload: dict, x_admin_password: str = Header(...)):
+    """
+    عوض‌کردنش کفِ ذخیره‌شده‌ی همه‌ی پلن‌های نامحدود را هم به‌روز می‌کند —
+    وگرنه ربات همچنان کفِ قدیمی را از اعتبارِ پیش‌پرداخت کم می‌کرد.
+    """
+    check_auth(x_admin_password)
+    try:
+        gb = int((payload or {}).get("gb") or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="عدد نامعتبر")
+    if not 10 <= gb <= 5000:
+        raise HTTPException(status_code=400, detail="باید بین ۱۰ تا ۵۰۰۰ گیگ باشد")
+    root = _root_tenant_row()
+    st = _tenant_settings(root)
+    st["unlimited_gb"] = gb
+    _save_tenant_settings(root["id"], st)
+    return {"ok": True, "gb": gb, "plansUpdated": _refresh_plan_costs()}
+
+
 @app.get("/api/admin/reseller-trial")
 def reseller_trial_get(x_admin_password: str = Header(...)):
     """
@@ -16778,6 +16805,19 @@ def portal_plan_cost(payload: dict, t: dict = Depends(portal_tenant)):
     return {"rows": out}
 
 
+#: «نامحدود» برای کفِ حجمی چند گیگ حساب شود، اگر مالک عددی نگذاشته
+UNLIMITED_GB_DEFAULT = 200
+
+
+def _unlimited_gb():
+    """نامحدود = چند گیگ (برای کفِ نرخِ حجمی). از تنظیمِ مالک، پیش‌فرض ۲۰۰."""
+    try:
+        v = int(_tenant_settings(_root_tenant_row()).get("unlimited_gb") or 0)
+    except (HTTPException, TypeError, ValueError):
+        v = 0
+    return v if v > 0 else UNLIMITED_GB_DEFAULT
+
+
 def _plan_floor(conf, rates, gb, days, ips):
     """
     کفِ یک پلن — همان عددی که پیش‌نمایش نشان می‌دهد و همان که
@@ -16796,18 +16836,19 @@ def _plan_floor(conf, rates, gb, days, ips):
     """
     per_gb = _price_per_gb(conf or {})
     if per_gb:
-        if gb <= 0:
-            # نامحدود با نرخِ حجمی: مصرف سقف ندارد، پس هیچ کفی قابلِ دفاع
-            # نیست. صفر نمی‌گوییم («رایگان است»)؛ می‌گوییم «نامعلوم» و چرا.
-            return {"ready": False, "perGb": per_gb,
-                    "why": f"نرخِ شما حجمی است (هر گیگ {_fnum(per_gb)} تومان) و "
-                           "پلنِ نامحدود سقفِ مصرف ندارد — کفش معلوم نیست"}
+        # «نامحدود» ِ این فروشگاه در عمل سقفِ منصفانه دارد — مالک: «نامحدودی
+        # که ما تعریف می‌کنیم ۲۰۰ گیگ است». پس کفِ پلنِ نامحدود همان حجم ×
+        # نرخ است، نه «نامعلوم». عدد را مالک در «قابلیت‌های نماینده‌ها» عوض
+        # می‌کند (`_unlimited_gb`).
+        unl = gb <= 0
+        eff = _unlimited_gb() if unl else int(gb)
         return {
             "ready": True,
-            "cost": int(gb) * per_gb,
+            "cost": eff * per_gb,
             "base": per_gb,
             "perGb": per_gb,
-            "gb": int(gb),
+            "gb": eff,
+            "unlimited": unl,
             "perDevice": 0, "extraDevices": 0, "months": 1,
             "estimated": False,
         }

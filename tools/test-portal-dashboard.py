@@ -289,8 +289,15 @@ _fl = AP.portal_plan_cost({"rows": [{"gb": 30, "days": 30, "ip_limit": 2},
 check("۳۰ گیگ × ۳٬۰۰۰ = ۹۰٬۰۰۰", _fl[0].get("ready") and _fl[0]["cost"] == 90000, str(_fl[0]))
 check("ماه و کاربر ضرب نمی‌شوند — حجم سقفِ کلِ دوره است",
       _fl[1].get("cost") == 90000, str(_fl[1]))
-check("نامحدود با نرخِ حجمی: «نامعلوم» با دلیل، نه صفر",
-      _fl[2].get("ready") is False and "نامحدود" in _fl[2].get("why", ""), str(_fl[2]))
+# مالک: «نامحدودی که ما تعریف می‌کنیم ۲۰۰ گیگ است»
+check("نامحدود = ۲۰۰ گیگ → ۶۰۰٬۰۰۰",
+      _fl[2].get("ready") and _fl[2]["cost"] == 600000 and _fl[2]["unlimited"], str(_fl[2]))
+check("عددِ نامحدود را مالک عوض می‌کند (۱۰ گیگ کمتر از حد رد می‌شود)",
+      status_of(lambda: AP.reseller_unlimited_set({"gb": 5}, x_admin_password=PW)) == 400)
+AP.reseller_unlimited_set({"gb": 300}, x_admin_password=PW)
+check("۳۰۰ گیگ → ۹۰۰٬۰۰۰",
+      AP.portal_plan_cost({"rows": [{"gb": 0, "days": 30}]}, t=_TA3)["rows"][0]["cost"] == 900000)
+AP.reseller_unlimited_set({"gb": 200}, x_admin_password=PW)
 
 
 def _save_plan(price, gb=30):

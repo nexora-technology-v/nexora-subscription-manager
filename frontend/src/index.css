@@ -5074,7 +5074,8 @@ body::before {
   color: var(--text); margin: 6px 0 10px; }
 .ib-h span { font-size: 12px; font-weight: 600; }
 .ib-h span.t-bad { color: var(--danger); } .ib-h span.t-ok { color: var(--ok); }
-.ib-recs { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.ib-recs { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 12px; margin-bottom: 18px;
+  align-items: start; }   /* کارتِ یک‌خطی قدِ بلندترین را نگیرد */
 .ib-rec { border-color: var(--accent-line); }
 .ib-rec header { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
 .ib-rec header svg { color: var(--accent-2); flex: none; }
@@ -5137,6 +5138,7 @@ body::before {
 .rf-tile-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .rf-fields { display: grid; gap: 8px; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
 .rf-fields-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.rf-fields-1 { grid-template-columns: minmax(0, 1fr); }
 .rf-fields label { display: grid; gap: 4px; min-width: 0; }
 .rf-fields label > span { font-size: 11px; color: var(--muted); }
 .rf-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -5163,4 +5165,12 @@ body::before {
   .rf-tr > [data-label]::before { content: attr(data-label); display: block;
     font-size: 11px; color: var(--muted); margin-bottom: 3px; }
   .rf-name { font-weight: 600; }
+}
+
+/* دو ستونِ کارت روی صفحه‌ی پهن — فرم‌های بلند (اتصال و تنظیماتِ ربات).
+   ستونِ CSS و نه grid: کارت‌ها ارتفاعِ متفاوت دارند و grid زیرِ کارتِ کوتاه
+   جای خالی می‌گذاشت. ترتیب در RTL از راست به چپ است. */
+@media (min-width: 1100px) {
+  .fx-cols2 { columns: 2; column-gap: 16px; }
+  .fx-cols2 > * { break-inside: avoid; }
 }
