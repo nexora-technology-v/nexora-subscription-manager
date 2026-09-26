@@ -5011,3 +5011,16 @@ body::before {
 @media (max-width: 1100px) { .ib-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 560px) { .ib-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
+/* ── عیب‌یابیِ ارتباط: TCP ── */
+.ld-tcp { padding: 10px 0 4px; border-top: 1px solid var(--border); display: grid; gap: 8px; }
+.ld-tcp-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ld-tcp-head b { font-size: 13px; color: var(--text); }
+.ld-tcp-head span { font-size: 11.5px; color: var(--muted); }
+.ld-tcp-head button { margin-inline-start: auto; }
+.ld-tcp-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.ld-tcp-none { font-size: 12px; color: var(--muted); }
+.ib-fix span { direction: rtl; unicode-bidi: plaintext; word-break: break-word; }
+.ld-cmd { display: block; margin-top: 6px; padding: 7px 10px; border-radius: 8px; background: var(--surface-3);
+  border: 1px solid var(--border); font-family: var(--mono); font-size: 11.5px; color: var(--text);
+  white-space: pre-wrap; word-break: break-all; user-select: all; text-align: left; }
+

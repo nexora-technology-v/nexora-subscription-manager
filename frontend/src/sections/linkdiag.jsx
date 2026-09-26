@@ -162,6 +162,105 @@ function TunnelRow({ n, live }) {
   );
 }
 
+const FIND_ICON = { bad: XCircle, warn: AlertTriangle, tip: HelpCircle };
+
+/*
+ * «پینگ می‌رود ولی TCP نه»: هر پورت (باز / رد / بی‌جواب)، MTU مسیر، و
+ * دست‌دادن‌های گیرکرده در کرنل. یافته‌ها از `linkcheck.tcp_findings` —
+ * این‌جا هیچ آستانه‌ای نیست.
+ */
+function TcpBlock({ n, password }) {
+  const [deep, setDeep] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const base = n.tcp || {};
+  const cur = deep || base;
+  const c = cur.check;
+  const run = async () => {
+    setBusy(true); setErr("");
+    try {
+      const r = await fetch(`${API_URL}/api/admin/link/tcptest`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Password": password },
+        body: JSON.stringify({ ip: n.ip }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(errText(j.detail, "بررسی انجام نشد"));
+      setDeep({ ...j, at: new Date().toISOString() });
+    } catch (e) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const tports = new Set((cur.ports || []).map(String));
+  const t = cur.tunnel || n.tunnel?.now || {};
+  return (
+    <div className="ld-tcp">
+      <div className="ld-tcp-head">
+        <b>TCP</b>
+        <span>{deep ? "بررسیِ عمیق، همین حالا" : "از آخرین سنجش"}</span>
+        {n.ip && (
+          <button type="button" onClick={run} disabled={busy}
+            className="fx-btn-g px-3 py-1.5 text-[12px] flex items-center gap-1.5">
+            {busy ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+            {busy ? "در حال بررسی…" : "بررسیِ عمیقِ TCP"}
+          </button>
+        )}
+      </div>
+      {err && <p className="ld-err">{err}</p>}
+      {!c ? (
+        <p className="ld-tcp-none">هنوز آزمونِ TCP ی برای این آی‌پی نیست — «بررسیِ عمیقِ TCP» را بزنید.</p>
+      ) : (
+        <>
+          <div className="ld-tcp-row">
+            <span className={`ld-chip ${c.icmp && c.icmp.loss < 50 ? "t-ok" : "t-down"}`}>
+              پینگ {c.icmp ? `${faNum(c.icmp.loss)}٪ پرت` : "—"}
+            </span>
+            {Object.entries(c.ports || {}).map(([p, v]) => {
+              const st = v.open ? "ok" : v.refused ? "slow" : "down";
+              const lab = v.open ? "باز" : v.refused ? "رد" : "بی‌جواب";
+              return (
+                <span key={p} className={`ld-chip t-${st}`}
+                  title={v.rst_ms != null ? `RST در ${Math.round(v.rst_ms)} میلی‌ثانیه` : undefined}>
+                  <bdi dir="ltr">:{p}</bdi>{tports.has(String(p)) ? " (تانل)" : ""} {lab}
+                  {v.open && v.avg != null ? <> · <bdi dir="ltr">{Math.round(v.avg)}ms</bdi></> : null}
+                </span>
+              );
+            })}
+            {c.mtu?.max != null && (
+              <span className={`ld-chip ${c.mtu.max >= 1400 ? "t-ok" : c.mtu.max >= 1300 ? "t-slow" : "t-down"}`}>
+                MTU <bdi dir="ltr">{c.mtu.max}</bdi>
+              </span>
+            )}
+            {(t.syn > 0 || t.synrecv > 0 || t.stuck > 0) && (
+              <span className="ld-chip t-down">
+                {t.syn ? `${faNum(t.syn)} در SYN-SENT ` : ""}
+                {t.synrecv ? `${faNum(t.synrecv)} در SYN-RECV ` : ""}
+                {t.stuck ? `${faNum(t.stuck)} اتصالِ گیرکرده` : ""}
+              </span>
+            )}
+          </div>
+          {/* یافته‌ای که همین حالا حکمِ بالای کارت است دوباره نشان داده نمی‌شود */}
+          {(cur.findings || []).filter((f) => deep || f.id !== n.verdict?.id).map((f) => {
+            const I = FIND_ICON[f.level] || HelpCircle;
+            return (
+              <div key={f.id} className={`ib-find l-${f.level}`}>
+                <I size={15} />
+                <div className="min-w-0">
+                  <b>{f.title}</b>
+                  <p>{f.why}</p>
+                  <p className="ib-fix"><Wrench size={11} /> <span>{f.fix}</span></p>
+                  {f.cmd && <code className="ld-cmd" dir="ltr">{f.cmd}</code>}
+                </div>
+              </div>
+            );
+          })}
+          {!(cur.findings || []).length && (
+            <p className="ld-tcp-none">در TCP این مسیر مشکلی دیده نشد.</p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function NodeDiag({ n, live, password, onNote }) {
   const [busy, setBusy] = useState(false);
   const update = async () => {
@@ -212,6 +311,7 @@ function NodeDiag({ n, live, password, onNote }) {
 
       <Verdict v={n.verdict} />
       <TunnelRow n={n} live={live} />
+      <TcpBlock n={n} password={password} />
 
       <div className="ld-cols mt-2">
         <div>

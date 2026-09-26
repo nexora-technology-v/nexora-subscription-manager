@@ -10051,14 +10051,53 @@
         history: _series(function (i) { return [0, 3, "ok"]; }),
         targets: [{ host: "1.1.1.1", port: 443, tcp: { loss: 0, avg: 2.2 } }] } ] });
 
+  // آزمونِ TCP. ?link=tcp همان الگوی «پینگ می‌رود ولی TCP نه»
+  var _tcpq = _lq === "tcp";
+  var TCP_BLOCKED = {
+    check: { host: "203.0.113.50", icmp: { loss: 0, avg: 118.4 }, mtu: { max: 1500 },
+             ports: { "8443": { open: 0, refused: 0, timeout: 3, loss: 100, tries: 3 },
+                      "443": { open: 0, refused: 0, timeout: 3, loss: 100, tries: 3 },
+                      "22": { open: 0, refused: 0, timeout: 3, loss: 100, tries: 3 },
+                      "80": { open: 0, refused: 0, timeout: 3, loss: 100, tries: 3 } } },
+    ports: [8443], findings: [
+      { level: "bad", id: "tcp-blocked", title: "پینگ رد می‌شود ولی TCP نه — TCP به این آی‌پی بسته است",
+        why: "پینگ می‌رسد، ولی پورتِ تانل (8443) و هیچ پورتِ دیگری حتی جوابِ «رد» هم نداد؛ بسته‌های TCP بینِ راه دور ریخته می‌شوند. این الگوی فیلترِ آی‌پی است: ICMP آزاد، TCP بسته.",
+        fix: "آی‌پیِ یکی از دو سرور را عوض کنید (معمولاً آی‌پیِ تازه برای سرورِ خارج ساده‌تر است). اگر UDP باز است، تانلی روی UDP (hysteria، wireguard، یا ترانسپورتِ udp backhaul) هم راهِ موقتی است." } ] };
+  var TCP_MTU = {
+    check: { host: "203.0.113.50", icmp: { loss: 0, avg: 118.4 }, mtu: { max: 1332 },
+             ports: { "8443": { open: 3, refused: 0, timeout: 0, loss: 0, tries: 3, avg: 121.3 },
+                      "443": { open: 0, refused: 3, timeout: 0, loss: 0, tries: 3, rst_ms: 119.2 },
+                      "22": { open: 0, refused: 0, timeout: 3, loss: 100, tries: 3 } } },
+    ports: [8443], findings: [
+      { level: "warn", id: "mtu", title: "بسته‌های بزرگ رد نمی‌شوند — MTU مسیر 1332 بایت است",
+        why: "پینگِ کوچک می‌رسد ولی بسته‌ی بزرگ‌تر از 1332 بایت (بی‌تکه) گم می‌شود. TCP دست می‌دهد (بسته‌های دست‌دادن کوچک‌اند) ولی وقتِ فرستادنِ داده گیر می‌کند.",
+        fix: "روی هر دو سرور MSS را محدود کنید (دستورِ زیر)، یا MTU تانل را 1332 بگذارید.",
+        cmd: "iptables -t mangle -A POSTROUTING -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1292" },
+      { level: "tip", id: "port-filter", title: "بعضی پورت‌ها بی‌جواب‌اند",
+        why: "بی‌جواب: 22 — جواب‌دار: 8443، 443. آی‌پی باز است ولی این پورت‌ها بینِ راه فیلتر می‌شوند.",
+        fix: "پورتِ تانل را روی یکی از پورت‌های جواب‌دار بگذارید." } ] };
+  var _mn = LINK_DIAG.nodes[LINK_DIAG.nodes.length - 1];
+  _mn.tcp = _tcpq ? TCP_BLOCKED : TCP_MTU;
+  if (_tcpq) {
+    _mn.verdict = { side: "tcp", level: "bad", id: "tcp-blocked", title: TCP_BLOCKED.findings[0].title,
+                    reason: TCP_BLOCKED.findings[0].why, fix: TCP_BLOCKED.findings[0].fix };
+    _mn.tunnel.state = "down";
+    _mn.tunnel.now = { engine: "backpack", conns: 0, syn: 4, rtt: null, retransPct: 0 };
+  }
+  LINK_DIAG.nodes[0].tcp = { ports: [3080], findings: [], check: {
+    host: "198.51.100.7", icmp: { loss: 0, avg: 101.2 }, mtu: { max: 1500 },
+    ports: { "3080": { open: 3, refused: 0, timeout: 0, loss: 0, tries: 3, avg: 102.1 },
+             "443": { open: 3, refused: 0, timeout: 0, loss: 0, tries: 3, avg: 103.4 } } } };
+
   // نرخِ زنده — هر بار کمی فرق می‌کند، تا «زنده» بودن دیده شود
   function LINK_LIVE() {
     var j = function (b) { return Math.round(b * (0.8 + Math.random() * 0.4)); };
     return { ok: true, dt: 3.0, net: { rx: j(6.2e6), tx: j(5.9e6) }, peers: {
       "198.51.100.7": { engine: "backhaul", conns: 8, rtt: 104.2, retransPct: 0.3, rate: { rx: j(2.4e6), tx: j(2.2e6) } },
       "198.51.100.23": { engine: "rathole", conns: 3, rtt: 89.5, retransPct: 0.1, rate: { rx: j(4.1e5), tx: j(3.9e5) } },
-      "203.0.113.50": { engine: "backpack", conns: _mdown ? 0 : 6, rtt: _mdown ? null : 212.4,
-                        retransPct: _mdown ? 0 : 5.3, rate: _mdown ? { rx: 0, tx: 0 } : { rx: j(3.1e6), tx: j(2.8e6) } } } };
+      "203.0.113.50": (_mdown || _lq === "tcp")
+        ? { engine: "backpack", conns: 0, syn: 4, rtt: null, retransPct: 0, rate: { rx: 0, tx: 0 } }
+        : { engine: "backpack", conns: 6, rtt: 212.4, retransPct: 5.3, rate: { rx: j(3.1e6), tx: j(2.8e6) } } } };
   }
 
   // اینباندهای 3x-ui — واقع‌نما: یکی سالم پشتِ تانل، یکی Reality با dest بسته،
@@ -11123,6 +11162,11 @@ var D_CODES = { ready: true,
     }
     if (u.indexOf("/admin/link/check") >= 0) return LINK_DIAG;
     if (u.indexOf("/admin/link/live") >= 0) return LINK_LIVE();
+    if (u.indexOf("/admin/link/tcptest") >= 0) {
+      var tt = _tcpq ? TCP_BLOCKED : TCP_MTU;
+      return { ip: (body || {}).ip, check: tt.check, ports: tt.ports, findings: tt.findings,
+               tunnel: _tcpq ? { conns: 0, syn: 4 } : { conns: 6, rtt: 212.4, retransPct: 5.3 } };
+    }
     if (u.indexOf("/admin/inbounds/doctor") >= 0) return INB_DOC();
     if (u.indexOf("/admin/link/diag") >= 0) return LINK_DIAG;
     if (u.indexOf("/admin/traffic") >= 0) return TRAFFIC;

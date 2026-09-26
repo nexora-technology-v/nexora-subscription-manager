@@ -11850,18 +11850,27 @@ def _link_diag_data():
         if own_f:
             fsamp = TUN.linkchecks(n["id"], "foreign", since=since)
             last_f = fsamp[-1]["data"] if fsamp else None
+            src = last_f
             series_f = _path_series(fsamp, ["iran", "intl"], kind_f)
             tun_now = _tunnel_of(last_f, ips)
             tun_series = _tunnel_series(fsamp, ips)
             f_at = fsamp[-1]["at"] if fsamp else None
         else:
             last_f = _view(last_local, ips)
+            src = last_local
             series_f = _path_series(local, ["iran", "intl"], kind_f, ips=ips)
             tun_now = _tunnel_of(last_local, ips)
             tun_series = _tunnel_series(local, ips)
             f_at = local[-1]["at"] if local else None
         last_i = iran[-1]["data"] if iran else None
-        verdict = LINK.diagnose(last_i, last_f, tunnel=tun_now if tun_series or tun_now else None)
+        # آزمونِ TCP همین آی‌پی، و پورت‌هایی که باید باز باشند: پورتِ تانل‌های
+        # پنل، و پورتی که ما در تانلِ دستی به آن زنگ می‌زنیم
+        tcp = next((((src or {}).get("tcp") or {}).get(ip) for ip in ips
+                    if ((src or {}).get("tcp") or {}).get(ip)), None)
+        tports = sorted({int(t["bridge_port"]) for t in it["tunnels"] if t.get("bridge_port")}
+                        | set((tun_now or {}).get("listen") or []))
+        verdict = LINK.diagnose(last_i, last_f, tunnel=tun_now if tun_series or tun_now else None,
+                                tcp=tcp, tunnel_ports=tports)
         series_i = _path_series(iran, ["domestic", "intl", "foreign"], kind_i)
 
         paths = []
@@ -11908,9 +11917,11 @@ def _link_diag_data():
             "iranAt": iran[-1]["at"] if iran else None,
             "foreignAt": f_at,
             "lastError": err,
-            "verdict": {k: verdict[k] for k in ("side", "level", "title", "reason", "fix")},
+            "verdict": {k: verdict.get(k) for k in ("side", "level", "title", "reason", "fix", "id")},
             "tunnel": {"state": verdict["paths"]["tunnel"], "now": tun_now,
                        "history": tun_series[-288:]},
+            "tcp": {"check": tcp, "ports": tports,
+                    "findings": LINK.tcp_findings(tcp, tun_now, tports) if tcp else []},
             "paths": paths,
         })
     return {"nodes": out, "every": LINK_EVERY,
@@ -11949,6 +11960,42 @@ def link_check_now(x_admin_password: str = Header(...)):
     finally:
         _LINK_LOCK.release()
     return _link_diag_data()
+
+
+@app.post("/api/admin/link/tcptest")
+def link_tcp_test(payload: dict, x_admin_password: str = Header(...)):
+    """
+    بررسیِ عمیقِ TCP یک آی‌پی، همین حالا: پینگ، پورتِ تانل و پورت‌های رایج
+    (باز / رد / بی‌جواب، و زمانِ RST در برابرِ رفت‌وبرگشتِ پینگ)، MTU مسیر،
+    و وضعیتِ اتصال‌های تانل در کرنل. چند ثانیه.
+
+    فقط آی‌پی‌ای که پنل تانل می‌داند — این مسیر ابزارِ اسکنِ دلخواه نیست.
+    """
+    check_auth(x_admin_password)
+    if not LINK:
+        raise HTTPException(status_code=500, detail="ماژول عیب‌یابی بارگذاری نشد")
+    ip = str((payload or {}).get("ip") or "").strip()
+    known = set(_manual_peers(max_age=0))
+    tports = set()
+    if TUNNELS_OK:
+        try:
+            for L in _iran_links()[0]:
+                for t in L["tunnels"]:
+                    if t.get("remote_host"):
+                        known.add(t["remote_host"])
+                        if t["remote_host"] == ip and t.get("bridge_port"):
+                            tports.add(int(t["bridge_port"]))
+                if L["node"].get("public_ip"):
+                    known.add(L["node"]["public_ip"])
+        except Exception as e:
+            _loop_fail("tcp-test", e)
+    if ip not in known:
+        raise HTTPException(status_code=404, detail="این آی‌پی تانلی نیست که پنل بشناسد")
+    tun = (LINK.tunnel_conns(peers={ip}).get("peers") or {}).get(ip)
+    tports |= set((tun or {}).get("listen") or [])
+    check = LINK.tcp_check(ip, sorted(tports), tries=4)
+    return {"ip": ip, "check": check, "tunnel": tun, "ports": sorted(tports),
+            "findings": LINK.tcp_findings(check, tun, sorted(tports))}
 
 
 _LIVE = {"t": None, "net": None, "peers": {}, "inb": None}
